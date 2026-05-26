@@ -1,0 +1,6 @@
+interface:
+  display_name: "New Api"
+  short_description: "Repo-specific patterns and workflows for new-api"
+  default_prompt: "Use the new-api repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true

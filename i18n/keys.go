@@ -349,4 +349,10 @@ const (
 	MsgEnterpriseDingTalkInvalidCallbackURL       = "enterprise.dingtalk.invalid_callback_url"
 	MsgEnterpriseDingTalkConfigSaved              = "enterprise.dingtalk.saved"
 	MsgEnterpriseDingTalkConnectivityTested       = "enterprise.dingtalk.connectivity_tested"
+	MsgEnterpriseDingTalkOAuthNotEnabled          = "enterprise.dingtalk.oauth_not_enabled"
+	MsgEnterpriseDingTalkOAuthInvalidIdentity     = "enterprise.dingtalk.oauth_invalid_identity"
+	MsgEnterpriseDingTalkOAuthProviderFailed      = "enterprise.dingtalk.oauth_provider_failed"
+	MsgEnterpriseDingTalkOAuthUserDisabled        = "enterprise.dingtalk.oauth_user_disabled"
+	MsgEnterpriseDingTalkOAuthOutOfScope          = "enterprise.dingtalk.oauth_out_of_scope"
+	MsgEnterpriseDingTalkOAuthBindingConflict     = "enterprise.dingtalk.oauth_binding_conflict"
 )

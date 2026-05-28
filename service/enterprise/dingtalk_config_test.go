@@ -1,6 +1,8 @@
 package enterprise_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
@@ -13,9 +15,15 @@ import (
 func newDingTalkConfigTestService(t *testing.T) (*entservice.DingTalkConfigService, *gorm.DB) {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, entmodel.AutoMigrate(db))
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
 	return entservice.NewDingTalkConfigService(db), db
 }
 

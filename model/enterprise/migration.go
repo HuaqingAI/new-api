@@ -9,6 +9,7 @@ func Migrate(db *gorm.DB) error {
 		&DepartmentRole{},
 		&AdminAction{},
 		&DingTalkConfig{},
+		&DingTalkIdentity{},
 	)
 }
 

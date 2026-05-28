@@ -102,6 +102,10 @@ export interface SystemStatus {
     linuxdo_oauth?: boolean
     linuxdo_client_id?: string
     telegram_oauth?: boolean
+    dingtalk_oauth?: boolean
+    dingtalk_client_id?: string
+    dingtalk_callback_url?: string
+    dingtalk_authorization_endpoint?: string
     passkey_login?: boolean
     wechat_login?: boolean
     wechat_qrcode?: string
@@ -145,6 +149,10 @@ export interface SystemStatus {
   linuxdo_oauth?: boolean
   linuxdo_client_id?: string
   telegram_oauth?: boolean
+  dingtalk_oauth?: boolean
+  dingtalk_client_id?: string
+  dingtalk_callback_url?: string
+  dingtalk_authorization_endpoint?: string
   passkey_login?: boolean
   wechat_login?: boolean
   wechat_qrcode?: string
@@ -181,7 +189,14 @@ export interface SystemStatus {
 
 export interface OAuthProvider {
   name: string
-  type: 'github' | 'discord' | 'oidc' | 'linuxdo' | 'telegram' | 'wechat'
+  type:
+    | 'github'
+    | 'discord'
+    | 'oidc'
+    | 'linuxdo'
+    | 'telegram'
+    | 'wechat'
+    | 'dingtalk'
   enabled: boolean
   clientId?: string
   authEndpoint?: string

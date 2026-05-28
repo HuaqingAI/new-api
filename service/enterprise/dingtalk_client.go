@@ -43,6 +43,46 @@ type dingTalkAPIEnvelope struct {
 	AccessToken string `json:"access_token"`
 }
 
+type DingTalkOAuthToken struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+	TokenType    string `json:"token_type"`
+}
+
+type DingTalkOAuthUserInfo struct {
+	UnionId string `json:"union_id"`
+	OpenId  string `json:"open_id"`
+	Nick    string `json:"nick"`
+	Email   string `json:"email"`
+	Mobile  string `json:"mobile"`
+}
+
+type DingTalkContactUserInfo struct {
+	UserId string `json:"userid"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+	Mobile string `json:"mobile"`
+	Active *bool  `json:"active"`
+}
+
+type dingTalkOAuthTokenRequest struct {
+	ClientId     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	Code         string `json:"code"`
+	GrantType    string `json:"grantType"`
+}
+
+type dingTalkContactUserRequest struct {
+	UnionId string `json:"unionid"`
+}
+
+type dingTalkContactUserResponse struct {
+	ErrCode int                     `json:"errcode"`
+	ErrMsg  string                  `json:"errmsg"`
+	Result  DingTalkContactUserInfo `json:"result"`
+}
+
 func (e *DingTalkAPIError) Error() string {
 	if e == nil {
 		return ""
@@ -116,6 +156,122 @@ func (c *DingTalkClient) GetAccessToken(ctx context.Context, appKey string, appS
 		return "", &DingTalkAPIError{Stage: "access_token", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "token_invalid_credentials"}
 	}
 	return strings.TrimSpace(payload.AccessToken), nil
+}
+
+func (c *DingTalkClient) ExchangeOAuthCode(ctx context.Context, appKey string, appSecret string, code string) (DingTalkOAuthToken, error) {
+	tokenURL, err := url.Parse(c.openAPIBaseURL + "/v1.0/oauth2/userAccessToken")
+	if err != nil {
+		return DingTalkOAuthToken{}, err
+	}
+	requestPayload := dingTalkOAuthTokenRequest{
+		ClientId:     appKey,
+		ClientSecret: appSecret,
+		Code:         code,
+		GrantType:    "authorization_code",
+	}
+	body, err := common.Marshal(requestPayload)
+	if err != nil {
+		return DingTalkOAuthToken{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return DingTalkOAuthToken{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", Summary: "oauth_token_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload DingTalkOAuthToken
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_http_error"}
+	}
+	if strings.TrimSpace(payload.AccessToken) == "" {
+		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_empty"}
+	}
+	payload.AccessToken = strings.TrimSpace(payload.AccessToken)
+	return payload, nil
+}
+
+func (c *DingTalkClient) GetOAuthUserInfo(ctx context.Context, userAccessToken string) (DingTalkOAuthUserInfo, error) {
+	userURL, err := url.Parse(c.openAPIBaseURL + "/v1.0/contact/users/me")
+	if err != nil {
+		return DingTalkOAuthUserInfo{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userURL.String(), nil)
+	if err != nil {
+		return DingTalkOAuthUserInfo{}, err
+	}
+	req.Header.Set("x-acs-dingtalk-access-token", strings.TrimSpace(userAccessToken))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", Summary: "oauth_userinfo_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload DingTalkOAuthUserInfo
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_http_error"}
+	}
+	payload.UnionId = strings.TrimSpace(payload.UnionId)
+	payload.OpenId = strings.TrimSpace(payload.OpenId)
+	payload.Email = strings.TrimSpace(payload.Email)
+	payload.Mobile = strings.TrimSpace(payload.Mobile)
+	if payload.UnionId == "" && payload.OpenId == "" {
+		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_missing_identity"}
+	}
+	return payload, nil
+}
+
+func (c *DingTalkClient) GetContactUserByUnionId(ctx context.Context, appAccessToken string, unionId string) (DingTalkContactUserInfo, error) {
+	userURL, err := url.Parse(c.openAPIBaseURL + "/topapi/user/getbyunionid")
+	if err != nil {
+		return DingTalkContactUserInfo{}, err
+	}
+	q := userURL.Query()
+	q.Set("access_token", strings.TrimSpace(appAccessToken))
+	userURL.RawQuery = q.Encode()
+
+	body, err := common.Marshal(dingTalkContactUserRequest{UnionId: strings.TrimSpace(unionId)})
+	if err != nil {
+		return DingTalkContactUserInfo{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, userURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return DingTalkContactUserInfo{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return DingTalkContactUserInfo{}, &DingTalkAPIError{Stage: "contact_user", Summary: "contact_user_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload dingTalkContactUserResponse
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return DingTalkContactUserInfo{}, &DingTalkAPIError{Stage: "contact_user", HTTPStatus: resp.StatusCode, Summary: "contact_user_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return DingTalkContactUserInfo{}, &DingTalkAPIError{Stage: "contact_user", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "contact_user_http_error"}
+	}
+	if payload.ErrCode != 0 {
+		return DingTalkContactUserInfo{}, &DingTalkAPIError{Stage: "contact_user", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "contact_user_lookup_failed"}
+	}
+	payload.Result.UserId = strings.TrimSpace(payload.Result.UserId)
+	payload.Result.Email = strings.TrimSpace(payload.Result.Email)
+	payload.Result.Mobile = strings.TrimSpace(payload.Result.Mobile)
+	return payload.Result, nil
 }
 
 func (c *DingTalkClient) ProbeAddressBookPermission(ctx context.Context, accessToken string) error {

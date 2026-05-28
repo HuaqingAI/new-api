@@ -31,7 +31,10 @@ const (
 	EnterpriseMembershipStatusPending  = 4
 )
 
-const EnterpriseExternalSourceManual = "manual"
+const (
+	EnterpriseExternalSourceManual   = "manual"
+	EnterpriseExternalSourceDingTalk = "dingtalk"
+)
 
 const (
 	EnterpriseDepartmentRoleDeptAdmin = 1

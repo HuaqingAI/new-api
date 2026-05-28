@@ -197,6 +197,36 @@ func TestEnterpriseAdminActionsAPIRequiresEnterpriseAdmin(t *testing.T) {
 	require.Contains(t, string(detailPayload.Data), `"payload":"{\"user_id\":2001}"`)
 }
 
+func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	adminRecorder := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/dingtalk/config", adminCookies, map[string]any{
+		"corp_id":       "corp-id",
+		"app_key":       "app-key",
+		"app_secret":    "plain-secret",
+		"callback_url":  "https://example.com/api/oauth/dingtalk",
+		"login_enabled": true,
+	})
+	adminPayload := decodeAdminActionsAPIResponse(t, adminRecorder)
+	require.False(t, adminPayload.Success)
+	require.Contains(t, adminPayload.Message, "auth.insufficient_privilege")
+	require.NotContains(t, adminRecorder.Body.String(), "plain-secret")
+
+	rootCookies := fixture.login(t, common.RoleRootUser, common.UserStatusEnabled)
+	rootRecorder := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/dingtalk/config", rootCookies, map[string]any{
+		"corp_id":       "corp-id",
+		"app_key":       "app-key",
+		"app_secret":    "plain-secret",
+		"callback_url":  "https://example.com/api/oauth/dingtalk",
+		"login_enabled": true,
+	})
+	rootPayload := decodeAdminActionsAPIResponse(t, rootRecorder)
+	require.True(t, rootPayload.Success, rootPayload.Message)
+	require.Contains(t, string(rootPayload.Data), `"has_app_secret":true`)
+	require.NotContains(t, rootRecorder.Body.String(), "plain-secret")
+	require.NotContains(t, rootRecorder.Body.String(), `"app_secret":`)
+}
+
 func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 	require.NoError(t, fixture.db.AutoMigrate(&model.User{}))
@@ -277,6 +307,8 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 		role := common.RoleAdminUser
 		if c.Param("role") == "user" {
 			role = common.RoleCommonUser
+		} else if c.Param("role") == "root" {
+			role = common.RoleRootUser
 		}
 		session := sessions.Default(c)
 		session.Set("username", "enterprise-admin")
@@ -312,6 +344,8 @@ func (f enterpriseDepartmentTreeAPIFixture) login(t *testing.T, role int, status
 	path := "/login/admin"
 	if role == common.RoleCommonUser {
 		path = "/login/user"
+	} else if role == common.RoleRootUser {
+		path = "/login/root"
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, path, nil)

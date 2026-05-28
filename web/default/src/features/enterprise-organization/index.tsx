@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
   Building2,
   RefreshCw,
@@ -203,7 +204,7 @@ function EnterpriseOrganizationEmptyState() {
       </EmptyHeader>
       <EmptyContent>
         <div className='flex flex-wrap justify-center gap-2'>
-          <Button variant='outline' disabled>
+          <Button variant='outline' render={<Link to='/enterprise-dingtalk' />}>
             <Settings className='size-4' />
             {t('Configure DingTalk sync')}
           </Button>

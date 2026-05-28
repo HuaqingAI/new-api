@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-28 23:45:57 +08:00
+last_updated: 2026-05-29 01:00:36 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -49,8 +49,8 @@ development_status:
   1-4-record-enterprise-organization-audit: done
   epic-1-retrospective: done
 
-  epic-2: backlog
-  2-1-configure-dingtalk-enterprise-app: backlog
+  epic-2: in-progress
+  2-1-configure-dingtalk-enterprise-app: done
   2-2-test-dingtalk-connectivity-and-permissions: backlog
   2-3-support-dingtalk-oauth-login-and-account-binding: backlog
   2-4-sync-dingtalk-departments-and-members: backlog

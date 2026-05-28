@@ -15,4 +15,7 @@ var (
 	ErrInvalidAdminActionInput      = errors.New("invalid enterprise admin action input")
 	ErrAdminActionNotFound          = errors.New("enterprise admin action not found")
 	ErrDepartmentRoleNotFound       = errors.New("enterprise department role not found")
+	ErrDingTalkMissingCredentials   = errors.New("enterprise dingtalk credentials missing")
+	ErrDingTalkInvalidCallbackURL   = errors.New("enterprise dingtalk callback url invalid")
+	ErrDingTalkConfigNotFound       = errors.New("enterprise dingtalk config not found")
 )

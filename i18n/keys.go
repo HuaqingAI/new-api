@@ -344,4 +344,8 @@ const (
 	MsgEnterprisePermissionAdminRequired          = "error.enterprise.permission.admin_required"
 	MsgEnterpriseAdminActionNotFound              = "enterprise.organization.admin_action_not_found"
 	MsgEnterpriseDepartmentRoleNotFound           = "enterprise.organization.department_role_not_found"
+	MsgEnterpriseDingTalkConfigNotFound           = "enterprise.dingtalk.config_not_found"
+	MsgEnterpriseDingTalkMissingCredentials       = "enterprise.dingtalk.missing_credentials"
+	MsgEnterpriseDingTalkInvalidCallbackURL       = "enterprise.dingtalk.invalid_callback_url"
+	MsgEnterpriseDingTalkConfigSaved              = "enterprise.dingtalk.saved"
 )

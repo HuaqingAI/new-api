@@ -293,3 +293,9 @@ custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用
 error.enterprise.organization.department_not_found: "部門不存在"
 error.enterprise.organization.invalid_name_history: "部門歷史名稱資料無效"
 error.enterprise.organization.department_tree_failed: "載入部門樹失敗"
+
+# Enterprise DingTalk messages
+enterprise.dingtalk.config_not_found: "釘釘配置不存在"
+enterprise.dingtalk.missing_credentials: "啟用釘釘登入或同步前必須填寫釘釘憑據"
+enterprise.dingtalk.invalid_callback_url: "釘釘回調地址必須是有效的 HTTPS URL"
+enterprise.dingtalk.saved: "釘釘配置已儲存"

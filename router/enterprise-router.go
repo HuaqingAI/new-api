@@ -21,5 +21,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.DELETE("/departments/:id/admins/:user_id", middleware.EnterpriseAdmin(), controllerenterprise.RevokeDepartmentAdmin)
 		enterpriseRoute.GET("/admin-actions", middleware.EnterpriseAdmin(), controllerenterprise.ListAdminActions)
 		enterpriseRoute.GET("/admin-actions/:id", middleware.EnterpriseAdmin(), controllerenterprise.GetAdminAction)
+		enterpriseRoute.GET("/dingtalk/config", middleware.RootAuth(), controllerenterprise.GetDingTalkConfig)
+		enterpriseRoute.PUT("/dingtalk/config", middleware.RootAuth(), controllerenterprise.SaveDingTalkConfig)
 	}
 }

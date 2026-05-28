@@ -292,3 +292,9 @@ custom_oauth.provider_id_field_invalid: "Could not extract user ID from provider
 error.enterprise.organization.department_not_found: "Department not found"
 error.enterprise.organization.invalid_name_history: "Department name history is invalid"
 error.enterprise.organization.department_tree_failed: "Failed to load department tree"
+
+# Enterprise DingTalk messages
+enterprise.dingtalk.config_not_found: "DingTalk configuration does not exist"
+enterprise.dingtalk.missing_credentials: "DingTalk credentials are required before enabling login or sync"
+enterprise.dingtalk.invalid_callback_url: "DingTalk callback URL must be a valid HTTPS URL"
+enterprise.dingtalk.saved: "DingTalk configuration saved"

@@ -17,10 +17,12 @@ const (
 	AdminActionMembershipRestore = "enterprise.organization.membership.restore"
 	AdminActionDeptAdminGrant    = "enterprise.organization.department_admin.grant"
 	AdminActionDeptAdminRevoke   = "enterprise.organization.department_admin.revoke"
+	AdminActionDingTalkConfigSet = "enterprise.dingtalk.config.set"
 
 	AdminObjectUserDepartment   = "enterprise_user_department"
 	AdminObjectDepartmentMember = "enterprise_department_member"
 	AdminObjectDepartmentRole   = "enterprise_department_role"
+	AdminObjectDingTalkConfig   = "enterprise_dingtalk_config"
 )
 
 type AdminActionService struct {

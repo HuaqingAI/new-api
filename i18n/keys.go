@@ -334,11 +334,14 @@ const (
 // Enterprise organization related messages
 const (
 	MsgEnterpriseOrganizationDepartmentNotFound   = "error.enterprise.organization.department_not_found"
-	MsgEnterpriseOrganizationInvalidNameHistory  = "error.enterprise.organization.invalid_name_history"
+	MsgEnterpriseOrganizationInvalidNameHistory   = "error.enterprise.organization.invalid_name_history"
 	MsgEnterpriseOrganizationDepartmentTreeFailed = "error.enterprise.organization.department_tree_failed"
-	MsgEnterpriseDepartmentNotFound      = "enterprise.organization.department_not_found"
-	MsgEnterpriseMembershipNotFound      = "enterprise.organization.membership_not_found"
-	MsgEnterpriseMembershipAlreadyExists = "enterprise.organization.membership_already_exists"
-	MsgEnterpriseDuplicateDepartment     = "enterprise.organization.duplicate_department"
-	MsgEnterprisePermissionDeptAdminRequired = "error.enterprise.permission.dept_admin_required"
+	MsgEnterpriseDepartmentNotFound               = "enterprise.organization.department_not_found"
+	MsgEnterpriseMembershipNotFound               = "enterprise.organization.membership_not_found"
+	MsgEnterpriseMembershipAlreadyExists          = "enterprise.organization.membership_already_exists"
+	MsgEnterpriseDuplicateDepartment              = "enterprise.organization.duplicate_department"
+	MsgEnterprisePermissionDeptAdminRequired      = "error.enterprise.permission.dept_admin_required"
+	MsgEnterprisePermissionAdminRequired          = "error.enterprise.permission.admin_required"
+	MsgEnterpriseAdminActionNotFound              = "enterprise.organization.admin_action_not_found"
+	MsgEnterpriseDepartmentRoleNotFound           = "enterprise.organization.department_role_not_found"
 )

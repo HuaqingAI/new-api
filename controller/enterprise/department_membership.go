@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func ListUserDepartments(c *gin.Context) {
@@ -52,8 +53,28 @@ func ReplaceUserDepartments(c *gin.Context) {
 		JoinedAt:        int64Value(req.JoinedAt),
 		DeactivateStale: boolValue(req.DeactivateStale),
 	}
-	result, err := departmentMembershipService().ReplaceUserDepartments(userId, input)
-	if err != nil {
+	var result entservice.UserDepartmentsResult
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, err = entservice.NewDepartmentMembershipService(tx).ReplaceUserDepartments(userId, input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    input.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionMembershipReplace,
+			ObjectType:  entservice.AdminObjectUserDepartment,
+			ObjectId:    strconv.Itoa(userId),
+			DiffSummary: "Replaced user department memberships",
+			Payload: map[string]any{
+				"user_id":          userId,
+				"department_ids":   input.DepartmentIds,
+				"external_source":  input.ExternalSource,
+				"deactivate_stale": input.DeactivateStale,
+			},
+		})
+	}); err != nil {
 		writeMembershipError(c, err)
 		return
 	}
@@ -96,14 +117,35 @@ func AddDepartmentMember(c *gin.Context) {
 		return
 	}
 
-	item, err := departmentMembershipService().AddDepartmentMember(departmentId, entservice.AddDepartmentMemberInput{
+	input := entservice.AddDepartmentMemberInput{
 		TenantId:       valueOrZero(req.TenantId),
 		UserId:         req.UserId,
 		ExternalUserId: req.ExternalUserId,
 		ExternalSource: req.ExternalSource,
 		JoinedAt:       int64Value(req.JoinedAt),
-	})
-	if err != nil {
+	}
+	var item entservice.DepartmentMemberItem
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		item, err = entservice.NewDepartmentMembershipService(tx).AddDepartmentMember(departmentId, input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    item.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionMembershipAdd,
+			ObjectType:  entservice.AdminObjectDepartmentMember,
+			ObjectId:    entservice.MembershipObjectId(departmentId, item.UserId),
+			DiffSummary: "Added department member",
+			Payload: map[string]any{
+				"user_id":         item.UserId,
+				"department_id":   departmentId,
+				"external_source": item.ExternalSource,
+				"status":          item.Status,
+			},
+		})
+	}); err != nil {
 		writeMembershipError(c, err)
 		return
 	}
@@ -125,7 +167,25 @@ func DeactivateDepartmentMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := departmentMembershipService().DeactivateDepartmentMember(departmentId, userId, input); err != nil {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := entservice.NewDepartmentMembershipService(tx).DeactivateDepartmentMember(departmentId, userId, input); err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    input.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionMembershipDisable,
+			ObjectType:  entservice.AdminObjectDepartmentMember,
+			ObjectId:    entservice.MembershipObjectId(departmentId, userId),
+			DiffSummary: "Disabled department member",
+			Payload: map[string]any{
+				"user_id":         userId,
+				"department_id":   departmentId,
+				"external_source": input.ExternalSource,
+				"changed_at":      input.ChangedAt,
+			},
+		})
+	}); err != nil {
 		writeMembershipError(c, err)
 		return
 	}
@@ -147,8 +207,28 @@ func RestoreDepartmentMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	item, err := departmentMembershipService().RestoreDepartmentMember(departmentId, userId, input)
-	if err != nil {
+	var item entservice.DepartmentMemberItem
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		item, err = entservice.NewDepartmentMembershipService(tx).RestoreDepartmentMember(departmentId, userId, input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    item.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionMembershipRestore,
+			ObjectType:  entservice.AdminObjectDepartmentMember,
+			ObjectId:    entservice.MembershipObjectId(departmentId, userId),
+			DiffSummary: "Restored department member",
+			Payload: map[string]any{
+				"user_id":         userId,
+				"department_id":   departmentId,
+				"external_source": item.ExternalSource,
+				"status":          item.Status,
+			},
+		})
+	}); err != nil {
 		writeMembershipError(c, err)
 		return
 	}
@@ -262,4 +342,8 @@ func nonNilInts(values []int) []int {
 		return []int{}
 	}
 	return values
+}
+
+func writeAdminAction(db *gorm.DB, c *gin.Context, input entservice.AdminActionInput) error {
+	return entservice.NewAdminActionService(db).Write(input)
 }

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,12 @@ type departmentTreeAPIResponse struct {
 }
 
 type departmentMembersAPIResponse struct {
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+type adminActionsAPIResponse struct {
 	Success bool            `json:"success"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
@@ -158,6 +165,69 @@ func TestEnterpriseDepartmentMembersAPIUsesBackendDepartmentPermission(t *testin
 	require.Contains(t, deniedPayload.Message, "error.enterprise.permission.dept_admin_required")
 }
 
+func TestEnterpriseAdminActionsAPIRequiresEnterpriseAdmin(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.Create(&modelenterprise.AdminAction{
+		ActorId:     1001,
+		ActionType:  "enterprise.organization.membership.add",
+		ObjectType:  "enterprise_department_member",
+		ObjectId:    "1:2001",
+		DiffSummary: "Added department member",
+		Payload:     `{"user_id":2001}`,
+	}).Error)
+
+	commonUser := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+	require.NotContains(t, string(commonUserPayload.Data), "enterprise_department_member")
+
+	admin := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20&object_type=enterprise_department_member", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	adminPayload := decodeAdminActionsAPIResponse(t, admin)
+	require.True(t, adminPayload.Success, adminPayload.Message)
+	require.Contains(t, string(adminPayload.Data), `"action_id":1`)
+	require.Contains(t, string(adminPayload.Data), `"actor_id":1001`)
+	require.Contains(t, string(adminPayload.Data), `"object_type":"enterprise_department_member"`)
+	require.Contains(t, string(adminPayload.Data), `"diff_summary":"Added department member"`)
+	require.NotContains(t, string(adminPayload.Data), `"payload"`)
+
+	detail := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions/1", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	detailPayload := decodeAdminActionsAPIResponse(t, detail)
+	require.True(t, detailPayload.Success, detailPayload.Message)
+	require.Contains(t, string(detailPayload.Data), `"payload":"{\"user_id\":2001}"`)
+}
+
+func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2001, Username: "dept-admin", Password: "password123", Group: "default", AffCode: "dept-admin-api"}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:          1,
+		TenantId:    0,
+		Name:        "Engineering",
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	grant := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/admins", adminCookies, map[string]any{"user_id": 2001})
+	grantPayload := decodeAdminActionsAPIResponse(t, grant)
+	require.True(t, grantPayload.Success, grantPayload.Message)
+	require.Contains(t, string(grantPayload.Data), `"user_id":2001`)
+
+	revoke := fixture.performEnterpriseRequest(t, http.MethodDelete, "/api/enterprise/departments/1/admins/2001", adminCookies)
+	revokePayload := decodeAdminActionsAPIResponse(t, revoke)
+	require.True(t, revokePayload.Success, revokePayload.Message)
+
+	actions := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20", adminCookies)
+	actionsPayload := decodeAdminActionsAPIResponse(t, actions)
+	require.True(t, actionsPayload.Success, actionsPayload.Message)
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.grant")
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.revoke")
+}
+
 func TestEnterpriseDepartmentTreeAPIMapsInvalidNameHistoryToBusinessError(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 	department := enterpriseDepartment(1, nil, "Broken history", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK)
@@ -275,6 +345,24 @@ func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequest(t *testing.
 	return recorder
 }
 
+func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequestWithBody(t *testing.T, method string, path string, cookies []*http.Cookie, body any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	payload, err := common.Marshal(body)
+	require.NoError(t, err)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	if len(cookies) > 0 {
+		request.Header.Set("New-Api-User", "1001")
+		for _, cookie := range cookies {
+			request.AddCookie(cookie)
+		}
+	}
+	f.engine.ServeHTTP(recorder, request)
+	return recorder
+}
+
 func decodeDepartmentTreeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) departmentTreeAPIResponse {
 	t.Helper()
 
@@ -289,6 +377,15 @@ func decodeDepartmentMembersAPIResponse(t *testing.T, recorder *httptest.Respons
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var payload departmentMembersAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	return payload
+}
+
+func decodeAdminActionsAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) adminActionsAPIResponse {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload adminActionsAPIResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	return payload
 }

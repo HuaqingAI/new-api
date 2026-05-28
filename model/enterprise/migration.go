@@ -7,6 +7,7 @@ func Migrate(db *gorm.DB) error {
 		&Department{},
 		&UserDepartment{},
 		&DepartmentRole{},
+		&AdminAction{},
 	)
 }
 

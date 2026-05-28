@@ -49,6 +49,11 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	require.NoError(t, db.Create(&entmodel.Department{Id: 2, TenantId: 0, Name: "Security", Status: constant.EnterpriseDepartmentStatusActive}).Error)
 
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 999)
+		c.Set("role", common.RoleAdminUser)
+		c.Next()
+	})
 	router.GET("/api/enterprise/users/:id/departments", ListUserDepartments)
 	router.PUT("/api/enterprise/users/:id/departments", ReplaceUserDepartments)
 	router.GET("/api/enterprise/departments/:id/members", ListDepartmentMembers)
@@ -139,6 +144,13 @@ func TestEnterpriseMembershipAPIUserDepartmentWorkflow(t *testing.T) {
 	var user model.User
 	require.NoError(t, db.First(&user, 100).Error)
 	require.Equal(t, "vip", user.Group)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Equal(t, 999, actions[0].ActorId)
+	require.Equal(t, "enterprise.organization.membership.replace", actions[0].ActionType)
+	require.Equal(t, "100", actions[0].ObjectId)
 }
 
 func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
@@ -198,6 +210,13 @@ func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
 	var user model.User
 	require.NoError(t, db.First(&user, 100).Error)
 	require.Equal(t, "vip", user.Group)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 3)
+	require.Equal(t, "enterprise.organization.membership.add", actions[0].ActionType)
+	require.Equal(t, "enterprise.organization.membership.disable", actions[1].ActionType)
+	require.Equal(t, "enterprise.organization.membership.restore", actions[2].ActionType)
 }
 
 func TestEnterpriseMembershipAPIRejectsInvalidRequests(t *testing.T) {

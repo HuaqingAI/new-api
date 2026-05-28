@@ -29,7 +29,10 @@ enterprise.organization.department_not_found: "部門不存在"
 enterprise.organization.membership_not_found: "部門成員關係不存在"
 enterprise.organization.membership_already_exists: "部門成員關係已存在"
 enterprise.organization.duplicate_department: "部門 ID 重複"
+enterprise.organization.admin_action_not_found: "企業管理操作記錄不存在"
+enterprise.organization.department_role_not_found: "部門管理員角色不存在"
 error.enterprise.permission.dept_admin_required: "需要部門管理員權限"
+error.enterprise.permission.admin_required: "需要企業管理員權限"
 
 # Auth middleware messages
 auth.not_logged_in: "無權進行此操作，未登入且未提供 access token"

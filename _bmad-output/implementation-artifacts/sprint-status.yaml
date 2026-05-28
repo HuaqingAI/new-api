@@ -35,19 +35,19 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-28 23:45:00 +08:00
+last_updated: 2026-05-28 23:45:57 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
 story_location: D:\ProgramData\git\repository\github\huaqingai\new-api\_bmad-output\implementation-artifacts
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-view-enterprise-department-tree: done
   1-2-maintain-user-department-memberships: done
   1-3-separate-department-permissions-from-group-semantics: done
   1-4-record-enterprise-organization-audit: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-configure-dingtalk-enterprise-app: backlog

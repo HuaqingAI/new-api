@@ -8,6 +8,7 @@ type DingTalkIdentity struct {
 	UnionId        string `json:"union_id" gorm:"type:varchar(128);not null;default:'';index"`
 	OpenId         string `json:"open_id" gorm:"type:varchar(128);not null;default:'';index"`
 	ExternalUserId string `json:"external_user_id" gorm:"type:varchar(128);not null;default:'';index"`
+	Mobile         string `json:"mobile" gorm:"type:varchar(64);not null;default:'';index"`
 	UserId         int    `json:"user_id" gorm:"type:int;not null;index;uniqueIndex:uq_enterprise_dingtalk_identity_user"`
 	Status         int    `json:"status" gorm:"type:int;not null;default:1;index"`
 	LastLoginAt    int64  `json:"last_login_at" gorm:"type:bigint;not null;default:0"`

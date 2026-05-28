@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,12 +46,12 @@ func (s *DingTalkSyncService) disableStaleRecords(ctx context.Context, taskId in
 			continue
 		}
 		now := time.Now().Unix()
-		if err := s.db.WithContext(ctx).Model(&membership).Updates(map[string]any{"status": constant.EnterpriseMembershipStatusInactive, "left_at": now}).Error; err != nil {
+		if err := s.db.WithContext(ctx).Model(&membership).Updates(map[string]any{"status": constant.EnterpriseMembershipStatusLeft, "left_at": now}).Error; err != nil {
 			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectMembership, membership.ExternalUserId, "membership_disable_failed")
 			continue
 		}
 		s.incrementTaskCounter(ctx, taskId, "memberships_disabled", 1)
-		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectMembership, ObjectExternalId: membership.ExternalUserId, Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "membership_disabled"})
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectMembership, ObjectExternalId: membership.ExternalUserId, Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "membership_left_or_transferred"})
 	}
 }
 
@@ -61,15 +62,16 @@ func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenant
 	}
 	var existing entmodel.DingTalkIdentity
 	err := s.db.WithContext(ctx).Where("tenant_id = ? AND identity_key = ?", tenantId, identityKey).First(&existing).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return
 	}
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		_ = s.db.WithContext(ctx).Create(&entmodel.DingTalkIdentity{
 			TenantId:       tenantId,
 			IdentityKey:    identityKey,
 			UnionId:        strings.TrimSpace(dingTalkUser.UnionId),
 			ExternalUserId: strings.TrimSpace(dingTalkUser.UserId),
+			Mobile:         strings.TrimSpace(dingTalkUser.Mobile),
 			UserId:         userId,
 			Status:         DingTalkIdentityStatusActive,
 		}).Error
@@ -79,6 +81,7 @@ func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenant
 		"identity_key":     identityKey,
 		"union_id":         strings.TrimSpace(dingTalkUser.UnionId),
 		"external_user_id": strings.TrimSpace(dingTalkUser.UserId),
+		"mobile":           strings.TrimSpace(dingTalkUser.Mobile),
 		"user_id":          userId,
 		"status":           DingTalkIdentityStatusActive,
 	}).Error
@@ -210,4 +213,8 @@ func mapDingTalkSyncTask(task entmodel.DingTalkSyncTask) DingTalkSyncTaskItem {
 
 func mapDingTalkSyncLog(log entmodel.DingTalkSyncLog) DingTalkSyncLogItem {
 	return DingTalkSyncLogItem(log)
+}
+
+func mapDingTalkSyncConflict(conflict entmodel.DingTalkSyncConflict) DingTalkSyncConflictItem {
+	return DingTalkSyncConflictItem(conflict)
 }

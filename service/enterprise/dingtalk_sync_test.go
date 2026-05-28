@@ -97,7 +97,124 @@ func TestDingTalkSyncDisablesStaleRecords(t *testing.T) {
 	require.Equal(t, constant.DepartmentStatusDisabled, staleDepartment.Status)
 	var staleMembership entmodel.UserDepartment
 	require.NoError(t, db.Where("external_user_id = ?", "staff-stale").First(&staleMembership).Error)
-	require.Equal(t, constant.EnterpriseMembershipStatusInactive, staleMembership.Status)
+	require.Equal(t, constant.EnterpriseMembershipStatusLeft, staleMembership.Status)
+}
+
+func TestDingTalkSyncMarksEmailConflictWithoutBindingUnsafeUser(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 10, Name: "Engineering"}},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			10: {{UserId: "staff-conflict", UnionId: "union-conflict", Name: "Conflict", Email: "taken@example.com"}},
+		},
+	})
+	require.NoError(t, db.Create(&model.User{Id: 701, Username: "taken", Email: "taken@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "take"}).Error)
+
+	task, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+
+	require.NoError(t, err)
+	require.Equal(t, constant.DingTalkSyncTaskStatusSucceeded, task.Status)
+	require.Equal(t, 0, task.UsersCreated)
+	require.Equal(t, 1, task.SkippedCount)
+
+	var conflict entmodel.DingTalkSyncConflict
+	require.NoError(t, db.Where("external_user_id = ?", "staff-conflict").First(&conflict).Error)
+	require.Equal(t, constant.DingTalkSyncConflictStatusPending, conflict.Status)
+	require.Equal(t, "email", conflict.ConflictType)
+	require.Equal(t, 701, conflict.CandidateUserId)
+
+	var bindingCount int64
+	require.NoError(t, db.Model(&entmodel.DingTalkIdentity{}).Where("identity_key = ?", "union:union-conflict").Count(&bindingCount).Error)
+	require.Zero(t, bindingCount)
+	var membershipCount int64
+	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Where("external_user_id = ?", "staff-conflict").Count(&membershipCount).Error)
+	require.Zero(t, membershipCount)
+}
+
+func TestDingTalkSyncMarksMobileConflictWithoutBindingUnsafeUser(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 10, Name: "Engineering"}},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			10: {{UserId: "staff-mobile-conflict", UnionId: "union-mobile-conflict", Name: "Mobile Conflict", Mobile: "13800000000"}},
+		},
+	})
+	require.NoError(t, db.Create(&model.User{Id: 702, Username: "mobile", Status: common.UserStatusEnabled, Group: "default", AffCode: "mobi"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{TenantId: 0, IdentityKey: "union:existing-mobile", UnionId: "existing-mobile", ExternalUserId: "staff-existing", Mobile: "13800000000", UserId: 702, Status: entservice.DingTalkIdentityStatusActive}).Error)
+
+	task, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+
+	require.NoError(t, err)
+	require.Equal(t, constant.DingTalkSyncTaskStatusSucceeded, task.Status)
+	require.Equal(t, 0, task.UsersCreated)
+	var conflict entmodel.DingTalkSyncConflict
+	require.NoError(t, db.Where("external_user_id = ?", "staff-mobile-conflict").First(&conflict).Error)
+	require.Equal(t, "mobile", conflict.ConflictType)
+	require.Equal(t, 702, conflict.CandidateUserId)
+}
+
+func TestDingTalkSyncTracksDepartmentRenameAndMoveHistory(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1:  {{DeptId: 10, Name: "Engineering"}},
+			10: {{DeptId: 11, Name: "Platform"}},
+			11: {},
+		},
+	})
+	parentId := 99
+	require.NoError(t, db.Create(&entmodel.Department{Id: 99, TenantId: 0, Name: "Legacy Parent", Status: constant.DepartmentStatusEnabled, SourceType: constant.DepartmentSourceTypeDingTalk, ExternalId: "99"}).Error)
+	require.NoError(t, db.Create(&entmodel.Department{Id: 11, TenantId: 0, Name: "Old Platform", ParentId: &parentId, Status: constant.DepartmentStatusEnabled, SourceType: constant.DepartmentSourceTypeDingTalk, ExternalId: "11"}).Error)
+
+	task, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, task.DepartmentsUpdated)
+	var platform entmodel.Department
+	require.NoError(t, db.Where("external_id = ?", "11").First(&platform).Error)
+	require.Equal(t, "Platform", platform.Name)
+	var engineering entmodel.Department
+	require.NoError(t, db.Where("external_id = ?", "10").First(&engineering).Error)
+	require.NotNil(t, platform.ParentId)
+	require.Equal(t, engineering.Id, *platform.ParentId)
+	history, err := platform.ParsedNameHistory()
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	require.Equal(t, "Old Platform", history[0].Name)
+	require.NotZero(t, history[0].ChangedAt)
+}
+
+func TestDingTalkSyncMarksOldMembershipLeftOnTransfer(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1:  {{DeptId: 10, Name: "Engineering"}, {DeptId: 20, Name: "Security"}},
+			10: {},
+			20: {},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			20: {{UserId: "staff-transfer", UnionId: "union-transfer", Name: "Transfer"}},
+		},
+	})
+	require.NoError(t, db.Create(&model.User{Id: 703, Username: "transfer", Status: common.UserStatusEnabled, Group: "default", AffCode: "tran"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{TenantId: 0, IdentityKey: "union:union-transfer", UnionId: "union-transfer", ExternalUserId: "staff-transfer", UserId: 703, Status: entservice.DingTalkIdentityStatusActive}).Error)
+	require.NoError(t, db.Create(&entmodel.Department{Id: 10, TenantId: 0, Name: "Engineering", Status: constant.DepartmentStatusEnabled, SourceType: constant.DepartmentSourceTypeDingTalk, ExternalId: "10"}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{TenantId: 0, UserId: 703, DepartmentId: 10, ExternalUserId: "staff-transfer", ExternalSource: constant.EnterpriseExternalSourceDingTalk, Status: constant.EnterpriseMembershipStatusActive}).Error)
+
+	task, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, task.MembershipsCreated)
+	require.Equal(t, 1, task.MembershipsDisabled)
+	var oldMembership entmodel.UserDepartment
+	require.NoError(t, db.Where("user_id = ? AND department_id = ?", 703, 10).First(&oldMembership).Error)
+	require.Equal(t, constant.EnterpriseMembershipStatusLeft, oldMembership.Status)
+	require.NotZero(t, oldMembership.LeftAt)
+	var newDepartment entmodel.Department
+	require.NoError(t, db.Where("external_id = ?", "20").First(&newDepartment).Error)
+	var newMembership entmodel.UserDepartment
+	require.NoError(t, db.Where("user_id = ? AND department_id = ?", 703, newDepartment.Id).First(&newMembership).Error)
+	require.Equal(t, constant.EnterpriseMembershipStatusActive, newMembership.Status)
 }
 
 func TestDingTalkSyncLogsFailuresWithoutRollback(t *testing.T) {

@@ -30,6 +30,7 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
+  TriangleAlert,
   Wifi,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -75,9 +76,11 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import {
   enterpriseDingTalkQueryKey,
+  enterpriseDingTalkSyncConflictsQueryKey,
   enterpriseDingTalkSyncLogsQueryKey,
   getDingTalkConfig,
   getDingTalkSyncTask,
+  listDingTalkSyncConflicts,
   listDingTalkSyncLogs,
   saveDingTalkConfig,
   startDingTalkFullSync,
@@ -87,6 +90,7 @@ import type {
   DingTalkConfig,
   DingTalkConnectivityCode,
   DingTalkConnectivityResult,
+  DingTalkSyncConflict,
   DingTalkSyncLog,
   DingTalkSyncTask,
 } from './types'
@@ -268,6 +272,20 @@ export function EnterpriseDingTalk() {
     },
   })
 
+  const syncConflictsQuery = useQuery({
+    queryKey: enterpriseDingTalkSyncConflictsQueryKey,
+    enabled: canEdit,
+    queryFn: async () => {
+      const result = await listDingTalkSyncConflicts({
+        status: 'pending',
+        page: 1,
+        page_size: 5,
+      })
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data
+    },
+  })
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       const result = await startDingTalkFullSync(true)
@@ -284,6 +302,9 @@ export function EnterpriseDingTalk() {
         toast.success(t('DingTalk sync started'))
       }
       await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkSyncLogsQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseDingTalkSyncConflictsQueryKey,
+      })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
@@ -559,10 +580,17 @@ export function EnterpriseDingTalk() {
                   config={config}
                   task={taskQuery.data ?? syncMutation.data ?? null}
                   logs={syncLogsQuery.data?.items ?? []}
+                  conflicts={syncConflictsQuery.data?.items ?? []}
                   logsLoading={syncLogsQuery.isLoading || syncLogsQuery.isFetching}
+                  conflictsLoading={
+                    syncConflictsQuery.isLoading || syncConflictsQuery.isFetching
+                  }
                   syncing={syncMutation.isPending}
                   onStartSync={() => syncMutation.mutate()}
-                  onRefreshLogs={() => syncLogsQuery.refetch()}
+                  onRefreshLogs={() => {
+                    syncLogsQuery.refetch()
+                    syncConflictsQuery.refetch()
+                  }}
                 />
               </form>
             </Form>
@@ -578,7 +606,9 @@ export function EnterpriseDingTalkSyncPanel({
   config,
   task,
   logs,
+  conflicts,
   logsLoading,
+  conflictsLoading,
   syncing,
   onStartSync,
   onRefreshLogs,
@@ -587,7 +617,9 @@ export function EnterpriseDingTalkSyncPanel({
   config: DingTalkConfig
   task: DingTalkSyncTask | null
   logs: DingTalkSyncLog[]
+  conflicts: DingTalkSyncConflict[]
   logsLoading: boolean
+  conflictsLoading: boolean
   syncing: boolean
   onStartSync: () => void
   onRefreshLogs: () => void
@@ -635,6 +667,10 @@ export function EnterpriseDingTalkSyncPanel({
           </p>
         ) : null}
         {task ? <DingTalkSyncTaskSummary task={task} /> : null}
+        <DingTalkSyncConflictList
+          conflicts={conflicts}
+          loading={conflictsLoading}
+        />
         <DingTalkSyncLogTable logs={logs} loading={logsLoading} />
       </CardContent>
     </Card>
@@ -671,6 +707,73 @@ function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
           <div key={label} className='rounded-md bg-muted/50 px-3 py-2'>
             <div className='text-muted-foreground'>{label}</div>
             <div className='font-medium'>{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DingTalkSyncConflictList({
+  conflicts,
+  loading,
+}: {
+  conflicts: DingTalkSyncConflict[]
+  loading: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-28 w-full' />
+  }
+
+  if (conflicts.length === 0) {
+    return (
+      <p className='text-muted-foreground rounded-md border p-4 text-sm'>
+        {t('No pending DingTalk sync conflicts.')}
+      </p>
+    )
+  }
+
+  return (
+    <div className='rounded-md border'>
+      <div className='flex items-center gap-2 border-b px-4 py-3'>
+        <TriangleAlert className='text-amber-600 size-4' />
+        <div className='min-w-0'>
+          <h3 className='text-sm font-medium'>{t('Pending Sync Conflicts')}</h3>
+          <p className='text-muted-foreground text-xs'>
+            {t('Conflicting DingTalk members are not bound automatically.')}
+          </p>
+        </div>
+      </div>
+      <div className='divide-y'>
+        {conflicts.map((conflict) => (
+          <div
+            key={conflict.id}
+            className='grid gap-2 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_auto]'
+          >
+            <div className='min-w-0'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <span className='font-medium'>
+                  {conflict.name || conflict.external_user_id}
+                </span>
+                <Badge variant='outline'>
+                  {t(syncConflictTypeLabel(conflict.conflict_type))}
+                </Badge>
+              </div>
+              <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs'>
+                {conflict.email ? <span>{conflict.email}</span> : null}
+                {conflict.mobile ? <span>{conflict.mobile}</span> : null}
+                <span>{conflict.external_user_id}</span>
+              </div>
+            </div>
+            <div className='text-muted-foreground text-xs md:text-right'>
+              {conflict.candidate_user_id > 0
+                ? t('Candidate user #{{id}}', {
+                    id: conflict.candidate_user_id,
+                  })
+                : t('Multiple candidate users')}
+            </div>
           </div>
         ))}
       </div>
@@ -755,8 +858,23 @@ function syncLogStatusLabel(status: string) {
       return 'Failed'
     case 'skipped':
       return 'Skipped'
+    case 'warning':
+      return 'Warning'
     default:
       return status
+  }
+}
+
+function syncConflictTypeLabel(type: string) {
+  switch (type) {
+    case 'email':
+      return 'Email conflict'
+    case 'mobile':
+      return 'Mobile conflict'
+    case 'email_mobile':
+      return 'Email and mobile conflict'
+    default:
+      return 'Conflict'
   }
 }
 

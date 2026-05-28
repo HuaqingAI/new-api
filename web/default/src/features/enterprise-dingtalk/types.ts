@@ -105,3 +105,30 @@ export type DingTalkSyncLogsResult = {
   page: number
   page_size: number
 }
+
+export type DingTalkSyncConflict = {
+  id: number
+  tenant_id: number
+  task_id: number
+  external_user_id: string
+  union_id: string
+  mobile: string
+  email: string
+  name: string
+  conflict_type: string
+  candidate_user_id: number
+  details: string
+  status: 'pending' | 'resolved' | 'ignored'
+  last_task_id: number
+  resolved_by: number
+  resolved_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type DingTalkSyncConflictsResult = {
+  items: DingTalkSyncConflict[]
+  total: number
+  page: number
+  page_size: number
+}

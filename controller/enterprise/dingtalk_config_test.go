@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
@@ -109,4 +110,32 @@ func TestDingTalkConnectivityAPIWritesSanitizedAudit(t *testing.T) {
 	require.NotContains(t, actions[0].Payload, secret)
 	require.NotContains(t, actions[0].Payload, "app-key")
 	require.NotContains(t, actions[0].Payload, "access_token")
+}
+
+func TestDingTalkSyncConflictsAPIListsPendingConflicts(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.GET("/api/enterprise/dingtalk/sync/conflicts", ListDingTalkSyncConflicts)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          9,
+		LastTaskId:      9,
+		ExternalUserId:  "staff-conflict",
+		UnionId:         "union-conflict",
+		Email:           "taken@example.com",
+		Name:            "Conflict",
+		ConflictType:    "email",
+		CandidateUserId: 100,
+		Details:         "email_matches_existing_local_user",
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/dingtalk/sync/conflicts?status=pending", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+
+	require.True(t, response.Success, response.Message)
+	data := decodeEnterpriseData[entservice.DingTalkSyncConflictsResult](t, response)
+	require.Equal(t, 1, data.Total)
+	require.Len(t, data.Items, 1)
+	require.Equal(t, "staff-conflict", data.Items[0].ExternalUserId)
+	require.Equal(t, "email", data.Items[0].ConflictType)
 }

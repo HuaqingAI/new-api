@@ -66,6 +66,26 @@ type DingTalkSyncLogItem struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
+type DingTalkSyncConflictItem struct {
+	Id              int    `json:"id"`
+	TenantId        int    `json:"tenant_id"`
+	TaskId          int    `json:"task_id"`
+	ExternalUserId  string `json:"external_user_id"`
+	UnionId         string `json:"union_id"`
+	Mobile          string `json:"mobile"`
+	Email           string `json:"email"`
+	Name            string `json:"name"`
+	ConflictType    string `json:"conflict_type"`
+	CandidateUserId int    `json:"candidate_user_id"`
+	Details         string `json:"details"`
+	Status          string `json:"status"`
+	LastTaskId      int    `json:"last_task_id"`
+	ResolvedBy      int    `json:"resolved_by"`
+	ResolvedAt      int64  `json:"resolved_at"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+}
+
 type DingTalkSyncLogQuery struct {
 	TenantId   *int
 	TaskId     *int
@@ -77,11 +97,25 @@ type DingTalkSyncLogQuery struct {
 	PageSize   int
 }
 
+type DingTalkSyncConflictQuery struct {
+	TenantId *int
+	Status   string
+	Page     int
+	PageSize int
+}
+
 type DingTalkSyncLogsResult struct {
 	Items    []DingTalkSyncLogItem `json:"items"`
 	Total    int                   `json:"total"`
 	Page     int                   `json:"page"`
 	PageSize int                   `json:"page_size"`
+}
+
+type DingTalkSyncConflictsResult struct {
+	Items    []DingTalkSyncConflictItem `json:"items"`
+	Total    int                        `json:"total"`
+	Page     int                        `json:"page"`
+	PageSize int                        `json:"page_size"`
 }
 
 type dingTalkSyncSnapshot struct {
@@ -209,6 +243,30 @@ func (s *DingTalkSyncService) ListLogs(ctx context.Context, query DingTalkSyncLo
 		items = append(items, mapDingTalkSyncLog(log))
 	}
 	return DingTalkSyncLogsResult{Items: items, Total: int(total), Page: page, PageSize: pageSize}, nil
+}
+
+func (s *DingTalkSyncService) ListConflicts(ctx context.Context, query DingTalkSyncConflictQuery) (DingTalkSyncConflictsResult, error) {
+	db := s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncConflict{})
+	if query.TenantId != nil {
+		db = db.Where("tenant_id = ?", *query.TenantId)
+	}
+	if query.Status != "" {
+		db = db.Where("status = ?", query.Status)
+	}
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return DingTalkSyncConflictsResult{Items: []DingTalkSyncConflictItem{}}, err
+	}
+	page, pageSize := normalizeDingTalkSyncLogPage(query.Page, query.PageSize)
+	var conflicts []entmodel.DingTalkSyncConflict
+	if err := db.Order("updated_at DESC").Order("id DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&conflicts).Error; err != nil {
+		return DingTalkSyncConflictsResult{Items: []DingTalkSyncConflictItem{}}, err
+	}
+	items := make([]DingTalkSyncConflictItem, 0, len(conflicts))
+	for _, conflict := range conflicts {
+		items = append(items, mapDingTalkSyncConflict(conflict))
+	}
+	return DingTalkSyncConflictsResult{Items: items, Total: int(total), Page: page, PageSize: pageSize}, nil
 }
 
 func (s *DingTalkSyncService) getSyncConfig(tenantId int) (entmodel.DingTalkConfig, error) {

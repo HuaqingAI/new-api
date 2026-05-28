@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -68,12 +69,28 @@ func (s *DingTalkSyncService) upsertDepartment(ctx context.Context, taskId int, 
 
 	name := strings.TrimSpace(department.Name)
 	if !sameOptionalInt(existing.ParentId, localParentId) || existing.Name != name || existing.Status != constant.DepartmentStatusEnabled || existing.SyncStatus != constant.DepartmentSyncStatusOK {
+		nameHistory := existing.NameHistory
+		if existing.Name != name {
+			entries, err := existing.ParsedNameHistory()
+			if err != nil {
+				s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, externalId, "department_name_history_parse_failed")
+				return entmodel.Department{}, false
+			}
+			entries = appendDepartmentNameHistory(entries, existing.Name)
+			existing.NameHistory = nameHistory
+			if err := existing.SetNameHistory(entries); err != nil {
+				s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, externalId, "department_name_history_update_failed")
+				return entmodel.Department{}, false
+			}
+			nameHistory = existing.NameHistory
+		}
 		if err := s.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
-			"name":        name,
-			"parent_id":   localParentId,
-			"status":      constant.DepartmentStatusEnabled,
-			"sync_status": constant.DepartmentSyncStatusOK,
-			"sync_error":  "",
+			"name":         name,
+			"parent_id":    localParentId,
+			"status":       constant.DepartmentStatusEnabled,
+			"sync_status":  constant.DepartmentSyncStatusOK,
+			"sync_error":   "",
+			"name_history": nameHistory,
 		}).Error; err != nil {
 			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, externalId, "department_update_failed")
 			return entmodel.Department{}, false
@@ -133,6 +150,29 @@ func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenant
 		return &existing, true
 	}
 
+	conflict, found, err := s.detectUserConflict(ctx, tenantId, dingTalkUser)
+	if err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, dingTalkUser.UserId, "user_conflict_lookup_failed")
+		return nil, false
+	}
+	if found {
+		if err := s.recordSyncConflict(ctx, taskId, tenantId, dingTalkUser, conflict); err != nil {
+			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, dingTalkUser.UserId, "user_conflict_record_failed")
+			return nil, false
+		}
+		s.incrementTaskCounter(ctx, taskId, "skipped_count", 1)
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{
+			TaskId:           taskId,
+			TenantId:         tenantId,
+			ObjectType:       constant.DingTalkSyncObjectConflict,
+			ObjectExternalId: strings.TrimSpace(dingTalkUser.UserId),
+			Action:           constant.DingTalkSyncLogActionConflictPending,
+			Status:           constant.DingTalkSyncLogStatusWarning,
+			Message:          "user_conflict_pending",
+		})
+		return nil, false
+	}
+
 	user := model.User{
 		Username:    s.availableSyncUsername(dingTalkUser),
 		DisplayName: firstNonEmpty(dingTalkUser.Name, dingTalkUser.Email, dingTalkUser.UserId),
@@ -186,4 +226,118 @@ func (s *DingTalkSyncService) upsertMembership(ctx context.Context, taskId int, 
 	}
 	s.incrementTaskCounter(ctx, taskId, "skipped_count", 1)
 	s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectMembership, ObjectExternalId: externalUserId, Action: constant.DingTalkSyncLogActionSkipped, Status: constant.DingTalkSyncLogStatusSkipped, Message: "membership_unchanged"})
+}
+
+type dingTalkUserConflictCandidate struct {
+	ConflictType    string
+	CandidateUserId int
+	Details         string
+}
+
+func (s *DingTalkSyncService) detectUserConflict(ctx context.Context, tenantId int, dingTalkUser DingTalkDepartmentUserInfo) (dingTalkUserConflictCandidate, bool, error) {
+	var candidates []dingTalkUserConflictCandidate
+	email := strings.TrimSpace(dingTalkUser.Email)
+	if email != "" {
+		var users []model.User
+		if err := s.db.WithContext(ctx).Unscoped().Where("email = ?", email).Limit(2).Find(&users).Error; err != nil {
+			return dingTalkUserConflictCandidate{}, false, err
+		}
+		if len(users) > 0 {
+			candidateUserId := 0
+			if len(users) == 1 {
+				candidateUserId = users[0].Id
+			}
+			candidates = append(candidates, dingTalkUserConflictCandidate{
+				ConflictType:    "email",
+				CandidateUserId: candidateUserId,
+				Details:         "email_matches_existing_local_user",
+			})
+		}
+	}
+	mobile := strings.TrimSpace(dingTalkUser.Mobile)
+	if mobile != "" {
+		var identities []entmodel.DingTalkIdentity
+		if err := s.db.WithContext(ctx).Where("tenant_id = ? AND mobile = ?", tenantId, mobile).Limit(2).Find(&identities).Error; err != nil {
+			return dingTalkUserConflictCandidate{}, false, err
+		}
+		identityKey := dingtalkSyncIdentityKey(dingTalkUser)
+		for _, identity := range identities {
+			if identity.IdentityKey == identityKey {
+				continue
+			}
+			candidates = append(candidates, dingTalkUserConflictCandidate{
+				ConflictType:    "mobile",
+				CandidateUserId: identity.UserId,
+				Details:         "mobile_matches_existing_dingtalk_identity",
+			})
+			break
+		}
+	}
+	if len(candidates) == 0 {
+		return dingTalkUserConflictCandidate{}, false, nil
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].ConflictType < candidates[j].ConflictType
+	})
+	if len(candidates) > 1 {
+		candidates[0].ConflictType = "email_mobile"
+		candidates[0].Details = "email_and_mobile_match_existing_accounts"
+	}
+	return candidates[0], true, nil
+}
+
+func (s *DingTalkSyncService) recordSyncConflict(ctx context.Context, taskId int, tenantId int, dingTalkUser DingTalkDepartmentUserInfo, conflict dingTalkUserConflictCandidate) error {
+	externalUserId := strings.TrimSpace(dingTalkUser.UserId)
+	conflictType := strings.TrimSpace(conflict.ConflictType)
+	if conflictType == "" {
+		conflictType = "unknown"
+	}
+
+	var existing entmodel.DingTalkSyncConflict
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND external_user_id = ? AND conflict_type = ?", tenantId, externalUserId, conflictType).First(&existing).Error
+	update := map[string]any{
+		"task_id":           taskId,
+		"last_task_id":      taskId,
+		"union_id":          strings.TrimSpace(dingTalkUser.UnionId),
+		"mobile":            strings.TrimSpace(dingTalkUser.Mobile),
+		"email":             strings.TrimSpace(dingTalkUser.Email),
+		"name":              strings.TrimSpace(dingTalkUser.Name),
+		"candidate_user_id": conflict.CandidateUserId,
+		"details":           truncateSyncText(conflict.Details, 1024),
+		"status":            constant.DingTalkSyncConflictStatusPending,
+		"resolved_by":       0,
+		"resolved_at":       int64(0),
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		record := entmodel.DingTalkSyncConflict{
+			TenantId:        tenantId,
+			TaskId:          taskId,
+			ExternalUserId:  externalUserId,
+			UnionId:         strings.TrimSpace(dingTalkUser.UnionId),
+			Mobile:          strings.TrimSpace(dingTalkUser.Mobile),
+			Email:           strings.TrimSpace(dingTalkUser.Email),
+			Name:            strings.TrimSpace(dingTalkUser.Name),
+			ConflictType:    conflictType,
+			CandidateUserId: conflict.CandidateUserId,
+			Details:         truncateSyncText(conflict.Details, 1024),
+			Status:          constant.DingTalkSyncConflictStatusPending,
+			LastTaskId:      taskId,
+		}
+		return s.db.WithContext(ctx).Create(&record).Error
+	}
+	if err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Model(&existing).Updates(update).Error
+}
+
+func appendDepartmentNameHistory(entries []entmodel.DepartmentNameHistoryEntry, name string) []entmodel.DepartmentNameHistoryEntry {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return entries
+	}
+	if len(entries) > 0 && entries[len(entries)-1].Name == name {
+		return entries
+	}
+	return append(entries, entmodel.DepartmentNameHistoryEntry{Name: name, ChangedAt: time.Now().Unix()})
 }

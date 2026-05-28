@@ -183,6 +183,21 @@ func ListDingTalkSyncLogs(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
+func ListDingTalkSyncConflicts(c *gin.Context) {
+	query := entservice.DingTalkSyncConflictQuery{
+		TenantId: intQueryPtr(parseTenantIdQuery(c)),
+		Status:   c.Query("status"),
+		Page:     parsePositiveIntQuery(c, "page", 1),
+		PageSize: parsePositiveIntQuery(c, "page_size", 20),
+	}
+	result, err := entservice.NewDingTalkSyncService(model.DB, nil).ListConflicts(c.Request.Context(), query)
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func parseTenantIdQuery(c *gin.Context) int {
 	raw := c.Query("tenant_id")
 	if raw == "" {

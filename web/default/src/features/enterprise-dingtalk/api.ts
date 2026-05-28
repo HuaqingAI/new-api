@@ -22,6 +22,7 @@ import type {
   DingTalkConnectivityResult,
   DingTalkConfig,
   DingTalkConfigPayload,
+  DingTalkSyncConflictsResult,
   DingTalkSyncLogsResult,
   DingTalkSyncTask,
 } from './types'
@@ -43,6 +44,13 @@ export const enterpriseDingTalkSyncLogsQueryKey = [
   'dingtalk',
   'sync',
   'logs',
+] as const
+
+export const enterpriseDingTalkSyncConflictsQueryKey = [
+  'enterprise',
+  'dingtalk',
+  'sync',
+  'conflicts',
 ] as const
 
 export async function getDingTalkConfig(): Promise<
@@ -88,5 +96,16 @@ export async function listDingTalkSyncLogs(params?: {
   page_size?: number
 }): Promise<ApiResponse<DingTalkSyncLogsResult>> {
   const res = await api.get('/api/enterprise/dingtalk/sync/logs', { params })
+  return res.data
+}
+
+export async function listDingTalkSyncConflicts(params?: {
+  status?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<DingTalkSyncConflictsResult>> {
+  const res = await api.get('/api/enterprise/dingtalk/sync/conflicts', {
+    params,
+  })
   return res.data
 }

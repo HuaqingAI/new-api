@@ -27,5 +27,6 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.POST("/dingtalk/sync/full", middleware.RootAuth(), controllerenterprise.StartDingTalkFullSync)
 		enterpriseRoute.GET("/dingtalk/sync/tasks/:id", middleware.RootAuth(), controllerenterprise.GetDingTalkSyncTask)
 		enterpriseRoute.GET("/dingtalk/sync/logs", middleware.RootAuth(), controllerenterprise.ListDingTalkSyncLogs)
+		enterpriseRoute.GET("/dingtalk/sync/conflicts", middleware.RootAuth(), controllerenterprise.ListDingTalkSyncConflicts)
 	}
 }

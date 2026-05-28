@@ -152,6 +152,7 @@ func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId i
 				UnionId:        identity.UnionId,
 				OpenId:         identity.OpenId,
 				ExternalUserId: identity.ExternalUserId,
+				Mobile:         identity.Mobile,
 				UserId:         user.Id,
 				Status:         DingTalkIdentityStatusActive,
 			}
@@ -175,6 +176,9 @@ func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId i
 		}
 		if identity.ExternalUserId != "" {
 			bindingUpdate["external_user_id"] = identity.ExternalUserId
+		}
+		if identity.Mobile != "" {
+			bindingUpdate["mobile"] = identity.Mobile
 		}
 		if err := tx.Model(&binding).Updates(bindingUpdate).Error; err != nil {
 			return err
@@ -251,6 +255,7 @@ func (s *DingTalkOAuthService) BindIdentityToUser(ctx context.Context, tenantId 
 				"union_id":         identity.UnionId,
 				"open_id":          identity.OpenId,
 				"external_user_id": identity.ExternalUserId,
+				"mobile":           identity.Mobile,
 				"status":           DingTalkIdentityStatusActive,
 				"last_login_at":    time.Now().Unix(),
 			}).Error
@@ -263,6 +268,7 @@ func (s *DingTalkOAuthService) BindIdentityToUser(ctx context.Context, tenantId 
 			UnionId:        identity.UnionId,
 			OpenId:         identity.OpenId,
 			ExternalUserId: identity.ExternalUserId,
+			Mobile:         identity.Mobile,
 			UserId:         userId,
 			Status:         DingTalkIdentityStatusActive,
 			LastLoginAt:    time.Now().Unix(),

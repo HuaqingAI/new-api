@@ -83,7 +83,29 @@ describe('Enterprise DingTalk sync panel', () => {
               created_at: 1700000001,
             },
           ]}
+          conflicts={[
+            {
+              id: 5,
+              tenant_id: 0,
+              task_id: 9,
+              external_user_id: 'staff-conflict',
+              union_id: 'union-conflict',
+              mobile: '13800000000',
+              email: 'taken@example.com',
+              name: 'Conflict User',
+              conflict_type: 'email_mobile',
+              candidate_user_id: 100,
+              details: 'email_and_mobile_match_existing_accounts',
+              status: 'pending',
+              last_task_id: 9,
+              resolved_by: 0,
+              resolved_at: 0,
+              created_at: 1700000001,
+              updated_at: 1700000001,
+            },
+          ]}
           logsLoading={false}
+          conflictsLoading={false}
           syncing={false}
           onStartSync={() => undefined}
           onRefreshLogs={() => undefined}
@@ -92,6 +114,8 @@ describe('Enterprise DingTalk sync panel', () => {
     )
 
     assert.match(html, /Address Book Sync/)
+    assert.match(html, /Pending Sync Conflicts/)
+    assert.match(html, /Conflict User/)
     assert.match(html, /Task/)
     assert.match(html, /department_created/)
     assert.doesNotMatch(html, /plain-secret|access-token|raw upstream/i)

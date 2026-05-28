@@ -56,14 +56,23 @@ const (
 	DingTalkSyncObjectDepartment = "department"
 	DingTalkSyncObjectUser       = "user"
 	DingTalkSyncObjectMembership = "membership"
+	DingTalkSyncObjectConflict   = "conflict"
 
-	DingTalkSyncLogActionCreated  = "created"
-	DingTalkSyncLogActionUpdated  = "updated"
-	DingTalkSyncLogActionDisabled = "disabled"
-	DingTalkSyncLogActionSkipped  = "skipped"
-	DingTalkSyncLogActionFailed   = "failed"
+	DingTalkSyncLogActionCreated         = "created"
+	DingTalkSyncLogActionUpdated         = "updated"
+	DingTalkSyncLogActionDisabled        = "disabled"
+	DingTalkSyncLogActionConflictPending = "conflict_pending"
+	DingTalkSyncLogActionSkipped         = "skipped"
+	DingTalkSyncLogActionFailed          = "failed"
 
 	DingTalkSyncLogStatusSuccess = "success"
 	DingTalkSyncLogStatusFailed  = "failed"
 	DingTalkSyncLogStatusSkipped = "skipped"
+	DingTalkSyncLogStatusWarning = "warning"
+)
+
+const (
+	DingTalkSyncConflictStatusPending  = "pending"
+	DingTalkSyncConflictStatusResolved = "resolved"
+	DingTalkSyncConflictStatusIgnored  = "ignored"
 )

@@ -4593,6 +4593,20 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Address Book Sync": "アドレス帳同期",
+    "Start a DingTalk full sync and review the latest task result.": "DingTalk の全量同期を開始し、最新のタスク結果を確認します。",
+    "Start full sync": "全量同期を開始",
+    "Syncing...": "同期中...",
+    "DingTalk sync completed": "DingTalk同期が完了しました",
+    "DingTalk sync completed with failures": "DingTalk同期は完了しましたが失敗項目があります",
+    "DingTalk sync started": "DingTalk同期を開始しました",
+    "Missing sync task status": "同期タスクのステータスがありません",
+    "Enable address book sync and save valid DingTalk credentials before starting a sync.": "同期を開始する前に、アドレス帳同期を有効にして有効なDingTalk認証情報を保存してください。",
+    "No DingTalk sync logs yet.": "DingTalk同期ログはまだありません。",
+    "Departments": "部門",
+    "Memberships": "メンバー関係",
+    "Skipped": "スキップ済み",
+    "Succeeded": "成功"
   }
 }

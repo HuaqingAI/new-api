@@ -4593,6 +4593,20 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Address Book Sync": "Đồng bộ danh bạ",
+    "Start a DingTalk full sync and review the latest task result.": "Bắt đầu đồng bộ toàn bộ DingTalk và xem kết quả tác vụ mới nhất.",
+    "Start full sync": "Bắt đầu đồng bộ toàn bộ",
+    "Syncing...": "Đang đồng bộ...",
+    "DingTalk sync completed": "Đồng bộ DingTalk đã hoàn tất",
+    "DingTalk sync completed with failures": "Đồng bộ DingTalk hoàn tất nhưng có mục lỗi",
+    "DingTalk sync started": "Đã bắt đầu đồng bộ DingTalk",
+    "Missing sync task status": "Thiếu trạng thái tác vụ đồng bộ",
+    "Enable address book sync and save valid DingTalk credentials before starting a sync.": "Bật đồng bộ danh bạ và lưu thông tin xác thực DingTalk hợp lệ trước khi bắt đầu đồng bộ.",
+    "No DingTalk sync logs yet.": "Chưa có nhật ký đồng bộ DingTalk.",
+    "Departments": "Phòng ban",
+    "Memberships": "Quan hệ thành viên",
+    "Skipped": "Đã bỏ qua",
+    "Succeeded": "Thành công"
   }
 }

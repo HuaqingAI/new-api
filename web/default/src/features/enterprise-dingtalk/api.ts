@@ -22,6 +22,8 @@ import type {
   DingTalkConnectivityResult,
   DingTalkConfig,
   DingTalkConfigPayload,
+  DingTalkSyncLogsResult,
+  DingTalkSyncTask,
 } from './types'
 
 export const enterpriseDingTalkQueryKey = [
@@ -34,6 +36,13 @@ export const enterpriseDingTalkConnectivityQueryKey = [
   'enterprise',
   'dingtalk',
   'connectivity',
+] as const
+
+export const enterpriseDingTalkSyncLogsQueryKey = [
+  'enterprise',
+  'dingtalk',
+  'sync',
+  'logs',
 ] as const
 
 export async function getDingTalkConfig(): Promise<
@@ -54,5 +63,30 @@ export async function testDingTalkConnectivity(): Promise<
   ApiResponse<DingTalkConnectivityResult>
 > {
   const res = await api.post('/api/enterprise/dingtalk/connectivity-test')
+  return res.data
+}
+
+export async function startDingTalkFullSync(
+  inline = false
+): Promise<ApiResponse<DingTalkSyncTask>> {
+  const res = await api.post('/api/enterprise/dingtalk/sync/full', { inline })
+  return res.data
+}
+
+export async function getDingTalkSyncTask(
+  taskId: number
+): Promise<ApiResponse<DingTalkSyncTask>> {
+  const res = await api.get(`/api/enterprise/dingtalk/sync/tasks/${taskId}`)
+  return res.data
+}
+
+export async function listDingTalkSyncLogs(params?: {
+  task_id?: number
+  status?: string
+  object_type?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<DingTalkSyncLogsResult>> {
+  const res = await api.get('/api/enterprise/dingtalk/sync/logs', { params })
   return res.data
 }

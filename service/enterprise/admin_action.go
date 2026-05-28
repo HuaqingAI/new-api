@@ -19,11 +19,13 @@ const (
 	AdminActionDeptAdminRevoke   = "enterprise.organization.department_admin.revoke"
 	AdminActionDingTalkConfigSet = "enterprise.dingtalk.config.set"
 	AdminActionDingTalkTest      = "enterprise.dingtalk.connectivity.test"
+	AdminActionDingTalkSyncStart = "enterprise.dingtalk.sync.start"
 
 	AdminObjectUserDepartment   = "enterprise_user_department"
 	AdminObjectDepartmentMember = "enterprise_department_member"
 	AdminObjectDepartmentRole   = "enterprise_department_role"
 	AdminObjectDingTalkConfig   = "enterprise_dingtalk_config"
+	AdminObjectDingTalkSyncTask = "enterprise_dingtalk_sync_task"
 )
 
 type AdminActionService struct {

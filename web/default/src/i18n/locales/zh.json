@@ -4593,6 +4593,20 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Address Book Sync": "通讯录同步",
+    "Start a DingTalk full sync and review the latest task result.": "启动钉钉全量同步并查看最新任务结果。",
+    "Start full sync": "启动全量同步",
+    "Syncing...": "同步中...",
+    "DingTalk sync completed": "钉钉同步已完成",
+    "DingTalk sync completed with failures": "钉钉同步已完成，但存在失败项",
+    "DingTalk sync started": "钉钉同步已启动",
+    "Missing sync task status": "缺少同步任务状态",
+    "Enable address book sync and save valid DingTalk credentials before starting a sync.": "请先启用通讯录同步并保存有效的钉钉凭据，再启动同步。",
+    "No DingTalk sync logs yet.": "暂无钉钉同步日志。",
+    "Departments": "部门",
+    "Memberships": "成员关系",
+    "Skipped": "已跳过",
+    "Succeeded": "已成功"
   }
 }

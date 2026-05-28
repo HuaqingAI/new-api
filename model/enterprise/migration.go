@@ -10,6 +10,8 @@ func Migrate(db *gorm.DB) error {
 		&AdminAction{},
 		&DingTalkConfig{},
 		&DingTalkIdentity{},
+		&DingTalkSyncTask{},
+		&DingTalkSyncLog{},
 	)
 }
 

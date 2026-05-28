@@ -59,11 +59,30 @@ type DingTalkOAuthUserInfo struct {
 }
 
 type DingTalkContactUserInfo struct {
-	UserId string `json:"userid"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Mobile string `json:"mobile"`
-	Active *bool  `json:"active"`
+	UserId  string `json:"userid"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Mobile  string `json:"mobile"`
+	Active  *bool  `json:"active"`
+	UnionId string `json:"unionid"`
+}
+
+type DingTalkDepartmentInfo struct {
+	DeptId          int64  `json:"dept_id"`
+	Name            string `json:"name"`
+	ParentId        int64  `json:"parent_id"`
+	AutoAddUser     bool   `json:"auto_add_user"`
+	CreateDeptGroup bool   `json:"create_dept_group"`
+}
+
+type DingTalkDepartmentUserInfo struct {
+	UserId     string  `json:"userid"`
+	UnionId    string  `json:"unionid"`
+	Name       string  `json:"name"`
+	Email      string  `json:"email"`
+	Mobile     string  `json:"mobile"`
+	Active     *bool   `json:"active"`
+	DeptIdList []int64 `json:"dept_id_list"`
 }
 
 type dingTalkOAuthTokenRequest struct {
@@ -81,6 +100,28 @@ type dingTalkContactUserResponse struct {
 	ErrCode int                     `json:"errcode"`
 	ErrMsg  string                  `json:"errmsg"`
 	Result  DingTalkContactUserInfo `json:"result"`
+}
+
+type dingTalkDepartmentListResponse struct {
+	ErrCode int                      `json:"errcode"`
+	ErrMsg  string                   `json:"errmsg"`
+	Result  []DingTalkDepartmentInfo `json:"result"`
+}
+
+type dingTalkDepartmentUserListResponse struct {
+	ErrCode int    `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+	Result  struct {
+		List       []DingTalkDepartmentUserInfo `json:"list"`
+		HasMore    bool                         `json:"has_more"`
+		NextCursor int64                        `json:"next_cursor"`
+	} `json:"result"`
+}
+
+type dingTalkUserGetResponse struct {
+	ErrCode int                        `json:"errcode"`
+	ErrMsg  string                     `json:"errmsg"`
+	Result  DingTalkDepartmentUserInfo `json:"result"`
 }
 
 func (e *DingTalkAPIError) Error() string {
@@ -274,6 +315,145 @@ func (c *DingTalkClient) GetContactUserByUnionId(ctx context.Context, appAccessT
 	return payload.Result, nil
 }
 
+func (c *DingTalkClient) ListSubDepartments(ctx context.Context, accessToken string, departmentId int64) ([]DingTalkDepartmentInfo, error) {
+	listURL, err := url.Parse(c.openAPIBaseURL + "/topapi/v2/department/listsub")
+	if err != nil {
+		return nil, err
+	}
+	q := listURL.Query()
+	q.Set("access_token", strings.TrimSpace(accessToken))
+	listURL.RawQuery = q.Encode()
+
+	body, err := common.Marshal(map[string]any{"dept_id": departmentId})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, listURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, &DingTalkAPIError{Stage: "department_list", Summary: "department_list_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload dingTalkDepartmentListResponse
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return nil, &DingTalkAPIError{Stage: "department_list", HTTPStatus: resp.StatusCode, Summary: "department_list_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, &DingTalkAPIError{Stage: "department_list", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "department_list_http_error"}
+	}
+	if payload.ErrCode != 0 {
+		return nil, &DingTalkAPIError{Stage: "department_list", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "department_list_failed"}
+	}
+	return payload.Result, nil
+}
+
+func (c *DingTalkClient) ListDepartmentUsers(ctx context.Context, accessToken string, departmentId int64) ([]DingTalkDepartmentUserInfo, error) {
+	users := []DingTalkDepartmentUserInfo{}
+	cursor := int64(0)
+	for {
+		page, hasMore, nextCursor, err := c.listDepartmentUserPage(ctx, accessToken, departmentId, cursor)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, page...)
+		if !hasMore {
+			return users, nil
+		}
+		cursor = nextCursor
+	}
+}
+
+func (c *DingTalkClient) listDepartmentUserPage(ctx context.Context, accessToken string, departmentId int64, cursor int64) ([]DingTalkDepartmentUserInfo, bool, int64, error) {
+	listURL, err := url.Parse(c.openAPIBaseURL + "/topapi/v2/user/list")
+	if err != nil {
+		return nil, false, 0, err
+	}
+	q := listURL.Query()
+	q.Set("access_token", strings.TrimSpace(accessToken))
+	listURL.RawQuery = q.Encode()
+
+	body, err := common.Marshal(map[string]any{
+		"dept_id": departmentId,
+		"cursor":  cursor,
+		"size":    100,
+	})
+	if err != nil {
+		return nil, false, 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, listURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return nil, false, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, false, 0, &DingTalkAPIError{Stage: "department_users", Summary: "department_users_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload dingTalkDepartmentUserListResponse
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return nil, false, 0, &DingTalkAPIError{Stage: "department_users", HTTPStatus: resp.StatusCode, Summary: "department_users_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, false, 0, &DingTalkAPIError{Stage: "department_users", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "department_users_http_error"}
+	}
+	if payload.ErrCode != 0 {
+		return nil, false, 0, &DingTalkAPIError{Stage: "department_users", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "department_users_failed"}
+	}
+	return normalizeDingTalkDepartmentUsers(payload.Result.List), payload.Result.HasMore, payload.Result.NextCursor, nil
+}
+
+func (c *DingTalkClient) GetUserById(ctx context.Context, accessToken string, userId string) (DingTalkDepartmentUserInfo, error) {
+	userURL, err := url.Parse(c.openAPIBaseURL + "/topapi/v2/user/get")
+	if err != nil {
+		return DingTalkDepartmentUserInfo{}, err
+	}
+	q := userURL.Query()
+	q.Set("access_token", strings.TrimSpace(accessToken))
+	userURL.RawQuery = q.Encode()
+
+	body, err := common.Marshal(map[string]any{"userid": strings.TrimSpace(userId)})
+	if err != nil {
+		return DingTalkDepartmentUserInfo{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, userURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return DingTalkDepartmentUserInfo{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return DingTalkDepartmentUserInfo{}, &DingTalkAPIError{Stage: "user_get", Summary: "user_get_request_failed", Network: true}
+	}
+	defer resp.Body.Close()
+
+	var payload dingTalkUserGetResponse
+	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+		return DingTalkDepartmentUserInfo{}, &DingTalkAPIError{Stage: "user_get", HTTPStatus: resp.StatusCode, Summary: "user_get_response_invalid"}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return DingTalkDepartmentUserInfo{}, &DingTalkAPIError{Stage: "user_get", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "user_get_http_error"}
+	}
+	if payload.ErrCode != 0 {
+		return DingTalkDepartmentUserInfo{}, &DingTalkAPIError{Stage: "user_get", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "user_get_failed"}
+	}
+	user := payload.Result
+	user.UserId = strings.TrimSpace(user.UserId)
+	user.UnionId = strings.TrimSpace(user.UnionId)
+	user.Email = strings.TrimSpace(user.Email)
+	user.Mobile = strings.TrimSpace(user.Mobile)
+	return user, nil
+}
+
 func (c *DingTalkClient) ProbeAddressBookPermission(ctx context.Context, accessToken string) error {
 	probeURL, err := url.Parse(c.openAPIBaseURL + "/topapi/v2/department/listsub")
 	if err != nil {
@@ -310,6 +490,21 @@ func (c *DingTalkClient) ProbeAddressBookPermission(ctx context.Context, accessT
 		return &DingTalkAPIError{Stage: "address_book_probe", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "address_book_permission_denied"}
 	}
 	return nil
+}
+
+func normalizeDingTalkDepartmentUsers(users []DingTalkDepartmentUserInfo) []DingTalkDepartmentUserInfo {
+	normalized := make([]DingTalkDepartmentUserInfo, 0, len(users))
+	for _, user := range users {
+		user.UserId = strings.TrimSpace(user.UserId)
+		user.UnionId = strings.TrimSpace(user.UnionId)
+		user.Email = strings.TrimSpace(user.Email)
+		user.Mobile = strings.TrimSpace(user.Mobile)
+		if user.UserId == "" {
+			continue
+		}
+		normalized = append(normalized, user)
+	}
+	return normalized
 }
 
 func dingTalkAPIError(err error) (*DingTalkAPIError, bool) {

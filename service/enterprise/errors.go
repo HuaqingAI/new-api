@@ -26,4 +26,6 @@ var (
 	ErrDingTalkOAuthOutOfScope           = errors.New("enterprise dingtalk oauth user out of sync scope")
 	ErrDingTalkOAuthBindingConflict      = errors.New("enterprise dingtalk oauth binding conflict")
 	ErrDingTalkOAuthRegistrationDisabled = errors.New("enterprise dingtalk oauth registration disabled")
+	ErrDingTalkSyncNotEnabled            = errors.New("enterprise dingtalk sync not enabled")
+	ErrDingTalkSyncTaskNotFound          = errors.New("enterprise dingtalk sync task not found")
 )

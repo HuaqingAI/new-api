@@ -355,4 +355,7 @@ const (
 	MsgEnterpriseDingTalkOAuthUserDisabled        = "enterprise.dingtalk.oauth_user_disabled"
 	MsgEnterpriseDingTalkOAuthOutOfScope          = "enterprise.dingtalk.oauth_out_of_scope"
 	MsgEnterpriseDingTalkOAuthBindingConflict     = "enterprise.dingtalk.oauth_binding_conflict"
+	MsgEnterpriseDingTalkSyncStarted              = "enterprise.dingtalk.sync_started"
+	MsgEnterpriseDingTalkSyncNotEnabled           = "enterprise.dingtalk.sync_not_enabled"
+	MsgEnterpriseDingTalkSyncTaskNotFound         = "enterprise.dingtalk.sync_task_not_found"
 )

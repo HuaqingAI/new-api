@@ -4593,6 +4593,20 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Address Book Sync": "Address Book Sync",
+    "Start a DingTalk full sync and review the latest task result.": "Start a DingTalk full sync and review the latest task result.",
+    "Start full sync": "Start full sync",
+    "Syncing...": "Syncing...",
+    "DingTalk sync completed": "DingTalk sync completed",
+    "DingTalk sync completed with failures": "DingTalk sync completed with failures",
+    "DingTalk sync started": "DingTalk sync started",
+    "Missing sync task status": "Missing sync task status",
+    "Enable address book sync and save valid DingTalk credentials before starting a sync.": "Enable address book sync and save valid DingTalk credentials before starting a sync.",
+    "No DingTalk sync logs yet.": "No DingTalk sync logs yet.",
+    "Departments": "Departments",
+    "Memberships": "Memberships",
+    "Skipped": "Skipped",
+    "Succeeded": "Succeeded"
   }
 }

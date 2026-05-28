@@ -26,6 +26,7 @@ import {
   AlertCircle,
   Building2,
   CheckCircle2,
+  Play,
   RefreshCw,
   Save,
   ShieldCheck,
@@ -63,17 +64,31 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
   enterpriseDingTalkQueryKey,
+  enterpriseDingTalkSyncLogsQueryKey,
   getDingTalkConfig,
+  getDingTalkSyncTask,
+  listDingTalkSyncLogs,
   saveDingTalkConfig,
+  startDingTalkFullSync,
   testDingTalkConnectivity,
 } from './api'
 import type {
   DingTalkConfig,
   DingTalkConnectivityCode,
   DingTalkConnectivityResult,
+  DingTalkSyncLog,
+  DingTalkSyncTask,
 } from './types'
 
 const dingTalkConfigSchema = (t: (key: string) => string) =>
@@ -240,6 +255,50 @@ export function EnterpriseDingTalk() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
+  const syncLogsQuery = useQuery({
+    queryKey: enterpriseDingTalkSyncLogsQueryKey,
+    enabled: canEdit,
+    queryFn: async () => {
+      const result = await listDingTalkSyncLogs({ page: 1, page_size: 8 })
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data
+    },
+  })
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const result = await startDingTalkFullSync(true)
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.data) throw new Error(t('Missing sync task status'))
+      return result.data
+    },
+    onSuccess: async (task) => {
+      if (task.status === 'succeeded') {
+        toast.success(t('DingTalk sync completed'))
+      } else if (task.status === 'failed') {
+        toast.warning(t('DingTalk sync completed with failures'))
+      } else {
+        toast.success(t('DingTalk sync started'))
+      }
+      await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkSyncLogsQueryKey })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
+  const taskQuery = useQuery({
+    queryKey: ['enterprise', 'dingtalk', 'sync', 'task', syncMutation.data?.id],
+    enabled: Boolean(syncMutation.data?.id),
+    queryFn: async () => {
+      const taskId = syncMutation.data?.id
+      if (!taskId) return null
+      const result = await getDingTalkSyncTask(taskId)
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data ?? null
     },
   })
 
@@ -494,6 +553,17 @@ export function EnterpriseDingTalk() {
                     {mutation.isPending ? t('Saving...') : t('Save')}
                   </Button>
                 </div>
+
+                <EnterpriseDingTalkSyncPanel
+                  canEdit={canEdit}
+                  config={config}
+                  task={taskQuery.data ?? syncMutation.data ?? null}
+                  logs={syncLogsQuery.data?.items ?? []}
+                  logsLoading={syncLogsQuery.isLoading || syncLogsQuery.isFetching}
+                  syncing={syncMutation.isPending}
+                  onStartSync={() => syncMutation.mutate()}
+                  onRefreshLogs={() => syncLogsQuery.refetch()}
+                />
               </form>
             </Form>
           )}
@@ -501,6 +571,193 @@ export function EnterpriseDingTalk() {
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
+}
+
+export function EnterpriseDingTalkSyncPanel({
+  canEdit,
+  config,
+  task,
+  logs,
+  logsLoading,
+  syncing,
+  onStartSync,
+  onRefreshLogs,
+}: {
+  canEdit: boolean
+  config: DingTalkConfig
+  task: DingTalkSyncTask | null
+  logs: DingTalkSyncLog[]
+  logsLoading: boolean
+  syncing: boolean
+  onStartSync: () => void
+  onRefreshLogs: () => void
+}) {
+  const { t } = useTranslation()
+  const canSync = canEdit && config.sync_enabled && config.has_app_secret
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div>
+            <CardTitle>{t('Address Book Sync')}</CardTitle>
+            <CardDescription>
+              {t('Start a DingTalk full sync and review the latest task result.')}
+            </CardDescription>
+          </div>
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={logsLoading}
+              onClick={onRefreshLogs}
+            >
+              <RefreshCw className='size-4' />
+              {t('Refresh')}
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              disabled={!canSync || syncing}
+              onClick={onStartSync}
+            >
+              <Play className='size-4' />
+              {syncing ? t('Syncing...') : t('Start full sync')}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className='grid gap-4'>
+        {!canSync ? (
+          <p className='text-muted-foreground text-sm'>
+            {t('Enable address book sync and save valid DingTalk credentials before starting a sync.')}
+          </p>
+        ) : null}
+        {task ? <DingTalkSyncTaskSummary task={task} /> : null}
+        <DingTalkSyncLogTable logs={logs} loading={logsLoading} />
+      </CardContent>
+    </Card>
+  )
+}
+
+function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
+  const { t } = useTranslation()
+  const counters = [
+    [t('Departments'), task.departments_created + task.departments_updated + task.departments_disabled],
+    [t('Users'), task.users_created + task.users_updated],
+    [t('Memberships'), task.memberships_created + task.memberships_updated + task.memberships_disabled],
+    [t('Skipped'), task.skipped_count],
+    [t('Failed'), task.failed_count],
+  ] as const
+
+  return (
+    <div className='grid gap-3 rounded-md border p-4 md:grid-cols-[minmax(0,1fr)_auto]'>
+      <div className='min-w-0'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Badge variant={task.status === 'failed' ? 'destructive' : 'secondary'}>
+            {t(syncStatusLabel(task.status))}
+          </Badge>
+          <span className='text-muted-foreground text-sm'>
+            {t('Task')} #{task.id}
+          </span>
+        </div>
+        {task.error_summary ? (
+          <p className='text-destructive mt-2 text-sm'>{task.error_summary}</p>
+        ) : null}
+      </div>
+      <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-5'>
+        {counters.map(([label, value]) => (
+          <div key={label} className='rounded-md bg-muted/50 px-3 py-2'>
+            <div className='text-muted-foreground'>{label}</div>
+            <div className='font-medium'>{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DingTalkSyncLogTable({
+  logs,
+  loading,
+}: {
+  logs: DingTalkSyncLog[]
+  loading: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-36 w-full' />
+  }
+
+  if (logs.length === 0) {
+    return (
+      <p className='text-muted-foreground rounded-md border p-4 text-sm'>
+        {t('No DingTalk sync logs yet.')}
+      </p>
+    )
+  }
+
+  return (
+    <div className='overflow-hidden rounded-md border'>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('Status')}</TableHead>
+            <TableHead>{t('Object')}</TableHead>
+            <TableHead>{t('Action')}</TableHead>
+            <TableHead>{t('Message')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {logs.map((log) => (
+            <TableRow key={log.id}>
+              <TableCell>
+                <Badge variant={log.status === 'failed' ? 'destructive' : 'outline'}>
+                  {t(syncLogStatusLabel(log.status))}
+                </Badge>
+              </TableCell>
+              <TableCell className='whitespace-nowrap'>
+                {log.object_type}
+                {log.object_external_id ? ` #${log.object_external_id}` : ''}
+              </TableCell>
+              <TableCell>{log.action}</TableCell>
+              <TableCell className='max-w-sm truncate'>{log.message}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function syncStatusLabel(status: DingTalkSyncTask['status']) {
+  switch (status) {
+    case 'pending':
+      return 'Pending'
+    case 'running':
+      return 'Running'
+    case 'succeeded':
+      return 'Succeeded'
+    case 'failed':
+      return 'Failed'
+    default:
+      return status
+  }
+}
+
+function syncLogStatusLabel(status: string) {
+  switch (status) {
+    case 'success':
+      return 'Success'
+    case 'failed':
+      return 'Failed'
+    case 'skipped':
+      return 'Skipped'
+    default:
+      return status
+  }
 }
 
 export function EnterpriseDingTalkConnectivityResult({

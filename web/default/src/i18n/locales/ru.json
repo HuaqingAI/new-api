@@ -4593,6 +4593,20 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Address Book Sync": "Синхронизация адресной книги",
+    "Start a DingTalk full sync and review the latest task result.": "Запустите полную синхронизацию DingTalk и проверьте последний результат задачи.",
+    "Start full sync": "Запустить полную синхронизацию",
+    "Syncing...": "Синхронизация...",
+    "DingTalk sync completed": "Синхронизация DingTalk завершена",
+    "DingTalk sync completed with failures": "Синхронизация DingTalk завершена с ошибками",
+    "DingTalk sync started": "Синхронизация DingTalk запущена",
+    "Missing sync task status": "Отсутствует статус задачи синхронизации",
+    "Enable address book sync and save valid DingTalk credentials before starting a sync.": "Включите синхронизацию адресной книги и сохраните корректные учетные данные DingTalk перед запуском синхронизации.",
+    "No DingTalk sync logs yet.": "Журналов синхронизации DingTalk пока нет.",
+    "Departments": "Отделы",
+    "Memberships": "Участия",
+    "Skipped": "Пропущено",
+    "Succeeded": "Успешно"
   }
 }

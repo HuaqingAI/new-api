@@ -107,6 +107,82 @@ func TestDingTalkConnectivity(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgEnterpriseDingTalkConnectivityTested, result)
 }
 
+func StartDingTalkFullSync(c *gin.Context) {
+	var req dtoenterprise.DingTalkSyncStartRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId := valueOrZero(req.TenantId)
+	result, err := entservice.NewDingTalkSyncService(model.DB, nil).StartFullSync(c.Request.Context(), entservice.DingTalkSyncStartInput{
+		TenantId:  tenantId,
+		ActorId:   c.GetInt("id"),
+		RunInline: boolValue(req.Inline),
+	})
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+	if err := writeAdminAction(model.DB, c, entservice.AdminActionInput{
+		TenantId:    result.TenantId,
+		ActorId:     c.GetInt("id"),
+		ActionType:  entservice.AdminActionDingTalkSyncStart,
+		ObjectType:  entservice.AdminObjectDingTalkSyncTask,
+		ObjectId:    strconv.Itoa(result.Id),
+		DiffSummary: "Started DingTalk address book full sync",
+		Payload: map[string]any{
+			"tenant_id": result.TenantId,
+			"task_id":   result.Id,
+			"mode":      result.Mode,
+			"status":    result.Status,
+			"inline":    boolValue(req.Inline),
+		},
+	}); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccessI18n(c, i18n.MsgEnterpriseDingTalkSyncStarted, result)
+}
+
+func GetDingTalkSyncTask(c *gin.Context) {
+	taskId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || taskId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidId)
+		return
+	}
+	result, err := entservice.NewDingTalkSyncService(model.DB, nil).GetTask(c.Request.Context(), taskId)
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func ListDingTalkSyncLogs(c *gin.Context) {
+	query := entservice.DingTalkSyncLogQuery{
+		TenantId:   intQueryPtr(parseTenantIdQuery(c)),
+		Status:     c.Query("status"),
+		ObjectType: c.Query("object_type"),
+		Page:       parsePositiveIntQuery(c, "page", 1),
+		PageSize:   parsePositiveIntQuery(c, "page_size", 20),
+	}
+	if taskId := parsePositiveIntQuery(c, "task_id", 0); taskId > 0 {
+		query.TaskId = &taskId
+	}
+	if startAt := parseInt64Query(c, "start_at"); startAt > 0 {
+		query.StartAt = &startAt
+	}
+	if endAt := parseInt64Query(c, "end_at"); endAt > 0 {
+		query.EndAt = &endAt
+	}
+	result, err := entservice.NewDingTalkSyncService(model.DB, nil).ListLogs(c.Request.Context(), query)
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func parseTenantIdQuery(c *gin.Context) int {
 	raw := c.Query("tenant_id")
 	if raw == "" {
@@ -119,6 +195,10 @@ func parseTenantIdQuery(c *gin.Context) int {
 	return tenantId
 }
 
+func intQueryPtr(value int) *int {
+	return &value
+}
+
 func writeDingTalkConfigError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrDingTalkMissingCredentials):
@@ -127,7 +207,35 @@ func writeDingTalkConfigError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkInvalidCallbackURL)
 	case errors.Is(err, entservice.ErrDingTalkConfigNotFound):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkConfigNotFound)
+	case errors.Is(err, entservice.ErrDingTalkSyncNotEnabled):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncNotEnabled)
+	case errors.Is(err, entservice.ErrDingTalkSyncTaskNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncTaskNotFound)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func parsePositiveIntQuery(c *gin.Context, key string, fallback int) int {
+	raw := c.Query(key)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
+}
+
+func parseInt64Query(c *gin.Context, key string) int64 {
+	raw := c.Query(key)
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
 }

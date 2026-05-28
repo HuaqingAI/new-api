@@ -62,3 +62,46 @@ export type DingTalkConnectivityResult = {
   http_status?: number
   checked_at: number
 }
+
+export type DingTalkSyncTask = {
+  id: number
+  tenant_id: number
+  mode: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  progress: number
+  departments_created: number
+  departments_updated: number
+  departments_disabled: number
+  users_created: number
+  users_updated: number
+  memberships_created: number
+  memberships_updated: number
+  memberships_disabled: number
+  skipped_count: number
+  failed_count: number
+  error_summary: string
+  created_by: number
+  started_at: number
+  finished_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type DingTalkSyncLog = {
+  id: number
+  task_id: number
+  tenant_id: number
+  object_type: string
+  object_external_id: string
+  action: string
+  status: string
+  message: string
+  created_at: number
+}
+
+export type DingTalkSyncLogsResult = {
+  items: DingTalkSyncLog[]
+  total: number
+  page: number
+  page_size: number
+}

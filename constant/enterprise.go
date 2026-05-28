@@ -44,3 +44,26 @@ const (
 	EnterpriseDepartmentRoleStatusActive = iota + 1
 	EnterpriseDepartmentRoleStatusInactive
 )
+
+const (
+	DingTalkSyncTaskModeFull = "full"
+
+	DingTalkSyncTaskStatusPending   = "pending"
+	DingTalkSyncTaskStatusRunning   = "running"
+	DingTalkSyncTaskStatusSucceeded = "succeeded"
+	DingTalkSyncTaskStatusFailed    = "failed"
+
+	DingTalkSyncObjectDepartment = "department"
+	DingTalkSyncObjectUser       = "user"
+	DingTalkSyncObjectMembership = "membership"
+
+	DingTalkSyncLogActionCreated  = "created"
+	DingTalkSyncLogActionUpdated  = "updated"
+	DingTalkSyncLogActionDisabled = "disabled"
+	DingTalkSyncLogActionSkipped  = "skipped"
+	DingTalkSyncLogActionFailed   = "failed"
+
+	DingTalkSyncLogStatusSuccess = "success"
+	DingTalkSyncLogStatusFailed  = "failed"
+	DingTalkSyncLogStatusSkipped = "skipped"
+)

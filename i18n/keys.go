@@ -348,4 +348,5 @@ const (
 	MsgEnterpriseDingTalkMissingCredentials       = "enterprise.dingtalk.missing_credentials"
 	MsgEnterpriseDingTalkInvalidCallbackURL       = "enterprise.dingtalk.invalid_callback_url"
 	MsgEnterpriseDingTalkConfigSaved              = "enterprise.dingtalk.saved"
+	MsgEnterpriseDingTalkConnectivityTested       = "enterprise.dingtalk.connectivity_tested"
 )

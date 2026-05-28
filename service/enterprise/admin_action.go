@@ -18,6 +18,7 @@ const (
 	AdminActionDeptAdminGrant    = "enterprise.organization.department_admin.grant"
 	AdminActionDeptAdminRevoke   = "enterprise.organization.department_admin.revoke"
 	AdminActionDingTalkConfigSet = "enterprise.dingtalk.config.set"
+	AdminActionDingTalkTest      = "enterprise.dingtalk.connectivity.test"
 
 	AdminObjectUserDepartment   = "enterprise_user_department"
 	AdminObjectDepartmentMember = "enterprise_department_member"

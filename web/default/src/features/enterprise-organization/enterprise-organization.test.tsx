@@ -2,9 +2,26 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+import {
+  RouterContextProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router'
 import i18n from '@/i18n/config'
 import { EnterpriseOrganizationContent } from './index'
 import type { DepartmentTreeNode } from './types'
+
+const rootRoute = createRootRoute()
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+})
+const testRouter = createRouter({
+  routeTree: rootRoute.addChildren([indexRoute]),
+  history: createMemoryHistory({ initialEntries: ['/'] }),
+})
 
 describe('Enterprise organization department tree workflow', () => {
   test('renders the empty state with actionable disabled next-step entries', () => {
@@ -86,12 +103,14 @@ describe('Enterprise organization department tree workflow', () => {
 
 function renderEnterpriseOrganizationContent(departments: DepartmentTreeNode[]) {
   return renderToStaticMarkup(
-    <I18nextProvider i18n={i18n}>
-      <EnterpriseOrganizationContent
-        isLoading={false}
-        departments={departments}
-      />
-    </I18nextProvider>
+    <RouterContextProvider router={testRouter}>
+      <I18nextProvider i18n={i18n}>
+        <EnterpriseOrganizationContent
+          isLoading={false}
+          departments={departments}
+        />
+      </I18nextProvider>
+    </RouterContextProvider>
   )
 }
 

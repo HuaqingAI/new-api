@@ -11,6 +11,8 @@ export default defineConfig({
     entry: {
       'enterprise-organization':
         './src/features/enterprise-organization/enterprise-organization.test.tsx',
+      'enterprise-dingtalk':
+        './src/features/enterprise-dingtalk/enterprise-dingtalk.test.tsx',
     },
   },
   resolve: {

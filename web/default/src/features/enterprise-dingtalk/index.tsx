@@ -21,10 +21,19 @@ import * as z from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
-import { AlertCircle, Building2, RefreshCw, Save, ShieldCheck } from 'lucide-react'
+import { useForm, useWatch } from 'react-hook-form'
+import {
+  AlertCircle,
+  Building2,
+  CheckCircle2,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Wifi,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import { SectionPageLayout } from '@/components/layout'
@@ -59,8 +68,13 @@ import {
   enterpriseDingTalkQueryKey,
   getDingTalkConfig,
   saveDingTalkConfig,
+  testDingTalkConnectivity,
 } from './api'
-import type { DingTalkConfig } from './types'
+import type {
+  DingTalkConfig,
+  DingTalkConnectivityCode,
+  DingTalkConnectivityResult,
+} from './types'
 
 const dingTalkConfigSchema = (t: (key: string) => string) =>
   z
@@ -170,6 +184,7 @@ export function EnterpriseDingTalk() {
     resolver: zodResolver(dingTalkConfigSchema(t)),
     defaultValues: configToFormValues(config),
   })
+  const formValues = useWatch({ control: form.control })
 
   useEffect(() => {
     if (!query.data) return
@@ -209,9 +224,36 @@ export function EnterpriseDingTalk() {
     },
   })
 
+  const connectivityMutation = useMutation({
+    mutationFn: async () => {
+      const result = await testDingTalkConnectivity()
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data
+    },
+    onSuccess: (result) => {
+      if (!result) return
+      if (result.code === 'auth_success') {
+        toast.success(t('DingTalk connectivity test passed'))
+      } else {
+        toast.warning(t('DingTalk connectivity test needs attention'))
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
   const onSubmit = (values: DingTalkConfigFormValues) => {
     mutation.mutate(values)
   }
+
+  const canTestConnectivity =
+    canEdit &&
+    Boolean(config.has_app_secret) &&
+    Boolean((formValues.corp_id ?? '').trim()) &&
+    Boolean((formValues.app_key ?? '').trim()) &&
+    Boolean((formValues.callback_url ?? '').trim()) &&
+    !form.formState.isDirty
 
   return (
     <SectionPageLayout>
@@ -379,38 +421,66 @@ export function EnterpriseDingTalk() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>{t('Enablement')}</CardTitle>
-                    <CardDescription>
-                      {t('Credentials and a valid callback URL are required before enabling either switch.')}
-                    </CardDescription>
+                    <div className='flex flex-wrap items-start justify-between gap-3'>
+                      <div>
+                        <CardTitle>{t('Enablement')}</CardTitle>
+                        <CardDescription>
+                          {t('Credentials and a valid callback URL are required before enabling either switch.')}
+                        </CardDescription>
+                      </div>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        disabled={!canTestConnectivity || connectivityMutation.isPending}
+                        onClick={() => connectivityMutation.mutate()}
+                      >
+                        <Wifi className='size-4' />
+                        {connectivityMutation.isPending
+                          ? t('Testing...')
+                          : t('Test connection')}
+                      </Button>
+                    </div>
                   </CardHeader>
-                  <CardContent className='grid gap-4 md:grid-cols-2'>
-                    <FormField
-                      control={form.control}
-                      name='login_enabled'
-                      render={({ field }) => (
-                        <ToggleField
-                          label={t('Enable DingTalk login')}
-                          description={t('Allow employees to sign in with DingTalk after OAuth is configured.')}
-                          checked={field.value}
-                          disabled={!canEdit}
-                          onCheckedChange={field.onChange}
-                        />
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name='sync_enabled'
-                      render={({ field }) => (
-                        <ToggleField
-                          label={t('Enable address book sync')}
-                          description={t('Allow manual and scheduled DingTalk department synchronization.')}
-                          checked={field.value}
-                          disabled={!canEdit}
-                          onCheckedChange={field.onChange}
-                        />
-                      )}
-                    />
+                  <CardContent className='grid gap-4'>
+                    {connectivityMutation.data ? (
+                      <EnterpriseDingTalkConnectivityResult result={connectivityMutation.data} />
+                    ) : null}
+                    {!canTestConnectivity && canEdit ? (
+                      <p className='text-muted-foreground text-sm'>
+                        {form.formState.isDirty
+                          ? t('Save the latest DingTalk settings before testing connectivity.')
+                          : t('Save valid DingTalk credentials before testing connectivity.')}
+                      </p>
+                    ) : null}
+                    <div className='grid gap-4 md:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='login_enabled'
+                        render={({ field }) => (
+                          <ToggleField
+                            label={t('Enable DingTalk login')}
+                            description={t('Allow employees to sign in with DingTalk after OAuth is configured.')}
+                            checked={field.value}
+                            disabled={!canEdit}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='sync_enabled'
+                        render={({ field }) => (
+                          <ToggleField
+                            label={t('Enable address book sync')}
+                            description={t('Allow manual and scheduled DingTalk department synchronization.')}
+                            checked={field.value}
+                            disabled={!canEdit}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -431,6 +501,76 @@ export function EnterpriseDingTalk() {
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
+}
+
+export function EnterpriseDingTalkConnectivityResult({
+  result,
+}: {
+  result: DingTalkConnectivityResult
+}) {
+  const { t } = useTranslation()
+  const passed = result.code === 'auth_success'
+  const guidance = getConnectivityGuidance(t, result.code)
+
+  return (
+    <Alert
+      className={cn(
+        'items-start',
+        passed ? 'border-green-500/40 bg-green-500/5' : undefined
+      )}
+      variant={passed ? 'default' : 'destructive'}
+    >
+      {passed ? <CheckCircle2 className='size-4' /> : <AlertCircle className='size-4' />}
+      <AlertTitle>{guidance.title}</AlertTitle>
+      <AlertDescription>
+        <div className='space-y-1'>
+          <p>{guidance.description}</p>
+          <p>
+            {t('Result code')}: <span className='font-mono'>{result.code}</span>
+            {result.stage ? (
+              <>
+                {' '}
+                · {t('Stage')}: <span className='font-mono'>{result.stage}</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function getConnectivityGuidance(
+  t: (key: string) => string,
+  code: DingTalkConnectivityCode
+) {
+  switch (code) {
+    case 'auth_success':
+      return {
+        title: t('DingTalk app is reachable'),
+        description: t('Credentials and address book permission are ready for login and sync.'),
+      }
+    case 'auth_invalid_credentials':
+      return {
+        title: t('Check DingTalk app credentials'),
+        description: t('Confirm the Corp ID, App Key, and App Secret in the DingTalk developer console.'),
+      }
+    case 'auth_permission_insufficient':
+      return {
+        title: t('Grant address book permission'),
+        description: t('Enable address book read permission for this DingTalk app, then publish the app again.'),
+      }
+    case 'network_unreachable':
+      return {
+        title: t('DingTalk network is unreachable'),
+        description: t('Check outbound network access and retry after the DingTalk OpenAPI endpoint is reachable.'),
+      }
+    case 'callback_misconfigured':
+      return {
+        title: t('Fix DingTalk callback URL'),
+        description: t('Use the same valid HTTPS callback URL in new-api and the DingTalk developer console.'),
+      }
+  }
 }
 
 function ToggleField(props: {

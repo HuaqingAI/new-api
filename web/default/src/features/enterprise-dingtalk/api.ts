@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type {
   ApiResponse,
+  DingTalkConnectivityResult,
   DingTalkConfig,
   DingTalkConfigPayload,
 } from './types'
@@ -27,6 +28,12 @@ export const enterpriseDingTalkQueryKey = [
   'enterprise',
   'dingtalk',
   'config',
+] as const
+
+export const enterpriseDingTalkConnectivityQueryKey = [
+  'enterprise',
+  'dingtalk',
+  'connectivity',
 ] as const
 
 export async function getDingTalkConfig(): Promise<
@@ -40,5 +47,12 @@ export async function saveDingTalkConfig(
   payload: DingTalkConfigPayload
 ): Promise<ApiResponse<DingTalkConfig>> {
   const res = await api.put('/api/enterprise/dingtalk/config', payload)
+  return res.data
+}
+
+export async function testDingTalkConnectivity(): Promise<
+  ApiResponse<DingTalkConnectivityResult>
+> {
+  const res = await api.post('/api/enterprise/dingtalk/connectivity-test')
   return res.data
 }

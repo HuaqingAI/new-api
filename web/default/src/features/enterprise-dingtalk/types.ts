@@ -46,3 +46,19 @@ export type DingTalkConfigPayload = {
   login_enabled?: boolean
   sync_enabled?: boolean
 }
+
+export type DingTalkConnectivityCode =
+  | 'auth_success'
+  | 'auth_invalid_credentials'
+  | 'auth_permission_insufficient'
+  | 'network_unreachable'
+  | 'callback_misconfigured'
+
+export type DingTalkConnectivityResult = {
+  tenant_id: number
+  code: DingTalkConnectivityCode
+  stage: string
+  summary: string
+  http_status?: number
+  checked_at: number
+}

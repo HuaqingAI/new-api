@@ -80,3 +80,33 @@ func TestDingTalkConfigAPIRejectsEnableWithDistinctErrors(t *testing.T) {
 	require.Equal(t, "enterprise.dingtalk.invalid_callback_url", invalidCallbackResponse.Message)
 	require.NotContains(t, invalidCallbackRecorder.Body.String(), secret)
 }
+
+func TestDingTalkConnectivityAPIWritesSanitizedAudit(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/dingtalk/connectivity-test", TestDingTalkConnectivity)
+
+	secret := "plain-secret"
+	require.NoError(t, db.Create(&entmodel.DingTalkConfig{
+		TenantId:    0,
+		CorpId:      "corp-id",
+		AppKey:      "app-key",
+		AppSecret:   secret,
+		CallbackUrl: "http://example.com/api/oauth/dingtalk",
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/dingtalk/connectivity-test", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	require.Contains(t, recorder.Body.String(), `"code":"callback_misconfigured"`)
+	require.NotContains(t, recorder.Body.String(), secret)
+	require.NotContains(t, recorder.Body.String(), `"app_secret"`)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Where("action_type = ?", entservice.AdminActionDingTalkTest).Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Contains(t, actions[0].Payload, "callback_misconfigured")
+	require.Contains(t, actions[0].Payload, "callback_url_invalid")
+	require.NotContains(t, actions[0].Payload, secret)
+	require.NotContains(t, actions[0].Payload, "app-key")
+	require.NotContains(t, actions[0].Payload, "access_token")
+}

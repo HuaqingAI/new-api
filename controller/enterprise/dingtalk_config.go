@@ -76,6 +76,37 @@ func SaveDingTalkConfig(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgEnterpriseDingTalkConfigSaved, result)
 }
 
+func TestDingTalkConnectivity(c *gin.Context) {
+	tenantId := parseTenantIdQuery(c)
+	result, err := entservice.NewDingTalkConnectivityService(model.DB, nil).Test(c.Request.Context(), tenantId)
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+
+	if err := writeAdminAction(model.DB, c, entservice.AdminActionInput{
+		TenantId:    result.TenantId,
+		ActorId:     c.GetInt("id"),
+		ActionType:  entservice.AdminActionDingTalkTest,
+		ObjectType:  entservice.AdminObjectDingTalkConfig,
+		ObjectId:    strconv.Itoa(result.TenantId),
+		DiffSummary: "Tested DingTalk enterprise app connectivity",
+		Payload: map[string]any{
+			"tenant_id":   result.TenantId,
+			"code":        result.Code,
+			"stage":       result.Stage,
+			"summary":     result.Summary,
+			"http_status": result.HTTPStatus,
+			"checked_at":  result.CheckedAt,
+		},
+	}); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+
+	common.ApiSuccessI18n(c, i18n.MsgEnterpriseDingTalkConnectivityTested, result)
+}
+
 func parseTenantIdQuery(c *gin.Context) int {
 	raw := c.Query("tenant_id")
 	if raw == "" {

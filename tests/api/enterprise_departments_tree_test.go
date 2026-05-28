@@ -225,6 +225,11 @@ func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
 	require.Contains(t, string(rootPayload.Data), `"has_app_secret":true`)
 	require.NotContains(t, rootRecorder.Body.String(), "plain-secret")
 	require.NotContains(t, rootRecorder.Body.String(), `"app_secret":`)
+
+	connectivityAdmin := fixture.performEnterpriseRequest(t, http.MethodPost, "/api/enterprise/dingtalk/connectivity-test", adminCookies)
+	connectivityAdminPayload := decodeAdminActionsAPIResponse(t, connectivityAdmin)
+	require.False(t, connectivityAdminPayload.Success)
+	require.Contains(t, connectivityAdminPayload.Message, "auth.insufficient_privilege")
 }
 
 func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {

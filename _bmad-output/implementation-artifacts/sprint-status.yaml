@@ -51,7 +51,7 @@ development_status:
 
   epic-2: in-progress
   2-1-configure-dingtalk-enterprise-app: done
-  2-2-test-dingtalk-connectivity-and-permissions: backlog
+  2-2-test-dingtalk-connectivity-and-permissions: done
   2-3-support-dingtalk-oauth-login-and-account-binding: backlog
   2-4-sync-dingtalk-departments-and-members: backlog
   2-5-handle-sync-conflicts-and-organization-changes: backlog

@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"
@@ -285,6 +286,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := modelenterprise.Migrate(DB); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -353,6 +357,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := modelenterprise.Migrate(DB); err != nil {
+		return err
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

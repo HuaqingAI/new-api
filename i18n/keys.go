@@ -330,3 +330,10 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// Enterprise organization related messages
+const (
+	MsgEnterpriseOrganizationDepartmentNotFound   = "error.enterprise.organization.department_not_found"
+	MsgEnterpriseOrganizationInvalidNameHistory  = "error.enterprise.organization.invalid_name_history"
+	MsgEnterpriseOrganizationDepartmentTreeFailed = "error.enterprise.organization.department_tree_failed"
+)

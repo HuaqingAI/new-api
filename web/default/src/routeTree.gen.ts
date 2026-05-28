@@ -46,6 +46,7 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedEnterpriseOrganizationRouteImport } from './routes/_authenticated/enterprise/organization'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
@@ -261,6 +262,12 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEnterpriseOrganizationRoute =
+  AuthenticatedEnterpriseOrganizationRouteImport.update({
+    id: '/enterprise/organization',
+    path: '/enterprise/organization',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -425,6 +432,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/enterprise/organization': typeof AuthenticatedEnterpriseOrganizationRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -483,6 +491,7 @@ export interface FileRoutesByTo {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/enterprise/organization': typeof AuthenticatedEnterpriseOrganizationRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -545,6 +554,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/enterprise/organization': typeof AuthenticatedEnterpriseOrganizationRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -606,6 +616,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/channels/'
     | '/dashboard/'
+    | '/enterprise/organization'
     | '/keys/'
     | '/models/'
     | '/playground/'
@@ -664,6 +675,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/channels'
     | '/dashboard'
+    | '/enterprise/organization'
     | '/keys'
     | '/models'
     | '/playground'
@@ -725,6 +737,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/enterprise/organization'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
@@ -1041,6 +1054,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/enterprise/organization': {
+      id: '/_authenticated/enterprise/organization'
+      path: '/enterprise/organization'
+      fullPath: '/enterprise/organization'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/channels/': {
       id: '/_authenticated/channels/'
       path: '/channels'
@@ -1284,6 +1304,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedEnterpriseOrganizationRoute: typeof AuthenticatedEnterpriseOrganizationRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1306,6 +1327,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedEnterpriseOrganizationRoute:
+    AuthenticatedEnterpriseOrganizationRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,

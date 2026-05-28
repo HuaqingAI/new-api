@@ -56,6 +56,9 @@
     },
     {
       "name": "系统设置"
+    },
+    {
+      "name": "企业组织"
     }
   ],
   "paths": {
@@ -4942,6 +4945,57 @@
           }
         ]
       }
+    },
+    "/api/enterprise/departments/tree": {
+      "get": {
+        "summary": "获取企业部门树",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "企业组织"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DepartmentTreeNode"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5120,6 +5174,94 @@
             "type": "integer"
           }
         }
+      },
+      "DepartmentNameHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "changed_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "name",
+          "changed_at"
+        ]
+      },
+      "DepartmentTreeNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer"
+          },
+          "source_type": {
+            "type": "integer"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "sync_status": {
+            "type": "integer"
+          },
+          "sync_error": {
+            "type": "string"
+          },
+          "name_history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentNameHistoryEntry"
+            }
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentTreeNode"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "status",
+          "source_type",
+          "external_id",
+          "sync_status",
+          "sync_error",
+          "name_history",
+          "created_at",
+          "updated_at",
+          "deleted_at",
+          "children"
+        ]
       }
     },
     "responses": {},

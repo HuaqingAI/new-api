@@ -179,10 +179,15 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 	if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
-		var err error
-		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
-		if err != nil {
-			return modelListGroups{}, err
+		userId := c.GetInt("id")
+		if userId <= 0 {
+			userGroup = "default"
+		} else {
+			var err error
+			userGroup, err = model.GetUserGroup(userId, false)
+			if err != nil {
+				return modelListGroups{}, err
+			}
 		}
 	}
 
@@ -232,7 +237,10 @@ func ListModels(c *gin.Context, modelType int) {
 		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 		var tokenModelLimit map[string]bool
 		if ok {
-			tokenModelLimit = s.(map[string]bool)
+			tokenModelLimit, ok = s.(map[string]bool)
+			if !ok {
+				tokenModelLimit = map[string]bool{}
+			}
 		} else {
 			tokenModelLimit = map[string]bool{}
 		}
@@ -269,7 +277,7 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 
 	ownerByModel := map[string]string{}
-	if len(ownerGroups) > 0 {
+	if model.DB != nil && len(ownerGroups) > 0 {
 		ownerByModel = getPreferredModelOwners(userModelNames, ownerGroups)
 	}
 	userOpenAiModels := make([]dto.OpenAIModels, 0, len(userModelNames))

@@ -27,6 +27,20 @@ func (s *DepartmentService) GetDepartmentTree() ([]dtoenterprise.DepartmentTreeN
 	return BuildDepartmentTree(departments)
 }
 
+func (s *DepartmentService) GetDepartmentTreeByIds(ids []int) ([]dtoenterprise.DepartmentTreeNode, error) {
+	if len(ids) == 0 {
+		return []dtoenterprise.DepartmentTreeNode{}, nil
+	}
+	var departments []modelenterprise.Department
+	if err := s.db.Where("id IN ?", ids).Order("id ASC").Find(&departments).Error; err != nil {
+		return nil, err
+	}
+	if len(departments) == 0 {
+		return []dtoenterprise.DepartmentTreeNode{}, nil
+	}
+	return BuildDepartmentTree(departments)
+}
+
 func BuildDepartmentTree(departments []modelenterprise.Department) ([]dtoenterprise.DepartmentTreeNode, error) {
 	nodes := make(map[int]*dtoenterprise.DepartmentTreeNode, len(departments))
 	order := make([]int, 0, len(departments))

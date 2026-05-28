@@ -32,3 +32,12 @@ const (
 )
 
 const EnterpriseExternalSourceManual = "manual"
+
+const (
+	EnterpriseDepartmentRoleDeptAdmin = 1
+)
+
+const (
+	EnterpriseDepartmentRoleStatusActive = iota + 1
+	EnterpriseDepartmentRoleStatusInactive
+)

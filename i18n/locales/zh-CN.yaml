@@ -29,6 +29,7 @@ enterprise.organization.department_not_found: "部门不存在"
 enterprise.organization.membership_not_found: "部门成员关系不存在"
 enterprise.organization.membership_already_exists: "部门成员关系已存在"
 enterprise.organization.duplicate_department: "部门 ID 重复"
+error.enterprise.permission.dept_admin_required: "需要部门管理员权限"
 
 # Auth middleware messages
 auth.not_logged_in: "无权进行此操作，未登录且未提供 access token"

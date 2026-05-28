@@ -340,4 +340,5 @@ const (
 	MsgEnterpriseMembershipNotFound      = "enterprise.organization.membership_not_found"
 	MsgEnterpriseMembershipAlreadyExists = "enterprise.organization.membership_already_exists"
 	MsgEnterpriseDuplicateDepartment     = "enterprise.organization.duplicate_department"
+	MsgEnterprisePermissionDeptAdminRequired = "error.enterprise.permission.dept_admin_required"
 )

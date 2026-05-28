@@ -28,6 +28,7 @@ enterprise.organization.department_not_found: "Department does not exist"
 enterprise.organization.membership_not_found: "Department membership does not exist"
 enterprise.organization.membership_already_exists: "Department membership already exists"
 enterprise.organization.duplicate_department: "Duplicate department ID"
+error.enterprise.permission.dept_admin_required: "Department administrator permission is required"
 
 # Auth middleware messages
 auth.not_logged_in: "Unauthorized, not logged in and no access token provided"

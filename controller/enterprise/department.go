@@ -11,7 +11,25 @@ import (
 )
 
 func GetDepartmentTree(c *gin.Context) {
-	items, err := serviceenterprise.NewDepartmentService(model.DB).GetDepartmentTree()
+	departmentService := serviceenterprise.NewDepartmentService(model.DB)
+	var (
+		items any
+		err   error
+	)
+	if c.GetInt("role") >= common.RoleAdminUser {
+		items, err = departmentService.GetDepartmentTree()
+	} else {
+		manageableDepartmentIds, permissionErr := serviceenterprise.NewPermissionService(model.DB).ListManageableDepartmentIds(c.GetInt("id"), 0)
+		if permissionErr != nil {
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			return
+		}
+		if len(manageableDepartmentIds) == 0 {
+			common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
+			return
+		}
+		items, err = departmentService.GetDepartmentTreeByIds(manageableDepartmentIds)
+	}
 	if err == nil {
 		common.ApiSuccess(c, items)
 		return

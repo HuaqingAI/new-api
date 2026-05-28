@@ -10,4 +10,5 @@ var (
 	ErrMembershipAlreadyExists      = errors.New("enterprise membership already exists")
 	ErrDuplicateDepartment          = errors.New("duplicate department id")
 	ErrInvalidMembershipInput       = errors.New("invalid enterprise membership input")
+	ErrDepartmentAdminRequired      = errors.New("enterprise department admin permission required")
 )

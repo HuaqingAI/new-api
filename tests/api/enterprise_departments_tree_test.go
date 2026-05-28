@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,13 @@ type departmentTreeAPIResponse struct {
 	Data    []dtoenterprise.DepartmentTreeNode `json:"data"`
 }
 
-func TestEnterpriseDepartmentTreeAPIRequiresAdminSession(t *testing.T) {
+type departmentMembersAPIResponse struct {
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+func TestEnterpriseDepartmentTreeAPIRequiresBackendDepartmentPermission(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 
 	noSession := fixture.performDepartmentTreeRequest(t, nil)
@@ -37,7 +44,7 @@ func TestEnterpriseDepartmentTreeAPIRequiresAdminSession(t *testing.T) {
 	commonUserCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
 	commonUser := fixture.performDepartmentTreeRequest(t, commonUserCookies)
 	require.Equal(t, http.StatusOK, commonUser.Code)
-	require.Contains(t, commonUser.Body.String(), "auth.insufficient_privilege")
+	require.Contains(t, commonUser.Body.String(), "error.enterprise.permission.dept_admin_required")
 }
 
 func TestEnterpriseDepartmentTreeAPIReturnsEmptyArray(t *testing.T) {
@@ -87,6 +94,68 @@ func TestEnterpriseDepartmentTreeAPIReturnsThreeLevelTreeWithStatuses(t *testing
 	}, leaf.NameHistory)
 	require.NotNil(t, leaf.Children)
 	require.Empty(t, leaf.Children)
+}
+
+func TestEnterpriseDepartmentAdminSeesOnlyManageableDepartmentTree(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	parentId := 1
+	childId := 2
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.Department{
+		enterpriseDepartment(1, nil, "Headquarters", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(2, &parentId, "Engineering", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeDingTalk, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(3, &childId, "Platform", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeDingTalk, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(4, nil, "Finance", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 2,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+
+	recorder := fixture.performDepartmentTreeRequest(t, fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+
+	payload := decodeDepartmentTreeAPIResponse(t, recorder)
+	require.True(t, payload.Success, payload.Message)
+	require.Len(t, payload.Data, 1)
+	require.Equal(t, "Engineering", payload.Data[0].Name)
+	require.Len(t, payload.Data[0].Children, 1)
+	require.Equal(t, "Platform", payload.Data[0].Children[0].Name)
+	require.NotContains(t, recorder.Body.String(), "Headquarters")
+	require.NotContains(t, recorder.Body.String(), "Finance")
+}
+
+func TestEnterpriseDepartmentMembersAPIUsesBackendDepartmentPermission(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2001, Username: "member", Password: "password123", Group: "vip", AffCode: "member-api"}).Error)
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.Department{
+		enterpriseDepartment(1, nil, "Engineering", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(2, nil, "Finance", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.UserDepartment{
+		UserId:         2001,
+		DepartmentId:   1,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+
+	allowed := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/members", cookies)
+	allowedPayload := decodeDepartmentMembersAPIResponse(t, allowed)
+	require.True(t, allowedPayload.Success, allowedPayload.Message)
+	require.Contains(t, string(allowedPayload.Data), "member")
+
+	denied := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/2/members", cookies)
+	deniedPayload := decodeDepartmentMembersAPIResponse(t, denied)
+	require.False(t, deniedPayload.Success)
+	require.Contains(t, deniedPayload.Message, "error.enterprise.permission.dept_admin_required")
 }
 
 func TestEnterpriseDepartmentTreeAPIMapsInvalidNameHistoryToBusinessError(t *testing.T) {
@@ -188,8 +257,14 @@ func (f enterpriseDepartmentTreeAPIFixture) login(t *testing.T, role int, status
 func (f enterpriseDepartmentTreeAPIFixture) performDepartmentTreeRequest(t *testing.T, cookies []*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 
+	return f.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/tree", cookies)
+}
+
+func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequest(t *testing.T, method string, path string, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/enterprise/departments/tree", nil)
+	request := httptest.NewRequest(method, path, nil)
 	if len(cookies) > 0 {
 		request.Header.Set("New-Api-User", "1001")
 		for _, cookie := range cookies {
@@ -205,6 +280,15 @@ func decodeDepartmentTreeAPIResponse(t *testing.T, recorder *httptest.ResponseRe
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var payload departmentTreeAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	return payload
+}
+
+func decodeDepartmentMembersAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) departmentMembersAPIResponse {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload departmentMembersAPIResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	return payload
 }

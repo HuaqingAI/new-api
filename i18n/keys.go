@@ -336,4 +336,8 @@ const (
 	MsgEnterpriseOrganizationDepartmentNotFound   = "error.enterprise.organization.department_not_found"
 	MsgEnterpriseOrganizationInvalidNameHistory  = "error.enterprise.organization.invalid_name_history"
 	MsgEnterpriseOrganizationDepartmentTreeFailed = "error.enterprise.organization.department_tree_failed"
+	MsgEnterpriseDepartmentNotFound      = "enterprise.organization.department_not_found"
+	MsgEnterpriseMembershipNotFound      = "enterprise.organization.membership_not_found"
+	MsgEnterpriseMembershipAlreadyExists = "enterprise.organization.membership_already_exists"
+	MsgEnterpriseDuplicateDepartment     = "enterprise.organization.duplicate_department"
 )

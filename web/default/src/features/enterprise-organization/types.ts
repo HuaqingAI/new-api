@@ -38,8 +38,67 @@ export interface DepartmentTreeNode {
   children: DepartmentTreeNode[]
 }
 
-export interface EnterpriseApiResponse<T> {
+export type ApiResponse<T = unknown> = {
   success: boolean
   message?: string
-  data: T
+  data?: T
+}
+
+export type MembershipStatus = 1 | 2 | 3 | 4
+
+export type UserDepartmentItem = {
+  id: number
+  tenant_id: number
+  user_id: number
+  department_id: number
+  department_name: string
+  external_user_id: string
+  external_source: string
+  status: MembershipStatus
+  joined_at: number
+  left_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type DepartmentMemberItem = {
+  id: number
+  tenant_id: number
+  user_id: number
+  username: string
+  display_name: string
+  department_id: number
+  external_user_id: string
+  external_source: string
+  status: MembershipStatus
+  joined_at: number
+  left_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type UserDepartmentsResponse = {
+  items: UserDepartmentItem[]
+  total: number
+  is_unassigned: boolean
+}
+
+export type DepartmentMembersResponse = {
+  items: DepartmentMemberItem[]
+  total: number
+}
+
+export type ReplaceUserDepartmentsPayload = {
+  tenant_id?: number
+  department_ids: number[]
+  external_user_id?: string
+  external_source?: string
+  deactivate_stale?: boolean
+}
+
+export type AddDepartmentMemberPayload = {
+  tenant_id?: number
+  user_id: number
+  external_user_id?: string
+  external_source?: string
 }

@@ -24,6 +24,12 @@ common.already_exists: "已存在"
 common.name_cannot_be_empty: "名称不能为空"
 common.batch_too_many: "批量请求数量过多，最多 {{.Max}} 条"
 
+# Enterprise organization messages
+enterprise.organization.department_not_found: "部门不存在"
+enterprise.organization.membership_not_found: "部门成员关系不存在"
+enterprise.organization.membership_already_exists: "部门成员关系已存在"
+enterprise.organization.duplicate_department: "部门 ID 重复"
+
 # Auth middleware messages
 auth.not_logged_in: "无权进行此操作，未登录且未提供 access token"
 auth.access_token_invalid: "无权进行此操作，access token 无效"

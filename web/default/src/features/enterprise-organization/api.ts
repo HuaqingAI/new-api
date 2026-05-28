@@ -17,11 +17,80 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { DepartmentTreeNode, EnterpriseApiResponse } from './types'
+import type {
+  AddDepartmentMemberPayload,
+  ApiResponse,
+  DepartmentMemberItem,
+  DepartmentMembersResponse,
+  DepartmentTreeNode,
+  ReplaceUserDepartmentsPayload,
+  UserDepartmentsResponse,
+} from './types'
+
+export const enterpriseOrganizationQueryKey = [
+  'enterprise',
+  'organization',
+] as const
 
 export async function getDepartmentTree(): Promise<
-  EnterpriseApiResponse<DepartmentTreeNode[]>
+  ApiResponse<DepartmentTreeNode[]>
 > {
   const res = await api.get('/api/enterprise/departments/tree')
+  return res.data
+}
+
+export async function getUserDepartments(
+  userId: number
+): Promise<ApiResponse<UserDepartmentsResponse>> {
+  const res = await api.get(`/api/enterprise/users/${userId}/departments`)
+  return res.data
+}
+
+export async function replaceUserDepartments(
+  userId: number,
+  payload: ReplaceUserDepartmentsPayload
+): Promise<ApiResponse<UserDepartmentsResponse>> {
+  const res = await api.put(
+    `/api/enterprise/users/${userId}/departments`,
+    payload
+  )
+  return res.data
+}
+
+export async function getDepartmentMembers(
+  departmentId: number
+): Promise<ApiResponse<DepartmentMembersResponse>> {
+  const res = await api.get(`/api/enterprise/departments/${departmentId}/members`)
+  return res.data
+}
+
+export async function addDepartmentMember(
+  departmentId: number,
+  payload: AddDepartmentMemberPayload
+): Promise<ApiResponse<DepartmentMemberItem>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/members`,
+    payload
+  )
+  return res.data
+}
+
+export async function deactivateDepartmentMember(
+  departmentId: number,
+  userId: number
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/enterprise/departments/${departmentId}/members/${userId}`
+  )
+  return res.data
+}
+
+export async function restoreDepartmentMember(
+  departmentId: number,
+  userId: number
+): Promise<ApiResponse<DepartmentMemberItem>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/members/${userId}/restore`
+  )
   return res.data
 }

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,20 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { EnterpriseOrganization } from '@/features/enterprise-organization'
-import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/enterprise/organization')({
-  beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
+import { API } from '../helpers';
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({
-        to: '/403',
-      })
-    }
-  },
-  component: EnterpriseOrganization,
-})
+export async function getUserDepartments(userId) {
+  const res = await API.get(`/api/enterprise/users/${userId}/departments`);
+  return res.data;
+}
+
+export async function getDepartmentMembers(departmentId) {
+  const res = await API.get(
+    `/api/enterprise/departments/${departmentId}/members`,
+  );
+  return res.data;
+}

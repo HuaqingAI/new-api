@@ -134,7 +134,7 @@ export function useSidebarData(): SidebarData {
           },
           {
             title: t('Enterprise Organization'),
-            url: '/enterprise/organization',
+            url: '/enterprise-organization',
             icon: Building2,
           },
           {

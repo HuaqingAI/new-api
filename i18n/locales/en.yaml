@@ -23,6 +23,12 @@ common.already_exists: "Already exists"
 common.name_cannot_be_empty: "Name cannot be empty"
 common.batch_too_many: "Too many items in batch request, maximum is {{.Max}}"
 
+# Enterprise organization messages
+enterprise.organization.department_not_found: "Department does not exist"
+enterprise.organization.membership_not_found: "Department membership does not exist"
+enterprise.organization.membership_already_exists: "Department membership already exists"
+enterprise.organization.duplicate_department: "Duplicate department ID"
+
 # Auth middleware messages
 auth.not_logged_in: "Unauthorized, not logged in and no access token provided"
 auth.access_token_invalid: "Unauthorized, invalid access token"

@@ -31,6 +31,8 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.GET("/usage/department-summary", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageSummary)
 		enterpriseRoute.GET("/usage/export", middleware.EnterpriseAdmin(), controllerenterprise.ExportDepartmentUsageCSV)
 		enterpriseRoute.GET("/usage/department-detail", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageDetail)
+		enterpriseRoute.GET("/usage/reports", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageReportConfig)
+		enterpriseRoute.PUT("/usage/reports", middleware.EnterpriseAdmin(), controllerenterprise.SaveDepartmentUsageReportConfig)
 		enterpriseRoute.GET("/dingtalk/config", middleware.RootAuth(), controllerenterprise.GetDingTalkConfig)
 		enterpriseRoute.PUT("/dingtalk/config", middleware.RootAuth(), controllerenterprise.SaveDingTalkConfig)
 		enterpriseRoute.POST("/dingtalk/connectivity-test", middleware.RootAuth(), controllerenterprise.TestDingTalkConnectivity)

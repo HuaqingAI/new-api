@@ -22,6 +22,7 @@ import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterpris
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { describe, test } from 'node:test'
+import { useForm } from 'react-hook-form'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
@@ -30,8 +31,11 @@ import { ROLE } from '@/lib/roles'
 import { buildSearchParams } from '@/features/usage-logs/lib/filter'
 import {
   departmentDetailQueryKey,
+  departmentUsageReportQueryKey,
   departmentSummaryQueryKey,
   exportDepartmentUsageCSV,
+  getDepartmentUsageReportConfig,
+  saveDepartmentUsageReportConfig,
 } from './api'
 import {
   EnterpriseUsageContent,
@@ -47,6 +51,7 @@ import {
 } from './index'
 import type {
   DepartmentUsageDetailResponse,
+  DepartmentUsageReportJobItem,
   DepartmentUsageSummaryItem,
 } from './types'
 
@@ -154,6 +159,12 @@ describe('Enterprise usage overview dashboard', () => {
       'usage',
       'department-detail',
       { deptId: 5, from: 1748390400, to: 1748476800, tenantId: 2 },
+    ])
+
+    assert.deepEqual(departmentUsageReportQueryKey, [
+      'enterprise',
+      'usage',
+      'report-config',
     ])
   })
 
@@ -636,6 +647,107 @@ describe('Enterprise usage overview dashboard', () => {
     }
   })
 
+  test('loads and saves usage report configuration with expected payloads', async () => {
+    const originalGet = api.get
+    const originalPut = api.put
+    const calls: Array<{ method: string; payload: unknown }> = []
+
+    api.get = (async (_url: string, config?: Record<string, unknown>) => {
+      calls.push({ method: 'get', payload: config?.params })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: {
+            item: {
+              id: 1,
+              tenant_id: 7,
+              receivers: ['ops@example.com'],
+              frequency: 'weekly',
+              range_type: 'last7d',
+              enabled: true,
+              status: 'success',
+              last_run_at: 1717113600,
+              next_run_at: 1717718400,
+              last_success_at: 1717113600,
+              last_window_start: 1716508800,
+              last_window_end: 1717113600,
+              run_count: 2,
+              failure_count: 0,
+              error_reason: '',
+              last_snapshot: null,
+              created_at: 1716500000,
+              updated_at: 1717113600,
+            },
+          },
+        },
+      }
+    }) as typeof api.get
+
+    api.put = (async (_url: string, body?: unknown) => {
+      calls.push({ method: 'put', payload: body })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: {
+            item: {
+              id: 1,
+              tenant_id: 7,
+              receivers: ['ops@example.com', 'cto@example.com'],
+              frequency: 'monthly',
+              range_type: 'last30d',
+              enabled: true,
+              status: 'pending',
+              last_run_at: 1717113600,
+              next_run_at: 1719792000,
+              last_success_at: 1717113600,
+              last_window_start: 1714521600,
+              last_window_end: 1717113600,
+              run_count: 3,
+              failure_count: 0,
+              error_reason: '',
+              last_snapshot: null,
+              created_at: 1716500000,
+              updated_at: 1717113600,
+            },
+          },
+        },
+      }
+    }) as typeof api.put
+
+    try {
+      const loaded = await getDepartmentUsageReportConfig({ tenantId: 7 })
+      assert.equal(loaded.data.item.frequency, 'weekly')
+
+      const saved = await saveDepartmentUsageReportConfig({
+        tenantId: 7,
+        receivers: ['ops@example.com', 'cto@example.com'],
+        frequency: 'monthly',
+        rangeType: 'last30d',
+        enabled: true,
+      })
+      assert.equal(saved.data.item.range_type, 'last30d')
+
+      assert.deepEqual(calls, [
+        { method: 'get', payload: { tenant_id: 7 } },
+        {
+          method: 'put',
+          payload: {
+            tenant_id: 7,
+            receivers: ['ops@example.com', 'cto@example.com'],
+            frequency: 'monthly',
+            range_type: 'last30d',
+            enabled: true,
+          },
+        },
+      ])
+    } finally {
+      api.get = originalGet
+      api.put = originalPut
+    }
+  })
+
   test('derives export params from summary filters without leaking detail-only search state', () => {
     assert.deepEqual(
       resolveDepartmentUsageExportParams(
@@ -750,8 +862,21 @@ describe('Enterprise usage overview dashboard', () => {
   })
 
   test('renders detail drill-down with disclaimer, sorting controls and recent logs entry', () => {
-    const html = renderToStaticMarkup(
-      <I18nextProvider i18n={i18n}>
+    const Wrapper = () => {
+      const form = useForm<{
+        receivers: string
+        frequency: 'daily' | 'weekly' | 'monthly'
+        range_type: 'today' | 'last7d' | 'last30d'
+        enabled: boolean
+      }>({
+        defaultValues: {
+          receivers: 'ops@example.com',
+          frequency: 'daily' as const,
+          range_type: 'last7d' as const,
+          enabled: true,
+        },
+      })
+      return (
         <EnterpriseUsageContent
           items={[
             departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' }),
@@ -783,9 +908,21 @@ describe('Enterprise usage overview dashboard', () => {
           onSummarySortChange={() => undefined}
           onExport={() => undefined}
           exportLoading={false}
+          report={reportUsageItem()}
+          reportLoading={false}
+          reportErrorMessage={null}
+          reportForm={form}
+          onSaveReport={() => undefined}
+          reportSaving={false}
           selectedLogUser='alice'
           onOpenRecentLogs={() => undefined}
         />
+      )
+    }
+
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <Wrapper />
       </I18nextProvider>
     )
 
@@ -799,10 +936,91 @@ describe('Enterprise usage overview dashboard', () => {
       'Open Recent Logs',
       'Back to overview',
       'Recent Logs User Filter',
+      'Scheduled Usage Reports',
+      'Save Report Configuration',
       'Inspect top users, model mix, time trend, and recent logs.',
       'alice',
       'bob',
       'claude-sonnet-4',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders report delivery failure state in the scheduled reports card', () => {
+    const Wrapper = () => {
+      const form = useForm<{
+        receivers: string
+        frequency: 'daily' | 'weekly' | 'monthly'
+        range_type: 'today' | 'last7d' | 'last30d'
+        enabled: boolean
+      }>({
+        defaultValues: {
+          receivers: 'ops@example.com',
+          frequency: 'weekly' as const,
+          range_type: 'last30d' as const,
+          enabled: true,
+        },
+      })
+      return (
+        <EnterpriseUsageContent
+          items={[departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })]}
+          selectedDepartmentId={1}
+          detail={detailUsageItem()}
+          detailLoading={false}
+          detailErrorMessage={null}
+          isLoading={false}
+          errorMessage={null}
+          rangeLabel='2026-05-28 ~ 2026-05-29'
+          customRange={{
+            from: '2026-05-28',
+            to: '2026-05-29',
+            isValid: true,
+          }}
+          onCustomRangeChange={() => undefined}
+          onApplyCustomRange={() => undefined}
+          onPresetChange={() => undefined}
+          selectedPreset='today'
+          onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
+          report={reportUsageItem({
+            status: 'failed',
+            failure_count: 2,
+            error_reason: 'smtp down',
+          })}
+          reportLoading={false}
+          reportErrorMessage={null}
+          reportForm={form}
+          onSaveReport={() => undefined}
+          reportSaving={false}
+          selectedLogUser='alice'
+          onOpenRecentLogs={() => undefined}
+        />
+      )
+    }
+
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <Wrapper />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Scheduled Usage Reports',
+      'Last Delivery Error',
+      'smtp down',
+      'failed',
+      '2',
+      'Save Report Configuration',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -958,6 +1176,32 @@ function detailUsageItem(
         username_options: ['alice', 'bob'],
       },
     },
+    ...overrides,
+  }
+}
+
+function reportUsageItem(
+  overrides: Partial<DepartmentUsageReportJobItem> = {}
+): DepartmentUsageReportJobItem {
+  return {
+    id: 1,
+    tenant_id: 0,
+    receivers: ['ops@example.com'],
+    frequency: 'daily',
+    range_type: 'last7d',
+    enabled: true,
+    status: 'success',
+    last_run_at: 1748563200,
+    next_run_at: 1748649600,
+    last_success_at: 1748563200,
+    last_window_start: 1747964800,
+    last_window_end: 1748563200,
+    run_count: 2,
+    failure_count: 0,
+    error_reason: '',
+    last_snapshot: null,
+    created_at: 1747964800,
+    updated_at: 1748563200,
     ...overrides,
   }
 }

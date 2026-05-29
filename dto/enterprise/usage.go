@@ -23,6 +23,84 @@ type DepartmentUsageDetailQuery struct {
 	To       int64 `form:"to"`
 }
 
+type DepartmentUsageReportConfigRequest struct {
+	TenantId  *int     `json:"tenant_id,omitempty"`
+	Receivers []string `json:"receivers"`
+	Frequency *string  `json:"frequency,omitempty"`
+	RangeType *string  `json:"range_type,omitempty"`
+	Enabled   *bool    `json:"enabled,omitempty"`
+}
+
+type DepartmentUsageReportSummary struct {
+	WindowStart      int64 `json:"window_start"`
+	WindowEnd        int64 `json:"window_end"`
+	DepartmentCount  int64 `json:"department_count"`
+	RequestCount     int64 `json:"request_count"`
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	Quota            int64 `json:"quota"`
+	UserCount        int64 `json:"user_count"`
+}
+
+type DepartmentUsageReportTopDepartment struct {
+	DeptId       *int   `json:"dept_id"`
+	DeptName     string `json:"dept_name"`
+	RequestCount int64  `json:"request_count"`
+	Quota        int64  `json:"quota"`
+	UserCount    int64  `json:"user_count"`
+}
+
+type DepartmentUsageReportGrowthDepartment struct {
+	DeptId               *int    `json:"dept_id"`
+	DeptName             string  `json:"dept_name"`
+	RequestCount         int64   `json:"request_count"`
+	PreviousRequestCount int64   `json:"previous_request_count"`
+	Quota                int64   `json:"quota"`
+	PreviousQuota        int64   `json:"previous_quota"`
+	RequestGrowthRate    float64 `json:"request_growth_rate"`
+	QuotaGrowthRate      float64 `json:"quota_growth_rate"`
+}
+
+type DepartmentUsageReportSnapshot struct {
+	WindowStart         int64                                   `json:"window_start"`
+	WindowEnd           int64                                   `json:"window_end"`
+	PreviousWindowStart int64                                   `json:"previous_window_start"`
+	PreviousWindowEnd   int64                                   `json:"previous_window_end"`
+	DepartmentCount     int64                                   `json:"department_count"`
+	RequestCount        int64                                   `json:"request_count"`
+	PromptTokens        int64                                   `json:"prompt_tokens"`
+	CompletionTokens    int64                                   `json:"completion_tokens"`
+	Quota               int64                                   `json:"quota"`
+	UserCount           int64                                   `json:"user_count"`
+	TopDepartments      []DepartmentUsageReportTopDepartment    `json:"top_departments"`
+	GrowthDepartments   []DepartmentUsageReportGrowthDepartment `json:"growth_departments"`
+}
+
+type DepartmentUsageReportJobItem struct {
+	Id              int                            `json:"id"`
+	TenantId        int                            `json:"tenant_id"`
+	Receivers       []string                       `json:"receivers"`
+	Frequency       string                         `json:"frequency"`
+	RangeType       string                         `json:"range_type"`
+	Enabled         bool                           `json:"enabled"`
+	Status          string                         `json:"status"`
+	LastRunAt       int64                          `json:"last_run_at"`
+	NextRunAt       int64                          `json:"next_run_at"`
+	LastSuccessAt   int64                          `json:"last_success_at"`
+	LastWindowStart int64                          `json:"last_window_start"`
+	LastWindowEnd   int64                          `json:"last_window_end"`
+	RunCount        int64                          `json:"run_count"`
+	FailureCount    int64                          `json:"failure_count"`
+	ErrorReason     string                         `json:"error_reason"`
+	LastSnapshot    *DepartmentUsageReportSnapshot `json:"last_snapshot,omitempty"`
+	CreatedAt       int64                          `json:"created_at"`
+	UpdatedAt       int64                          `json:"updated_at"`
+}
+
+type DepartmentUsageReportConfigResponse struct {
+	Item DepartmentUsageReportJobItem `json:"item"`
+}
+
 type UsageModelDistributionItem struct {
 	ModelName        string `json:"model_name"`
 	RequestCount     int64  `json:"request_count"`

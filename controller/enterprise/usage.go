@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
@@ -11,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetDepartmentUsageSummary(c *gin.Context) {
@@ -202,10 +205,95 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 	})
 }
 
+func GetDepartmentUsageReportConfig(c *gin.Context) {
+	tenantId, ok := requestTenantId(c, nil)
+	if !ok {
+		return
+	}
+	result, err := entservice.NewUsageReportService(model.DB).GetConfig(tenantId)
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
+	item, err := mapUsageReportJobDTO(result)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsageReportConfigResponse{
+		Item: item,
+	})
+}
+
+func SaveDepartmentUsageReportConfig(c *gin.Context) {
+	var req dtoenterprise.DepartmentUsageReportConfigRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	input := entservice.UsageReportConfigInput{
+		TenantId:  tenantId,
+		Receivers: req.Receivers,
+		Frequency: readOptionalString(req.Frequency),
+		RangeType: readOptionalString(req.RangeType),
+		Enabled:   boolValue(req.Enabled),
+	}
+
+	var result entservice.UsageReportJobResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		service := entservice.NewUsageReportService(tx)
+		var err error
+		result, err = service.SaveConfig(input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    tenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionUsageReportSet,
+			ObjectType:  entservice.AdminObjectUsageReportJob,
+			ObjectId:    strconv.Itoa(result.Id),
+			DiffSummary: "Saved department usage report configuration",
+			Payload: map[string]any{
+				"tenant_id":   tenantId,
+				"receivers":   result.Receivers,
+				"frequency":   result.Frequency,
+				"range_type":  result.RangeType,
+				"enabled":     result.Enabled,
+				"next_run_at": result.NextRunAt,
+			},
+		})
+	})
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
+
+	item, err := mapUsageReportJobDTO(result)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsageReportConfigResponse{
+		Item: item,
+	})
+}
+
 func writeUsageSummaryError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrInvalidUsageSummaryQuery), errors.Is(err, entservice.ErrInvalidUsageDetailQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrUsageReportInvalidInput):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrUsageReportInvalidEmail):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseUsageReportInvalidEmail)
+	case errors.Is(err, entservice.ErrUsageReportNotConfigured):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseUsageReportNotConfigured)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
@@ -216,4 +304,69 @@ func readOptionalString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func mapUsageReportJobDTO(item entservice.UsageReportJobResult) (dtoenterprise.DepartmentUsageReportJobItem, error) {
+	dto := dtoenterprise.DepartmentUsageReportJobItem{
+		Id:              item.Id,
+		TenantId:        item.TenantId,
+		Receivers:       append([]string{}, item.Receivers...),
+		Frequency:       item.Frequency,
+		RangeType:       item.RangeType,
+		Enabled:         item.Enabled,
+		Status:          item.Status,
+		LastRunAt:       item.LastRunAt,
+		NextRunAt:       item.NextRunAt,
+		LastSuccessAt:   item.LastSuccessAt,
+		LastWindowStart: item.LastWindowStart,
+		LastWindowEnd:   item.LastWindowEnd,
+		RunCount:        item.RunCount,
+		FailureCount:    item.FailureCount,
+		ErrorReason:     item.ErrorReason,
+		CreatedAt:       item.CreatedAt,
+		UpdatedAt:       item.UpdatedAt,
+	}
+	if item.LastSnapshot != nil {
+		dto.LastSnapshot = &dtoenterprise.DepartmentUsageReportSnapshot{
+			WindowStart:         item.LastSnapshot.WindowStart,
+			WindowEnd:           item.LastSnapshot.WindowEnd,
+			PreviousWindowStart: item.LastSnapshot.PreviousWindowStart,
+			PreviousWindowEnd:   item.LastSnapshot.PreviousWindowEnd,
+			DepartmentCount:     item.LastSnapshot.DepartmentCount,
+			RequestCount:        item.LastSnapshot.RequestCount,
+			PromptTokens:        item.LastSnapshot.PromptTokens,
+			CompletionTokens:    item.LastSnapshot.CompletionTokens,
+			Quota:               item.LastSnapshot.Quota,
+			UserCount:           item.LastSnapshot.UserCount,
+			TopDepartments:      []dtoenterprise.DepartmentUsageReportTopDepartment{},
+			GrowthDepartments:   []dtoenterprise.DepartmentUsageReportGrowthDepartment{},
+		}
+		for _, top := range item.LastSnapshot.TopDepartments {
+			dto.LastSnapshot.TopDepartments = append(dto.LastSnapshot.TopDepartments, dtoenterprise.DepartmentUsageReportTopDepartment{
+				DeptId:       top.DeptId,
+				DeptName:     top.DeptName,
+				RequestCount: top.RequestCount,
+				Quota:        top.Quota,
+				UserCount:    top.UserCount,
+			})
+		}
+		for _, growth := range item.LastSnapshot.GrowthDepartments {
+			dto.LastSnapshot.GrowthDepartments = append(dto.LastSnapshot.GrowthDepartments, dtoenterprise.DepartmentUsageReportGrowthDepartment{
+				DeptId:               growth.DeptId,
+				DeptName:             growth.DeptName,
+				RequestCount:         growth.RequestCount,
+				PreviousRequestCount: growth.PreviousRequestCount,
+				Quota:                growth.Quota,
+				PreviousQuota:        growth.PreviousQuota,
+				RequestGrowthRate:    growth.RequestGrowthRate,
+				QuotaGrowthRate:      growth.QuotaGrowthRate,
+			})
+		}
+	}
+	if dto.Receivers == nil {
+		dto.Receivers = []string{}
+	}
+	dto.Frequency = strings.TrimSpace(dto.Frequency)
+	dto.RangeType = strings.TrimSpace(dto.RangeType)
+	return dto, nil
 }

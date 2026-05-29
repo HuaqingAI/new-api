@@ -20,6 +20,7 @@ const (
 	AdminActionDingTalkConfigSet      = "enterprise.dingtalk.config.set"
 	AdminActionDingTalkTest           = "enterprise.dingtalk.connectivity.test"
 	AdminActionDingTalkSyncStart      = "enterprise.dingtalk.sync.start"
+	AdminActionUsageReportSet         = "enterprise.usage.report.set"
 	AdminActionDepartmentBudgetCreate = "enterprise.organization.department_budget.create"
 	AdminActionDepartmentBudgetReject = "enterprise.organization.department_budget.reject"
 
@@ -28,6 +29,7 @@ const (
 	AdminObjectDepartmentRole   = "enterprise_department_role"
 	AdminObjectDingTalkConfig   = "enterprise_dingtalk_config"
 	AdminObjectDingTalkSyncTask = "enterprise_dingtalk_sync_task"
+	AdminObjectUsageReportJob   = "enterprise_usage_report_job"
 	AdminObjectDepartmentBudget = "enterprise_department_budget"
 )
 

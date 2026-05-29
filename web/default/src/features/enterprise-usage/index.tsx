@@ -17,12 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
+import { useForm, type UseFormReturn } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import z from 'zod'
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  BellRing,
   Coins,
   Download,
   ExternalLink,
@@ -69,6 +73,7 @@ import {
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -77,15 +82,29 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { SectionPageLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
-import { exportDepartmentUsageCSV } from './api'
+import {
+  departmentUsageReportQueryKey,
+  exportDepartmentUsageCSV,
+  getDepartmentUsageReportConfig,
+  saveDepartmentUsageReportConfig,
+} from './api'
 import { useDepartmentUsageDetail } from './hooks/use-department-usage-detail'
 import { useDepartmentUsageSummary } from './hooks/use-department-usage-summary'
 import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageLogEntryLink,
+  DepartmentUsageReportJobItem,
   DepartmentUsageSummarySort,
   DepartmentUsageSummaryItem,
   DepartmentUsageUserRankItem,
@@ -104,6 +123,44 @@ const ENTERPRISE_USAGE_PRESETS = [
   'last30d',
   'custom',
 ] as const satisfies readonly EnterpriseUsagePreset[]
+
+const reportConfigSchema = (t: (key: string) => string) =>
+  z.object({
+    receivers: z
+      .string()
+      .trim()
+      .min(1, t('At least one email receiver is required'))
+      .refine((value) => {
+        const receivers = value
+          .split(/[\n,;]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+        return receivers.length > 0
+      }, t('At least one email receiver is required'))
+      .refine((value) => {
+        const receivers = value
+          .split(/[\n,;]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+        return receivers.every((item) => z.string().email().safeParse(item).success)
+      }, t('Each receiver must be a valid email address')),
+    frequency: z.enum(['daily', 'weekly', 'monthly']),
+    range_type: z.enum(['today', 'last7d', 'last30d']),
+    enabled: z.boolean(),
+  })
+
+type ReportConfigFormValues = z.infer<ReturnType<typeof reportConfigSchema>>
+
+function reportConfigToFormValues(
+  item?: DepartmentUsageReportJobItem | null
+): ReportConfigFormValues {
+  return {
+    receivers: item?.receivers?.join('\n') ?? '',
+    frequency: item?.frequency ?? 'daily',
+    range_type: item?.range_type ?? 'last7d',
+    enabled: item?.enabled ?? false,
+  }
+}
 
 export const enterpriseUsageSearchSchema = z.object({
   preset: z.enum(ENTERPRISE_USAGE_PRESETS).optional().catch('today'),
@@ -248,6 +305,7 @@ export function formatModelDistributionSummary(
 
 export function EnterpriseUsageOverview() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const search = useSearch({
     from: '/_authenticated/enterprise-usage/',
   }) as EnterpriseUsageSearch
@@ -283,6 +341,61 @@ export function EnterpriseUsageOverview() {
 
   const customRangeState = getCustomRangeState(customFromDate, customToDate)
   const [isExporting, setIsExporting] = useState(false)
+  const reportQuery = useQuery({
+    queryKey:
+      search.tenant_id === undefined
+        ? departmentUsageReportQueryKey
+        : [...departmentUsageReportQueryKey, search.tenant_id],
+    queryFn: async () => {
+      const response = await getDepartmentUsageReportConfig({
+        tenantId: search.tenant_id,
+      })
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data.item
+    },
+  })
+  const reportForm = useForm<ReportConfigFormValues>({
+    resolver: zodResolver(reportConfigSchema(t)),
+    defaultValues: reportConfigToFormValues(),
+  })
+
+  useEffect(() => {
+    reportForm.reset(reportConfigToFormValues(reportQuery.data))
+  }, [reportForm, reportQuery.data])
+
+  const reportMutation = useMutation({
+    mutationFn: async (values: ReportConfigFormValues) => {
+      const response = await saveDepartmentUsageReportConfig({
+        tenantId: search.tenant_id,
+        receivers: values.receivers
+          .split(/[\n,;]+/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+        frequency: values.frequency,
+        rangeType: values.range_type,
+        enabled: values.enabled,
+      })
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data.item
+    },
+    onSuccess: async (item) => {
+      await queryClient.invalidateQueries({
+        queryKey:
+          search.tenant_id === undefined
+            ? departmentUsageReportQueryKey
+            : [...departmentUsageReportQueryKey, search.tenant_id],
+      })
+      reportForm.reset(reportConfigToFormValues(item))
+      toast.success(t('Usage report configuration saved'))
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
 
   const handlePresetChange = (preset: EnterpriseUsagePreset) => {
     if (preset === 'custom') {
@@ -481,6 +594,20 @@ export function EnterpriseUsageOverview() {
               onSummarySortChange={handleSummarySortChange}
               onExport={handleExport}
               exportLoading={isExporting}
+              report={reportQuery.data ?? null}
+              reportLoading={reportQuery.isLoading}
+              reportErrorMessage={
+                reportQuery.error instanceof Error
+                  ? reportQuery.error.message
+                  : null
+              }
+              reportForm={reportForm}
+              onSaveReport={() =>
+                void reportForm.handleSubmit((values) =>
+                  reportMutation.mutateAsync(values)
+                )()
+              }
+              reportSaving={reportMutation.isPending}
               selectedLogUser={search.log_user}
               onOpenRecentLogs={handleOpenRecentLogs}
             />
@@ -523,6 +650,12 @@ type EnterpriseUsageContentProps = {
   ) => void
   onExport: () => void
   exportLoading: boolean
+  report?: DepartmentUsageReportJobItem | null
+  reportLoading?: boolean
+  reportErrorMessage?: string | null
+  reportForm?: UseFormReturn<ReportConfigFormValues>
+  onSaveReport?: () => void
+  reportSaving?: boolean
   selectedLogUser?: string
   onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
 }
@@ -759,8 +892,197 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
           )}
         </CardContent>
       </Card>
+
+      <DepartmentUsageReportCard
+        report={props.report ?? null}
+        isLoading={props.reportLoading ?? false}
+        errorMessage={props.reportErrorMessage ?? null}
+        form={props.reportForm}
+        onSave={props.onSaveReport}
+        saving={props.reportSaving ?? false}
+      />
     </div>
   )
+}
+
+function DepartmentUsageReportCard(props: {
+  report: DepartmentUsageReportJobItem | null
+  isLoading: boolean
+  errorMessage: string | null
+  form?: UseFormReturn<ReportConfigFormValues>
+  onSave?: () => void
+  saving: boolean
+}) {
+  const { t } = useTranslation()
+  const form = props.form
+
+  if (!form) {
+    return null
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className='flex items-center gap-2'>
+          <BellRing className='size-4' />
+          {t('Scheduled Usage Reports')}
+        </CardTitle>
+        <CardDescription>
+          {t(
+            'Configure email receivers, cadence, and report range for department usage digests.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {props.isLoading ? (
+          <Skeleton className='h-40 w-full' />
+        ) : props.errorMessage ? (
+          <Alert variant='destructive'>
+            <AlertTriangle className='size-4' />
+            <AlertTitle>{t('Unable to load usage report configuration')}</AlertTitle>
+            <AlertDescription>{t(props.errorMessage)}</AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <Form {...form}>
+              <form
+                className='space-y-4'
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  props.onSave?.()
+                }}
+              >
+                <FormField
+                  control={form.control}
+                  name='receivers'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Report Receivers')}</FormLabel>
+                      <FormControl>
+                        <textarea
+                          className='border-input bg-background min-h-[96px] w-full rounded-md border px-3 py-2 text-sm'
+                          placeholder={t('Enter one email per line')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className='grid gap-4 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='frequency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Report Frequency')}</FormLabel>
+                        <FormControl>
+                          <select
+                            className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
+                            value={field.value}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          >
+                            <option value='daily'>{t('Daily')}</option>
+                            <option value='weekly'>{t('Weekly')}</option>
+                            <option value='monthly'>{t('Monthly')}</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='range_type'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Report Range')}</FormLabel>
+                        <FormControl>
+                          <select
+                            className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
+                            value={field.value}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          >
+                            <option value='today'>{t('Today')}</option>
+                            <option value='last7d'>{t('Last 7 Days')}</option>
+                            <option value='last30d'>{t('Last 30 Days')}</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name='enabled'
+                  render={({ field }) => (
+                    <FormItem className='flex items-center justify-between rounded-lg border p-3'>
+                      <div>
+                        <FormLabel>{t('Enable Scheduled Reports')}</FormLabel>
+                        <p className='text-muted-foreground text-sm'>
+                          {t('Send recurring usage summaries to configured receivers.')}
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <Button type='submit' disabled={props.saving}>
+                  <RefreshCw className='size-4' />
+                  {props.saving ? t('Saving') : t('Save Report Configuration')}
+                </Button>
+              </form>
+            </Form>
+            <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
+              <ReportStat
+                label={t('Status')}
+                value={props.report?.status ?? '-'}
+              />
+              <ReportStat
+                label={t('Next Run')}
+                value={formatOptionalTimestamp(props.report?.next_run_at)}
+              />
+              <ReportStat
+                label={t('Last Success')}
+                value={formatOptionalTimestamp(props.report?.last_success_at)}
+              />
+              <ReportStat
+                label={t('Failures')}
+                value={formatNumber(props.report?.failure_count ?? 0)}
+              />
+            </div>
+            {props.report?.error_reason ? (
+              <Alert variant='destructive'>
+                <AlertTriangle className='size-4' />
+                <AlertTitle>{t('Last Delivery Error')}</AlertTitle>
+                <AlertDescription>{props.report.error_reason}</AlertDescription>
+              </Alert>
+            ) : null}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ReportStat(props: { label: string; value: string }) {
+  return (
+    <div className='bg-muted/50 rounded-lg border px-3 py-3'>
+      <div className='text-muted-foreground text-xs'>{props.label}</div>
+      <div className='mt-1 text-sm font-medium'>{props.value}</div>
+    </div>
+  )
+}
+
+function formatOptionalTimestamp(value?: number) {
+  if (!value) return '-'
+  return dayjs(value * 1000).format('YYYY-MM-DD HH:mm')
 }
 
 const detailTrendChartConfig = {

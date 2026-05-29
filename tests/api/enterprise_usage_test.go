@@ -1,15 +1,18 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
+	serviceenterprise "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/stretchr/testify/require"
 )
 
@@ -440,6 +443,113 @@ func TestEnterpriseUsageDetailAPIRequiresEnterpriseAdminAndReturnsFilterContext(
 	require.Equal(t, int64(1700000000), response.RecentLogsEntry.Filters.StartTimestamp)
 	require.Equal(t, int64(1700007199), response.RecentLogsEntry.Filters.EndTimestamp)
 	require.Equal(t, []string{"alice", "bob"}, response.RecentLogsEntry.Filters.UsernameOptions)
+}
+
+func TestEnterpriseUsageReportConfigAPIRequiresEnterpriseAdminAndPersists(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	commonUser := fixture.performEnterpriseRequestWithBody(
+		t,
+		http.MethodPut,
+		"/api/enterprise/usage/reports",
+		fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled),
+		map[string]any{
+			"receivers":  []string{"ops@example.com"},
+			"frequency":  "daily",
+			"range_type": "last7d",
+			"enabled":    true,
+		},
+	)
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	admin := fixture.performEnterpriseRequestWithBody(
+		t,
+		http.MethodPut,
+		"/api/enterprise/usage/reports",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+		map[string]any{
+			"receivers":  []string{"ops@example.com", "cto@example.com"},
+			"frequency":  "monthly",
+			"range_type": "last30d",
+			"enabled":    true,
+		},
+	)
+	adminPayload := decodeAdminActionsAPIResponse(t, admin)
+	require.True(t, adminPayload.Success, adminPayload.Message)
+	require.Contains(t, string(adminPayload.Data), `"frequency":"monthly"`)
+	require.Contains(t, string(adminPayload.Data), `"range_type":"last30d"`)
+
+	getRecorder := fixture.performEnterpriseRequest(
+		t,
+		http.MethodGet,
+		"/api/enterprise/usage/reports",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+	)
+	getPayload := decodeAdminActionsAPIResponse(t, getRecorder)
+	require.True(t, getPayload.Success, getPayload.Message)
+	require.Contains(t, string(getPayload.Data), `"receivers":["ops@example.com","cto@example.com"]`)
+}
+
+func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	now := time.Date(2026, 5, 29, 10, 0, 0, 0, time.Local)
+
+	job := modelenterprise.UsageReportJob{
+		TenantId:  0,
+		Frequency: modelenterprise.UsageReportFrequencyDaily,
+		RangeType: modelenterprise.UsageReportRangeLast7Days,
+		Enabled:   true,
+		Status:    modelenterprise.UsageReportStatusPending,
+		NextRunAt: now.Unix() - 1,
+	}
+	require.NoError(t, job.SetReceivers([]string{"ops@example.com"}))
+	require.NoError(t, job.SetLastSnapshot(nil))
+	require.NoError(t, fixture.db.Create(&job).Error)
+
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	windowStart := startOfDay.AddDate(0, 0, -6).Unix()
+	windowEnd := startOfDay.Add(24 * time.Hour).Unix()
+	deptID := 11
+	snapshot := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &deptID,
+		DeptName:         "Engineering",
+		WindowStart:      windowStart,
+		WindowEnd:        windowEnd,
+		RequestCount:     8,
+		PromptTokens:     80,
+		CompletionTokens: 20,
+		Quota:            160,
+	}
+	require.NoError(t, snapshot.SetModelDistribution(nil))
+	require.NoError(t, snapshot.SetUserIds([]int{1001, 1002}))
+	require.NoError(t, fixture.db.Create(&snapshot).Error)
+
+	service := serviceenterprise.NewUsageReportServiceForTest(
+		fixture.db,
+		func() time.Time { return now },
+		func(subject string, receiver string, content string) error { return nil },
+	)
+	result, err := service.RunDueReports(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Processed)
+	require.Zero(t, result.Failed)
+
+	getRecorder := fixture.performEnterpriseRequest(
+		t,
+		http.MethodGet,
+		"/api/enterprise/usage/reports",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+	)
+	getPayload := decodeAdminActionsAPIResponse(t, getRecorder)
+	require.True(t, getPayload.Success, getPayload.Message)
+	require.Contains(t, string(getPayload.Data), `"status":"success"`)
+	require.Contains(t, string(getPayload.Data), `"last_success_at":`)
+	require.Contains(t, string(getPayload.Data), `"run_count":1`)
+	require.Contains(t, string(getPayload.Data), `"top_departments":[`)
+	require.Contains(t, string(getPayload.Data), `"dept_name":"Engineering"`)
 }
 
 func TestEnterpriseUsageDetailAPIRejectsInvalidParamsAndReturnsEmptyArrays(t *testing.T) {

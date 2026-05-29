@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import type {
   ApiResponse,
   DepartmentUsageDetailResponse,
+  DepartmentUsageReportConfigResponse,
   DepartmentUsageSummaryResponse,
   DepartmentUsageSummarySort,
   UsageSortOrder,
@@ -145,6 +146,38 @@ export async function getDepartmentUsageDetail(params: {
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
     },
+  })
+  return res.data
+}
+
+export const departmentUsageReportQueryKey = [
+  ...enterpriseUsageQueryKey,
+  'report-config',
+] as const
+
+export async function getDepartmentUsageReportConfig(params?: {
+  tenantId?: number
+}): Promise<ApiResponse<DepartmentUsageReportConfigResponse>> {
+  const res = await api.get('/api/enterprise/usage/reports', {
+    params:
+      params?.tenantId === undefined ? {} : { tenant_id: params.tenantId },
+  })
+  return res.data
+}
+
+export async function saveDepartmentUsageReportConfig(params: {
+  tenantId?: number
+  receivers: string[]
+  frequency: 'daily' | 'weekly' | 'monthly'
+  rangeType: 'today' | 'last7d' | 'last30d'
+  enabled: boolean
+}): Promise<ApiResponse<DepartmentUsageReportConfigResponse>> {
+  const res = await api.put('/api/enterprise/usage/reports', {
+    ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+    receivers: params.receivers,
+    frequency: params.frequency,
+    range_type: params.rangeType,
+    enabled: params.enabled,
   })
   return res.data
 }

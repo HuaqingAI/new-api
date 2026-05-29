@@ -63,6 +63,8 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
 	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
 	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
+	router.GET("/api/enterprise/usage/reports", GetDepartmentUsageReportConfig)
+	router.PUT("/api/enterprise/usage/reports", SaveDepartmentUsageReportConfig)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

@@ -51,4 +51,9 @@ func runEnterpriseTasksOnce(ctx context.Context) {
 	if _, err := RunUsageAggregationTaskOnce(ctx); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("enterprise usage aggregation task failed: %v", err))
 	}
+	if result, err := NewUsageReportService(nil).RunDueReports(ctx); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("enterprise usage report task failed: %v", err))
+	} else if result.Processed > 0 || result.Failed > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf("enterprise usage report task finished: processed=%d failed=%d", result.Processed, result.Failed))
+	}
 }

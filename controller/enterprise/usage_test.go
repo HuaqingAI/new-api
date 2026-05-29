@@ -10,6 +10,7 @@ import (
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/stretchr/testify/require"
 )
 
@@ -328,4 +329,50 @@ func TestUsageDetailAPIValidatesParamsAndNormalizesArrays(t *testing.T) {
 	require.Len(t, payload.Trend, 1)
 	require.Equal(t, "/usage-logs/common", payload.RecentLogsEntry.Path)
 	require.NotNil(t, payload.RecentLogsEntry.Filters.UsernameOptions)
+}
+
+func TestUsageReportConfigAPIValidatesAndPersists(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	invalidRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
+		Receivers: []string{"bad-email"},
+		Frequency: strPtr("daily"),
+		RangeType: strPtr("last7d"),
+		Enabled:   boolPtr(true),
+	})
+	invalidResponse := decodeEnterpriseAPIResponse(t, invalidRecorder)
+	require.False(t, invalidResponse.Success)
+	require.Equal(t, "enterprise.usage.report_invalid_email", invalidResponse.Message)
+
+	saveRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
+		Receivers: []string{"ops@example.com", "cto@example.com"},
+		Frequency: strPtr("weekly"),
+		RangeType: strPtr("last30d"),
+		Enabled:   boolPtr(true),
+	})
+	saveResponse := decodeEnterpriseAPIResponse(t, saveRecorder)
+	require.True(t, saveResponse.Success, saveResponse.Message)
+
+	var payload dtoenterprise.DepartmentUsageReportConfigResponse
+	require.NoError(t, common.Unmarshal(saveResponse.Data, &payload))
+	require.Equal(t, []string{"ops@example.com", "cto@example.com"}, payload.Item.Receivers)
+	require.Equal(t, "weekly", payload.Item.Frequency)
+	require.Equal(t, "last30d", payload.Item.RangeType)
+	require.True(t, payload.Item.Enabled)
+
+	getRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/reports", nil)
+	getResponse := decodeEnterpriseAPIResponse(t, getRecorder)
+	require.True(t, getResponse.Success, getResponse.Message)
+	require.Contains(t, getRecorder.Body.String(), `"receivers":["ops@example.com","cto@example.com"]`)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.NotEmpty(t, actions)
+	require.Equal(t, entservice.AdminActionUsageReportSet, actions[len(actions)-1].ActionType)
+	require.Equal(t, entservice.AdminObjectUsageReportJob, actions[len(actions)-1].ObjectType)
+	require.Contains(t, actions[len(actions)-1].Payload, "ops@example.com")
+}
+
+func strPtr(value string) *string {
+	return &value
 }

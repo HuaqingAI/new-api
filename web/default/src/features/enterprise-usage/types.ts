@@ -100,6 +100,65 @@ export type DepartmentUsageDetailResponse = {
   recent_logs_entry: DepartmentUsageLogEntryLink
 }
 
+export type DepartmentUsageReportTopDepartment = {
+  dept_id: number | null
+  dept_name: string
+  request_count: number
+  quota: number
+  user_count: number
+}
+
+export type DepartmentUsageReportGrowthDepartment = {
+  dept_id: number | null
+  dept_name: string
+  request_count: number
+  previous_request_count: number
+  quota: number
+  previous_quota: number
+  request_growth_rate: number
+  quota_growth_rate: number
+}
+
+export type DepartmentUsageReportSnapshot = {
+  window_start: number
+  window_end: number
+  previous_window_start: number
+  previous_window_end: number
+  department_count: number
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  quota: number
+  user_count: number
+  top_departments: DepartmentUsageReportTopDepartment[]
+  growth_departments: DepartmentUsageReportGrowthDepartment[]
+}
+
+export type DepartmentUsageReportJobItem = {
+  id: number
+  tenant_id: number
+  receivers: string[]
+  frequency: 'daily' | 'weekly' | 'monthly'
+  range_type: 'today' | 'last7d' | 'last30d'
+  enabled: boolean
+  status: 'pending' | 'running' | 'success' | 'failed'
+  last_run_at: number
+  next_run_at: number
+  last_success_at: number
+  last_window_start: number
+  last_window_end: number
+  run_count: number
+  failure_count: number
+  error_reason: string
+  last_snapshot?: DepartmentUsageReportSnapshot | null
+  created_at: number
+  updated_at: number
+}
+
+export type DepartmentUsageReportConfigResponse = {
+  item: DepartmentUsageReportJobItem
+}
+
 export type EnterpriseUsagePreset =
   | 'today'
   | 'yesterday'

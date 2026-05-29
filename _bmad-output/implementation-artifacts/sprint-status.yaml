@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-29 21:05:00 +08:00
+last_updated: 2026-05-29 22:17:00 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +70,7 @@ development_status:
   4-2-display-department-usage-overview-dashboard: done
   4-3-view-department-usage-details: done
   4-4-export-department-usage-csv: done
-  4-5-configure-and-send-scheduled-usage-reports: backlog
+  4-5-configure-and-send-scheduled-usage-reports: done
   epic-4-retrospective: optional
 
   epic-5: backlog

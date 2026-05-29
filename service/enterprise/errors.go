@@ -49,6 +49,9 @@ var (
 	ErrDingTalkOAuthRegistrationDisabled                 = errors.New("enterprise dingtalk oauth registration disabled")
 	ErrDingTalkSyncNotEnabled                            = errors.New("enterprise dingtalk sync not enabled")
 	ErrDingTalkSyncTaskNotFound                          = errors.New("enterprise dingtalk sync task not found")
+	ErrUsageReportInvalidInput                           = errors.New("enterprise usage report input invalid")
+	ErrUsageReportInvalidEmail                           = errors.New("enterprise usage report email invalid")
+	ErrUsageReportNotConfigured                          = errors.New("enterprise usage report not configured")
 )
 
 type QuotaAllocationBudgetError struct {

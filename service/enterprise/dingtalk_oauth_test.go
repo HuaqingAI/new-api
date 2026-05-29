@@ -2,7 +2,10 @@ package enterprise_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -187,6 +190,72 @@ func TestDingTalkOAuthBindIdentityToCurrentUser(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 206, binding.UserId)
 	require.Equal(t, "union:union-bind", binding.IdentityKey)
+}
+
+func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.T) {
+	_, db := newDingTalkOAuthTestService(t)
+	openAPIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gettoken":
+			_, _ = w.Write([]byte(`{"errcode":0,"access_token":"app-token"}`))
+		case "/topapi/user/getbyunionid":
+			_, _ = w.Write([]byte(`{"errcode":60020,"errmsg":"access denied"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(openAPIServer.Close)
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.0/oauth2/userAccessToken":
+			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-1","unionId":"union-1"}`))
+		case "/v1.0/contact/users/me":
+			_, _ = w.Write([]byte(`{"openId":"open-1","unionId":"union-1","nick":"Ding User"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(apiServer.Close)
+	client := entservice.NewDingTalkClient(
+		entservice.WithDingTalkOpenAPIBaseURL(openAPIServer.URL),
+		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
+		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+	)
+	svc := entservice.NewDingTalkOAuthService(db, client)
+
+	identity, err := svc.ResolveIdentity(context.Background(), 0, "code-1")
+
+	require.NoError(t, err)
+	require.Equal(t, "union-1", identity.UnionId)
+	require.Equal(t, "open-1", identity.OpenId)
+	require.Equal(t, "", identity.ExternalUserId)
+}
+
+func TestDingTalkOAuthResolveIdentityUsesTokenIdentityWhenUserInfoFails(t *testing.T) {
+	_, db := newDingTalkOAuthTestService(t)
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.0/oauth2/userAccessToken":
+			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-token","unionId":"union-token"}`))
+		case "/v1.0/contact/users/me":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"code":"Forbidden","message":"access denied"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(apiServer.Close)
+	client := entservice.NewDingTalkClient(
+		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
+		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+	)
+	svc := entservice.NewDingTalkOAuthService(db, client)
+
+	identity, err := svc.ResolveIdentity(context.Background(), 0, "code-1")
+
+	require.NoError(t, err)
+	require.Equal(t, "union-token", identity.UnionId)
+	require.Equal(t, "open-token", identity.OpenId)
 }
 
 func newDingTalkOAuthTestService(t *testing.T) (*entservice.DingTalkOAuthService, *gorm.DB) {

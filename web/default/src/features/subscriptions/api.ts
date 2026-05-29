@@ -23,6 +23,7 @@ import type {
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
+  ReorderUserSubscriptionRequest,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
@@ -101,6 +102,20 @@ export async function deleteUserSubscription(
   const res = await api.delete(
     `/api/subscription/admin/user_subscriptions/${subId}`
   )
+  return res.data
+}
+
+export async function reorderUserSubscriptionByAdmin(
+  data: ReorderUserSubscriptionRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/subscription/admin/user_subscriptions/reorder', data)
+  return res.data
+}
+
+export async function reorderSelfSubscription(
+  data: ReorderUserSubscriptionRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/subscription/self/reorder', data)
   return res.data
 }
 

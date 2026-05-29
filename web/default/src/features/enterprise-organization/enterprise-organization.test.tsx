@@ -13,9 +13,15 @@ import i18n from '@/i18n/config'
 import {
   EnterpriseOrganizationContent,
   DepartmentBudgetStatusCard,
+  QuotaAllocationTable,
   createBudgetSchema,
+  createAllocationSchema,
 } from './index'
-import type { DepartmentBudgetItem, DepartmentTreeNode } from './types'
+import type {
+  DepartmentBudgetItem,
+  DepartmentTreeNode,
+  QuotaAllocationItem,
+} from './types'
 
 const rootRoute = createRootRoute()
 const indexRoute = createRoute({
@@ -201,6 +207,30 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(subscription.success, true)
   })
 
+  test('allocation schema rejects empty target and quota, then accepts valid input', () => {
+    const schema = createAllocationSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      department_id: 9,
+      department_budget_id: 0,
+      target_user_id: 0,
+      committed_quota: 0,
+      reason: '',
+    })
+    assert.equal(invalid.success, false)
+
+    const valid = schema.safeParse({
+      tenant_id: 0,
+      department_id: 9,
+      department_budget_id: 11,
+      target_user_id: 2001,
+      committed_quota: 300,
+      reason: 'department allocation',
+    })
+    assert.equal(valid.success, true)
+  })
+
   test('renders balance budget details without subscription-only fields', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -232,6 +262,55 @@ describe('Enterprise organization department tree workflow', () => {
 
     assert.doesNotMatch(html, />Weekly</)
     assert.doesNotMatch(html, />Custom \\(seconds\\)</)
+  })
+
+  test('renders quota allocation empty state with enterprise wallet guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable items={[]} loading={false} />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /No wallet allocations yet/)
+    assert.match(
+      html,
+      /Create an allocation to place a department wallet ahead of the member primary wallet\./
+    )
+  })
+
+  test('renders quota allocation rows with committed quota, wallet id, and status', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable
+          loading={false}
+          items={[
+            quotaAllocation({
+              id: 7,
+              department_budget_id: 11,
+              department_id: 9,
+              target_user_id: 2001,
+              wallet_id: 301,
+              actor_id: 1001,
+              committed_quota: 300,
+              status: 'active',
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Target User ID',
+      'Allocation Quota',
+      'Wallet ID',
+      'Status',
+      '2001',
+      '300',
+      '301',
+      'active',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
   })
 })
 
@@ -286,6 +365,30 @@ function departmentBudget(
     custom_seconds: overrides.custom_seconds ?? 0,
     expires_at: overrides.expires_at ?? 0,
     parent_status: overrides.parent_status ?? '',
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function quotaAllocation(
+  overrides: Partial<QuotaAllocationItem> = {}
+): QuotaAllocationItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    department_budget_id: overrides.department_budget_id ?? 1,
+    department_id: overrides.department_id ?? 2,
+    target_user_id: overrides.target_user_id ?? 2001,
+    wallet_id: overrides.wallet_id ?? 101,
+    actor_id: overrides.actor_id ?? 1001,
+    committed_quota: overrides.committed_quota ?? 300,
+    budget_type_snapshot: overrides.budget_type_snapshot ?? 'balance',
+    cycle_type_snapshot: overrides.cycle_type_snapshot ?? 'never',
+    cycle_started_at_snapshot: overrides.cycle_started_at_snapshot ?? 0,
+    custom_seconds_snapshot: overrides.custom_seconds_snapshot ?? 0,
+    expires_at_snapshot: overrides.expires_at_snapshot ?? 0,
+    reason: overrides.reason ?? '',
+    status: overrides.status ?? 'active',
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

@@ -128,6 +128,12 @@ quota.insufficient: "额度不足"
 quota.warning_invalid: "无效的预警类型"
 quota.threshold_gt_zero: "预警阈值必须大于0"
 
+# Enterprise organization messages
+enterprise.organization.quota_allocation_budget_inactive: "部门预算池当前不是可分配状态"
+enterprise.organization.quota_allocation_quota_invalid: "分配额度必须大于0"
+enterprise.organization.quota_allocation_quota_exceeded: "分配额度超过部门预算池剩余额度"
+enterprise.organization.quota_allocation_user_out_of_department: "目标用户不是该部门的在册成员"
+
 # Subscription messages
 subscription.not_enabled: "套餐未启用"
 subscription.title_empty: "套餐标题不能为空"
@@ -140,6 +146,8 @@ subscription.reset_cycle_gt_zero: "自定义重置周期需大于0秒"
 subscription.purchase_max: "已达到该套餐购买上限"
 subscription.invalid_id: "无效的订阅ID"
 subscription.invalid_user_id: "无效的用户ID"
+subscription.protected_delete: "企业分配钱包不可删除"
+subscription.invalid_sort_order: "无效的钱包排序值"
 
 # Payment messages
 payment.not_configured: "当前管理员未配置支付信息"

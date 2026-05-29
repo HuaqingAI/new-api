@@ -1,0 +1,4 @@
+./lexer.go
+./state.go
+./token.go
+./utils.go

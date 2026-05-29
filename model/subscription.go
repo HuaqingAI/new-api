@@ -1,14 +1,17 @@
 package model
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
@@ -36,11 +39,16 @@ const (
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrEnterpriseSubscriptionDeletion = errors.New("enterprise allocation wallet cannot be deleted")
 )
 
 const (
 	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
 	subscriptionPlanInfoCacheNamespace = "new-api:subscription_plan_info:v1"
+	SubscriptionSourceTypeOrder        = "order"
+	SubscriptionSourceTypeAdmin        = "admin"
+	SubscriptionSourceTypeBalance      = "balance"
+	SubscriptionSourceTypeEnterprise   = "enterprise_allocation"
 )
 
 var (
@@ -245,7 +253,11 @@ type UserSubscription struct {
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
 
-	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
+	Source             string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
+	SourceType         string `json:"source_type" gorm:"type:varchar(32);not null;default:'order';index"`
+	SourceAllocationId int    `json:"source_allocation_id" gorm:"not null;default:0;index"`
+	SortOrder          int    `json:"sort_order" gorm:"type:int;not null;default:0;index"`
+	IsPrimary          bool   `json:"is_primary" gorm:"not null;default:false"`
 
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
@@ -261,6 +273,12 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
 	s.UpdatedAt = now
+	if strings.TrimSpace(s.SourceType) == "" {
+		s.SourceType = strings.TrimSpace(s.Source)
+		if s.SourceType == "" {
+			s.SourceType = SubscriptionSourceTypeOrder
+		}
+	}
 	return nil
 }
 
@@ -271,6 +289,335 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 
 type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
+}
+
+type CreateUserSubscriptionOptions struct {
+	Source             string
+	SourceType         string
+	SourceAllocationId int
+	SortOrder          *int
+	IsPrimary          *bool
+}
+
+func normalizeSubscriptionSourceType(source string) string {
+	switch strings.TrimSpace(source) {
+	case SubscriptionSourceTypeAdmin,
+		SubscriptionSourceTypeBalance,
+		SubscriptionSourceTypeEnterprise:
+		return strings.TrimSpace(source)
+	case "":
+		return SubscriptionSourceTypeOrder
+	default:
+		return SubscriptionSourceTypeOrder
+	}
+}
+
+func subscriptionPrimaryScore(sub UserSubscription) int {
+	if sub.SourceType == SubscriptionSourceTypeEnterprise {
+		return 0
+	}
+	if sub.IsPrimary {
+		return 1
+	}
+	return 2
+}
+
+func sortUserSubscriptions(subs []UserSubscription) {
+	slices.SortStableFunc(subs, func(a, b UserSubscription) int {
+		if ap, bp := subscriptionPrimaryScore(a), subscriptionPrimaryScore(b); ap != bp {
+			return cmp.Compare(ap, bp)
+		}
+		if a.SortOrder != b.SortOrder {
+			return cmp.Compare(a.SortOrder, b.SortOrder)
+		}
+		if a.EndTime != b.EndTime {
+			return cmp.Compare(a.EndTime, b.EndTime)
+		}
+		return cmp.Compare(a.Id, b.Id)
+	})
+}
+
+func activeSubscriptionWhere(db *gorm.DB, now int64) *gorm.DB {
+	return db.Where("status = ? AND (end_time = 0 OR end_time > ?)", "active", now)
+}
+
+func nextUserSubscriptionSortOrderTx(tx *gorm.DB, userId int) (int, error) {
+	if tx == nil {
+		tx = DB
+	}
+	var last UserSubscription
+	err := tx.Where("user_id = ?", userId).Order("sort_order DESC, id DESC").First(&last).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 100, nil
+		}
+		return 0, err
+	}
+	if last.SortOrder >= 100 {
+		return last.SortOrder + 100, nil
+	}
+	return 100, nil
+}
+
+func defaultEnterpriseSortOrderTx(tx *gorm.DB, userId int) (int, error) {
+	if tx == nil {
+		tx = DB
+	}
+	var minNonEnterprise UserSubscription
+	err := tx.Where("user_id = ? AND source_type <> ?", userId, SubscriptionSourceTypeEnterprise).
+		Order("sort_order ASC, id ASC").
+		First(&minNonEnterprise).Error
+	if err == nil {
+		if minNonEnterprise.SortOrder > 1 {
+			return minNonEnterprise.SortOrder - 1, nil
+		}
+		return minNonEnterprise.SortOrder - 100, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	var minAny UserSubscription
+	err = tx.Where("user_id = ?", userId).Order("sort_order ASC, id ASC").First(&minAny).Error
+	if err == nil {
+		return minAny.SortOrder - 100, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	return 0, err
+}
+
+func buildEnterpriseSubscriptionRuntimePlanTx(tx *gorm.DB, sub *UserSubscription) (*SubscriptionPlan, error) {
+	if sub == nil {
+		return nil, errors.New("subscription is nil")
+	}
+	if sub.SourceType != SubscriptionSourceTypeEnterprise || sub.SourceAllocationId <= 0 {
+		return nil, nil
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var allocation entmodel.QuotaAllocation
+	if err := tx.Where("id = ?", sub.SourceAllocationId).First(&allocation).Error; err != nil {
+		return nil, err
+	}
+	return &SubscriptionPlan{
+		Id:                      0,
+		Title:                   "enterprise_allocation",
+		TotalAmount:             sub.AmountTotal,
+		QuotaResetPeriod:        NormalizeResetPeriod(allocation.CycleTypeSnapshot),
+		QuotaResetCustomSeconds: allocation.CustomSecondsSnapshot,
+	}, nil
+}
+
+func resolveSubscriptionRuntimePlanTx(tx *gorm.DB, sub *UserSubscription) (*SubscriptionPlan, error) {
+	if sub == nil {
+		return nil, errors.New("subscription is nil")
+	}
+	if sub.PlanId > 0 {
+		return getSubscriptionPlanByIdTx(tx, sub.PlanId)
+	}
+	return buildEnterpriseSubscriptionRuntimePlanTx(tx, sub)
+}
+
+func CreateEnterpriseAllocationSubscriptionTx(tx *gorm.DB, userId int, allocationId int, quota int64, cycleType string, cycleStartedAt int64, customSeconds int64, expiresAt int64) (*UserSubscription, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 || quota <= 0 {
+		return nil, errors.New("invalid enterprise allocation subscription input")
+	}
+	sortOrder, err := defaultEnterpriseSortOrderTx(tx, userId)
+	if err != nil {
+		return nil, err
+	}
+	now := GetDBTimestamp()
+	startTime := now
+	if cycleStartedAt > 0 {
+		startTime = cycleStartedAt
+	}
+	sub := &UserSubscription{
+		UserId:             userId,
+		PlanId:             0,
+		AmountTotal:        quota,
+		AmountUsed:         0,
+		StartTime:          startTime,
+		EndTime:            expiresAt,
+		Status:             "active",
+		Source:             SubscriptionSourceTypeEnterprise,
+		SourceType:         SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: allocationId,
+		SortOrder:          sortOrder,
+		IsPrimary:          false,
+		UpgradeGroup:       "",
+		PrevUserGroup:      "",
+	}
+	period := NormalizeResetPeriod(cycleType)
+	if period != SubscriptionResetNever {
+		plan := &SubscriptionPlan{
+			QuotaResetPeriod:        period,
+			QuotaResetCustomSeconds: customSeconds,
+		}
+		baseUnix := cycleStartedAt
+		if baseUnix <= 0 {
+			baseUnix = now
+		}
+		base := time.Unix(baseUnix, 0)
+		sub.LastResetTime = base.Unix()
+		sub.NextResetTime = calcNextResetTime(base, plan, expiresAt)
+	}
+	if err := tx.Create(sub).Error; err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
+func ReorderUserSubscription(userId int, userSubscriptionId int, targetSortOrder int) error {
+	if userId <= 0 || userSubscriptionId <= 0 {
+		return errors.New("invalid subscription reorder input")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND user_id = ?", userSubscriptionId, userId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if targetSortOrder == sub.SortOrder {
+			return nil
+		}
+		return tx.Model(&UserSubscription{}).
+			Where("id = ?", sub.Id).
+			Updates(map[string]any{
+				"sort_order": targetSortOrder,
+				"updated_at": common.GetTimestamp(),
+			}).Error
+	})
+}
+
+func AdminReorderUserSubscription(userSubscriptionId int, targetSortOrder int) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid subscription reorder input")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if targetSortOrder == sub.SortOrder {
+			return nil
+		}
+		return tx.Model(&UserSubscription{}).
+			Where("id = ?", sub.Id).
+			Updates(map[string]any{
+				"sort_order": targetSortOrder,
+				"updated_at": common.GetTimestamp(),
+			}).Error
+	})
+}
+
+func CreateUserSubscriptionFromPlanWithOptionsTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, options CreateUserSubscriptionOptions) (*UserSubscription, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if plan == nil || plan.Id == 0 {
+		return nil, errors.New("invalid plan")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	source := strings.TrimSpace(options.Source)
+	if source == "" {
+		source = SubscriptionSourceTypeOrder
+	}
+	sourceType := normalizeSubscriptionSourceType(options.SourceType)
+	if sourceType == SubscriptionSourceTypeOrder && source != "" {
+		sourceType = normalizeSubscriptionSourceType(source)
+	}
+	isPrimary := sourceType != SubscriptionSourceTypeEnterprise
+	if options.IsPrimary != nil {
+		isPrimary = *options.IsPrimary
+	}
+	sortOrder := 0
+	if options.SortOrder != nil {
+		sortOrder = *options.SortOrder
+	} else if sourceType == SubscriptionSourceTypeEnterprise {
+		value, err := defaultEnterpriseSortOrderTx(tx, userId)
+		if err != nil {
+			return nil, err
+		}
+		sortOrder = value
+	} else {
+		value, err := nextUserSubscriptionSortOrderTx(tx, userId)
+		if err != nil {
+			return nil, err
+		}
+		sortOrder = value
+	}
+	if plan.MaxPurchasePerUser > 0 {
+		var count int64
+		if err := tx.Model(&UserSubscription{}).
+			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
+			Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count >= int64(plan.MaxPurchasePerUser) {
+			return nil, errors.New("已达到该套餐购买上限")
+		}
+	}
+	nowUnix := GetDBTimestamp()
+	now := time.Unix(nowUnix, 0)
+	endUnix, err := calcPlanEndTime(now, plan)
+	if err != nil {
+		return nil, err
+	}
+	resetBase := now
+	nextReset := calcNextResetTime(resetBase, plan, endUnix)
+	lastReset := int64(0)
+	if nextReset > 0 {
+		lastReset = now.Unix()
+	}
+	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
+	prevGroup := ""
+	if upgradeGroup != "" {
+		currentGroup, err := getUserGroupByIdTx(tx, userId)
+		if err != nil {
+			return nil, err
+		}
+		if currentGroup != upgradeGroup {
+			prevGroup = currentGroup
+			if err := tx.Model(&User{}).Where("id = ?", userId).
+				Update("group", upgradeGroup).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	sub := &UserSubscription{
+		UserId:             userId,
+		PlanId:             plan.Id,
+		AmountTotal:        plan.TotalAmount,
+		AmountUsed:         0,
+		StartTime:          now.Unix(),
+		EndTime:            endUnix,
+		Status:             "active",
+		Source:             source,
+		SourceType:         sourceType,
+		SourceAllocationId: options.SourceAllocationId,
+		SortOrder:          sortOrder,
+		IsPrimary:          isPrimary,
+		LastResetTime:      lastReset,
+		NextResetTime:      nextReset,
+		UpgradeGroup:       upgradeGroup,
+		PrevUserGroup:      prevGroup,
+		CreatedAt:          common.GetTimestamp(),
+		UpdatedAt:          common.GetTimestamp(),
+	}
+	if err := tx.Create(sub).Error; err != nil {
+		return nil, err
+	}
+	return sub, nil
 }
 
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
@@ -418,8 +765,8 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 		return "", nil
 	}
 	var activeSub UserSubscription
-	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
-		sub.UserId, "active", now, sub.Id).
+	activeQuery := activeSubscriptionWhere(tx, now).
+		Where("user_id = ? AND id <> ? AND upgrade_group <> ''", sub.UserId, sub.Id).
 		Order("end_time desc, id desc").
 		Limit(1).
 		Find(&activeSub)
@@ -438,73 +785,10 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 }
 
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
-	if tx == nil {
-		return nil, errors.New("tx is nil")
-	}
-	if plan == nil || plan.Id == 0 {
-		return nil, errors.New("invalid plan")
-	}
-	if userId <= 0 {
-		return nil, errors.New("invalid user id")
-	}
-	if plan.MaxPurchasePerUser > 0 {
-		var count int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
-			Count(&count).Error; err != nil {
-			return nil, err
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			return nil, errors.New("已达到该套餐购买上限")
-		}
-	}
-	nowUnix := GetDBTimestamp()
-	now := time.Unix(nowUnix, 0)
-	endUnix, err := calcPlanEndTime(now, plan)
-	if err != nil {
-		return nil, err
-	}
-	resetBase := now
-	nextReset := calcNextResetTime(resetBase, plan, endUnix)
-	lastReset := int64(0)
-	if nextReset > 0 {
-		lastReset = now.Unix()
-	}
-	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
-	prevGroup := ""
-	if upgradeGroup != "" {
-		currentGroup, err := getUserGroupByIdTx(tx, userId)
-		if err != nil {
-			return nil, err
-		}
-		if currentGroup != upgradeGroup {
-			prevGroup = currentGroup
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("group", upgradeGroup).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-	sub := &UserSubscription{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		AmountTotal:   plan.TotalAmount,
-		AmountUsed:    0,
-		StartTime:     now.Unix(),
-		EndTime:       endUnix,
-		Status:        "active",
-		Source:        source,
-		LastResetTime: lastReset,
-		NextResetTime: nextReset,
-		UpgradeGroup:  upgradeGroup,
-		PrevUserGroup: prevGroup,
-		CreatedAt:     common.GetTimestamp(),
-		UpdatedAt:     common.GetTimestamp(),
-	}
-	if err := tx.Create(sub).Error; err != nil {
-		return nil, err
-	}
-	return sub, nil
+	return CreateUserSubscriptionFromPlanWithOptionsTx(tx, userId, plan, CreateUserSubscriptionOptions{
+		Source:     source,
+		SourceType: source,
+	})
 }
 
 // Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
@@ -773,12 +1057,12 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	}
 	now := common.GetTimestamp()
 	var subs []UserSubscription
-	err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-		Order("end_time desc, id desc").
+	err := activeSubscriptionWhere(DB, now).Where("user_id = ?", userId).
 		Find(&subs).Error
 	if err != nil {
 		return nil, err
 	}
+	sortUserSubscriptions(subs)
 	return buildSubscriptionSummaries(subs), nil
 }
 
@@ -790,8 +1074,8 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	}
 	now := common.GetTimestamp()
 	var count int64
-	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+	if err := activeSubscriptionWhere(DB.Model(&UserSubscription{}), now).
+		Where("user_id = ?", userId).
 		Count(&count).Error; err != nil {
 		return false, err
 	}
@@ -805,11 +1089,11 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	}
 	var subs []UserSubscription
 	err := DB.Where("user_id = ?", userId).
-		Order("end_time desc, id desc").
 		Find(&subs).Error
 	if err != nil {
 		return nil, err
 	}
+	sortUserSubscriptions(subs)
 	return buildSubscriptionSummaries(subs), nil
 }
 
@@ -886,6 +1170,9 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
+		}
+		if sub.SourceType == SubscriptionSourceTypeEnterprise {
+			return ErrEnterpriseSubscriptionDeletion
 		}
 		userId = sub.UserId
 		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
@@ -1106,23 +1393,25 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
-			Order("end_time asc, id asc").
+		if err := activeSubscriptionWhere(tx.Set("gorm:query_option", "FOR UPDATE"), now).
+			Where("user_id = ?", userId).
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
 		}
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		sortUserSubscriptions(subs)
 		for _, candidate := range subs {
 			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			plan, err := resolveSubscriptionRuntimePlanTx(tx, &sub)
 			if err != nil {
 				return err
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
-				return err
+			if plan != nil {
+				if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+					return err
+				}
 			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
@@ -1217,7 +1506,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		plan, err := resolveSubscriptionRuntimePlanTx(nil, &subCopy)
 		if err != nil || plan == nil {
 			continue
 		}
@@ -1267,6 +1556,14 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 	var sub UserSubscription
 	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 		return nil, err
+	}
+	if sub.PlanId <= 0 && sub.SourceType == SubscriptionSourceTypeEnterprise {
+		info := &SubscriptionPlanInfo{
+			PlanId:    0,
+			PlanTitle: "enterprise_allocation",
+		}
+		_ = getSubscriptionPlanInfoCache().SetWithTTL(cacheKey, *info, subscriptionPlanInfoCacheTTL())
+		return info, nil
 	}
 	plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
 	if err != nil {

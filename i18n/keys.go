@@ -138,6 +138,8 @@ const (
 	MsgSubscriptionPurchaseMax      = "subscription.purchase_max"
 	MsgSubscriptionInvalidId        = "subscription.invalid_id"
 	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
+	MsgSubscriptionProtectedDelete  = "subscription.protected_delete"
+	MsgSubscriptionInvalidSortOrder = "subscription.invalid_sort_order"
 )
 
 // Payment related messages
@@ -351,6 +353,10 @@ const (
 	MsgEnterpriseDepartmentBudgetInvalidCustomSeconds  = "enterprise.organization.department_budget_invalid_custom_seconds"
 	MsgEnterpriseDepartmentBudgetInvalidCycleStartedAt = "enterprise.organization.department_budget_invalid_cycle_started_at"
 	MsgEnterpriseDepartmentBudgetTypeImmutable         = "enterprise.organization.department_budget_type_immutable"
+	MsgEnterpriseQuotaAllocationBudgetInactive         = "enterprise.organization.quota_allocation_budget_inactive"
+	MsgEnterpriseQuotaAllocationQuotaInvalid           = "enterprise.organization.quota_allocation_quota_invalid"
+	MsgEnterpriseQuotaAllocationQuotaExceeded          = "enterprise.organization.quota_allocation_quota_exceeded"
+	MsgEnterpriseQuotaAllocationUserOutOfDepartment    = "enterprise.organization.quota_allocation_user_out_of_department"
 	MsgEnterpriseDingTalkConfigNotFound                = "enterprise.dingtalk.config_not_found"
 	MsgEnterpriseDingTalkMissingCredentials            = "enterprise.dingtalk.missing_credentials"
 	MsgEnterpriseDingTalkInvalidCallbackURL            = "enterprise.dingtalk.invalid_callback_url"

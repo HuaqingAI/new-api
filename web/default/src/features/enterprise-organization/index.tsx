@@ -34,7 +34,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { z } from 'zod'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
@@ -84,13 +84,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatTimestamp } from '@/lib/format'
 import {
   addDepartmentMember,
+  createQuotaAllocation,
   deactivateDepartmentMember,
   createDepartmentBudget,
   departmentBudgetQueryKey,
   enterpriseOrganizationQueryKey,
   getDepartmentBudget,
   getDepartmentMembers,
+  getQuotaAllocations,
   getUserDepartments,
+  quotaAllocationQueryKey,
   replaceUserDepartments,
   restoreDepartmentMember,
 } from './api'
@@ -100,6 +103,7 @@ import type {
   DepartmentBudgetItem,
   DepartmentMemberItem,
   MembershipStatus,
+  QuotaAllocationItem,
   UserDepartmentItem,
 } from './types'
 
@@ -163,6 +167,19 @@ export function createBudgetSchema(t: (key: string) => string) {
         }
       }
     })
+}
+
+export function createAllocationSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    department_id: z.coerce.number().int().positive(),
+    department_budget_id: z.coerce.number().int().positive(),
+    target_user_id: z.coerce.number().int().positive(),
+    committed_quota: z.coerce.number().int().positive({
+      message: t('Allocation quota must be greater than 0'),
+    }),
+    reason: z.string().trim().max(500).default(''),
+  })
 }
 
 function statusVariant(status: MembershipStatus) {
@@ -649,8 +666,12 @@ function DepartmentBudgetPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const budgetSchema = createBudgetSchema(t)
-  const form = useForm<z.infer<typeof budgetSchema>>({
-    resolver: zodResolver(budgetSchema),
+  const allocationSchema = createAllocationSchema(t)
+  type BudgetFormValues = z.infer<typeof budgetSchema>
+  type AllocationFormValues = z.infer<typeof allocationSchema>
+
+  const form = useForm<BudgetFormValues>({
+    resolver: zodResolver(budgetSchema) as unknown as Resolver<BudgetFormValues>,
     defaultValues: {
       tenant_id: 0,
       department_id: 1,
@@ -661,6 +682,17 @@ function DepartmentBudgetPanel() {
       cycle_started_at: '',
       custom_seconds: 0,
       expires_at: '',
+    },
+  })
+  const allocationForm = useForm<AllocationFormValues>({
+    resolver: zodResolver(allocationSchema) as unknown as Resolver<AllocationFormValues>,
+    defaultValues: {
+      tenant_id: 0,
+      department_id: 1,
+      department_budget_id: 0,
+      target_user_id: 0,
+      committed_quota: 0,
+      reason: '',
     },
   })
   const tenantId = form.watch('tenant_id')
@@ -679,8 +711,26 @@ function DepartmentBudgetPanel() {
     enabled: Boolean(departmentId),
   })
 
+  const currentBudgetId = budgetQuery.data?.id ?? 0
+
+  const allocationListQuery = useQuery({
+    queryKey: [
+      ...quotaAllocationQueryKey,
+      tenantId,
+      departmentId,
+      currentBudgetId,
+    ],
+    queryFn: async () => {
+      if (!currentBudgetId || !departmentId) return []
+      const result = await getQuotaAllocations(currentBudgetId, tenantId, departmentId)
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+    enabled: Boolean(currentBudgetId && departmentId),
+  })
+
   const createMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof budgetSchema>) => {
+    mutationFn: async (values: BudgetFormValues) => {
       const payload =
         values.type === 'balance'
           ? {
@@ -714,9 +764,42 @@ function DepartmentBudgetPanel() {
       await queryClient.invalidateQueries({
         queryKey: enterpriseOrganizationQueryKey,
       })
+      const budgetId = result.data?.item?.id ?? 0
+      allocationForm.setValue('department_budget_id', budgetId)
       toast.success(t('Department budget saved'))
     },
   })
+
+  const allocationMutation = useMutation({
+    mutationFn: async (values: AllocationFormValues) =>
+      createQuotaAllocation({
+        tenant_id: Number(values.tenant_id),
+        department_id: Number(values.department_id),
+        department_budget_id: Number(values.department_budget_id),
+        target_user_id: Number(values.target_user_id),
+        committed_quota: Number(values.committed_quota),
+        reason: values.reason.trim() || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
+      toast.success(t('Wallet allocation created'))
+    },
+  })
+
+  if (allocationForm.getValues('tenant_id') !== tenantId) {
+    allocationForm.setValue('tenant_id', tenantId)
+  }
+  if (allocationForm.getValues('department_id') !== departmentId) {
+    allocationForm.setValue('department_id', departmentId)
+  }
+  if (allocationForm.getValues('department_budget_id') !== currentBudgetId) {
+    allocationForm.setValue('department_budget_id', currentBudgetId)
+  }
 
   return (
     <div className='grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
@@ -898,8 +981,145 @@ function DepartmentBudgetPanel() {
           </Form>
         </CardContent>
       </Card>
-      <DepartmentBudgetStatusCard item={budgetQuery.data ?? null} />
+      <div className='space-y-4'>
+        <DepartmentBudgetStatusCard item={budgetQuery.data ?? null} />
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('Allocate Wallet')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Allocate department budget into a member wallet without leaving the budget tab.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-4'>
+            <Form {...allocationForm}>
+              <form
+                className='grid gap-4 md:grid-cols-2'
+                onSubmit={allocationForm.handleSubmit((values) =>
+                  allocationMutation.mutate(values)
+                )}
+              >
+                <FormField
+                  control={allocationForm.control}
+                  name='target_user_id'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Target User ID')}</FormLabel>
+                      <FormControl>
+                        <Input inputMode='numeric' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={allocationForm.control}
+                  name='committed_quota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Allocation Quota')}</FormLabel>
+                      <FormControl>
+                        <Input inputMode='numeric' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={allocationForm.control}
+                  name='reason'
+                  render={({ field }) => (
+                    <FormItem className='md:col-span-2'>
+                      <FormLabel>{t('Reason')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          value={field.value ?? ''}
+                          placeholder={t('Optional allocation note')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className='md:col-span-2 flex justify-end'>
+                  <Button
+                    type='submit'
+                    disabled={!currentBudgetId || allocationMutation.isPending}
+                  >
+                    <CreditCard data-icon='inline-start' />
+                    {t('Create wallet allocation')}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+            <QuotaAllocationTable
+              items={allocationListQuery.data ?? []}
+              loading={allocationListQuery.isLoading}
+            />
+          </CardContent>
+        </Card>
+      </div>
     </div>
+  )
+}
+
+export function QuotaAllocationTable({
+  items,
+  loading,
+}: {
+  items: QuotaAllocationItem[]
+  loading: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-32 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Coins className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No wallet allocations yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t(
+              'Create an allocation to place a department wallet ahead of the member primary wallet.'
+            )}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Target User ID')}</TableHead>
+          <TableHead>{t('Allocation Quota')}</TableHead>
+          <TableHead>{t('Wallet ID')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Created At')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => (
+          <TableRow key={item.id}>
+            <TableCell>{item.target_user_id}</TableCell>
+            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>{item.wallet_id}</TableCell>
+            <TableCell>
+              <Badge variant='secondary'>{item.status}</Badge>
+            </TableCell>
+            <TableCell>{formatTimestamp(item.created_at)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 

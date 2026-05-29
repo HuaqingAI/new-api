@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -366,6 +368,11 @@ type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+type ReorderUserSubscriptionRequest struct {
+	UserSubscriptionId int `json:"user_subscription_id"`
+	TargetSortOrder    int `json:"target_sort_order"`
+}
+
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
 func AdminCreateUserSubscription(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
@@ -422,11 +429,58 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	}
 	msg, err := model.AdminDeleteUserSubscription(subId)
 	if err != nil {
+		if errors.Is(err, model.ErrEnterpriseSubscriptionDeletion) {
+			common.ApiErrorI18n(c, i18n.MsgSubscriptionProtectedDelete)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
 	if msg != "" {
 		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func ReorderUserSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req ReorderUserSubscriptionRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.UserSubscriptionId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidId)
+		return
+	}
+	if req.TargetSortOrder < -100000 || req.TargetSortOrder > 100000 {
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidSortOrder)
+		return
+	}
+	if err := model.ReorderUserSubscription(userId, req.UserSubscriptionId, req.TargetSortOrder); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminReorderUserSubscription(c *gin.Context) {
+	var req ReorderUserSubscriptionRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.UserSubscriptionId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidId)
+		return
+	}
+	if req.TargetSortOrder < -100000 || req.TargetSortOrder > 100000 {
+		common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidSortOrder)
+		return
+	}
+	if err := model.AdminReorderUserSubscription(req.UserSubscriptionId, req.TargetSortOrder); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, nil)

@@ -37,6 +37,10 @@ enterprise.organization.department_budget_invalid_cycle_type: "Subscription budg
 enterprise.organization.department_budget_invalid_custom_seconds: "Custom cycle must be greater than 0 seconds"
 enterprise.organization.department_budget_invalid_cycle_started_at: "Subscription budget cycle start time is required"
 enterprise.organization.department_budget_type_immutable: "Department budget type cannot be changed once created"
+enterprise.organization.quota_allocation_budget_inactive: "Department budget pool is not active"
+enterprise.organization.quota_allocation_quota_invalid: "Allocation quota must be greater than 0"
+enterprise.organization.quota_allocation_quota_exceeded: "Allocation quota exceeds remaining department budget"
+enterprise.organization.quota_allocation_user_out_of_department: "Target user is not an active member of this department"
 error.enterprise.permission.dept_admin_required: "Department administrator permission is required"
 error.enterprise.permission.admin_required: "Enterprise administrator permission is required"
 
@@ -139,6 +143,8 @@ subscription.reset_cycle_gt_zero: "Custom reset cycle must be greater than 0 sec
 subscription.purchase_max: "Purchase limit for this plan has been reached"
 subscription.invalid_id: "Invalid subscription ID"
 subscription.invalid_user_id: "Invalid user ID"
+subscription.protected_delete: "Enterprise allocation wallets cannot be deleted"
+subscription.invalid_sort_order: "Invalid wallet sort order"
 
 # Payment messages
 payment.not_configured: "Payment information has not been configured by administrator"

@@ -21,10 +21,13 @@ import type {
   AddDepartmentMemberPayload,
   ApiResponse,
   CreateDepartmentBudgetPayload,
+  CreateQuotaAllocationPayload,
   DepartmentBudgetResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
   DepartmentTreeNode,
+  QuotaAllocationListResponse,
+  QuotaAllocationResponse,
   ReplaceUserDepartmentsPayload,
   UserDepartmentsResponse,
 } from './types'
@@ -37,6 +40,11 @@ export const enterpriseOrganizationQueryKey = [
 export const departmentBudgetQueryKey = [
   ...enterpriseOrganizationQueryKey,
   'department-budget',
+] as const
+
+export const quotaAllocationQueryKey = [
+  ...enterpriseOrganizationQueryKey,
+  'quota-allocation',
 ] as const
 
 export async function getDepartmentTree(): Promise<
@@ -89,6 +97,28 @@ export async function createDepartmentBudget(
     `/api/enterprise/departments/${departmentId}/budget`,
     payload
   )
+  return res.data
+}
+
+export async function getQuotaAllocations(
+  departmentBudgetId: number,
+  tenantId: number | undefined,
+  departmentId: number
+): Promise<ApiResponse<QuotaAllocationListResponse>> {
+  const res = await api.get('/api/enterprise/quota-allocations', {
+    params: {
+      department_budget_id: departmentBudgetId,
+      department_id: departmentId,
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function createQuotaAllocation(
+  payload: CreateQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post('/api/enterprise/quota-allocations', payload)
   return res.data
 }
 

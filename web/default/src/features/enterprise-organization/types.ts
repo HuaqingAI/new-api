@@ -112,6 +112,34 @@ export type DepartmentBudgetResponse = {
   item: DepartmentBudgetItem | null
 }
 
+export type QuotaAllocationItem = {
+  id: number
+  tenant_id: number
+  department_budget_id: number
+  department_id: number
+  target_user_id: number
+  wallet_id: number
+  actor_id: number
+  committed_quota: number
+  budget_type_snapshot: string
+  cycle_type_snapshot: string
+  cycle_started_at_snapshot: number
+  custom_seconds_snapshot: number
+  expires_at_snapshot: number
+  reason: string
+  status: string
+  created_at: number
+  updated_at: number
+}
+
+export type QuotaAllocationResponse = {
+  item: QuotaAllocationItem | null
+}
+
+export type QuotaAllocationListResponse = {
+  items: QuotaAllocationItem[]
+}
+
 export type CreateDepartmentBudgetPayload = {
   tenant_id?: number
   type: DepartmentBudgetType
@@ -121,6 +149,15 @@ export type CreateDepartmentBudgetPayload = {
   cycle_started_at?: number
   custom_seconds?: number
   expires_at?: number
+}
+
+export type CreateQuotaAllocationPayload = {
+  tenant_id?: number
+  department_budget_id: number
+  department_id: number
+  target_user_id: number
+  committed_quota?: number
+  reason?: string
 }
 
 export type ReplaceUserDepartmentsPayload = {

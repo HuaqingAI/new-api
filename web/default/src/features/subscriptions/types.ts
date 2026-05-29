@@ -59,6 +59,10 @@ export const userSubscriptionSchema = z.object({
   plan_id: z.number(),
   status: z.string(),
   source: z.string().optional(),
+  source_type: z.string().optional(),
+  source_allocation_id: z.number().optional(),
+  sort_order: z.number().optional(),
+  is_primary: z.boolean().optional(),
   start_time: z.number(),
   end_time: z.number(),
   amount_total: z.number(),
@@ -112,6 +116,11 @@ export interface SubscriptionPayResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+}
+
+export interface ReorderUserSubscriptionRequest {
+  user_subscription_id: number
+  target_sort_order: number
 }
 
 // ============================================================================

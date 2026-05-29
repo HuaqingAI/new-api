@@ -1,0 +1,6 @@
+./cookie_go111.go
+./doc.go
+./lex.go
+./options_go111.go
+./sessions.go
+./store.go

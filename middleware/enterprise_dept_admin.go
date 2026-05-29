@@ -18,8 +18,8 @@ func EnterpriseDepartmentAdmin(departmentParam string) gin.HandlerFunc {
 			return
 		}
 
-		departmentId, err := strconv.Atoi(c.Param(departmentParam))
-		if err != nil || departmentId <= 0 {
+		departmentId, ok := enterpriseDepartmentId(c, departmentParam)
+		if !ok {
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			c.Abort()
 			return
@@ -42,6 +42,49 @@ func EnterpriseDepartmentAdmin(departmentParam string) gin.HandlerFunc {
 			return
 		}
 		c.Next()
+	}
+}
+
+func enterpriseDepartmentId(c *gin.Context, key string) (int, bool) {
+	if raw := c.Param(key); raw != "" {
+		departmentId, err := strconv.Atoi(raw)
+		if err != nil || departmentId <= 0 {
+			return 0, false
+		}
+		return departmentId, true
+	}
+	if raw := c.Query(key); raw != "" {
+		departmentId, err := strconv.Atoi(raw)
+		if err != nil || departmentId <= 0 {
+			return 0, false
+		}
+		return departmentId, true
+	}
+	if c.Request.Body == nil || c.Request.ContentLength == 0 {
+		return 0, false
+	}
+	var req map[string]any
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		return 0, false
+	}
+	value, ok := req[key]
+	if !ok {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case float64:
+		if typed <= 0 || typed != float64(int(typed)) {
+			return 0, false
+		}
+		return int(typed), true
+	case string:
+		departmentId, err := strconv.Atoi(typed)
+		if err != nil || departmentId <= 0 {
+			return 0, false
+		}
+		return departmentId, true
+	default:
+		return 0, false
 	}
 }
 

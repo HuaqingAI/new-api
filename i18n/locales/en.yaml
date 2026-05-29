@@ -308,3 +308,6 @@ enterprise.dingtalk.oauth_binding_conflict: "This DingTalk employee cannot be sa
 enterprise.dingtalk.sync_started: "DingTalk address book sync started"
 enterprise.dingtalk.sync_not_enabled: "DingTalk address book sync is not enabled"
 enterprise.dingtalk.sync_task_not_found: "DingTalk sync task not found"
+enterprise.dingtalk.sync_conflict_not_found: "DingTalk sync conflict not found"
+enterprise.dingtalk.sync_conflict_not_pending: "DingTalk sync conflict is no longer pending"
+enterprise.dingtalk.sync_conflict_no_candidate: "DingTalk sync conflict has no single candidate user"

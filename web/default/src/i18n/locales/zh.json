@@ -4615,6 +4615,10 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Bind DingTalk identity": "绑定钉钉身份",
+    "Bind candidate": "绑定候选用户",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "将此钉钉身份绑定到候选用户 #{{id}}，并将冲突标记为已解决。",
+    "DingTalk sync conflict resolved": "钉钉同步冲突已解决"
   }
 }

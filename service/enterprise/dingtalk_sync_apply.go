@@ -234,43 +234,40 @@ type dingTalkUserConflictCandidate struct {
 	Details         string
 }
 
+type dingTalkConflictCandidateLookup struct {
+	Matched         bool
+	CandidateUserId int
+}
+
 func (s *DingTalkSyncService) detectUserConflict(ctx context.Context, tenantId int, dingTalkUser DingTalkDepartmentUserInfo) (dingTalkUserConflictCandidate, bool, error) {
 	var candidates []dingTalkUserConflictCandidate
 	email := strings.TrimSpace(dingTalkUser.Email)
 	if email != "" {
-		var users []model.User
-		if err := s.db.WithContext(ctx).Unscoped().Where("email = ?", email).Limit(2).Find(&users).Error; err != nil {
+		lookup, err := findDingTalkEmailConflictCandidate(s.db.WithContext(ctx), email)
+		if err != nil {
 			return dingTalkUserConflictCandidate{}, false, err
 		}
-		if len(users) > 0 {
-			candidateUserId := 0
-			if len(users) == 1 {
-				candidateUserId = users[0].Id
-			}
+		if lookup.Matched {
 			candidates = append(candidates, dingTalkUserConflictCandidate{
 				ConflictType:    "email",
-				CandidateUserId: candidateUserId,
+				CandidateUserId: lookup.CandidateUserId,
 				Details:         "email_matches_existing_local_user",
 			})
 		}
 	}
 	mobile := strings.TrimSpace(dingTalkUser.Mobile)
 	if mobile != "" {
-		var identities []entmodel.DingTalkIdentity
-		if err := s.db.WithContext(ctx).Where("tenant_id = ? AND mobile = ?", tenantId, mobile).Limit(2).Find(&identities).Error; err != nil {
+		identityKey := dingtalkSyncIdentityKey(dingTalkUser)
+		lookup, err := findDingTalkMobileConflictCandidate(s.db.WithContext(ctx), tenantId, mobile, identityKey)
+		if err != nil {
 			return dingTalkUserConflictCandidate{}, false, err
 		}
-		identityKey := dingtalkSyncIdentityKey(dingTalkUser)
-		for _, identity := range identities {
-			if identity.IdentityKey == identityKey {
-				continue
-			}
+		if lookup.Matched {
 			candidates = append(candidates, dingTalkUserConflictCandidate{
 				ConflictType:    "mobile",
-				CandidateUserId: identity.UserId,
+				CandidateUserId: lookup.CandidateUserId,
 				Details:         "mobile_matches_existing_dingtalk_identity",
 			})
-			break
 		}
 	}
 	if len(candidates) == 0 {
@@ -281,9 +278,109 @@ func (s *DingTalkSyncService) detectUserConflict(ctx context.Context, tenantId i
 	})
 	if len(candidates) > 1 {
 		candidates[0].ConflictType = "email_mobile"
+		candidates[0].CandidateUserId = sharedDingTalkSyncConflictCandidate(candidates)
 		candidates[0].Details = "email_and_mobile_match_existing_accounts"
 	}
 	return candidates[0], true, nil
+}
+
+func validateDingTalkSyncConflictCandidate(db *gorm.DB, tenantId int, conflict entmodel.DingTalkSyncConflict) error {
+	expectedUserId := conflict.CandidateUserId
+	if expectedUserId <= 0 {
+		return ErrDingTalkSyncConflictNoCandidate
+	}
+	identityKey := dingtalkSyncConflictIdentityKey(conflict)
+	switch strings.TrimSpace(conflict.ConflictType) {
+	case "email":
+		lookup, err := findDingTalkEmailConflictCandidate(db, conflict.Email)
+		if err != nil {
+			return err
+		}
+		return requireDingTalkSyncConflictCandidate(lookup, expectedUserId)
+	case "mobile":
+		lookup, err := findDingTalkMobileConflictCandidate(db, tenantId, conflict.Mobile, identityKey)
+		if err != nil {
+			return err
+		}
+		return requireDingTalkSyncConflictCandidate(lookup, expectedUserId)
+	case "email_mobile":
+		emailLookup, err := findDingTalkEmailConflictCandidate(db, conflict.Email)
+		if err != nil {
+			return err
+		}
+		mobileLookup, err := findDingTalkMobileConflictCandidate(db, tenantId, conflict.Mobile, identityKey)
+		if err != nil {
+			return err
+		}
+		if err := requireDingTalkSyncConflictCandidate(emailLookup, expectedUserId); err != nil {
+			return err
+		}
+		return requireDingTalkSyncConflictCandidate(mobileLookup, expectedUserId)
+	default:
+		return ErrDingTalkSyncConflictNoCandidate
+	}
+}
+
+func requireDingTalkSyncConflictCandidate(lookup dingTalkConflictCandidateLookup, expectedUserId int) error {
+	if !lookup.Matched || lookup.CandidateUserId != expectedUserId {
+		return ErrDingTalkSyncConflictNoCandidate
+	}
+	return nil
+}
+
+func sharedDingTalkSyncConflictCandidate(candidates []dingTalkUserConflictCandidate) int {
+	if len(candidates) == 0 || candidates[0].CandidateUserId <= 0 {
+		return 0
+	}
+	candidateUserId := candidates[0].CandidateUserId
+	for _, candidate := range candidates[1:] {
+		if candidate.CandidateUserId != candidateUserId {
+			return 0
+		}
+	}
+	return candidateUserId
+}
+
+func findDingTalkEmailConflictCandidate(db *gorm.DB, email string) (dingTalkConflictCandidateLookup, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return dingTalkConflictCandidateLookup{}, nil
+	}
+	var users []model.User
+	if err := db.Unscoped().Where("email = ?", email).Limit(2).Find(&users).Error; err != nil {
+		return dingTalkConflictCandidateLookup{}, err
+	}
+	if len(users) == 0 {
+		return dingTalkConflictCandidateLookup{}, nil
+	}
+	lookup := dingTalkConflictCandidateLookup{Matched: true}
+	if len(users) == 1 && !users[0].DeletedAt.Valid {
+		lookup.CandidateUserId = users[0].Id
+	}
+	return lookup, nil
+}
+
+func findDingTalkMobileConflictCandidate(db *gorm.DB, tenantId int, mobile string, identityKey string) (dingTalkConflictCandidateLookup, error) {
+	mobile = strings.TrimSpace(mobile)
+	if mobile == "" {
+		return dingTalkConflictCandidateLookup{}, nil
+	}
+	query := db.Where("tenant_id = ? AND mobile = ?", tenantId, mobile)
+	if strings.TrimSpace(identityKey) != "" {
+		query = query.Where("identity_key <> ?", strings.TrimSpace(identityKey))
+	}
+	var identities []entmodel.DingTalkIdentity
+	if err := query.Limit(2).Find(&identities).Error; err != nil {
+		return dingTalkConflictCandidateLookup{}, err
+	}
+	if len(identities) == 0 {
+		return dingTalkConflictCandidateLookup{}, nil
+	}
+	lookup := dingTalkConflictCandidateLookup{Matched: true}
+	if len(identities) == 1 {
+		lookup.CandidateUserId = identities[0].UserId
+	}
+	return lookup, nil
 }
 
 func (s *DingTalkSyncService) recordSyncConflict(ctx context.Context, taskId int, tenantId int, dingTalkUser DingTalkDepartmentUserInfo, conflict dingTalkUserConflictCandidate) error {

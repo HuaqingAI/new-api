@@ -155,6 +155,188 @@ func TestDingTalkSyncMarksMobileConflictWithoutBindingUnsafeUser(t *testing.T) {
 	require.Equal(t, 702, conflict.CandidateUserId)
 }
 
+func TestDingTalkSyncMarksEmailMobileConflictWithoutSingleCandidate(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 10, Name: "Engineering"}},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			10: {{UserId: "staff-split", UnionId: "union-split", Name: "Split Candidate", Email: "split@example.com", Mobile: "13822222222"}},
+		},
+	})
+	require.NoError(t, db.Create(&model.User{Id: 708, Username: "email-candidate", Email: "split@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "emca"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 709, Username: "mobile-owner", Status: common.UserStatusEnabled, Group: "default", AffCode: "mown"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
+		TenantId:       0,
+		IdentityKey:    "union:mobile-owner",
+		UnionId:        "mobile-owner",
+		ExternalUserId: "staff-mobile-owner",
+		Mobile:         "13822222222",
+		UserId:         709,
+		Status:         entservice.DingTalkIdentityStatusActive,
+	}).Error)
+
+	task, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+
+	require.NoError(t, err)
+	require.Equal(t, constant.DingTalkSyncTaskStatusSucceeded, task.Status)
+	var conflict entmodel.DingTalkSyncConflict
+	require.NoError(t, db.Where("external_user_id = ?", "staff-split").First(&conflict).Error)
+	require.Equal(t, "email_mobile", conflict.ConflictType)
+	require.Zero(t, conflict.CandidateUserId)
+}
+
+func TestDingTalkSyncResolveConflictByCandidateBindsIdentityAndMarksResolved(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{})
+	require.NoError(t, db.Create(&model.User{Id: 704, Username: "candidate", Email: "candidate@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "cand"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          12,
+		LastTaskId:      12,
+		ExternalUserId:  "staff-resolve",
+		UnionId:         "union-resolve",
+		Mobile:          "13900000000",
+		Email:           "candidate@example.com",
+		Name:            "Candidate",
+		ConflictType:    "email",
+		CandidateUserId: 704,
+		Details:         "email_matches_existing_local_user",
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	resolved, err := svc.ResolveConflictByCandidate(context.Background(), entservice.DingTalkSyncConflictResolveInput{
+		TenantId:   0,
+		ConflictId: 1,
+		ActorId:    999,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, constant.DingTalkSyncConflictStatusResolved, resolved.Status)
+	require.Equal(t, 999, resolved.ResolvedBy)
+	require.NotZero(t, resolved.ResolvedAt)
+
+	var binding entmodel.DingTalkIdentity
+	require.NoError(t, db.Where("tenant_id = ? AND identity_key = ?", 0, "union:union-resolve").First(&binding).Error)
+	require.Equal(t, 704, binding.UserId)
+	require.Equal(t, "staff-resolve", binding.ExternalUserId)
+	require.Equal(t, entservice.DingTalkIdentityStatusActive, binding.Status)
+}
+
+func TestDingTalkSyncResolveConflictUpdatesCandidateExistingBinding(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{})
+	require.NoError(t, db.Create(&model.User{Id: 705, Username: "mobile-candidate", Status: common.UserStatusEnabled, Group: "default", AffCode: "mbca"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
+		TenantId:       0,
+		IdentityKey:    "union:old-mobile",
+		UnionId:        "old-mobile",
+		ExternalUserId: "staff-old",
+		Mobile:         "13811111111",
+		UserId:         705,
+		Status:         entservice.DingTalkIdentityStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          13,
+		LastTaskId:      13,
+		ExternalUserId:  "staff-new",
+		UnionId:         "union-new",
+		Mobile:          "13811111111",
+		Name:            "Mobile Candidate",
+		ConflictType:    "mobile",
+		CandidateUserId: 705,
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	_, err := svc.ResolveConflictByCandidate(context.Background(), entservice.DingTalkSyncConflictResolveInput{
+		TenantId:   0,
+		ConflictId: 1,
+		ActorId:    999,
+	})
+
+	require.NoError(t, err)
+	var bindings []entmodel.DingTalkIdentity
+	require.NoError(t, db.Where("tenant_id = ? AND user_id = ?", 0, 705).Find(&bindings).Error)
+	require.Len(t, bindings, 1)
+	require.Equal(t, "union:union-new", bindings[0].IdentityKey)
+	require.Equal(t, "staff-new", bindings[0].ExternalUserId)
+}
+
+func TestDingTalkSyncResolveConflictRejectsMissingCandidateAndIdentityConflict(t *testing.T) {
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{})
+	require.NoError(t, db.Create(&model.User{Id: 706, Username: "candidate-a", Email: "candidate-a@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "cana"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 707, Username: "candidate-b", Status: common.UserStatusEnabled, Group: "default", AffCode: "canb"}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
+		TenantId:       0,
+		IdentityKey:    "union:already-bound",
+		UnionId:        "already-bound",
+		ExternalUserId: "staff-bound",
+		UserId:         707,
+		Status:         entservice.DingTalkIdentityStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:       0,
+		TaskId:         14,
+		LastTaskId:     14,
+		ExternalUserId: "staff-no-candidate",
+		UnionId:        "union-no-candidate",
+		ConflictType:   "email",
+		Status:         constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          15,
+		LastTaskId:      15,
+		ExternalUserId:  "staff-bound",
+		UnionId:         "already-bound",
+		Email:           "candidate-a@example.com",
+		ConflictType:    "email",
+		CandidateUserId: 706,
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
+		TenantId:       0,
+		IdentityKey:    "union:split-mobile",
+		UnionId:        "split-mobile",
+		ExternalUserId: "staff-split-mobile",
+		Mobile:         "13833333333",
+		UserId:         707,
+		Status:         entservice.DingTalkIdentityStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          16,
+		LastTaskId:      16,
+		ExternalUserId:  "staff-split-bind",
+		UnionId:         "union-split-bind",
+		Mobile:          "13833333333",
+		Email:           "candidate-a@example.com",
+		ConflictType:    "email_mobile",
+		CandidateUserId: 706,
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	_, err := svc.ResolveConflictByCandidate(context.Background(), entservice.DingTalkSyncConflictResolveInput{
+		TenantId:   0,
+		ConflictId: 1,
+		ActorId:    999,
+	})
+	require.ErrorIs(t, err, entservice.ErrDingTalkSyncConflictNoCandidate)
+
+	_, err = svc.ResolveConflictByCandidate(context.Background(), entservice.DingTalkSyncConflictResolveInput{
+		TenantId:   0,
+		ConflictId: 2,
+		ActorId:    999,
+	})
+	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthBindingConflict)
+
+	_, err = svc.ResolveConflictByCandidate(context.Background(), entservice.DingTalkSyncConflictResolveInput{
+		TenantId:   0,
+		ConflictId: 3,
+		ActorId:    999,
+	})
+	require.ErrorIs(t, err, entservice.ErrDingTalkSyncConflictNoCandidate)
+}
+
 func TestDingTalkSyncTracksDepartmentRenameAndMoveHistory(t *testing.T) {
 	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
 		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{

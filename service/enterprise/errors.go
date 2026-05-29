@@ -28,4 +28,7 @@ var (
 	ErrDingTalkOAuthRegistrationDisabled = errors.New("enterprise dingtalk oauth registration disabled")
 	ErrDingTalkSyncNotEnabled            = errors.New("enterprise dingtalk sync not enabled")
 	ErrDingTalkSyncTaskNotFound          = errors.New("enterprise dingtalk sync task not found")
+	ErrDingTalkSyncConflictNotFound      = errors.New("enterprise dingtalk sync conflict not found")
+	ErrDingTalkSyncConflictNotPending    = errors.New("enterprise dingtalk sync conflict not pending")
+	ErrDingTalkSyncConflictNoCandidate   = errors.New("enterprise dingtalk sync conflict has no single candidate")
 )

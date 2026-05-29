@@ -13,6 +13,8 @@ import i18n from '@/i18n/config'
 import { EnterpriseOrganizationContent } from './index'
 import type { DepartmentTreeNode } from './types'
 
+i18n.changeLanguage('en')
+
 const rootRoute = createRootRoute()
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,

@@ -1287,6 +1287,7 @@ export function compareDepartmentUsageItems(
   summarySort: DepartmentUsageSummarySort,
   summaryOrder: UsageSortOrder
 ) {
+  const unassignedName = '未归属'
   const applyOrder = (value: number) =>
     summaryOrder === 'asc' ? value : -value
   const compareNumber = (left: number, right: number) =>
@@ -1294,7 +1295,7 @@ export function compareDepartmentUsageItems(
   const compareName = (left: string, right: string) =>
     left.localeCompare(right, undefined, { sensitivity: 'base' })
   const sortName = (item: DepartmentUsageSummaryItem) =>
-    item.dept_name || 'Unassigned'
+    item.dept_name || unassignedName
   const compareOptionalId = (
     left: number | null | undefined,
     right: number | null | undefined

@@ -146,6 +146,7 @@ GPT-5 Codex
 - `controller/enterprise/usage_test.go`
 - `dto/enterprise/usage.go`
 - `router/enterprise-router.go`
+- `service/enterprise/usage_aggregation.go`
 - `service/enterprise/usage_aggregation_test.go`
 - `service/enterprise/usage_export.go`
 - `tests/api/enterprise_usage_test.go`
@@ -167,7 +168,7 @@ GPT-5 Codex
 - 新增 `/api/enterprise/usage/export` 接口与导出 DTO，并将 summary/export 排序语义显式化为 `summary_sort` / `summary_order`。
 - 更新 Default `enterprise-usage` 总览页，新增总览排序切换与导出按钮，确保导出仅复用总览筛选/排序，不受 detail-only state 污染。
 - 扩展 service、controller、API 和前端测试，覆盖 CSV 注释/表头、文件名、权限、父部门映射、未归属行与排序一致性。
-- Senior Developer Review（AI）自动修复导出错误响应处理、浏览器下载释放时序，以及前后端 `dept_name` 排序平局时的稳定性问题，并补充对应回归测试。
+- Senior Developer Review（AI）自动修复总览 summary 排序参数未真正下沉到后端、导出链路与 summary 链路各自重复排序导致的契约漂移风险，以及前后端对“未归属”部门名排序键不一致的问题，并补充对应回归测试。
 
 ## Senior Developer Review (AI)
 
@@ -177,15 +178,15 @@ GPT-5 Codex
 
 ### Findings
 
-1. High: 前端导出接口把 `blob` 响应一律当作成功文件处理，后端返回 JSON 业务错误时会下载一个伪 CSV，而不是向用户显示失败信息。已在 `web/default/src/features/enterprise-usage/api.ts` 中按 `Content-Type` 识别并解析 JSON 错误 blob。
-2. Medium: 导出按钮点击后立即 `URL.revokeObjectURL(...)`，在部分浏览器中会与下载启动竞态，造成 CSV 偶发下载失败。已在 `web/default/src/features/enterprise-usage/index.tsx` 中改为延迟释放。
-3. Medium: 前端与后端在 `summary_sort=dept_name` 下对“同名部门 / 未归属”平局排序的语义并不完全一致，页面顺序与 CSV 顺序存在漂移风险。已统一平局规则，并在 `service/enterprise/usage_export.go`、`web/default/src/features/enterprise-usage/index.tsx` 及对应测试中锁定行为。
+1. High: Story 声称“summary/export 排序语义显式化为 `summary_sort` / `summary_order`”，但 `GET /api/enterprise/usage/department-summary` 实际仍忽略这两个参数，只在前端本地排序。这样总览接口契约与故事已完成声明不一致，也让页面当前排序无法被其他调用方复用。已在 `dto/enterprise/usage.go`、`controller/enterprise/usage.go`、`service/enterprise/usage_aggregation.go` 中补齐 summary 排序参数下沉，并新增 controller/API 回归测试。
+2. Medium: `service/enterprise/usage_export.go` 在调用 summary 服务后又自行重复排序，summary 和 export 两条链路各自维护排序，后续一侧修改 tie-breaker 时会让页面顺序与 CSV 顺序再次漂移。已改为由 summary 服务统一产出排序结果，导出链路只补齐父部门并写 CSV。
+3. Medium: 前后端对“未归属”部门名排序键不一致，后端比较器使用中文 `未归属`，前端比较器使用英文 `Unassigned`，在 `summary_sort=dept_name` 时会让页面和导出的字典序基准不同。已统一为中文排序键，并通过 Go/前端测试锁定行为。
 
 ### Validation
 
 - 已复核 AC 1-3 与实现一致。
 - 已复核导出链路继续基于 `enterprise_usage_snapshots`，未回退到 `logs` 明细扫描。
 - 已运行：
-  - `GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise ./controller/enterprise ./tests/api -run 'Usage|EnterpriseUsage'`
+  - `GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise ./controller/enterprise ./tests/api -run 'Usage|EnterpriseUsage' -count=1`
   - `cd web/default && bun test src/features/enterprise-usage/enterprise-usage.test.tsx`
   - `cd web/default && bun run typecheck`

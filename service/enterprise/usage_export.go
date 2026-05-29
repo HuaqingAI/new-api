@@ -159,7 +159,7 @@ func usageSummarySortName(item UsageDepartmentSummaryItem) string {
 	if item.DeptName != "" {
 		return item.DeptName
 	}
-	return "Unassigned"
+	return "未归属"
 }
 
 func compareOptionalInt(left *int, right *int) int {

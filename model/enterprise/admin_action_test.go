@@ -31,3 +31,24 @@ func TestAdminActionMigration(t *testing.T) {
 	require.False(t, db.Migrator().HasColumn(&entmodel.AdminAction{}, "secret"))
 	require.False(t, db.Migrator().HasColumn(&entmodel.AdminAction{}, "token"))
 }
+
+func TestAdminActionBeforeCreateDefaultsPayload(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, entmodel.AutoMigrate(db))
+
+	action := entmodel.AdminAction{
+		ActorId:     100,
+		ActionType:  "enterprise.organization.membership.add",
+		ObjectType:  "enterprise_department_member",
+		ObjectId:    "1:200",
+		DiffSummary: "Added department member",
+	}
+
+	require.NoError(t, db.Create(&action).Error)
+	require.Equal(t, "{}", action.Payload)
+
+	var saved entmodel.AdminAction
+	require.NoError(t, db.First(&saved, action.ActionId).Error)
+	require.Equal(t, "{}", saved.Payload)
+}

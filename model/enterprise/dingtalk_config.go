@@ -7,7 +7,7 @@ type DingTalkConfig struct {
 	AppKey       string `json:"app_key" gorm:"type:varchar(128);not null;default:''"`
 	AppSecret    string `json:"-" gorm:"type:varchar(512);not null;default:''"`
 	CallbackUrl  string `json:"callback_url" gorm:"type:varchar(1024);not null;default:''"`
-	SyncScope    string `json:"sync_scope" gorm:"type:text;not null;default:''"`
+	SyncScope    string `json:"sync_scope" gorm:"type:text;not null"`
 	LoginEnabled bool   `json:"login_enabled" gorm:"not null;default:false"`
 	SyncEnabled  bool   `json:"sync_enabled" gorm:"not null;default:false"`
 	CreatedAt    int64  `json:"created_at" gorm:"autoCreateTime;column:created_at"`

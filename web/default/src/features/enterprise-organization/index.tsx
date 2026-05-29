@@ -21,6 +21,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   Building2,
+  CalendarClock,
+  Coins,
+  CreditCard,
   RefreshCw,
   RotateCcw,
   Search,
@@ -30,6 +33,9 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -49,7 +55,22 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -64,7 +85,10 @@ import { formatTimestamp } from '@/lib/format'
 import {
   addDepartmentMember,
   deactivateDepartmentMember,
+  createDepartmentBudget,
+  departmentBudgetQueryKey,
   enterpriseOrganizationQueryKey,
+  getDepartmentBudget,
   getDepartmentMembers,
   getUserDepartments,
   replaceUserDepartments,
@@ -73,6 +97,7 @@ import {
 import { DepartmentTree } from './components/DepartmentTree'
 import { useDepartmentTree } from './hooks/use-department-tree'
 import type {
+  DepartmentBudgetItem,
   DepartmentMemberItem,
   MembershipStatus,
   UserDepartmentItem,
@@ -91,6 +116,53 @@ function parseDepartmentIds(value: string) {
     .map((part) => Number(part.trim()))
     .filter((id) => Number.isInteger(id) && id > 0)
   return Array.from(new Set(ids))
+}
+
+export function createBudgetSchema(t: (key: string) => string) {
+  return z
+    .object({
+      tenant_id: z.coerce.number().int().nonnegative(),
+      department_id: z.coerce.number().int().positive(),
+      type: z.enum(['balance', 'subscription']),
+      total_quota: z.coerce.number().int().nonnegative(),
+      cycle_quota: z.coerce.number().int().nonnegative(),
+      cycle_type: z.enum(['daily', 'weekly', 'monthly', 'custom']),
+      cycle_started_at: z.string().trim(),
+      custom_seconds: z.coerce.number().int().nonnegative(),
+      expires_at: z.string().trim(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.type === 'balance' && value.total_quota <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['total_quota'],
+          message: t('Balance budget quota must be greater than 0'),
+        })
+      }
+      if (value.type === 'subscription') {
+        if (value.cycle_quota <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['cycle_quota'],
+            message: t('Subscription budget cycle quota must be greater than 0'),
+          })
+        }
+        if (!value.cycle_started_at) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['cycle_started_at'],
+            message: t('Subscription budget cycle start time is required'),
+          })
+        }
+        if (value.cycle_type === 'custom' && value.custom_seconds <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['custom_seconds'],
+            message: t('Custom cycle must be greater than 0 seconds'),
+          })
+        }
+      }
+    })
 }
 
 function statusVariant(status: MembershipStatus) {
@@ -144,6 +216,7 @@ export function EnterpriseOrganization() {
             <TabsTrigger value='tree'>{t('Department Tree')}</TabsTrigger>
             <TabsTrigger value='users'>{t('User Departments')}</TabsTrigger>
             <TabsTrigger value='members'>{t('Department Members')}</TabsTrigger>
+            <TabsTrigger value='budgets'>{t('Department Budget')}</TabsTrigger>
           </TabsList>
           <TabsContent value='tree' className='m-0'>
             <EnterpriseOrganizationContent
@@ -156,6 +229,9 @@ export function EnterpriseOrganization() {
           </TabsContent>
           <TabsContent value='members' className='m-0'>
             <DepartmentMembersPanel />
+          </TabsContent>
+          <TabsContent value='budgets' className='m-0'>
+            <DepartmentBudgetPanel />
           </TabsContent>
         </Tabs>
       </SectionPageLayout.Content>
@@ -567,4 +643,369 @@ function DepartmentMembersTable({
       </TableBody>
     </Table>
   )
+}
+
+function DepartmentBudgetPanel() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const budgetSchema = createBudgetSchema(t)
+  const form = useForm<z.infer<typeof budgetSchema>>({
+    resolver: zodResolver(budgetSchema),
+    defaultValues: {
+      tenant_id: 0,
+      department_id: 1,
+      type: 'balance',
+      total_quota: 0,
+      cycle_quota: 0,
+      cycle_type: 'monthly',
+      cycle_started_at: '',
+      custom_seconds: 0,
+      expires_at: '',
+    },
+  })
+  const tenantId = form.watch('tenant_id')
+  const departmentId = form.watch('department_id')
+  const budgetType = form.watch('type')
+  const cycleType = form.watch('cycle_type')
+
+  const budgetQuery = useQuery({
+    queryKey: [...departmentBudgetQueryKey, tenantId, departmentId],
+    queryFn: async () => {
+      if (!departmentId) return null
+      const result = await getDepartmentBudget(departmentId, tenantId)
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data?.item ?? null
+    },
+    enabled: Boolean(departmentId),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof budgetSchema>) => {
+      const payload =
+        values.type === 'balance'
+          ? {
+              tenant_id: Number(values.tenant_id),
+              type: 'balance' as const,
+              total_quota: Number(values.total_quota),
+              expires_at: parseDateTimeToUnix(values.expires_at),
+            }
+          : {
+              tenant_id: Number(values.tenant_id),
+              type: 'subscription' as const,
+              cycle_quota: Number(values.cycle_quota),
+              cycle_type: values.cycle_type,
+              cycle_started_at: parseRequiredDateTimeToUnix(
+                values.cycle_started_at
+              ),
+              custom_seconds:
+                values.cycle_type === 'custom'
+                  ? Number(values.custom_seconds)
+                  : undefined,
+              expires_at: parseDateTimeToUnix(values.expires_at),
+            }
+      return createDepartmentBudget(values.department_id, payload)
+    },
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseOrganizationQueryKey,
+      })
+      toast.success(t('Department budget saved'))
+    },
+  })
+
+  return (
+    <div className='grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Department Budget')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Create a balance or subscription budget pool for the selected department.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form
+              className='flex flex-col gap-4'
+              onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}
+            >
+              <FormField
+                control={form.control}
+                name='tenant_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Tenant ID')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='department_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Department ID')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='type'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Budget Type')}</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) =>
+                        field.onChange(value as 'balance' | 'subscription')
+                      }
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value='balance'>{t('Balance Budget')}</SelectItem>
+                        <SelectItem value='subscription'>
+                          {t('Subscription Budget')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {budgetType === 'balance' ? (
+                <FormField
+                  control={form.control}
+                  name='total_quota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Total Quota')}</FormLabel>
+                      <FormControl>
+                        <Input inputMode='numeric' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <>
+                  <FormField
+                    control={form.control}
+                    name='cycle_quota'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Cycle Quota')}</FormLabel>
+                        <FormControl>
+                          <Input inputMode='numeric' {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='cycle_type'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Cycle Type')}</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value='daily'>{t('Daily')}</SelectItem>
+                            <SelectItem value='weekly'>{t('Weekly')}</SelectItem>
+                            <SelectItem value='monthly'>{t('Monthly')}</SelectItem>
+                            <SelectItem value='custom'>
+                              {t('Custom (seconds)')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='cycle_started_at'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Cycle Start Time')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='2026-05-29T12:00'
+                            type='datetime-local'
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {cycleType === 'custom' ? (
+                    <FormField
+                      control={form.control}
+                      name='custom_seconds'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                          <FormControl>
+                            <Input inputMode='numeric' {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null}
+                </>
+              )}
+              <FormField
+                control={form.control}
+                name='expires_at'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Expires At (optional)')}</FormLabel>
+                    <FormControl>
+                      <Input type='datetime-local' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button type='submit' disabled={createMutation.isPending}>
+                <Coins data-icon='inline-start' />
+                {t('Create Budget Pool')}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+      <DepartmentBudgetStatusCard item={budgetQuery.data ?? null} />
+    </div>
+  )
+}
+
+export function DepartmentBudgetStatusCard({
+  item,
+}: {
+  item: DepartmentBudgetItem | null
+}) {
+  const { t } = useTranslation()
+
+  if (!item) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Current Budget Pool')}</CardTitle>
+          <CardDescription>
+            {t('The selected department does not have a budget pool yet.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Empty className='min-h-[280px]'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <CreditCard className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No budget pool yet')}</EmptyTitle>
+              <EmptyDescription>
+                {t('Create a budget pool to view the department budget state here.')}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Current Budget Pool')}</CardTitle>
+        <CardDescription>
+          {t('Shows the latest budget pool saved for this department.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='grid gap-3 sm:grid-cols-2'>
+        <BudgetStat
+          label={t('Budget Type')}
+          value={
+            item.type === 'balance'
+              ? t('Balance Budget')
+              : t('Subscription Budget')
+          }
+        />
+        <BudgetStat label={t('Remaining Quota')} value={String(item.remaining)} />
+        <BudgetStat label={t('Total Quota')} value={String(item.total_quota)} />
+        <BudgetStat label={t('Cycle Quota')} value={String(item.cycle_quota)} />
+        <BudgetStat
+          label={t('Cycle Type')}
+          value={formatBudgetCycleType(item.cycle_type, t)}
+        />
+        <BudgetStat
+          label={t('Cycle Start Time')}
+          value={item.cycle_started_at ? formatTimestamp(item.cycle_started_at) : '-'}
+        />
+        <BudgetStat
+          label={t('Custom Cycle Seconds')}
+          value={item.custom_seconds ? String(item.custom_seconds) : '-'}
+        />
+        <BudgetStat
+          label={t('Expires At (optional)')}
+          value={item.expires_at ? formatTimestamp(item.expires_at) : '-'}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function BudgetStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className='rounded-lg border p-3'>
+      <div className='text-muted-foreground text-xs'>{label}</div>
+      <div className='mt-1 flex items-center gap-2 font-medium'>
+        <CalendarClock className='size-4 text-muted-foreground' />
+        <span>{value}</span>
+      </div>
+    </div>
+  )
+}
+
+function parseDateTimeToUnix(value: string) {
+  if (!value.trim()) return undefined
+  const ts = Date.parse(value)
+  if (Number.isNaN(ts)) return undefined
+  return Math.floor(ts / 1000)
+}
+
+function parseRequiredDateTimeToUnix(value: string) {
+  const ts = parseDateTimeToUnix(value)
+  return ts ?? 0
+}
+
+function formatBudgetCycleType(cycleType: string, t: (key: string) => string) {
+  if (cycleType === 'daily') return t('Daily')
+  if (cycleType === 'weekly') return t('Weekly')
+  if (cycleType === 'monthly') return t('Monthly')
+  if (cycleType === 'custom') return t('Custom (seconds)')
+  if (cycleType === 'never') return t('No Reset')
+  return cycleType || '-'
 }

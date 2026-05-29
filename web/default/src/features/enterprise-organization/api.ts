@@ -20,6 +20,8 @@ import { api } from '@/lib/api'
 import type {
   AddDepartmentMemberPayload,
   ApiResponse,
+  CreateDepartmentBudgetPayload,
+  DepartmentBudgetResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
   DepartmentTreeNode,
@@ -30,6 +32,11 @@ import type {
 export const enterpriseOrganizationQueryKey = [
   'enterprise',
   'organization',
+] as const
+
+export const departmentBudgetQueryKey = [
+  ...enterpriseOrganizationQueryKey,
+  'department-budget',
 ] as const
 
 export async function getDepartmentTree(): Promise<
@@ -61,6 +68,27 @@ export async function getDepartmentMembers(
   departmentId: number
 ): Promise<ApiResponse<DepartmentMembersResponse>> {
   const res = await api.get(`/api/enterprise/departments/${departmentId}/members`)
+  return res.data
+}
+
+export async function getDepartmentBudget(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.get(`/api/enterprise/departments/${departmentId}/budget`, {
+    params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+  })
+  return res.data
+}
+
+export async function createDepartmentBudget(
+  departmentId: number,
+  payload: CreateDepartmentBudgetPayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/budget`,
+    payload
+  )
   return res.data
 }
 

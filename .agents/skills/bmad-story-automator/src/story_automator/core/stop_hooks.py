@@ -348,6 +348,22 @@ def _parse_toml(text: str, path: Path) -> dict[str, Any]:
 
 
 def _codex_project_is_trusted(config_path: Path, project_root: Path) -> bool:
+    config_paths = [config_path, Path.home() / ".codex" / "config.toml"]
+    seen: set[Path] = set()
+    for candidate in config_paths:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            resolved = candidate.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _codex_project_is_trusted_in_config(resolved, project_root):
+            return True
+    return False
+
+
+def _codex_project_is_trusted_in_config(config_path: Path, project_root: Path) -> bool:
     if not config_path.exists():
         return False
     parsed = _parse_toml(config_path.read_text(encoding="utf-8"), config_path)

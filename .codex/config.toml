@@ -1,0 +1,5 @@
+[features]
+hooks = true
+
+[projects."/Users/hq-it/repository/github/huaqingai/new-api"]
+trust_level = "trusted"

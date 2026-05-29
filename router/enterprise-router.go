@@ -14,6 +14,8 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.GET("/users/:id/departments", middleware.AdminAuth(), controllerenterprise.ListUserDepartments)
 		enterpriseRoute.PUT("/users/:id/departments", middleware.AdminAuth(), controllerenterprise.ReplaceUserDepartments)
 		enterpriseRoute.GET("/departments/:id/members", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.ListDepartmentMembers)
+		enterpriseRoute.GET("/departments/:id/budget", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.GetDepartmentBudget)
+		enterpriseRoute.POST("/departments/:id/budget", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.CreateDepartmentBudget)
 		enterpriseRoute.POST("/departments/:id/members", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.AddDepartmentMember)
 		enterpriseRoute.DELETE("/departments/:id/members/:user_id", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.DeactivateDepartmentMember)
 		enterpriseRoute.POST("/departments/:id/members/:user_id/restore", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.RestoreDepartmentMember)

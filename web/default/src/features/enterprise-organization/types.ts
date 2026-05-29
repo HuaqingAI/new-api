@@ -88,6 +88,41 @@ export type DepartmentMembersResponse = {
   total: number
 }
 
+export type DepartmentBudgetType = 'balance' | 'subscription'
+
+export type DepartmentBudgetItem = {
+  id: number
+  tenant_id: number
+  department_id: number
+  type: DepartmentBudgetType
+  status: string
+  total_quota: number
+  remaining: number
+  cycle_quota: number
+  cycle_type: string
+  cycle_started_at: number
+  custom_seconds: number
+  expires_at: number
+  parent_status: string
+  created_at: number
+  updated_at: number
+}
+
+export type DepartmentBudgetResponse = {
+  item: DepartmentBudgetItem | null
+}
+
+export type CreateDepartmentBudgetPayload = {
+  tenant_id?: number
+  type: DepartmentBudgetType
+  total_quota?: number
+  cycle_quota?: number
+  cycle_type?: string
+  cycle_started_at?: number
+  custom_seconds?: number
+  expires_at?: number
+}
+
 export type ReplaceUserDepartmentsPayload = {
   tenant_id?: number
   department_ids: number[]

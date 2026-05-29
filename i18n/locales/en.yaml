@@ -30,6 +30,13 @@ enterprise.organization.membership_already_exists: "Department membership alread
 enterprise.organization.duplicate_department: "Duplicate department ID"
 enterprise.organization.admin_action_not_found: "Enterprise admin action does not exist"
 enterprise.organization.department_role_not_found: "Department administrator role does not exist"
+enterprise.organization.department_budget_invalid_type: "Invalid department budget type"
+enterprise.organization.department_budget_invalid_quota: "Balance budget quota must be greater than 0"
+enterprise.organization.department_budget_invalid_cycle_quota: "Subscription budget cycle quota must be greater than 0"
+enterprise.organization.department_budget_invalid_cycle_type: "Subscription budget cycle type is invalid"
+enterprise.organization.department_budget_invalid_custom_seconds: "Custom cycle must be greater than 0 seconds"
+enterprise.organization.department_budget_invalid_cycle_started_at: "Subscription budget cycle start time is required"
+enterprise.organization.department_budget_type_immutable: "Department budget type cannot be changed once created"
 error.enterprise.permission.dept_admin_required: "Department administrator permission is required"
 error.enterprise.permission.admin_required: "Enterprise administrator permission is required"
 

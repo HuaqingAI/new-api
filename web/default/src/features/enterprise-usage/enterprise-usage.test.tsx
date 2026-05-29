@@ -47,6 +47,7 @@ import {
   resolveDepartmentUsageExportParams,
   resolveEnterpriseUsageRange,
   resolveRecentLogsSearch,
+  shouldResetReportForm,
   sortDepartmentUserRanking,
 } from './index'
 import type {
@@ -746,6 +747,49 @@ describe('Enterprise usage overview dashboard', () => {
       api.get = originalGet
       api.put = originalPut
     }
+  })
+
+  test('only resets the report form when scope changes or the form is still pristine', () => {
+    assert.equal(
+      shouldResetReportForm({
+        hasReportData: true,
+        isDirty: true,
+        scopeChanged: false,
+      }),
+      false
+    )
+    assert.equal(
+      shouldResetReportForm({
+        hasReportData: true,
+        isDirty: false,
+        scopeChanged: false,
+      }),
+      true
+    )
+    assert.equal(
+      shouldResetReportForm({
+        hasReportData: true,
+        isDirty: true,
+        scopeChanged: true,
+      }),
+      true
+    )
+    assert.equal(
+      shouldResetReportForm({
+        hasReportData: false,
+        isDirty: true,
+        scopeChanged: false,
+      }),
+      false
+    )
+    assert.equal(
+      shouldResetReportForm({
+        hasReportData: false,
+        isDirty: true,
+        scopeChanged: true,
+      }),
+      true
+    )
   })
 
   test('derives export params from summary filters without leaking detail-only search state', () => {

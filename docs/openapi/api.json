@@ -4996,6 +4996,394 @@
           }
         ]
       }
+    },
+    "/api/enterprise/usage/department-summary": {
+      "get": {
+        "summary": "获取部门用量汇总",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "企业组织"
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "summary_sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "requests",
+                "quota",
+                "users",
+                "dept_name"
+              ]
+            }
+          },
+          {
+            "name": "summary_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DepartmentUsageSummaryResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/usage/department-detail": {
+      "get": {
+        "summary": "获取部门用量详情",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "企业组织"
+        ],
+        "parameters": [
+          {
+            "name": "dept_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DepartmentUsageDetailResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/usage/export": {
+      "get": {
+        "summary": "导出部门用量 CSV",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin），同步返回 CSV 文件流",
+        "tags": [
+          "企业组织"
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "summary_sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "requests",
+                "quota",
+                "users",
+                "dept_name"
+              ]
+            }
+          },
+          {
+            "name": "summary_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/usage/reports": {
+      "get": {
+        "summary": "获取定期用量报告配置",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "企业组织"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DepartmentUsageReportConfigResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "保存定期用量报告配置",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "企业组织"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentUsageReportConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DepartmentUsageReportConfigResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5261,6 +5649,511 @@
           "updated_at",
           "deleted_at",
           "children"
+        ]
+      },
+      "UsageModelDistributionItem": {
+        "type": "object",
+        "properties": {
+          "model_name": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageSummaryItem": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "dept_name": {
+            "type": "string"
+          },
+          "window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "model_distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageModelDistributionItem"
+            }
+          }
+        }
+      },
+      "DepartmentUsageSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageSummaryItem"
+            }
+          }
+        }
+      },
+      "DepartmentUsageUserRankItem": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "token_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageTrendPoint": {
+        "type": "object",
+        "properties": {
+          "window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "token_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageLogFilters": {
+        "type": "object",
+        "properties": {
+          "department_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "start_timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "end_timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": "string"
+          },
+          "username_options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "DepartmentUsageLogEntryLink": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/DepartmentUsageLogFilters"
+          }
+        }
+      },
+      "DepartmentUsageDetailResponse": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "dept_name": {
+            "type": "string"
+          },
+          "window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "token_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_ranking": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageUserRankItem"
+            }
+          },
+          "model_distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageModelDistributionItem"
+            }
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageTrendPoint"
+            }
+          },
+          "recent_logs_entry": {
+            "$ref": "#/components/schemas/DepartmentUsageLogEntryLink"
+          }
+        }
+      },
+      "DepartmentUsageReportTopDepartment": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "dept_name": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageReportGrowthDepartment": {
+        "type": "object",
+        "properties": {
+          "dept_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "dept_name": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "previous_request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "previous_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_growth_rate": {
+            "type": "number",
+            "format": "double"
+          },
+          "quota_growth_rate": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "DepartmentUsageReportSnapshot": {
+        "type": "object",
+        "properties": {
+          "window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "previous_window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "previous_window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "department_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "top_departments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageReportTopDepartment"
+            }
+          },
+          "growth_departments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageReportGrowthDepartment"
+            }
+          }
+        }
+      },
+      "DepartmentUsageReportJobItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "receivers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "range_type": {
+            "type": "string",
+            "enum": [
+              "today",
+              "last7d",
+              "last30d"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "success",
+              "failed"
+            ]
+          },
+          "last_run_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "next_run_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_success_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_window_start": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_window_end": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "run_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failure_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "error_reason": {
+            "type": "string"
+          },
+          "last_snapshot": {
+            "$ref": "#/components/schemas/DepartmentUsageReportSnapshot"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageReportConfigResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/DepartmentUsageReportJobItem"
+          }
+        }
+      },
+      "DepartmentUsageReportConfigRequest": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "integer"
+          },
+          "receivers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ]
+          },
+          "range_type": {
+            "type": "string",
+            "enum": [
+              "today",
+              "last7d",
+              "last30d"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "receivers"
         ]
       }
     },

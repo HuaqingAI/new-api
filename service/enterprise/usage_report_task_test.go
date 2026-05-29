@@ -65,6 +65,35 @@ func TestUsageReportServiceSaveConfigAndGetConfig(t *testing.T) {
 	require.Equal(t, saved.Frequency, got.Frequency)
 }
 
+func TestUsageReportServiceSaveConfigPreservesPendingDueTimeForEnabledJobs(t *testing.T) {
+	now := time.Unix(1717117200, 0)
+	service, db := setupUsageReportServiceTest(t, now, nil)
+
+	job := entmodel.UsageReportJob{
+		TenantId:  0,
+		Frequency: entmodel.UsageReportFrequencyDaily,
+		RangeType: entmodel.UsageReportRangeLast7Days,
+		Enabled:   true,
+		Status:    entmodel.UsageReportStatusPending,
+		NextRunAt: now.Unix() + 300,
+	}
+	require.NoError(t, job.SetReceivers([]string{"ops@example.com"}))
+	require.NoError(t, job.SetLastSnapshot(nil))
+	require.NoError(t, db.Create(&job).Error)
+
+	saved, err := service.SaveConfig(UsageReportConfigInput{
+		TenantId:  0,
+		Receivers: []string{"ops@example.com", "cto@example.com"},
+		Frequency: entmodel.UsageReportFrequencyDaily,
+		RangeType: entmodel.UsageReportRangeLast30Days,
+		Enabled:   boolPtr(true),
+	})
+	require.NoError(t, err)
+	require.Equal(t, now.Unix()+300, saved.NextRunAt)
+	require.Equal(t, []string{"ops@example.com", "cto@example.com"}, saved.Receivers)
+	require.Equal(t, entmodel.UsageReportRangeLast30Days, saved.RangeType)
+}
+
 func boolPtr(value bool) *bool {
 	return &value
 }

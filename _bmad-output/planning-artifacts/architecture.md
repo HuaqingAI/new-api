@@ -680,8 +680,9 @@ const (
 ['enterprise', 'organization', 'quota-allocations', { departmentId, page }]
 ['enterprise', 'dingtalk', 'config']
 ['enterprise', 'dingtalk', 'sync-jobs', { page }]
-['enterprise', 'usage', 'department-summary', { from, to }]
+['enterprise', 'usage', 'department-summary', { from, to, tenantId, summarySort, summaryOrder }]
 ['enterprise', 'usage', 'department-detail', { departmentId, from, to }]
+['enterprise', 'usage', 'report-config']
 ['enterprise', 'alerts', 'events', { departmentId, status, page }]
 ['enterprise', 'alerts', 'rules']
 ```
@@ -710,7 +711,7 @@ const (
 - Default：mutation 进行中：触发按钮使用 `disabled + loading icon`；不阻塞其他页面交互。
 - Classic：沿用 Semi `Spin` + 局部 `loading` state，错误用 `Toast.error` + 内联 `Banner`。
 - 全局 loading（页面切换骨架）已由路由层统一处理，企业模块不再单独引入。
-- 长耗时操作（同步触发、CSV 导出生成）：API 应返回任务 ID，由前端轮询 `sync-jobs/:id` 状态，**不**在请求内同步等待。
+- 长耗时操作默认分两类处理：同步触发类（如钉钉全量同步）返回任务 ID 供前端轮询；部门用量 CSV 导出在 V1 采用同步文件流响应，不单独创建导出任务表。
 
 ### Enforcement Guidelines
 

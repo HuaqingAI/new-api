@@ -174,10 +174,15 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 	}
 	updates["receivers"] = existing.Receivers
 	if enabled {
-		updates["next_run_at"] = computeUsageReportNextRunAt(input.Frequency, now)
 		if !existing.Enabled {
+			updates["next_run_at"] = computeUsageReportNextRunAt(input.Frequency, now)
 			updates["status"] = entmodel.UsageReportStatusPending
 			updates["error_reason"] = ""
+		} else if existing.Frequency != input.Frequency || existing.NextRunAt <= 0 {
+			updates["next_run_at"] = computeUsageReportNextRunAt(input.Frequency, now)
+		} else {
+			// Keep the existing due time so editing receivers/range does not skip an imminent send.
+			updates["next_run_at"] = existing.NextRunAt
 		}
 	} else {
 		updates["status"] = entmodel.UsageReportStatusPending

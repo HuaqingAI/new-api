@@ -173,6 +173,7 @@ GPT-5 Codex
 - 已明确邮件正文必须包含与看板/CSV 一致的“部门间不可加和”口径，防止三条输出链路分叉。
 - 已完成 Story 4.5 的后端模型、任务服务、企业管理员配置 API、Default 前端配置面板和相关回归测试。
 - 已通过 `go test`、`bun test src/features/enterprise-usage/enterprise-usage.test.tsx` 和 `bun run typecheck` 验证本故事实现。
+- Senior Developer Review（AI）已修复已启用报告配置在编辑时重算 `next_run_at` 导致临近待发送任务被顺延的问题，以及报告配置表单在同作用域 refetch 时覆盖未保存输入的问题，并补充对应前后端回归测试。
 
 ### File List
 
@@ -205,3 +206,40 @@ GPT-5 Codex
 - `web/default/src/i18n/locales/ru.json`
 - `web/default/src/i18n/locales/vi.json`
 - `web/default/src/i18n/locales/zh.json`
+
+## Change Log
+
+- 2026-05-29: 新增 `enterprise_usage_report_jobs` 模型、`usage_report_task` 调度、`/api/enterprise/usage/reports` 配置接口，以及 Default `enterprise-usage` 报告配置卡片与回归测试。
+- 2026-05-29: AI review 自动修复已启用报告配置在仅编辑接收人/时间范围时仍重算 `next_run_at`、导致临近待发送任务被顺延的问题，并补充后端回归测试。
+- 2026-05-29: AI review 修复报告配置表单在同租户数据 refetch 时重置脏表单、覆盖未保存输入的问题，并补充前端静态测试锁定重置契约。
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+- GPT-5 Codex
+
+### Review Date
+
+- 2026-05-29 23:16:09 +0800
+
+### Outcome
+
+- Changes Requested -> Fixed -> Approved
+
+### Findings Fixed During Review
+
+1. High: `service/enterprise/usage_report_task.go` 在编辑已启用报告配置时总是按“当前时间”重算 `next_run_at`。这会让一个原本几分钟后就该发送的待执行任务，因为管理员只改了接收人或报告窗口而被整体顺延到下一周期，破坏单一状态源对“下一次发送时间”的正确表达。已改为：仅在首次启用、频率变化或原 `next_run_at` 无效时重算，否则保留既有待执行时间。
+2. Medium: `service/enterprise/usage_report_task_test.go` 之前没有覆盖“已启用任务在配置编辑后仍保留临近待发送时间”的回归场景，导致上面的调度漂移很容易再次被引入。已补充针对 `NextRunAt` 保留语义的单测。
+3. Medium: `web/default/src/features/enterprise-usage/index.tsx` 在每次报告配置查询成功后都会 `reset` 表单；只要保存后失效重取、或同租户发生普通 refetch，管理员尚未提交的输入就可能被服务器返回值覆盖。已将重置条件收敛为“作用域变化”或“表单仍是 pristine”两类情况。
+4. Low: `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` 之前没有锁定上述表单重置契约，前端表单状态回归只能靠人工发现。已新增纯函数级静态测试，覆盖 dirty/pristine 与 scope change 的组合行为。
+
+### Validation
+
+- 已复核 AC 1-3 与当前实现一致，未发现剩余阻塞项。
+- 已复核报告链路继续基于 `enterprise_usage_snapshots` 聚合结果，未回退扫描 `logs` 明细。
+- 已运行：
+  - `GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise -run 'UsageReport' -count=1`
+  - `GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise ./controller/enterprise ./tests/api -run 'UsageReport|EnterpriseUsage' -count=1`
+  - `cd web/default && bun test src/features/enterprise-usage/enterprise-usage.test.tsx`
+  - `cd web/default && bun run typecheck`

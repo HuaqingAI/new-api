@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import z from 'zod'
@@ -150,6 +150,17 @@ const reportConfigSchema = (t: (key: string) => string) =>
   })
 
 type ReportConfigFormValues = z.infer<ReturnType<typeof reportConfigSchema>>
+
+export function shouldResetReportForm(params: {
+  hasReportData: boolean
+  isDirty: boolean
+  scopeChanged: boolean
+}) {
+  if (!params.hasReportData) {
+    return params.scopeChanged || !params.isDirty
+  }
+  return params.scopeChanged || !params.isDirty
+}
 
 function reportConfigToFormValues(
   item?: DepartmentUsageReportJobItem | null
@@ -360,10 +371,36 @@ export function EnterpriseUsageOverview() {
     resolver: zodResolver(reportConfigSchema(t)),
     defaultValues: reportConfigToFormValues(),
   })
+  const lastReportScopeRef = useRef<string>(
+    String(search.tenant_id ?? reportQuery.data?.tenant_id ?? 0)
+  )
 
   useEffect(() => {
-    reportForm.reset(reportConfigToFormValues(reportQuery.data))
-  }, [reportForm, reportQuery.data])
+    const reportScope = String(search.tenant_id ?? reportQuery.data?.tenant_id ?? 0)
+    const scopeChanged = lastReportScopeRef.current !== reportScope
+    lastReportScopeRef.current = reportScope
+    if (!reportQuery.data) {
+      if (
+        shouldResetReportForm({
+          hasReportData: false,
+          isDirty: reportForm.formState.isDirty,
+          scopeChanged,
+        })
+      ) {
+        reportForm.reset(reportConfigToFormValues())
+      }
+      return
+    }
+    if (
+      shouldResetReportForm({
+        hasReportData: true,
+        isDirty: reportForm.formState.isDirty,
+        scopeChanged,
+      })
+    ) {
+      reportForm.reset(reportConfigToFormValues(reportQuery.data))
+    }
+  }, [reportForm, reportForm.formState.isDirty, reportQuery.data, search.tenant_id])
 
   const reportMutation = useMutation({
     mutationFn: async (values: ReportConfigFormValues) => {

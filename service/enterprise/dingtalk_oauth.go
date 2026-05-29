@@ -68,28 +68,36 @@ func (s *DingTalkOAuthService) ResolveIdentity(ctx context.Context, tenantId int
 
 	token, err := s.client.ExchangeOAuthCode(ctx, config.AppKey, config.AppSecret, code)
 	if err != nil {
+		logDingTalkOAuthProviderError("oauth_token", err)
 		return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
+	}
+	identity := DingTalkOAuthIdentity{
+		UnionId: strings.TrimSpace(token.UnionId),
+		OpenId:  strings.TrimSpace(token.OpenId),
 	}
 	oauthUser, err := s.client.GetOAuthUserInfo(ctx, token.AccessToken)
 	if err != nil {
-		return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
-	}
-
-	identity := DingTalkOAuthIdentity{
-		UnionId: strings.TrimSpace(oauthUser.UnionId),
-		OpenId:  strings.TrimSpace(oauthUser.OpenId),
-		Name:    strings.TrimSpace(oauthUser.Nick),
-		Email:   strings.TrimSpace(oauthUser.Email),
-		Mobile:  strings.TrimSpace(oauthUser.Mobile),
+		logDingTalkOAuthProviderError("oauth_userinfo", err)
+		if identity.UnionId == "" && identity.OpenId == "" {
+			return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
+		}
+	} else {
+		identity.UnionId = firstNonEmpty(oauthUser.UnionId, identity.UnionId)
+		identity.OpenId = firstNonEmpty(oauthUser.OpenId, identity.OpenId)
+		identity.Name = strings.TrimSpace(oauthUser.Nick)
+		identity.Email = strings.TrimSpace(oauthUser.Email)
+		identity.Mobile = strings.TrimSpace(oauthUser.Mobile)
 	}
 	if identity.UnionId != "" {
 		appToken, err := s.client.GetAccessToken(ctx, config.AppKey, config.AppSecret)
 		if err != nil {
-			return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
+			logDingTalkOAuthProviderError("access_token", err)
+			return identity, nil
 		}
 		contactUser, err := s.client.GetContactUserByUnionId(ctx, appToken, identity.UnionId)
 		if err != nil {
-			return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
+			logDingTalkOAuthProviderError("contact_user", err)
+			return identity, nil
 		}
 		identity.ExternalUserId = strings.TrimSpace(contactUser.UserId)
 		identity.Active = contactUser.Active
@@ -107,6 +115,15 @@ func (s *DingTalkOAuthService) ResolveIdentity(ctx context.Context, tenantId int
 		return DingTalkOAuthIdentity{}, ErrDingTalkOAuthIdentityMissing
 	}
 	return identity, nil
+}
+
+func logDingTalkOAuthProviderError(stage string, err error) {
+	var apiErr *DingTalkAPIError
+	if errors.As(err, &apiErr) {
+		common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed: stage=%s summary=%s http_status=%d err_code=%d network=%t", stage, apiErr.Stage, apiErr.Summary, apiErr.HTTPStatus, apiErr.ErrCode, apiErr.Network))
+		return
+	}
+	common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed: %s", stage, err.Error()))
 }
 
 func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId int, identity DingTalkOAuthIdentity, session sessions.Session) (DingTalkOAuthResult, error) {
@@ -397,6 +414,9 @@ func (s *DingTalkOAuthService) availableDingTalkUsername(identity DingTalkOAuthI
 }
 
 func (s *DingTalkOAuthService) readLocalDingTalkMembershipSnapshot(tenantId int, userId int, externalUserId string) ([]UserDepartmentItem, error) {
+	if strings.TrimSpace(externalUserId) == "" {
+		return []UserDepartmentItem{}, nil
+	}
 	query := MembershipQuery{
 		TenantId:       &tenantId,
 		ExternalSource: constant.EnterpriseExternalSourceDingTalk,

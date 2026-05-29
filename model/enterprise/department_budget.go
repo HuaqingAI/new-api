@@ -23,6 +23,7 @@ type DepartmentBudget struct {
 	Status         string `json:"status" gorm:"type:varchar(32);not null;index:idx_ent_dept_budgets_status"`
 	TotalQuota     int64  `json:"total_quota" gorm:"type:bigint;not null;default:0"`
 	Remaining      int64  `json:"remaining" gorm:"type:bigint;not null;default:0"`
+	AllocatedTotal int64  `json:"allocated_total" gorm:"type:bigint;not null;default:0"`
 	CycleQuota     int64  `json:"cycle_quota" gorm:"type:bigint;not null;default:0"`
 	CycleType      string `json:"cycle_type" gorm:"type:varchar(16);not null;default:'never'"`
 	CycleStartedAt int64  `json:"cycle_started_at" gorm:"type:bigint;not null;default:0"`

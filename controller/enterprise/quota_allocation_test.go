@@ -85,6 +85,87 @@ func TestQuotaAllocationAPIRejectsUserOutsideDepartment(t *testing.T) {
 	require.Equal(t, "enterprise.organization.quota_allocation_user_out_of_department", response.Message)
 }
 
+func TestQuotaAllocationAPIReportsSpecificBudgetReason(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/quota-allocations", CreateQuotaAllocation)
+
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:             1,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		Status:         entmodel.DepartmentBudgetStatusActive,
+		CycleQuota:     100,
+		Remaining:      10,
+		AllocatedTotal: 90,
+		CycleType:      "monthly",
+		CycleStartedAt: 1700000000,
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2003,
+		Username: "quota-member-three",
+		Password: "pwd",
+		Group:    "default",
+		AffCode:  "quota-member-three-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:     0,
+		UserId:       2003,
+		DepartmentId: 1,
+		Status:       1,
+	}).Error)
+
+	create := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations", dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2003,
+		CommittedQuota:     int64Ptr(20),
+	})
+	response := decodeEnterpriseAPIResponse(t, create)
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.organization.enterprise_budget_insufficient", response.Message)
+	require.Contains(t, string(response.Data), `"reason":"enterprise.organization.subscription_cycle_allocated_exceeded"`)
+}
+
+func TestQuotaAllocationAPIReportsSpecificBalanceBudgetReason(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/quota-allocations", CreateQuotaAllocation)
+
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           1,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   100,
+		Remaining:    10,
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2004,
+		Username: "quota-member-four",
+		Password: "pwd",
+		Group:    "default",
+		AffCode:  "quota-member-four-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:     0,
+		UserId:       2004,
+		DepartmentId: 1,
+		Status:       1,
+	}).Error)
+
+	create := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations", dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2004,
+		CommittedQuota:     int64Ptr(20),
+	})
+	response := decodeEnterpriseAPIResponse(t, create)
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.organization.enterprise_budget_insufficient", response.Message)
+	require.Contains(t, string(response.Data), `"reason":"enterprise.organization.balance_remaining_insufficient"`)
+}
+
 func TestQuotaAllocationListRejectsMismatchedDepartmentID(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 	router.GET("/api/enterprise/quota-allocations", ListQuotaAllocations)

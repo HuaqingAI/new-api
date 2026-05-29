@@ -1,7 +1,3 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { I18nextProvider } from 'react-i18next'
 import {
   RouterContextProvider,
   createMemoryHistory,
@@ -10,7 +6,12 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import i18n from '@/i18n/config'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { I18nextProvider } from 'react-i18next'
 import {
+  __testRenderApiMessage,
   EnterpriseOrganizationContent,
   DepartmentBudgetStatusCard,
   QuotaAllocationTable,
@@ -18,8 +19,10 @@ import {
   createAllocationSchema,
 } from './index'
 import type {
+  ApiResponse,
   DepartmentBudgetItem,
   DepartmentTreeNode,
+  EnterpriseBudgetErrorData,
   QuotaAllocationItem,
 } from './types'
 
@@ -172,7 +175,10 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(subscription.success, false)
     if (subscription.success) return
     const issues = JSON.stringify(subscription.error.flatten().fieldErrors)
-    assert.match(issues, /Subscription budget cycle quota must be greater than 0/)
+    assert.match(
+      issues,
+      /Subscription budget cycle quota must be greater than 0/
+    )
     assert.match(issues, /Subscription budget cycle start time is required/)
     assert.match(issues, /Custom cycle must be greater than 0 seconds/)
   })
@@ -229,6 +235,53 @@ describe('Enterprise organization department tree workflow', () => {
       reason: 'department allocation',
     })
     assert.equal(valid.success, true)
+  })
+
+  test('budget error messaging prefers the specific reason key', () => {
+    const payload: ApiResponse<EnterpriseBudgetErrorData> = {
+      success: false,
+      message: 'enterprise.organization.enterprise_budget_insufficient',
+      data: {
+        reason: 'enterprise.organization.balance_remaining_insufficient',
+      },
+    }
+
+    assert.equal(
+      __testRenderApiMessage(payload, (key) => key),
+      'enterprise.organization.balance_remaining_insufficient'
+    )
+  })
+
+  test('budget error messaging supports subscription allocation reason key', () => {
+    const payload: ApiResponse<EnterpriseBudgetErrorData> = {
+      success: false,
+      message: 'enterprise.organization.enterprise_budget_insufficient',
+      data: {
+        reason: 'enterprise.organization.subscription_cycle_allocated_exceeded',
+      },
+    }
+
+    assert.equal(
+      __testRenderApiMessage(payload, (key) => key),
+      'enterprise.organization.subscription_cycle_allocated_exceeded'
+    )
+  })
+
+  test('budget error messaging falls back to message and generic failure text', () => {
+    const withoutReason: ApiResponse<EnterpriseBudgetErrorData> = {
+      success: false,
+      message: 'enterprise.organization.enterprise_budget_insufficient',
+      data: {},
+    }
+    assert.equal(
+      __testRenderApiMessage(withoutReason, (key) => key),
+      'enterprise.organization.enterprise_budget_insufficient'
+    )
+
+    assert.equal(
+      __testRenderApiMessage(null, (key) => key),
+      'Request failed'
+    )
   })
 
   test('renders balance budget details without subscription-only fields', () => {
@@ -314,7 +367,9 @@ describe('Enterprise organization department tree workflow', () => {
   })
 })
 
-function renderEnterpriseOrganizationContent(departments: DepartmentTreeNode[]) {
+function renderEnterpriseOrganizationContent(
+  departments: DepartmentTreeNode[]
+) {
   return renderToStaticMarkup(
     <RouterContextProvider router={testRouter}>
       <I18nextProvider i18n={i18n}>
@@ -328,7 +383,8 @@ function renderEnterpriseOrganizationContent(departments: DepartmentTreeNode[]) 
 }
 
 function departmentNode(
-  overrides: Partial<DepartmentTreeNode> & Pick<DepartmentTreeNode, 'id' | 'name'>
+  overrides: Partial<DepartmentTreeNode> &
+    Pick<DepartmentTreeNode, 'id' | 'name'>
 ): DepartmentTreeNode {
   return {
     id: overrides.id,

@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -101,20 +102,43 @@ func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterpri
 func writeQuotaAllocationError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrQuotaAllocationInvalidInput):
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		common.ApiErrorMsg(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrUserNotFound):
-		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		common.ApiErrorMsg(c, i18n.MsgUserNotExists)
 	case errors.Is(err, entservice.ErrQuotaAllocationBudgetNotFound):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentNotFound)
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseDepartmentNotFound)
 	case errors.Is(err, entservice.ErrQuotaAllocationBudgetInactive):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaAllocationBudgetInactive)
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationBudgetInactive)
 	case errors.Is(err, entservice.ErrQuotaAllocationQuotaInvalid):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaAllocationQuotaInvalid)
-	case errors.Is(err, entservice.ErrQuotaAllocationQuotaExceeded):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaAllocationQuotaExceeded)
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationQuotaInvalid)
+	case errors.Is(err, entservice.ErrQuotaAllocationBudgetInsufficient):
+		writeQuotaAllocationBudgetError(c, quotaAllocationBudgetReasonKey(err))
 	case errors.Is(err, entservice.ErrQuotaAllocationUserOutOfDepartment):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaAllocationUserOutOfDepartment)
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationUserOutOfDepartment)
 	default:
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		common.ApiErrorMsg(c, i18n.MsgDatabaseError)
+	}
+}
+
+func writeQuotaAllocationBudgetError(c *gin.Context, reasonKey string) {
+	data := gin.H{}
+	if reasonKey != "" {
+		data["reason"] = reasonKey
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": false,
+		"message": i18n.MsgEnterpriseBudgetInsufficient,
+		"data":    data,
+	})
+}
+
+func quotaAllocationBudgetReasonKey(err error) string {
+	switch {
+	case errors.Is(err, entservice.ErrQuotaAllocationBalanceRemainingInsufficient):
+		return i18n.MsgEnterpriseBalanceRemainingInsufficient
+	case errors.Is(err, entservice.ErrQuotaAllocationSubscriptionCycleAllocatedExceeded):
+		return i18n.MsgEnterpriseSubscriptionCycleAllocatedExceeded
+	default:
+		return ""
 	}
 }

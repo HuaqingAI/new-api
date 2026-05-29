@@ -100,8 +100,10 @@ import {
 import { DepartmentTree } from './components/DepartmentTree'
 import { useDepartmentTree } from './hooks/use-department-tree'
 import type {
+  ApiResponse,
   DepartmentBudgetItem,
   DepartmentMemberItem,
+  EnterpriseBudgetErrorData,
   MembershipStatus,
   QuotaAllocationItem,
   UserDepartmentItem,
@@ -180,6 +182,16 @@ export function createAllocationSchema(t: (key: string) => string) {
     }),
     reason: z.string().trim().max(500).default(''),
   })
+}
+
+export function __testRenderApiMessage(
+  result: ApiResponse<EnterpriseBudgetErrorData> | null | undefined,
+  translator: (key: string) => string
+) {
+  if (!result) return translator('Request failed')
+  if (result.data?.reason) return translator(result.data.reason)
+  if (result.message) return translator(result.message)
+  return translator('Request failed')
 }
 
 function statusVariant(status: MembershipStatus) {
@@ -665,6 +677,9 @@ function DepartmentMembersTable({
 function DepartmentBudgetPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const renderApiMessage = (
+    result: ApiResponse<EnterpriseBudgetErrorData> | null | undefined
+  ) => __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
@@ -757,7 +772,7 @@ function DepartmentBudgetPanel() {
     },
     onSuccess: async (result) => {
       if (!result.success) {
-        toast.error(result.message || t('Request failed'))
+        toast.error(renderApiMessage(result))
         return
       }
       await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
@@ -782,7 +797,7 @@ function DepartmentBudgetPanel() {
       }),
     onSuccess: async (result) => {
       if (!result.success) {
-        toast.error(result.message || t('Request failed'))
+        toast.error(renderApiMessage(result))
         return
       }
       await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })

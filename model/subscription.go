@@ -431,7 +431,7 @@ func CreateEnterpriseAllocationSubscriptionTx(tx *gorm.DB, userId int, allocatio
 	if err != nil {
 		return nil, err
 	}
-	now := GetDBTimestamp()
+	now := common.GetTimestamp()
 	startTime := now
 	if cycleStartedAt > 0 {
 		startTime = cycleStartedAt
@@ -1396,7 +1396,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if err := activeSubscriptionWhere(tx.Set("gorm:query_option", "FOR UPDATE"), now).
 			Where("user_id = ?", userId).
 			Find(&subs).Error; err != nil {
-			return errors.New("no active subscription")
+			return err
 		}
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
@@ -1433,11 +1433,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					if dup.Status == "refunded" {
 						return errors.New("subscription pre-consume already refunded")
 					}
-					returnValue.UserSubscriptionId = sub.Id
+					var dupSub UserSubscription
+					if err3 := tx.Where("id = ?", dup.UserSubscriptionId).First(&dupSub).Error; err3 != nil {
+						return err3
+					}
+					returnValue.UserSubscriptionId = dupSub.Id
 					returnValue.PreConsumed = dup.PreConsumed
-					returnValue.AmountTotal = sub.AmountTotal
-					returnValue.AmountUsedBefore = sub.AmountUsed
-					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.AmountTotal = dupSub.AmountTotal
+					returnValue.AmountUsedBefore = dupSub.AmountUsed
+					returnValue.AmountUsedAfter = dupSub.AmountUsed
 					return nil
 				}
 				return err

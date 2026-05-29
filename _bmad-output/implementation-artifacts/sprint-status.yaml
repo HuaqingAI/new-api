@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-29 14:30:00 +08:00
+last_updated: 2026-05-29 14:35:08 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   epic-3: in-progress
   3-1-create-department-budget-pool: done
   3-2-allocate-department-budget-to-member-wallet: done
-  3-3-enforce-budget-invariants-and-concurrency-safety: backlog
+  3-3-enforce-budget-invariants-and-concurrency-safety: done
   3-4-revoke-and-sync-department-wallet-state: backlog
   3-5-display-budget-pool-and-wallet-state: backlog
   epic-3-retrospective: optional

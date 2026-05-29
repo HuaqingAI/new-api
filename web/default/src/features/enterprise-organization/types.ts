@@ -44,6 +44,10 @@ export type ApiResponse<T = unknown> = {
   data?: T
 }
 
+export type EnterpriseBudgetErrorData = {
+  reason?: string
+}
+
 export type MembershipStatus = 1 | 2 | 3 | 4
 
 export type UserDepartmentItem = {

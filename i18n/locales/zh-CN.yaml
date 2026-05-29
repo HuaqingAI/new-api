@@ -38,6 +38,9 @@ enterprise.organization.department_budget_invalid_cycle_type: "周期预算重�
 enterprise.organization.department_budget_invalid_custom_seconds: "自定义周期必须大于 0 秒"
 enterprise.organization.department_budget_invalid_cycle_started_at: "周期预算起始时间必填"
 enterprise.organization.department_budget_type_immutable: "预算池创建后不可切换类型"
+enterprise.organization.enterprise_budget_insufficient: "部门预算不足"
+enterprise.organization.balance_remaining_insufficient: "分配额度超过一次性预算池剩余额度"
+enterprise.organization.subscription_cycle_allocated_exceeded: "分配额度超过周期预算池本周期可承诺额度"
 error.enterprise.permission.dept_admin_required: "需要部门管理员权限"
 error.enterprise.permission.admin_required: "需要企业管理员权限"
 

@@ -309,3 +309,6 @@ enterprise.dingtalk.oauth_binding_conflict: "該釘釘員工無法安全綁定�
 enterprise.dingtalk.sync_started: "釘釘通訊錄同步已啟動"
 enterprise.dingtalk.sync_not_enabled: "釘釘通訊錄同步未啟用"
 enterprise.dingtalk.sync_task_not_found: "釘釘同步任務不存在"
+enterprise.dingtalk.sync_conflict_not_found: "釘釘同步衝突不存在"
+enterprise.dingtalk.sync_conflict_not_pending: "釘釘同步衝突已不在待處理狀態"
+enterprise.dingtalk.sync_conflict_no_candidate: "釘釘同步衝突沒有唯一候選使用者"

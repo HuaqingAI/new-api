@@ -4615,6 +4615,10 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Bind DingTalk identity": "DingTalk ID を紐付ける",
+    "Bind candidate": "候補ユーザーを紐付ける",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "この DingTalk ID を候補ユーザー #{{id}} に紐付け、競合を解決済みにします。",
+    "DingTalk sync conflict resolved": "DingTalk 同期競合を解決しました"
   }
 }

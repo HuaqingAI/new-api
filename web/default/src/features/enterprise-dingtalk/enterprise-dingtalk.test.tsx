@@ -6,8 +6,11 @@ import i18n from '@/i18n/config'
 import {
   EnterpriseDingTalkConnectivityResult,
   EnterpriseDingTalkSyncPanel,
+  DingTalkSyncConflictList,
 } from './index'
 import type { DingTalkConnectivityCode } from './types'
+
+i18n.changeLanguage('en')
 
 describe('Enterprise DingTalk connectivity guidance', () => {
   test('renders stable guidance for every backend result code', () => {
@@ -107,8 +110,10 @@ describe('Enterprise DingTalk sync panel', () => {
           logsLoading={false}
           conflictsLoading={false}
           syncing={false}
+          resolvingConflictId={null}
           onStartSync={() => undefined}
           onRefreshLogs={() => undefined}
+          onBindCandidate={() => undefined}
         />
       </I18nextProvider>
     )
@@ -116,9 +121,68 @@ describe('Enterprise DingTalk sync panel', () => {
     assert.match(html, /Address Book Sync/)
     assert.match(html, /Pending Sync Conflicts/)
     assert.match(html, /Conflict User/)
+    assert.match(html, /Bind candidate/)
     assert.match(html, /Task/)
     assert.match(html, /department_created/)
     assert.doesNotMatch(html, /plain-secret|access-token|raw upstream/i)
+  })
+
+  test('renders bind action only for conflicts with a single candidate', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DingTalkSyncConflictList
+          loading={false}
+          resolvingConflictId={null}
+          onBindCandidate={() => undefined}
+          conflicts={[
+            {
+              id: 5,
+              tenant_id: 0,
+              task_id: 9,
+              external_user_id: 'staff-single',
+              union_id: 'union-single',
+              mobile: '13800000000',
+              email: 'single@example.com',
+              name: 'Single Candidate',
+              conflict_type: 'email',
+              candidate_user_id: 100,
+              details: 'email_matches_existing_local_user',
+              status: 'pending',
+              last_task_id: 9,
+              resolved_by: 0,
+              resolved_at: 0,
+              created_at: 1700000001,
+              updated_at: 1700000001,
+            },
+            {
+              id: 6,
+              tenant_id: 0,
+              task_id: 9,
+              external_user_id: 'staff-many',
+              union_id: 'union-many',
+              mobile: '',
+              email: 'many@example.com',
+              name: 'Many Candidates',
+              conflict_type: 'email',
+              candidate_user_id: 0,
+              details: 'email_matches_existing_local_user',
+              status: 'pending',
+              last_task_id: 9,
+              resolved_by: 0,
+              resolved_at: 0,
+              created_at: 1700000001,
+              updated_at: 1700000001,
+            },
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Single Candidate/)
+    assert.match(html, /Candidate user #100/)
+    assert.match(html, /Many Candidates/)
+    assert.match(html, /Multiple candidate users/)
+    assert.equal((html.match(/Bind candidate/g) ?? []).length, 1)
   })
 })
 

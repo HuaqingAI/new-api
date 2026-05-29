@@ -477,6 +477,13 @@ export const STATIC_I18N_KEYS = [
   'Batch detection failed',
   'Batch detection complete: {{channels}} channels, {{add}} to add, {{remove}} to remove, {{fails}} failed',
 
+  // DingTalk sync conflict actions
+  'DingTalk sync conflict resolved',
+  'Bind DingTalk identity',
+  'Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.',
+  'Bind candidate',
+  'Binding...',
+
   // Misc
   'Cancel',
   'Status',

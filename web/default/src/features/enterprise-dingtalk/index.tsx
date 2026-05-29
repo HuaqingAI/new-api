@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import * as z from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -38,6 +38,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import {
   Alert,
@@ -78,6 +79,7 @@ import {
   enterpriseDingTalkQueryKey,
   enterpriseDingTalkSyncConflictsQueryKey,
   enterpriseDingTalkSyncLogsQueryKey,
+  bindDingTalkSyncConflictCandidate,
   getDingTalkConfig,
   getDingTalkSyncTask,
   listDingTalkSyncConflicts,
@@ -305,6 +307,27 @@ export function EnterpriseDingTalk() {
       await queryClient.invalidateQueries({
         queryKey: enterpriseDingTalkSyncConflictsQueryKey,
       })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
+  const bindConflictMutation = useMutation({
+    mutationFn: async (conflict: DingTalkSyncConflict) => {
+      const result = await bindDingTalkSyncConflictCandidate(
+        conflict.id,
+        conflict.candidate_user_id
+      )
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return result.data
+    },
+    onSuccess: async () => {
+      toast.success(t('DingTalk sync conflict resolved'))
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseDingTalkSyncConflictsQueryKey,
+      })
+      await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkSyncLogsQueryKey })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
@@ -586,11 +609,19 @@ export function EnterpriseDingTalk() {
                     syncConflictsQuery.isLoading || syncConflictsQuery.isFetching
                   }
                   syncing={syncMutation.isPending}
+                  resolvingConflictId={
+                    bindConflictMutation.isPending
+                      ? (bindConflictMutation.variables?.id ?? null)
+                      : null
+                  }
                   onStartSync={() => syncMutation.mutate()}
                   onRefreshLogs={() => {
                     syncLogsQuery.refetch()
                     syncConflictsQuery.refetch()
                   }}
+                  onBindCandidate={(conflict) =>
+                    bindConflictMutation.mutate(conflict)
+                  }
                 />
               </form>
             </Form>
@@ -610,8 +641,10 @@ export function EnterpriseDingTalkSyncPanel({
   logsLoading,
   conflictsLoading,
   syncing,
+  resolvingConflictId,
   onStartSync,
   onRefreshLogs,
+  onBindCandidate,
 }: {
   canEdit: boolean
   config: DingTalkConfig
@@ -621,8 +654,10 @@ export function EnterpriseDingTalkSyncPanel({
   logsLoading: boolean
   conflictsLoading: boolean
   syncing: boolean
+  resolvingConflictId?: number | null
   onStartSync: () => void
   onRefreshLogs: () => void
+  onBindCandidate?: (conflict: DingTalkSyncConflict) => void
 }) {
   const { t } = useTranslation()
   const canSync = canEdit && config.sync_enabled && config.has_app_secret
@@ -670,10 +705,132 @@ export function EnterpriseDingTalkSyncPanel({
         <DingTalkSyncConflictList
           conflicts={conflicts}
           loading={conflictsLoading}
+          resolvingConflictId={resolvingConflictId}
+          onBindCandidate={onBindCandidate}
         />
         <DingTalkSyncLogTable logs={logs} loading={logsLoading} />
       </CardContent>
     </Card>
+  )
+}
+
+export function DingTalkSyncConflictList({
+  conflicts,
+  loading,
+  resolvingConflictId,
+  onBindCandidate,
+}: {
+  conflicts: DingTalkSyncConflict[]
+  loading: boolean
+  resolvingConflictId?: number | null
+  onBindCandidate?: (conflict: DingTalkSyncConflict) => void
+}) {
+  const { t } = useTranslation()
+  const [bindingConflict, setBindingConflict] =
+    useState<DingTalkSyncConflict | null>(null)
+
+  if (loading) {
+    return <Skeleton className='h-28 w-full' />
+  }
+
+  if (conflicts.length === 0) {
+    return (
+      <p className='text-muted-foreground rounded-md border p-4 text-sm'>
+        {t('No pending DingTalk sync conflicts.')}
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <div className='rounded-md border'>
+        <div className='flex items-center gap-2 border-b px-4 py-3'>
+          <TriangleAlert className='text-amber-600 size-4' />
+          <div className='min-w-0'>
+            <h3 className='text-sm font-medium'>{t('Pending Sync Conflicts')}</h3>
+            <p className='text-muted-foreground text-xs'>
+              {t('Conflicting DingTalk members are not bound automatically.')}
+            </p>
+          </div>
+        </div>
+        <div className='divide-y'>
+          {conflicts.map((conflict) => (
+            <div
+              key={conflict.id}
+              className='grid gap-2 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_auto]'
+            >
+              <div className='min-w-0'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className='font-medium'>
+                    {conflict.name || conflict.external_user_id}
+                  </span>
+                  <Badge variant='outline'>
+                    {t(syncConflictTypeLabel(conflict.conflict_type))}
+                  </Badge>
+                </div>
+                <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs'>
+                  {conflict.email ? <span>{conflict.email}</span> : null}
+                  {conflict.mobile ? <span>{conflict.mobile}</span> : null}
+                  <span>{conflict.external_user_id}</span>
+                </div>
+              </div>
+              <div className='text-muted-foreground text-xs md:text-right'>
+                <div>
+                  {conflict.candidate_user_id > 0
+                    ? t('Candidate user #{{id}}', {
+                        id: conflict.candidate_user_id,
+                      })
+                    : t('Multiple candidate users')}
+                </div>
+                {conflict.candidate_user_id > 0 && onBindCandidate ? (
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    className='mt-2'
+                    disabled={resolvingConflictId === conflict.id}
+                    onClick={() => setBindingConflict(conflict)}
+                  >
+                    <CheckCircle2 className='size-4' />
+                    {resolvingConflictId === conflict.id
+                      ? t('Binding...')
+                      : t('Bind candidate')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <ConfirmDialog
+        title={t('Bind DingTalk identity')}
+        desc={
+          bindingConflict
+            ? t(
+                'Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.',
+                { id: bindingConflict.candidate_user_id }
+              )
+            : ''
+        }
+        confirmText={
+          bindingConflict && resolvingConflictId === bindingConflict.id
+            ? t('Binding...')
+            : t('Bind candidate')
+        }
+        open={Boolean(bindingConflict)}
+        onOpenChange={(open) => {
+          if (!open) setBindingConflict(null)
+        }}
+        isLoading={
+          Boolean(bindingConflict) && resolvingConflictId === bindingConflict?.id
+        }
+        handleConfirm={() => {
+          if (!bindingConflict || !onBindCandidate) return
+          onBindCandidate(bindingConflict)
+          setBindingConflict(null)
+        }}
+      />
+    </>
   )
 }
 
@@ -707,73 +864,6 @@ function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
           <div key={label} className='rounded-md bg-muted/50 px-3 py-2'>
             <div className='text-muted-foreground'>{label}</div>
             <div className='font-medium'>{value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function DingTalkSyncConflictList({
-  conflicts,
-  loading,
-}: {
-  conflicts: DingTalkSyncConflict[]
-  loading: boolean
-}) {
-  const { t } = useTranslation()
-
-  if (loading) {
-    return <Skeleton className='h-28 w-full' />
-  }
-
-  if (conflicts.length === 0) {
-    return (
-      <p className='text-muted-foreground rounded-md border p-4 text-sm'>
-        {t('No pending DingTalk sync conflicts.')}
-      </p>
-    )
-  }
-
-  return (
-    <div className='rounded-md border'>
-      <div className='flex items-center gap-2 border-b px-4 py-3'>
-        <TriangleAlert className='text-amber-600 size-4' />
-        <div className='min-w-0'>
-          <h3 className='text-sm font-medium'>{t('Pending Sync Conflicts')}</h3>
-          <p className='text-muted-foreground text-xs'>
-            {t('Conflicting DingTalk members are not bound automatically.')}
-          </p>
-        </div>
-      </div>
-      <div className='divide-y'>
-        {conflicts.map((conflict) => (
-          <div
-            key={conflict.id}
-            className='grid gap-2 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_auto]'
-          >
-            <div className='min-w-0'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <span className='font-medium'>
-                  {conflict.name || conflict.external_user_id}
-                </span>
-                <Badge variant='outline'>
-                  {t(syncConflictTypeLabel(conflict.conflict_type))}
-                </Badge>
-              </div>
-              <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs'>
-                {conflict.email ? <span>{conflict.email}</span> : null}
-                {conflict.mobile ? <span>{conflict.mobile}</span> : null}
-                <span>{conflict.external_user_id}</span>
-              </div>
-            </div>
-            <div className='text-muted-foreground text-xs md:text-right'>
-              {conflict.candidate_user_id > 0
-                ? t('Candidate user #{{id}}', {
-                    id: conflict.candidate_user_id,
-                  })
-                : t('Multiple candidate users')}
-            </div>
           </div>
         ))}
       </div>

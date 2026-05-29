@@ -4615,6 +4615,10 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Bind DingTalk identity": "Привязать идентификатор DingTalk",
+    "Bind candidate": "Привязать кандидата",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Привязать этот идентификатор DingTalk к пользователю-кандидату #{{id}} и отметить конфликт как решенный.",
+    "DingTalk sync conflict resolved": "Конфликт синхронизации DingTalk решен"
   }
 }

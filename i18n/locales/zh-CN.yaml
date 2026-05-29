@@ -309,3 +309,6 @@ enterprise.dingtalk.oauth_binding_conflict: "该钉钉员工无法安全绑定�
 enterprise.dingtalk.sync_started: "钉钉通讯录同步已启动"
 enterprise.dingtalk.sync_not_enabled: "钉钉通讯录同步未启用"
 enterprise.dingtalk.sync_task_not_found: "钉钉同步任务不存在"
+enterprise.dingtalk.sync_conflict_not_found: "钉钉同步冲突不存在"
+enterprise.dingtalk.sync_conflict_not_pending: "钉钉同步冲突已不在待处理状态"
+enterprise.dingtalk.sync_conflict_no_candidate: "钉钉同步冲突没有唯一候选用户"

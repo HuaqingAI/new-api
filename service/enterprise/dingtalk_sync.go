@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"gorm.io/gorm"
 )
@@ -102,6 +103,13 @@ type DingTalkSyncConflictQuery struct {
 	Status   string
 	Page     int
 	PageSize int
+}
+
+type DingTalkSyncConflictResolveInput struct {
+	TenantId                int
+	ConflictId              int
+	ExpectedCandidateUserId *int
+	ActorId                 int
 }
 
 type DingTalkSyncLogsResult struct {
@@ -267,6 +275,119 @@ func (s *DingTalkSyncService) ListConflicts(ctx context.Context, query DingTalkS
 		items = append(items, mapDingTalkSyncConflict(conflict))
 	}
 	return DingTalkSyncConflictsResult{Items: items, Total: int(total), Page: page, PageSize: pageSize}, nil
+}
+
+func (s *DingTalkSyncService) ResolveConflictByCandidate(ctx context.Context, input DingTalkSyncConflictResolveInput) (DingTalkSyncConflictItem, error) {
+	if input.ConflictId <= 0 {
+		return DingTalkSyncConflictItem{}, ErrDingTalkSyncConflictNotFound
+	}
+	if input.TenantId < 0 {
+		input.TenantId = 0
+	}
+
+	var resolved entmodel.DingTalkSyncConflict
+	now := time.Now().Unix()
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var conflict entmodel.DingTalkSyncConflict
+		if err := tx.Where("id = ? AND tenant_id = ?", input.ConflictId, input.TenantId).First(&conflict).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrDingTalkSyncConflictNotFound
+			}
+			return err
+		}
+		if conflict.Status != constant.DingTalkSyncConflictStatusPending {
+			return ErrDingTalkSyncConflictNotPending
+		}
+		if conflict.CandidateUserId <= 0 {
+			return ErrDingTalkSyncConflictNoCandidate
+		}
+		if input.ExpectedCandidateUserId != nil && *input.ExpectedCandidateUserId != conflict.CandidateUserId {
+			return ErrDingTalkSyncConflictNoCandidate
+		}
+		identityKey := dingtalkSyncConflictIdentityKey(conflict)
+		if identityKey == "" {
+			return ErrDingTalkOAuthIdentityMissing
+		}
+		if err := validateDingTalkSyncConflictCandidate(tx, input.TenantId, conflict); err != nil {
+			return err
+		}
+
+		var user model.User
+		if err := tx.Where("id = ?", conflict.CandidateUserId).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserNotFound
+			}
+			return err
+		}
+		if user.Status != common.UserStatusEnabled {
+			return ErrDingTalkOAuthUserDisabled
+		}
+
+		var byIdentity entmodel.DingTalkIdentity
+		identityErr := tx.Where("tenant_id = ? AND identity_key = ?", input.TenantId, identityKey).First(&byIdentity).Error
+		if identityErr != nil && !errors.Is(identityErr, gorm.ErrRecordNotFound) {
+			return identityErr
+		}
+		if identityErr == nil && byIdentity.UserId != conflict.CandidateUserId {
+			return ErrDingTalkOAuthBindingConflict
+		}
+
+		var binding entmodel.DingTalkIdentity
+		userBindingErr := tx.Where("tenant_id = ? AND user_id = ?", input.TenantId, conflict.CandidateUserId).First(&binding).Error
+		if userBindingErr != nil && !errors.Is(userBindingErr, gorm.ErrRecordNotFound) {
+			return userBindingErr
+		}
+		if userBindingErr == nil && identityErr == nil && binding.Id != byIdentity.Id {
+			return ErrDingTalkOAuthBindingConflict
+		}
+
+		bindingUpdate := map[string]any{
+			"identity_key":     identityKey,
+			"union_id":         strings.TrimSpace(conflict.UnionId),
+			"external_user_id": strings.TrimSpace(conflict.ExternalUserId),
+			"mobile":           strings.TrimSpace(conflict.Mobile),
+			"user_id":          conflict.CandidateUserId,
+			"status":           DingTalkIdentityStatusActive,
+		}
+		if userBindingErr == nil {
+			if err := tx.Model(&binding).Updates(bindingUpdate).Error; err != nil {
+				return err
+			}
+		} else if identityErr == nil {
+			if err := tx.Model(&byIdentity).Updates(bindingUpdate).Error; err != nil {
+				return err
+			}
+		} else {
+			binding = entmodel.DingTalkIdentity{
+				TenantId:       input.TenantId,
+				IdentityKey:    identityKey,
+				UnionId:        strings.TrimSpace(conflict.UnionId),
+				ExternalUserId: strings.TrimSpace(conflict.ExternalUserId),
+				Mobile:         strings.TrimSpace(conflict.Mobile),
+				UserId:         conflict.CandidateUserId,
+				Status:         DingTalkIdentityStatusActive,
+			}
+			if err := tx.Create(&binding).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Model(&conflict).Updates(map[string]any{
+			"status":      constant.DingTalkSyncConflictStatusResolved,
+			"resolved_by": input.ActorId,
+			"resolved_at": now,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", conflict.Id).First(&resolved).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return DingTalkSyncConflictItem{}, err
+	}
+	return mapDingTalkSyncConflict(resolved), nil
 }
 
 func (s *DingTalkSyncService) getSyncConfig(tenantId int) (entmodel.DingTalkConfig, error) {

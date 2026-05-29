@@ -4,8 +4,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
+	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/stretchr/testify/require"
@@ -138,4 +140,62 @@ func TestDingTalkSyncConflictsAPIListsPendingConflicts(t *testing.T) {
 	require.Len(t, data.Items, 1)
 	require.Equal(t, "staff-conflict", data.Items[0].ExternalUserId)
 	require.Equal(t, "email", data.Items[0].ConflictType)
+}
+
+func TestDingTalkSyncConflictBindCandidateAPIResolvesConflict(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/dingtalk/sync/conflicts/:id/bind-candidate", ResolveDingTalkSyncConflictWithCandidate)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 100).Update("status", common.UserStatusEnabled).Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 100).Update("email", "alice@example.com").Error)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:        0,
+		TaskId:          10,
+		LastTaskId:      10,
+		ExternalUserId:  "staff-bind",
+		UnionId:         "union-bind",
+		Email:           "alice@example.com",
+		Name:            "Alice Ding",
+		ConflictType:    "email",
+		CandidateUserId: 100,
+		Details:         "email_matches_existing_local_user",
+		Status:          constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/dingtalk/sync/conflicts/1/bind-candidate", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+
+	require.True(t, response.Success, response.Message)
+	data := decodeEnterpriseData[entservice.DingTalkSyncConflictItem](t, response)
+	require.Equal(t, constant.DingTalkSyncConflictStatusResolved, data.Status)
+	require.Equal(t, 999, data.ResolvedBy)
+
+	var binding entmodel.DingTalkIdentity
+	require.NoError(t, db.Where("identity_key = ?", "union:union-bind").First(&binding).Error)
+	require.Equal(t, 100, binding.UserId)
+
+	var action entmodel.AdminAction
+	require.NoError(t, db.Where("action_type = ?", entservice.AdminActionDingTalkConflictBindCandidate).First(&action).Error)
+	require.Equal(t, "1", action.ObjectId)
+	require.Contains(t, action.Payload, `"candidate_user_id":100`)
+	require.NotContains(t, action.Payload, "plain-secret")
+}
+
+func TestDingTalkSyncConflictBindCandidateAPIRejectsNoCandidate(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/dingtalk/sync/conflicts/:id/bind-candidate", ResolveDingTalkSyncConflictWithCandidate)
+	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{
+		TenantId:       0,
+		TaskId:         11,
+		LastTaskId:     11,
+		ExternalUserId: "staff-many",
+		UnionId:        "union-many",
+		ConflictType:   "email",
+		Status:         constant.DingTalkSyncConflictStatusPending,
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/dingtalk/sync/conflicts/1/bind-candidate", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.dingtalk.sync_conflict_no_candidate", response.Message)
 }

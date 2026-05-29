@@ -201,36 +201,51 @@ func sanitizeAdminActionPayload(payload map[string]any) map[string]any {
 			sanitized[key] = "[REDACTED]"
 			continue
 		}
-		switch typed := value.(type) {
-		case map[string]any:
-			sanitized[key] = sanitizeAdminActionPayload(typed)
-		case string:
-			sanitized[key] = sanitizeAdminActionString(typed)
-		default:
-			sanitized[key] = value
-		}
+		sanitized[key] = sanitizeAdminActionValue(value)
 	}
 	return sanitized
+}
+
+func sanitizeAdminActionValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return sanitizeAdminActionPayload(typed)
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, sanitizeAdminActionValue(item))
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, sanitizeAdminActionPayload(item))
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, sanitizeAdminActionString(item))
+		}
+		return out
+	case string:
+		return sanitizeAdminActionString(typed)
+	default:
+		return value
+	}
 }
 
 func sanitizeAdminActionString(value string) string {
 	if value == "" {
 		return ""
 	}
-	parts := strings.Fields(value)
-	for i, part := range parts {
-		if strings.Contains(strings.ToLower(part), "secret") ||
-			strings.Contains(strings.ToLower(part), "token") ||
-			strings.Contains(strings.ToLower(part), "password") ||
-			strings.Contains(strings.ToLower(part), "credential") ||
-			strings.Contains(strings.ToLower(part), "webhook") {
-			parts[i] = "[REDACTED]"
+	lower := strings.ToLower(value)
+	for _, marker := range []string{"secret", "token", "password", "credential", "webhook", "private_key", "app_key"} {
+		if strings.Contains(lower, marker) {
+			return "[REDACTED]"
 		}
 	}
-	if len(parts) == 0 {
-		return value
-	}
-	return strings.Join(parts, " ")
+	return value
 }
 
 func isSensitiveAdminActionKey(key string) bool {

@@ -36,6 +36,10 @@ func TestAdminActionWriteSanitizesSensitivePayload(t *testing.T) {
 			"nested": map[string]any{
 				"webhook_url": "https://example.invalid/hook",
 			},
+			"changes": []any{
+				map[string]any{"api_token": "array-token"},
+				"password=plain-password",
+			},
 		},
 	}))
 
@@ -45,6 +49,8 @@ func TestAdminActionWriteSanitizesSensitivePayload(t *testing.T) {
 	require.NotContains(t, item.Payload, "plain-secret")
 	require.NotContains(t, item.Payload, "plain-token")
 	require.NotContains(t, item.Payload, "example.invalid")
+	require.NotContains(t, item.Payload, "array-token")
+	require.NotContains(t, item.Payload, "plain-password")
 	require.Contains(t, item.Payload, "[REDACTED]")
 
 	var payload map[string]any

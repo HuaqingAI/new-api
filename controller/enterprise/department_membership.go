@@ -19,7 +19,10 @@ func ListUserDepartments(c *gin.Context) {
 		return
 	}
 
-	query := parseMembershipQuery(c)
+	query, ok := parseMembershipQuery(c)
+	if !ok {
+		return
+	}
 	result, err := departmentMembershipService().ListUserDepartments(userId, query)
 	if err != nil {
 		writeMembershipError(c, err)
@@ -92,7 +95,10 @@ func ListDepartmentMembers(c *gin.Context) {
 		return
 	}
 
-	query := parseMembershipQuery(c)
+	query, ok := parseMembershipQuery(c)
+	if !ok {
+		return
+	}
 	result, err := departmentMembershipService().ListDepartmentMembers(departmentId, query)
 	if err != nil {
 		writeMembershipError(c, err)
@@ -116,9 +122,13 @@ func AddDepartmentMember(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
 
 	input := entservice.AddDepartmentMemberInput{
-		TenantId:       valueOrZero(req.TenantId),
+		TenantId:       tenantId,
 		UserId:         req.UserId,
 		ExternalUserId: req.ExternalUserId,
 		ExternalSource: req.ExternalSource,
@@ -249,32 +259,75 @@ func parsePathInt(c *gin.Context, name string) (int, bool) {
 	return value, true
 }
 
-func parseMembershipQuery(c *gin.Context) entservice.MembershipQuery {
+func parseMembershipQuery(c *gin.Context) (entservice.MembershipQuery, bool) {
 	var query dtoenterprise.DepartmentMembershipQuery
-	_ = c.ShouldBindQuery(&query)
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return entservice.MembershipQuery{}, false
+	}
 	return entservice.MembershipQuery{
 		TenantId:       query.TenantId,
 		Status:         query.Status,
 		ExternalSource: query.ExternalSource,
 		Page:           valueOrZero(query.Page),
 		PageSize:       valueOrZero(query.PageSize),
-	}
+	}, true
 }
 
 func parseOptionalStatusInput(c *gin.Context) (entservice.MembershipMutationInput, bool) {
+	queryTenantId, ok := parseMembershipTenantIdQuery(c)
+	if !ok {
+		return entservice.MembershipMutationInput{}, false
+	}
 	if c.Request.Body == nil || c.Request.ContentLength == 0 {
-		return entservice.MembershipMutationInput{}, true
+		return entservice.MembershipMutationInput{TenantId: queryTenantId}, true
 	}
 	var req dtoenterprise.MembershipStatusRequest
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return entservice.MembershipMutationInput{}, false
 	}
+	tenantId := queryTenantId
+	if c.Query("tenant_id") == "" && req.TenantId != nil {
+		if *req.TenantId < 0 {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return entservice.MembershipMutationInput{}, false
+		}
+		tenantId = valueOrZero(req.TenantId)
+	}
 	return entservice.MembershipMutationInput{
-		TenantId:       valueOrZero(req.TenantId),
+		TenantId:       tenantId,
 		ExternalSource: req.ExternalSource,
 		ChangedAt:      int64Value(req.ChangedAt),
 	}, true
+}
+
+func parseMembershipTenantIdQuery(c *gin.Context) (int, bool) {
+	raw := c.Query("tenant_id")
+	if raw == "" {
+		return 0, true
+	}
+	tenantId, err := strconv.Atoi(raw)
+	if err != nil || tenantId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return 0, false
+	}
+	return tenantId, true
+}
+
+func requestTenantId(c *gin.Context, bodyTenantId *int) (int, bool) {
+	queryTenantId, ok := parseMembershipTenantIdQuery(c)
+	if !ok {
+		return 0, false
+	}
+	if c.Query("tenant_id") != "" {
+		return queryTenantId, true
+	}
+	if bodyTenantId != nil && *bodyTenantId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return 0, false
+	}
+	return valueOrZero(bodyTenantId), true
 }
 
 func writeMembershipError(c *gin.Context, err error) {

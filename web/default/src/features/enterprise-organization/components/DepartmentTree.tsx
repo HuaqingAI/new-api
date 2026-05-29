@@ -18,8 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { AlertTriangle, GitBranch, History, Link2, Minus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import {
   DEPARTMENT_SOURCE_TYPE,
   DEPARTMENT_STATUS,
@@ -36,7 +36,7 @@ export function DepartmentTree({ nodes }: DepartmentTreeProps) {
 
   return (
     <div className='overflow-x-auto rounded-lg border'>
-      <div className='bg-muted/60 grid min-w-[760px] grid-cols-[minmax(260px,1.5fr)_120px_130px_160px_120px] gap-3 border-b px-4 py-2 text-xs font-medium text-muted-foreground'>
+      <div className='bg-muted/60 text-muted-foreground grid min-w-[760px] grid-cols-[minmax(260px,1.5fr)_120px_130px_160px_120px] gap-3 border-b px-4 py-2 text-xs font-medium'>
         <span>{t('Department')}</span>
         <span>{t('Status')}</span>
         <span>{t('Source')}</span>
@@ -71,14 +71,14 @@ function DepartmentTreeRow({
             style={{ width: `${level * 22 + 18}px` }}
           >
             {hasChildren ? (
-              <GitBranch className='size-4 text-muted-foreground' />
+              <GitBranch className='text-muted-foreground size-4' />
             ) : (
-              <Minus className='size-4 text-muted-foreground/60' />
+              <Minus className='text-muted-foreground/60 size-4' />
             )}
           </div>
           <div className='min-w-0'>
             <div className='truncate font-medium'>{node.name}</div>
-            <div className='mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground'>
+            <div className='text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 text-xs'>
               <span>{t('ID {{id}}', { id: node.id })}</span>
               {node.parent_id == null ? (
                 <span>{t('Root department')}</span>
@@ -102,9 +102,11 @@ function DepartmentTreeRow({
         <div className='flex items-center'>
           <SourceBadge sourceType={node.source_type} />
         </div>
-        <div className='flex min-w-0 items-center gap-1 text-muted-foreground'>
+        <div className='text-muted-foreground flex min-w-0 items-center gap-1'>
           {node.external_id ? <Link2 className='size-3.5 shrink-0' /> : null}
-          <span className='truncate'>{node.external_id || t('Local only')}</span>
+          <span className='truncate'>
+            {node.external_id || t('Local only')}
+          </span>
         </div>
         <div className='flex min-w-0 items-center'>
           <SyncStatusBadge node={node} />

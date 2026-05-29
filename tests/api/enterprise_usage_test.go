@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -78,6 +79,58 @@ func TestEnterpriseUsageSummaryAPIRejectsInvalidRangeAndReturnsEmptySnapshotList
 	emptyRollingPayload := decodeAdminActionsAPIResponse(t, emptyForRollingWindow)
 	require.True(t, emptyRollingPayload.Success, emptyRollingPayload.Message)
 	require.JSONEq(t, `{"items":[]}`, string(emptyRollingPayload.Data))
+}
+
+func TestEnterpriseUsageSummaryAPIHonorsSummarySortParams(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	engineerID := 11
+	opsID := 22
+	engineer := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &engineerID,
+		DeptName:         "Engineering",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     9,
+		PromptTokens:     90,
+		CompletionTokens: 30,
+		Quota:            200,
+	}
+	require.NoError(t, engineer.SetModelDistribution(nil))
+	require.NoError(t, engineer.SetUserIds([]int{101, 102, 103}))
+
+	ops := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &opsID,
+		DeptName:         "Operations",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     3,
+		PromptTokens:     30,
+		CompletionTokens: 10,
+		Quota:            100,
+	}
+	require.NoError(t, ops.SetModelDistribution(nil))
+	require.NoError(t, ops.SetUserIds([]int{104}))
+	require.NoError(t, fixture.db.Create(&engineer).Error)
+	require.NoError(t, fixture.db.Create(&ops).Error)
+
+	recorder := fixture.performEnterpriseRequest(
+		t,
+		http.MethodGet,
+		"/api/enterprise/usage/department-summary?from=1700000000&to=1700003600&summary_sort=users&summary_order=asc",
+		adminCookies,
+	)
+	payload := decodeAdminActionsAPIResponse(t, recorder)
+	require.True(t, payload.Success, payload.Message)
+
+	var response dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(payload.Data, &response))
+	require.Len(t, response.Items, 2)
+	require.Equal(t, "Operations", response.Items[0].DeptName)
+	require.Equal(t, "Engineering", response.Items[1].DeptName)
 }
 
 func TestEnterpriseUsageSummaryAPIPreservesMultiDepartmentAttributionAcrossWindows(t *testing.T) {
@@ -191,6 +244,80 @@ func TestEnterpriseUsageSummaryAPIPreservesMultiDepartmentAttributionAcrossWindo
 	require.Equal(t, int64(2), operations.RequestCount)
 	require.Equal(t, int64(1), operations.UserCount)
 	require.Len(t, operations.ModelDistribution, 1)
+}
+
+func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	parentID := 10
+	deptID := 11
+
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.Department{
+		enterpriseDepartment(parentID, nil, "Platform", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(deptID, intPtr(parentID), "Engineering", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+	}).Error)
+
+	snapshotA := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           intPtr(deptID),
+		DeptName:         "Engineering",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     8,
+		PromptTokens:     80,
+		CompletionTokens: 16,
+		Quota:            240,
+	}
+	require.NoError(t, snapshotA.SetModelDistribution([]modelenterprise.UsageSnapshotModelStat{
+		{ModelName: "gpt-4o", RequestCount: 8, PromptTokens: 80, CompletionTokens: 16, Quota: 240},
+	}))
+	require.NoError(t, snapshotA.SetUserIds([]int{101, 102}))
+
+	snapshotB := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           nil,
+		DeptName:         "",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     3,
+		PromptTokens:     30,
+		CompletionTokens: 9,
+		Quota:            90,
+	}
+	require.NoError(t, snapshotB.SetModelDistribution(nil))
+	require.NoError(t, snapshotB.SetUserIds([]int{999}))
+
+	require.NoError(t, fixture.db.Create(&snapshotA).Error)
+	require.NoError(t, fixture.db.Create(&snapshotB).Error)
+	commonUser := fixture.performEnterpriseRequest(
+		t,
+		http.MethodGet,
+		"/api/enterprise/usage/export?from=1714521600&to=1714608000",
+		fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled),
+	)
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	admin := fixture.performEnterpriseRequest(
+		t,
+		http.MethodGet,
+		"/api/enterprise/usage/export?from=1714521600&to=1714608000&summary_sort=dept_name&summary_order=asc",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+	)
+	require.Equal(t, http.StatusOK, admin.Code)
+	require.Equal(t, "text/csv; charset=utf-8", admin.Header().Get("Content-Type"))
+	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, admin.Header().Get("Content-Disposition"))
+	require.Contains(t, admin.Body.String(), "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
+	require.Contains(t, admin.Body.String(), "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
+	require.Contains(t, admin.Body.String(), "11,Engineering,Platform,1714521600,1714608000,8,80,16,240,2")
+	require.Contains(t, admin.Body.String(), ",未归属,,1714521600,1714608000,3,30,9,90,1")
+	lines := strings.Split(strings.TrimSpace(admin.Body.String()), "\n")
+	require.GreaterOrEqual(t, len(lines), 4)
+	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
+	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.NotContains(t, admin.Body.String(), "should-not-be-read")
+	require.NotContains(t, admin.Body.String(), "null")
+	require.NotContains(t, admin.Body.String(), "<nil>")
 }
 
 func TestEnterpriseUsageDetailAPIRequiresEnterpriseAdminAndReturnsFilterContext(t *testing.T) {

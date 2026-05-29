@@ -711,8 +711,10 @@ function walletDetail(
     expires_at: overrides.expires_at ?? 0,
     source_allocation_id: overrides.source_allocation_id ?? 1,
     source_parent_budget_id: overrides.source_parent_budget_id ?? 1,
-    source_parent_budget_type: overrides.source_parent_budget_type ?? 'subscription',
-    source_parent_budget_status: overrides.source_parent_budget_status ?? 'active',
+    source_parent_budget_type:
+      overrides.source_parent_budget_type ?? 'subscription',
+    source_parent_budget_status:
+      overrides.source_parent_budget_status ?? 'active',
     committed_quota: overrides.committed_quota ?? 300,
     processed_at: overrides.processed_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,

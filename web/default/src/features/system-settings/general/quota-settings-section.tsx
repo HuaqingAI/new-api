@@ -64,7 +64,10 @@ export function createQuotaSettingsSchema(t: (key: string) => string) {
       quota_setting: z.object({
         enable_free_model_pre_consume: z.boolean(),
         enterprise_budget_warning_threshold: z.coerce.number().int().positive(),
-        enterprise_budget_critical_threshold: z.coerce.number().int().positive(),
+        enterprise_budget_critical_threshold: z.coerce
+          .number()
+          .int()
+          .positive(),
       }),
     })
     .superRefine((value, ctx) => {
@@ -275,7 +278,9 @@ export function QuotaSettingsSection({
               name='quota_setting.enterprise_budget_warning_threshold'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Enterprise Budget Warning Threshold')}</FormLabel>
+                  <FormLabel>
+                    {t('Enterprise Budget Warning Threshold')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type='number'
@@ -289,7 +294,9 @@ export function QuotaSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Show warning status when usage ratio reaches this percentage.')}
+                    {t(
+                      'Show warning status when usage ratio reaches this percentage.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -301,7 +308,9 @@ export function QuotaSettingsSection({
               name='quota_setting.enterprise_budget_critical_threshold'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Enterprise Budget Critical Threshold')}</FormLabel>
+                  <FormLabel>
+                    {t('Enterprise Budget Critical Threshold')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type='number'
@@ -315,7 +324,9 @@ export function QuotaSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Show critical status when usage ratio reaches this percentage.')}
+                    {t(
+                      'Show critical status when usage ratio reaches this percentage.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

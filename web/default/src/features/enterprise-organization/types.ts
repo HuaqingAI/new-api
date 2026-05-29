@@ -93,16 +93,9 @@ export type DepartmentMembersResponse = {
 }
 
 export type DepartmentBudgetType = 'balance' | 'subscription'
-export type DepartmentBudgetStatus =
-  | 'active'
-  | 'paused'
-  | 'revoked'
-  | 'expired'
+export type DepartmentBudgetStatus = 'active' | 'paused' | 'revoked' | 'expired'
 
-export type DepartmentBudgetThresholdState =
-  | 'healthy'
-  | 'warning'
-  | 'critical'
+export type DepartmentBudgetThresholdState = 'healthy' | 'warning' | 'critical'
 
 export type DepartmentBudgetSortField =
   | 'usage_ratio'

@@ -51,9 +51,7 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   },
 }
 
-export function getUsageLogsPageTitleKey(
-  section: UsageLogsSectionId
-): string {
+export function getUsageLogsPageTitleKey(section: UsageLogsSectionId): string {
   return SECTION_META[section].titleKey
 }
 
@@ -134,9 +132,7 @@ function UsageLogsContent() {
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t(pageTitleKey)}
-        </SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t(pageTitleKey)}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='space-y-4'>
             {departmentContextLabel ? (

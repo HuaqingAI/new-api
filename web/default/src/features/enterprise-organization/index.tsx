@@ -17,6 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
+import { z } from 'zod'
+import { useForm, type Resolver } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -34,11 +37,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm, type Resolver } from 'react-hook-form'
-import { z } from 'zod'
-import { SectionPageLayout } from '@/components/layout'
-import { StatusBadge } from '@/components/status-badge'
+import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -83,7 +82,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge } from '@/components/status-badge'
 import {
   addDepartmentMember,
   createQuotaAllocation,
@@ -160,7 +160,9 @@ export function createBudgetSchema(t: (key: string) => string) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['cycle_quota'],
-            message: t('Subscription budget cycle quota must be greater than 0'),
+            message: t(
+              'Subscription budget cycle quota must be greater than 0'
+            ),
           })
         }
         if (!value.cycle_started_at) {
@@ -187,9 +189,12 @@ export function createAllocationSchema(t: (key: string) => string) {
     department_id: z.coerce.number().int().positive(),
     department_budget_id: z.coerce.number().int().positive(),
     target_user_id: z.coerce.number().int().positive(),
-    committed_quota: z.coerce.number().int().positive({
-      message: t('Allocation quota must be greater than 0'),
-    }),
+    committed_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Allocation quota must be greater than 0'),
+      }),
     reason: z.string().trim().max(500).default(''),
   })
 }
@@ -239,10 +244,7 @@ function enterpriseBudgetStatusVariant(status: string) {
   return 'neutral' as const
 }
 
-function thresholdStateLabel(
-  status: string,
-  t: (key: string) => string
-) {
+function thresholdStateLabel(status: string, t: (key: string) => string) {
   if (status === 'critical') return t('Critical')
   if (status === 'warning') return t('Warning')
   return t('Healthy')
@@ -271,8 +273,12 @@ function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
 
 export function EnterpriseOrganization() {
   const { t } = useTranslation()
-  const { data: departments = [], isLoading, isFetching, refetch } =
-    useDepartmentTree()
+  const {
+    data: departments = [],
+    isLoading,
+    isFetching,
+    refetch,
+  } = useDepartmentTree()
 
   return (
     <SectionPageLayout>
@@ -389,11 +395,17 @@ function UserDepartmentsPanel() {
     queryClient.invalidateQueries({ queryKey: enterpriseOrganizationQueryKey })
 
   const userDepartmentsQuery = useQuery({
-    queryKey: [...enterpriseOrganizationQueryKey, 'users', userId, 'departments'],
+    queryKey: [
+      ...enterpriseOrganizationQueryKey,
+      'users',
+      userId,
+      'departments',
+    ],
     queryFn: async () => {
       if (!userId) return null
       const result = await getUserDepartments(userId)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data ?? { items: [], total: 0, is_unassigned: true }
     },
     enabled: Boolean(userId),
@@ -545,7 +557,8 @@ function DepartmentMembersPanel() {
     queryFn: async () => {
       if (!departmentId) return null
       const result = await getDepartmentMembers(departmentId)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data ?? { items: [], total: 0 }
     },
     enabled: Boolean(departmentId),
@@ -728,16 +741,17 @@ function DepartmentMembersTable({
 function DepartmentBudgetPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const renderApiMessage = (
-    result: ApiResponse<unknown> | null | undefined
-  ) => __testRenderApiMessage(result, t)
+  const renderApiMessage = (result: ApiResponse<unknown> | null | undefined) =>
+    __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
   type AllocationFormValues = z.infer<typeof allocationSchema>
 
   const form = useForm<BudgetFormValues>({
-    resolver: zodResolver(budgetSchema) as unknown as Resolver<BudgetFormValues>,
+    resolver: zodResolver(
+      budgetSchema
+    ) as unknown as Resolver<BudgetFormValues>,
     defaultValues: {
       tenant_id: 0,
       department_id: 1,
@@ -751,7 +765,9 @@ function DepartmentBudgetPanel() {
     },
   })
   const allocationForm = useForm<AllocationFormValues>({
-    resolver: zodResolver(allocationSchema) as unknown as Resolver<AllocationFormValues>,
+    resolver: zodResolver(
+      allocationSchema
+    ) as unknown as Resolver<AllocationFormValues>,
     defaultValues: {
       tenant_id: 0,
       department_id: 1,
@@ -774,7 +790,8 @@ function DepartmentBudgetPanel() {
     queryFn: async () => {
       if (!departmentId) return null
       const result = await getDepartmentBudget(departmentId, tenantId)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data?.item ?? null
     },
     enabled: Boolean(departmentId),
@@ -802,7 +819,8 @@ function DepartmentBudgetPanel() {
         sort_by: sortBy,
         sort_order: sortOrder,
       })
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return (
         result.data ?? {
           items: [],
@@ -831,8 +849,10 @@ function DepartmentBudgetPanel() {
         return {
           budget: null,
           wallets: [],
-          thresholds:
-            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 },
+          thresholds: budgetListQuery.data?.thresholds ?? {
+            warning: 80,
+            critical: 95,
+          },
         }
       }
       const result = await getDepartmentBudgetDetail(
@@ -840,13 +860,16 @@ function DepartmentBudgetPanel() {
         effectiveBudgetId,
         tenantId || undefined
       )
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return (
         result.data ?? {
           budget: null,
           wallets: [],
-          thresholds:
-            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 },
+          thresholds: budgetListQuery.data?.thresholds ?? {
+            warning: 80,
+            critical: 95,
+          },
         }
       )
     },
@@ -867,7 +890,8 @@ function DepartmentBudgetPanel() {
         tenantId,
         departmentId
       )
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
     },
     enabled: Boolean(effectiveBudgetId && departmentId),
@@ -904,9 +928,15 @@ function DepartmentBudgetPanel() {
         toast.error(renderApiMessage(result))
         return
       }
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryKey,
+      })
       await queryClient.invalidateQueries({
         queryKey: enterpriseOrganizationQueryKey,
       })
@@ -932,9 +962,15 @@ function DepartmentBudgetPanel() {
         toast.error(renderApiMessage(result))
         return
       }
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryKey,
+      })
       await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
       toast.success(t('Wallet allocation created'))
     },
@@ -951,9 +987,15 @@ function DepartmentBudgetPanel() {
         toast.error(renderApiMessage(result))
         return
       }
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
-      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryKey,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryKey,
+      })
       await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
       toast.success(t('Wallet allocation revoked'))
     },
@@ -981,7 +1023,9 @@ function DepartmentBudgetPanel() {
   useEffect(() => {
     if (
       selectedBudgetId !== null &&
-      budgetListQuery.data?.items?.some((item) => item.id === selectedBudgetId) === false
+      budgetListQuery.data?.items?.some(
+        (item) => item.id === selectedBudgetId
+      ) === false
     ) {
       setSelectedBudgetId(null)
     }
@@ -1002,7 +1046,9 @@ function DepartmentBudgetPanel() {
           <Form {...form}>
             <form
               className='flex flex-col gap-4'
-              onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}
+              onSubmit={form.handleSubmit((values) =>
+                createMutation.mutate(values)
+              )}
             >
               <FormField
                 control={form.control}
@@ -1048,7 +1094,9 @@ function DepartmentBudgetPanel() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value='balance'>{t('Balance Budget')}</SelectItem>
+                        <SelectItem value='balance'>
+                          {t('Balance Budget')}
+                        </SelectItem>
                         <SelectItem value='subscription'>
                           {t('Subscription Budget')}
                         </SelectItem>
@@ -1093,7 +1141,10 @@ function DepartmentBudgetPanel() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>{t('Cycle Type')}</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue />
@@ -1101,8 +1152,12 @@ function DepartmentBudgetPanel() {
                           </FormControl>
                           <SelectContent>
                             <SelectItem value='daily'>{t('Daily')}</SelectItem>
-                            <SelectItem value='weekly'>{t('Weekly')}</SelectItem>
-                            <SelectItem value='monthly'>{t('Monthly')}</SelectItem>
+                            <SelectItem value='weekly'>
+                              {t('Weekly')}
+                            </SelectItem>
+                            <SelectItem value='monthly'>
+                              {t('Monthly')}
+                            </SelectItem>
                             <SelectItem value='custom'>
                               {t('Custom (seconds)')}
                             </SelectItem>
@@ -1251,10 +1306,12 @@ function DepartmentBudgetPanel() {
                     </FormItem>
                   )}
                 />
-                <div className='md:col-span-2 flex justify-end'>
+                <div className='flex justify-end md:col-span-2'>
                   <Button
                     type='submit'
-                    disabled={!effectiveBudgetId || allocationMutation.isPending}
+                    disabled={
+                      !effectiveBudgetId || allocationMutation.isPending
+                    }
                   >
                     <CreditCard data-icon='inline-start' />
                     {t('Create wallet allocation')}
@@ -1391,7 +1448,9 @@ export function DepartmentBudgetListCard({
       <CardHeader>
         <CardTitle>{t('Budget Pool List')}</CardTitle>
         <CardDescription>
-          {t('Sort budget pools by usage, remaining quota, type, or status and open one detail view at a time.')}
+          {t(
+            'Sort budget pools by usage, remaining quota, type, or status and open one detail view at a time.'
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
@@ -1409,7 +1468,9 @@ export function DepartmentBudgetListCard({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='usage_ratio'>{t('Usage Ratio')}</SelectItem>
-                <SelectItem value='remaining'>{t('Remaining Quota')}</SelectItem>
+                <SelectItem value='remaining'>
+                  {t('Remaining Quota')}
+                </SelectItem>
                 <SelectItem value='type'>{t('Budget Type')}</SelectItem>
                 <SelectItem value='status'>{t('Budget Status')}</SelectItem>
               </SelectContent>
@@ -1419,7 +1480,9 @@ export function DepartmentBudgetListCard({
             <Label>{t('Sort Order')}</Label>
             <Select
               value={sortOrder}
-              onValueChange={(value) => onSortOrderChange(value as 'asc' | 'desc')}
+              onValueChange={(value) =>
+                onSortOrderChange(value as 'asc' | 'desc')
+              }
             >
               <SelectTrigger>
                 <SelectValue />
@@ -1442,7 +1505,9 @@ export function DepartmentBudgetListCard({
               </EmptyMedia>
               <EmptyTitle>{t('No budget pools yet')}</EmptyTitle>
               <EmptyDescription>
-                {t('Create the first pool for this department to unlock health monitoring and wallet tracing.')}
+                {t(
+                  'Create the first pool for this department to unlock health monitoring and wallet tracing.'
+                )}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -1469,7 +1534,9 @@ export function DepartmentBudgetListCard({
                   >
                     <TableCell>
                       <div className='flex min-w-[160px] flex-col gap-1'>
-                        <span className='font-medium'>{formatBudgetType(item.type, t)}</span>
+                        <span className='font-medium'>
+                          {formatBudgetType(item.type, t)}
+                        </span>
                         <span className='text-muted-foreground text-xs'>
                           #{item.id}
                         </span>
@@ -1527,7 +1594,9 @@ export function DepartmentBudgetDetailTable({
           </EmptyMedia>
           <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
           <EmptyDescription>
-            {t('Choose a budget pool from the list to inspect derived wallets and allocation lineage.')}
+            {t(
+              'Choose a budget pool from the list to inspect derived wallets and allocation lineage.'
+            )}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -1543,7 +1612,9 @@ export function DepartmentBudgetDetailTable({
           </EmptyMedia>
           <EmptyTitle>{t('No derived wallets yet')}</EmptyTitle>
           <EmptyDescription>
-            {t('This budget pool has no derived wallets yet. Create an allocation below to start tracking wallet state.')}
+            {t(
+              'This budget pool has no derived wallets yet. Create an allocation below to start tracking wallet state.'
+            )}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -1571,7 +1642,9 @@ export function DepartmentBudgetDetailTable({
             <TableCell>
               <div className='flex min-w-[180px] flex-col gap-1'>
                 <span className='font-medium'>
-                  {wallet.target_display_name || wallet.target_username || `#${wallet.target_user_id}`}
+                  {wallet.target_display_name ||
+                    wallet.target_username ||
+                    `#${wallet.target_user_id}`}
                 </span>
                 <span className='text-muted-foreground text-xs'>
                   {t('User ID')} #{wallet.target_user_id}
@@ -1610,13 +1683,17 @@ export function DepartmentBudgetDetailTable({
             <TableCell>
               <StatusBadge
                 label={enterpriseBudgetStatusLabel(wallet.allocation_status, t)}
-                variant={enterpriseBudgetStatusVariant(wallet.allocation_status)}
+                variant={enterpriseBudgetStatusVariant(
+                  wallet.allocation_status
+                )}
                 copyable={false}
               />
             </TableCell>
             <TableCell>
               <div className='flex min-w-[160px] flex-col gap-1 text-sm'>
-                <span>{t('Allocation')} #{wallet.source_allocation_id}</span>
+                <span>
+                  {t('Allocation')} #{wallet.source_allocation_id}
+                </span>
                 <span className='text-muted-foreground text-xs'>
                   {t('Parent Budget')} #{wallet.source_parent_budget_id}
                 </span>
@@ -1661,7 +1738,9 @@ export function DepartmentBudgetOverviewCard({
               </EmptyMedia>
               <EmptyTitle>{t('No budget pool yet')}</EmptyTitle>
               <EmptyDescription>
-                {t('Create a budget pool to view the department budget state here.')}
+                {t(
+                  'Create a budget pool to view the department budget state here.'
+                )}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -1675,7 +1754,9 @@ export function DepartmentBudgetOverviewCard({
       <CardHeader>
         <CardTitle>{t('Budget Pool Overview')}</CardTitle>
         <CardDescription>
-          {t('Shows the selected budget pool health, usage thresholds, and lifecycle status.')}
+          {t(
+            'Shows the selected budget pool health, usage thresholds, and lifecycle status.'
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className='grid gap-3 sm:grid-cols-2'>
@@ -1718,11 +1799,17 @@ export function DepartmentBudgetOverviewCard({
         />
         <BudgetStat
           label={t('Cycle Start Time')}
-          value={budget.cycle_started_at ? formatTimestamp(budget.cycle_started_at) : '-'}
+          value={
+            budget.cycle_started_at
+              ? formatTimestamp(budget.cycle_started_at)
+              : '-'
+          }
         />
         <BudgetStat
           label={t('Custom Cycle Seconds')}
-          value={budget.custom_seconds ? formatNumber(budget.custom_seconds) : '-'}
+          value={
+            budget.custom_seconds ? formatNumber(budget.custom_seconds) : '-'
+          }
         />
         <BudgetStat
           label={t('Expires At (optional)')}
@@ -1768,13 +1855,9 @@ function BudgetStat({
     <div className='rounded-lg border p-3'>
       <div className='text-muted-foreground text-xs'>{label}</div>
       <div className='mt-1 flex items-center gap-2 font-medium'>
-        <CalendarClock className='size-4 text-muted-foreground' />
+        <CalendarClock className='text-muted-foreground size-4' />
         {badgeVariant ? (
-          <StatusBadge
-            label={value}
-            variant={badgeVariant}
-            copyable={false}
-          />
+          <StatusBadge label={value} variant={badgeVariant} copyable={false} />
         ) : (
           <span>{value}</span>
         )}

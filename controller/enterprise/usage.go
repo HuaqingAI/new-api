@@ -2,6 +2,8 @@ package enterprise
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
@@ -27,10 +29,12 @@ func GetDepartmentUsageSummary(c *gin.Context) {
 		return
 	}
 
+	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
 	result, err := entservice.NewUsageAggregationService(model.DB).GetDepartmentSummary(entservice.UsageSummaryQuery{
 		TenantId: tenantId,
 		From:     req.From,
 		To:       req.To,
+		Sort:     sortConfig,
 	})
 	if err != nil {
 		writeUsageSummaryError(c, err)
@@ -67,6 +71,42 @@ func GetDepartmentUsageSummary(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, dtoenterprise.DepartmentUsageSummaryResponse{Items: items})
+}
+
+func ExportDepartmentUsageCSV(c *gin.Context) {
+	var req dtoenterprise.DepartmentUsageExportQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	if req.From <= 0 || req.To <= 0 || req.From >= req.To {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
+	exportResult, err := entservice.NewUsageExportService(model.DB).ExportDepartmentUsageCSV(entservice.DepartmentUsageExportQuery{
+		TenantId: tenantId,
+		From:     req.From,
+		To:       req.To,
+		Sort:     sortConfig,
+	})
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", exportResult.FileName))
+	c.Status(http.StatusOK)
+	if err := entservice.NewUsageExportService(model.DB).WriteDepartmentUsageCSV(c.Writer, exportResult); err != nil {
+		_ = c.Error(err)
+	}
 }
 
 func GetDepartmentUsageDetail(c *gin.Context) {
@@ -169,4 +209,11 @@ func writeUsageSummaryError(c *gin.Context, err error) {
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func readOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

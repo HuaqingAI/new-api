@@ -1,8 +1,8 @@
+import i18n from '@/i18n/config'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import i18n from '@/i18n/config'
 import {
   EnterpriseDingTalkConnectivityResult,
   EnterpriseDingTalkSyncPanel,

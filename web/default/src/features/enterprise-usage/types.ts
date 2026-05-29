@@ -114,7 +114,15 @@ export type EnterpriseUsageSearch = {
   tenant_id?: number
   dept_id?: number
   sort?: DepartmentUsageUserRankSort
+  summary_sort?: DepartmentUsageSummarySort
+  summary_order?: UsageSortOrder
   log_user?: string
 }
 
 export type DepartmentUsageUserRankSort = 'quota' | 'requests' | 'tokens'
+export type DepartmentUsageSummarySort =
+  | 'requests'
+  | 'quota'
+  | 'users'
+  | 'dept_name'
+export type UsageSortOrder = 'asc' | 'desc'

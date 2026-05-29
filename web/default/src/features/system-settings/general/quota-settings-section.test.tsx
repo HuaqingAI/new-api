@@ -45,10 +45,7 @@ describe('Quota settings schema', () => {
     assert.equal(result.success, false)
     if (result.success) return
     const issues = JSON.stringify(result.error.flatten().fieldErrors)
-    assert.match(
-      issues,
-      new RegExp(enterpriseBudgetThresholdValidationMessage)
-    )
+    assert.match(issues, new RegExp(enterpriseBudgetThresholdValidationMessage))
   })
 
   test('accepts valid enterprise budget thresholds', () => {

@@ -517,8 +517,12 @@ export function SubscriptionPlansCard({
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
-                        {t('Source')}: {subscription?.source_type || subscription?.source || '-'} ·{' '}
-                        {t('Subscription Priority')}: {subscription?.sort_order ?? 0}
+                        {t('Source')}:{' '}
+                        {subscription?.source_type ||
+                          subscription?.source ||
+                          '-'}{' '}
+                        · {t('Subscription Priority')}:{' '}
+                        {subscription?.sort_order ?? 0}
                       </div>
                       {getManagedSubscriptionNote(subscription!, t) && (
                         <div className='text-muted-foreground mt-1'>

@@ -24,19 +24,27 @@ export function useDepartmentUsageSummary(params: {
   from: number
   to: number
   tenantId?: number
+  summarySort?: 'requests' | 'quota' | 'users' | 'dept_name'
+  summaryOrder?: 'asc' | 'desc'
 }) {
   return useQuery({
     queryKey: departmentSummaryQueryKey(
       params.from,
       params.to,
-      params.tenantId
+      params.tenantId,
+      params.summarySort,
+      params.summaryOrder
     ),
     queryFn: async () => {
       const response = await getDepartmentUsageSummary(params)
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
       }
-      return normalizeDepartmentUsageItems(response.data?.items ?? [])
+      return normalizeDepartmentUsageItems(
+        response.data?.items ?? [],
+        params.summarySort,
+        params.summaryOrder
+      )
     },
   })
 }

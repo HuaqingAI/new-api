@@ -16,13 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { usageLogsSearchSchema } from '@/routes/_authenticated/usage-logs/$section'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
   getUsageLogsDepartmentContextLabel,
   getUsageLogsPageTitleKey,
 } from './index'
-import { usageLogsSearchSchema } from '@/routes/_authenticated/usage-logs/$section'
 
 describe('Usage logs route and section helpers', () => {
   test('coerces drill-down search params from the URL query string', () => {

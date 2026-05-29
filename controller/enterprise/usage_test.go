@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,7 +15,6 @@ import (
 
 func TestUsageSummaryAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
-	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
 
 	require.NoError(t, db.Create(&entmodel.UsageSnapshot{
 		TenantId:          0,
@@ -54,9 +54,156 @@ func TestUsageSummaryAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.Equal(t, int64(1700003600), payload.Items[0].WindowEnd)
 }
 
+func TestUsageSummaryAPIAppliesRequestedSummarySort(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	engineerID := 1
+	securityID := 2
+	engineer := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &engineerID,
+		DeptName:         "Engineering",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     9,
+		PromptTokens:     90,
+		CompletionTokens: 20,
+		Quota:            300,
+	}
+	require.NoError(t, engineer.SetModelDistribution(nil))
+	require.NoError(t, engineer.SetUserIds([]int{100, 101, 102}))
+
+	security := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &securityID,
+		DeptName:         "Security",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     3,
+		PromptTokens:     30,
+		CompletionTokens: 10,
+		Quota:            100,
+	}
+	require.NoError(t, security.SetModelDistribution(nil))
+	require.NoError(t, security.SetUserIds([]int{103}))
+	require.NoError(t, db.Create(&engineer).Error)
+	require.NoError(t, db.Create(&security).Error)
+
+	recorder := performEnterpriseRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/api/enterprise/usage/department-summary?from=1714521600&to=1714608000&summary_sort=users&summary_order=asc",
+		nil,
+	)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	var payload dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(response.Data, &payload))
+	require.Len(t, payload.Items, 2)
+	require.Equal(t, "Security", payload.Items[0].DeptName)
+	require.Equal(t, "Engineering", payload.Items[1].DeptName)
+}
+
+func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	parentID := 9
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       parentID,
+		TenantId: 0,
+		Name:     "Platform",
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+
+	deptID := 1
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("id = ?", deptID).Updates(map[string]any{
+		"parent_id": &parentID,
+	}).Error)
+
+	snapshotA := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &deptID,
+		DeptName:         "Engineering",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     5,
+		PromptTokens:     50,
+		CompletionTokens: 10,
+		Quota:            120,
+	}
+	require.NoError(t, snapshotA.SetModelDistribution(nil))
+	require.NoError(t, snapshotA.SetUserIds([]int{100, 101}))
+	snapshotB := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           nil,
+		DeptName:         "",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     2,
+		PromptTokens:     20,
+		CompletionTokens: 4,
+		Quota:            40,
+	}
+	require.NoError(t, snapshotB.SetModelDistribution(nil))
+	require.NoError(t, snapshotB.SetUserIds([]int{999}))
+	require.NoError(t, db.Create(&snapshotA).Error)
+	require.NoError(t, db.Create(&snapshotB).Error)
+
+	recorder := performEnterpriseRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/api/enterprise/usage/export?from=1714521600&to=1714608000&summary_sort=dept_name&summary_order=asc",
+		nil,
+	)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "text/csv; charset=utf-8", recorder.Header().Get("Content-Type"))
+	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, recorder.Header().Get("Content-Disposition"))
+
+	body := recorder.Body.String()
+	require.Contains(t, body, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
+	require.Contains(t, body, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
+	require.Contains(t, body, "1,Engineering,Platform,1714521600,1714608000,5,50,10,120,2")
+	require.Contains(t, body, ",未归属,,1714521600,1714608000,2,20,4,40,1")
+
+	lines := strings.Split(strings.TrimSpace(body), "\n")
+	require.GreaterOrEqual(t, len(lines), 4)
+	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
+	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.NotContains(t, body, "null")
+	require.NotContains(t, body, "<nil>")
+}
+
+func TestUsageExportAPIRejectsInvalidRange(t *testing.T) {
+	router, _ := setupEnterpriseControllerTest(t)
+
+	invalidFromRecorder := performEnterpriseRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/api/enterprise/usage/export?from=bad&to=1714608000",
+		nil,
+	)
+	invalidFromResponse := decodeEnterpriseAPIResponse(t, invalidFromRecorder)
+	require.False(t, invalidFromResponse.Success)
+	require.Equal(t, "common.invalid_params", invalidFromResponse.Message)
+
+	invalidRangeRecorder := performEnterpriseRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/api/enterprise/usage/export?from=1714608000&to=1714521600",
+		nil,
+	)
+	invalidRangeResponse := decodeEnterpriseAPIResponse(t, invalidRangeRecorder)
+	require.False(t, invalidRangeResponse.Success)
+	require.Equal(t, "common.invalid_params", invalidRangeResponse.Message)
+}
+
 func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
-	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
 
 	deptID := 1
 	require.NoError(t, db.Create(&entmodel.UsageSnapshot{
@@ -136,7 +283,6 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 
 func TestUsageDetailAPIValidatesParamsAndNormalizesArrays(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
-	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
 
 	deptId := 1
 	snapshot := entmodel.UsageSnapshot{

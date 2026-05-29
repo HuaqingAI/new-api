@@ -335,10 +335,12 @@ export function UserSubscriptionsDialog(props: Props) {
                                 )}
                               </div>
                               <div className='text-muted-foreground text-sm'>
-                                {t('Source')}: {sub.source_type || sub.source || '-'}
+                                {t('Source')}:{' '}
+                                {sub.source_type || sub.source || '-'}
                               </div>
                               <div className='text-muted-foreground text-sm'>
-                                {t('Subscription Priority')}: {sub.sort_order ?? 0}
+                                {t('Subscription Priority')}:{' '}
+                                {sub.sort_order ?? 0}
                               </div>
                             </div>
                           </TableCell>
@@ -373,7 +375,11 @@ export function UserSubscriptionsDialog(props: Props) {
                                 size='sm'
                                 variant='outline'
                                 onClick={() =>
-                                  handleMove(sub.id, sub.sort_order ?? 0, 'down')
+                                  handleMove(
+                                    sub.id,
+                                    sub.sort_order ?? 0,
+                                    'down'
+                                  )
                                 }
                               >
                                 {t('Move Down')}

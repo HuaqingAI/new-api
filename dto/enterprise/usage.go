@@ -1,9 +1,19 @@
 package enterprise
 
 type DepartmentUsageSummaryQuery struct {
-	TenantId *int  `form:"tenant_id"`
-	From     int64 `form:"from"`
-	To       int64 `form:"to"`
+	TenantId     *int    `form:"tenant_id"`
+	From         int64   `form:"from"`
+	To           int64   `form:"to"`
+	SummarySort  *string `form:"summary_sort,omitempty"`
+	SummaryOrder *string `form:"summary_order,omitempty"`
+}
+
+type DepartmentUsageExportQuery struct {
+	TenantId     *int    `form:"tenant_id"`
+	From         int64   `form:"from"`
+	To           int64   `form:"to"`
+	SummarySort  *string `form:"summary_sort,omitempty"`
+	SummaryOrder *string `form:"summary_order,omitempty"`
 }
 
 type DepartmentUsageDetailQuery struct {
@@ -60,12 +70,12 @@ type DepartmentUsageTrendPoint struct {
 }
 
 type DepartmentUsageLogFilters struct {
-	DepartmentId     *int   `json:"department_id"`
-	DepartmentName   string `json:"department_name"`
-	StartTimestamp   int64  `json:"start_timestamp"`
-	EndTimestamp     int64  `json:"end_timestamp"`
-	Username         string `json:"username"`
-	UsernameOptions  []string `json:"username_options"`
+	DepartmentId    *int     `json:"department_id"`
+	DepartmentName  string   `json:"department_name"`
+	StartTimestamp  int64    `json:"start_timestamp"`
+	EndTimestamp    int64    `json:"end_timestamp"`
+	Username        string   `json:"username"`
+	UsernameOptions []string `json:"username_options"`
 }
 
 type DepartmentUsageLogEntryLink struct {
@@ -75,18 +85,18 @@ type DepartmentUsageLogEntryLink struct {
 }
 
 type DepartmentUsageDetailResponse struct {
-	DeptId             *int                         `json:"dept_id"`
-	DeptName           string                       `json:"dept_name"`
-	WindowStart        int64                        `json:"window_start"`
-	WindowEnd          int64                        `json:"window_end"`
-	RequestCount       int64                        `json:"request_count"`
-	PromptTokens       int64                        `json:"prompt_tokens"`
-	CompletionTokens   int64                        `json:"completion_tokens"`
-	TokenCount         int64                        `json:"token_count"`
-	Quota              int64                        `json:"quota"`
-	UserCount          int64                        `json:"user_count"`
-	UserRanking        []DepartmentUsageUserRankItem `json:"user_ranking"`
-	ModelDistribution  []UsageModelDistributionItem `json:"model_distribution"`
-	Trend              []DepartmentUsageTrendPoint  `json:"trend"`
-	RecentLogsEntry    DepartmentUsageLogEntryLink  `json:"recent_logs_entry"`
+	DeptId            *int                          `json:"dept_id"`
+	DeptName          string                        `json:"dept_name"`
+	WindowStart       int64                         `json:"window_start"`
+	WindowEnd         int64                         `json:"window_end"`
+	RequestCount      int64                         `json:"request_count"`
+	PromptTokens      int64                         `json:"prompt_tokens"`
+	CompletionTokens  int64                         `json:"completion_tokens"`
+	TokenCount        int64                         `json:"token_count"`
+	Quota             int64                         `json:"quota"`
+	UserCount         int64                         `json:"user_count"`
+	UserRanking       []DepartmentUsageUserRankItem `json:"user_ranking"`
+	ModelDistribution []UsageModelDistributionItem  `json:"model_distribution"`
+	Trend             []DepartmentUsageTrendPoint   `json:"trend"`
+	RecentLogsEntry   DepartmentUsageLogEntryLink   `json:"recent_logs_entry"`
 }

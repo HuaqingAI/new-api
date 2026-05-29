@@ -29,6 +29,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.GET("/admin-actions", middleware.EnterpriseAdmin(), controllerenterprise.ListAdminActions)
 		enterpriseRoute.GET("/admin-actions/:id", middleware.EnterpriseAdmin(), controllerenterprise.GetAdminAction)
 		enterpriseRoute.GET("/usage/department-summary", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageSummary)
+		enterpriseRoute.GET("/usage/export", middleware.EnterpriseAdmin(), controllerenterprise.ExportDepartmentUsageCSV)
 		enterpriseRoute.GET("/usage/department-detail", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageDetail)
 		enterpriseRoute.GET("/dingtalk/config", middleware.RootAuth(), controllerenterprise.GetDingTalkConfig)
 		enterpriseRoute.PUT("/dingtalk/config", middleware.RootAuth(), controllerenterprise.SaveDingTalkConfig)

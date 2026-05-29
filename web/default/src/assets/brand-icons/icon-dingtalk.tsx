@@ -19,10 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { type SVGProps } from 'react'
 import { cn } from '@/lib/utils'
 
-export function IconDingTalk({
-  className,
-  ...props
-}: SVGProps<SVGSVGElement>) {
+export function IconDingTalk({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       role='img'

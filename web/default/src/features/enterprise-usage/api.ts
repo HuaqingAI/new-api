@@ -21,6 +21,8 @@ import type {
   ApiResponse,
   DepartmentUsageDetailResponse,
   DepartmentUsageSummaryResponse,
+  DepartmentUsageSummarySort,
+  UsageSortOrder,
 } from './types'
 
 export const enterpriseUsageQueryKey = ['enterprise', 'usage'] as const
@@ -28,12 +30,16 @@ export const enterpriseUsageQueryKey = ['enterprise', 'usage'] as const
 export function departmentSummaryQueryKey(
   from: number,
   to: number,
-  tenantId?: number
+  tenantId?: number,
+  summarySort?: DepartmentUsageSummarySort,
+  summaryOrder?: UsageSortOrder
 ) {
   return [
     ...enterpriseUsageQueryKey,
     'department-summary',
-    tenantId === undefined ? { from, to } : { from, to, tenantId },
+    tenantId === undefined
+      ? { from, to, summarySort, summaryOrder }
+      : { from, to, tenantId, summarySort, summaryOrder },
   ] as const
 }
 
@@ -56,15 +62,74 @@ export async function getDepartmentUsageSummary(params: {
   from: number
   to: number
   tenantId?: number
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
 }): Promise<ApiResponse<DepartmentUsageSummaryResponse>> {
   const res = await api.get('/api/enterprise/usage/department-summary', {
     params: {
       from: params.from,
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.summarySort === undefined
+        ? {}
+        : { summary_sort: params.summarySort }),
+      ...(params.summaryOrder === undefined
+        ? {}
+        : { summary_order: params.summaryOrder }),
     },
   })
   return res.data
+}
+
+export async function exportDepartmentUsageCSV(params: {
+  from: number
+  to: number
+  tenantId?: number
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
+}) {
+  const res = await api.get('/api/enterprise/usage/export', {
+    params: {
+      from: params.from,
+      to: params.to,
+      ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.summarySort === undefined
+        ? {}
+        : { summary_sort: params.summarySort }),
+      ...(params.summaryOrder === undefined
+        ? {}
+        : { summary_order: params.summaryOrder }),
+    },
+    responseType: 'blob',
+    skipBusinessError: true,
+  })
+
+  const blob = res.data as Blob
+  const contentType = String(
+    res.headers['content-type'] ?? blob.type ?? ''
+  ).toLowerCase()
+  if (contentType.includes('application/json')) {
+    const text = await blob.text()
+    try {
+      const payload = JSON.parse(text) as {
+        success?: boolean
+        message?: string
+      }
+      throw new Error(payload.message || 'Request failed')
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error
+      }
+      throw new Error('Request failed')
+    }
+  }
+
+  const disposition = String(res.headers['content-disposition'] ?? '')
+  const match = disposition.match(/filename="?([^"]+)"?/)
+  return {
+    blob,
+    fileName: match?.[1] ?? 'usage-department.csv',
+  }
 }
 
 export async function getDepartmentUsageDetail(params: {

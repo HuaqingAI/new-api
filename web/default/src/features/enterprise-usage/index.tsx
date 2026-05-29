@@ -17,18 +17,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
+import z from 'zod'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
   Coins,
+  Download,
   ExternalLink,
   LineChart,
   RefreshCw,
   Rows3,
   Users,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   CartesianGrid,
   Line,
@@ -36,21 +39,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useTranslation } from 'react-i18next'
-import z from 'zod'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
+import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
+import dayjs from '@/lib/dayjs'
 import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
-import dayjs from '@/lib/dayjs'
-import { useAuthStore } from '@/stores/auth-store'
-import { SectionPageLayout } from '@/components/layout'
-import { PageTransition } from '@/components/page-transition'
-import { StatCard } from '@/features/dashboard/components/ui/stat-card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -60,6 +54,12 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -68,7 +68,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -78,17 +77,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { SectionPageLayout } from '@/components/layout'
+import { PageTransition } from '@/components/page-transition'
+import { StatCard } from '@/features/dashboard/components/ui/stat-card'
+import { exportDepartmentUsageCSV } from './api'
 import { useDepartmentUsageDetail } from './hooks/use-department-usage-detail'
 import { useDepartmentUsageSummary } from './hooks/use-department-usage-summary'
 import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageLogEntryLink,
+  DepartmentUsageSummarySort,
   DepartmentUsageSummaryItem,
   DepartmentUsageUserRankItem,
   DepartmentUsageUserRankSort,
   EnterpriseUsagePreset,
   EnterpriseUsageSearch,
   DepartmentUsageTrendPoint,
+  UsageSortOrder,
   UsageModelDistributionItem,
 } from './types'
 
@@ -107,6 +112,11 @@ export const enterpriseUsageSearchSchema = z.object({
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
   dept_id: z.coerce.number().int().positive().optional().catch(undefined),
   sort: z.enum(['quota', 'requests', 'tokens']).optional().catch('quota'),
+  summary_sort: z
+    .enum(['requests', 'quota', 'users', 'dept_name'])
+    .optional()
+    .catch('requests'),
+  summary_order: z.enum(['asc', 'desc']).optional().catch('desc'),
   log_user: z.string().optional().catch(undefined),
 })
 
@@ -119,6 +129,19 @@ type ResolvedEnterpriseUsageRange = {
   isRangeValid: boolean
   customFromDate: string
   customToDate: string
+}
+
+export function resolveDepartmentUsageExportParams(
+  search: EnterpriseUsageSearch,
+  range: Pick<ResolvedEnterpriseUsageRange, 'from' | 'to'>
+) {
+  return {
+    from: range.from,
+    to: range.to,
+    tenantId: search.tenant_id,
+    summarySort: search.summary_sort,
+    summaryOrder: search.summary_order,
+  }
 }
 
 export function resolveEnterpriseUsageRange(
@@ -248,6 +271,8 @@ export function EnterpriseUsageOverview() {
     from: resolvedRange.from,
     to: resolvedRange.to,
     tenantId: search.tenant_id,
+    summarySort: search.summary_sort,
+    summaryOrder: search.summary_order,
   })
   const detailQuery = useDepartmentUsageDetail({
     deptId: search.dept_id,
@@ -257,6 +282,7 @@ export function EnterpriseUsageOverview() {
   })
 
   const customRangeState = getCustomRangeState(customFromDate, customToDate)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handlePresetChange = (preset: EnterpriseUsagePreset) => {
     if (preset === 'custom') {
@@ -337,6 +363,43 @@ export function EnterpriseUsageOverview() {
     })
   }
 
+  const handleSummarySortChange = (
+    summarySort: DepartmentUsageSummarySort,
+    summaryOrder: UsageSortOrder
+  ) => {
+    navigate({
+      to: '/enterprise-usage',
+      search: (prev) => ({
+        ...prev,
+        summary_sort: summarySort,
+        summary_order: summaryOrder,
+      }),
+    })
+  }
+
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      const { blob, fileName } = await exportDepartmentUsageCSV(
+        resolveDepartmentUsageExportParams(search, resolvedRange)
+      )
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t('Request failed')
+      toast.error(message)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const handleOpenRecentLogs = (entry: DepartmentUsageLogEntryLink) => {
     void navigate({
       to: '/usage-logs/$section',
@@ -370,7 +433,9 @@ export function EnterpriseUsageOverview() {
               <AlertTriangle className='size-4' />
               <AlertTitle>{t('Admin access required')}</AlertTitle>
               <AlertDescription>
-                {t('Only enterprise administrators can review department usage dashboards.')}
+                {t(
+                  'Only enterprise administrators can review department usage dashboards.'
+                )}
               </AlertDescription>
             </Alert>
           ) : (
@@ -411,6 +476,11 @@ export function EnterpriseUsageOverview() {
               onRetryDetail={() => detailQuery.refetch()}
               rankSort={search.sort ?? 'quota'}
               onSortChange={handleSortChange}
+              summarySort={search.summary_sort ?? 'requests'}
+              summaryOrder={search.summary_order ?? 'desc'}
+              onSummarySortChange={handleSummarySortChange}
+              onExport={handleExport}
+              exportLoading={isExporting}
               selectedLogUser={search.log_user}
               onOpenRecentLogs={handleOpenRecentLogs}
             />
@@ -445,6 +515,14 @@ type EnterpriseUsageContentProps = {
   onRetryDetail: () => void
   rankSort: DepartmentUsageUserRankSort
   onSortChange: (sort: DepartmentUsageUserRankSort) => void
+  summarySort: DepartmentUsageSummarySort
+  summaryOrder: UsageSortOrder
+  onSummarySortChange: (
+    summarySort: DepartmentUsageSummarySort,
+    summaryOrder: UsageSortOrder
+  ) => void
+  onExport: () => void
+  exportLoading: boolean
   selectedLogUser?: string
   onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
 }
@@ -491,6 +569,16 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   {label}
                 </Button>
               ))}
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                onClick={props.onExport}
+                disabled={props.exportLoading}
+              >
+                <Download className='size-4' />
+                {t('Export CSV')}
+              </Button>
             </div>
           </div>
 
@@ -526,10 +614,36 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
           {!props.customRange.isValid ? (
             <Alert variant='destructive'>
               <AlertDescription>
-                {t('Start time must be earlier than end time for a custom range')}
+                {t(
+                  'Start time must be earlier than end time for a custom range'
+                )}
               </AlertDescription>
             </Alert>
           ) : null}
+          <div className='flex flex-wrap gap-2'>
+            {(
+              [
+                ['requests', 'desc', t('Sort by Requests')],
+                ['quota', 'desc', t('Sort by Quota')],
+                ['users', 'desc', t('Sort by Users')],
+                ['dept_name', 'asc', t('Sort by Department')],
+              ] as const
+            ).map(([field, order, label]) => (
+              <Button
+                key={`${field}-${order}`}
+                type='button'
+                size='sm'
+                variant={
+                  props.summarySort === field && props.summaryOrder === order
+                    ? 'default'
+                    : 'outline'
+                }
+                onClick={() => props.onSummarySortChange(field, order)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent>
           {props.isLoading ? (
@@ -538,7 +652,7 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
             <Alert variant='destructive' className='gap-2'>
               <AlertTriangle className='size-4' />
               <AlertTitle>{t('Unable to load department usage')}</AlertTitle>
-                <AlertDescription>{t(props.errorMessage)}</AlertDescription>
+              <AlertDescription>{t(props.errorMessage)}</AlertDescription>
               <div className='pt-2'>
                 <Button variant='outline' size='sm' onClick={props.onRetry}>
                   {t('Retry')}
@@ -563,7 +677,7 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   {t('Retry')}
                 </Button>
               </EmptyContent>
-              </Empty>
+            </Empty>
           ) : (
             <div className='space-y-4'>
               <EnterpriseUsageSummaryCards items={props.items} />
@@ -583,18 +697,24 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   </TableHeader>
                   <TableBody>
                     {props.items.map((item, index) => (
-                      <TableRow key={`${item.dept_id ?? 'unassigned'}-${index}`}>
+                      <TableRow
+                        key={`${item.dept_id ?? 'unassigned'}-${index}`}
+                      >
                         <TableCell className='font-medium'>
                           {item.dept_name || t('Unassigned')}
                         </TableCell>
-                        <TableCell>{formatNumber(item.request_count)}</TableCell>
-                        <TableCell>{formatNumber(item.prompt_tokens)}</TableCell>
+                        <TableCell>
+                          {formatNumber(item.request_count)}
+                        </TableCell>
+                        <TableCell>
+                          {formatNumber(item.prompt_tokens)}
+                        </TableCell>
                         <TableCell>
                           {formatNumber(item.completion_tokens)}
                         </TableCell>
                         <TableCell>{formatQuota(item.quota)}</TableCell>
                         <TableCell>{formatNumber(item.user_count)}</TableCell>
-                        <TableCell className='max-w-[340px] whitespace-normal text-sm'>
+                        <TableCell className='max-w-[340px] text-sm whitespace-normal'>
                           {formatModelDistributionSummary(
                             item.model_distribution,
                             t
@@ -610,7 +730,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                                 : 'outline'
                             }
                             disabled={item.dept_id == null}
-                            onClick={() => props.onSelectDepartment(item.dept_id)}
+                            onClick={() =>
+                              props.onSelectDepartment(item.dept_id)
+                            }
                           >
                             {t('View Details')}
                           </Button>
@@ -685,7 +807,9 @@ function DepartmentUsageDetailPanel(props: {
             </CardTitle>
             <CardDescription>
               {props.detail?.dept_name
-                ? t('Inspect top users, model mix, time trend, and recent logs.')
+                ? t(
+                    'Inspect top users, model mix, time trend, and recent logs.'
+                  )
                 : t('Select a department to inspect drill-down usage details.')}
             </CardDescription>
           </div>
@@ -694,7 +818,9 @@ function DepartmentUsageDetailPanel(props: {
               type='button'
               variant='outline'
               size='sm'
-              onClick={() => props.onOpenRecentLogs(props.detail!.recent_logs_entry)}
+              onClick={() =>
+                props.onOpenRecentLogs(props.detail!.recent_logs_entry)
+              }
             >
               <ExternalLink className='size-4' />
               {t('Open Recent Logs')}
@@ -762,7 +888,9 @@ function DepartmentUsageDetailPanel(props: {
                 <CardHeader>
                   <CardTitle>{t('Model Distribution')}</CardTitle>
                   <CardDescription>
-                    {t('Models ranked by quota and request count inside this department.')}
+                    {t(
+                      'Models ranked by quota and request count inside this department.'
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -778,7 +906,9 @@ function DepartmentUsageDetailPanel(props: {
                   <div>
                     <CardTitle>{t('User Ranking')}</CardTitle>
                     <CardDescription>
-                      {t('Ranking is calculated only within the current department scope.')}
+                      {t(
+                        'Ranking is calculated only within the current department scope.'
+                      )}
                     </CardDescription>
                   </div>
                   <div className='flex flex-wrap gap-2'>
@@ -793,7 +923,9 @@ function DepartmentUsageDetailPanel(props: {
                         key={sort}
                         type='button'
                         size='sm'
-                        variant={props.rankSort === sort ? 'default' : 'outline'}
+                        variant={
+                          props.rankSort === sort ? 'default' : 'outline'
+                        }
                         onClick={() => props.onSortChange(sort)}
                       >
                         {label}
@@ -809,7 +941,7 @@ function DepartmentUsageDetailPanel(props: {
                     props.rankSort
                   )}
                 />
-                <div className='flex flex-wrap gap-2 text-xs text-muted-foreground'>
+                <div className='text-muted-foreground flex flex-wrap gap-2 text-xs'>
                   <span>{t('Recent Logs User Filter')}:</span>
                   {props.detail.recent_logs_entry.filters.username_options.map(
                     (username) => (
@@ -817,8 +949,8 @@ function DepartmentUsageDetailPanel(props: {
                         key={username}
                         className={
                           username === props.selectedLogUser
-                            ? 'rounded-full bg-primary/10 px-2 py-1 text-primary'
-                            : 'rounded-full bg-muted px-2 py-1'
+                            ? 'bg-primary/10 text-primary rounded-full px-2 py-1'
+                            : 'bg-muted rounded-full px-2 py-1'
                         }
                       >
                         {username}
@@ -846,14 +978,23 @@ function DepartmentUsageTrendChart(props: {
   }))
 
   if (data.length === 0) {
-    return <div className='text-sm text-muted-foreground'>{t('No trend data for this time range')}</div>
+    return (
+      <div className='text-muted-foreground text-sm'>
+        {t('No trend data for this time range')}
+      </div>
+    )
   }
 
   return (
     <ChartContainer config={detailTrendChartConfig} className='h-72 w-full'>
       <RechartsLineChart accessibilityLayer data={data}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey='label' tickLine={false} axisLine={false} minTickGap={24} />
+        <XAxis
+          dataKey='label'
+          tickLine={false}
+          axisLine={false}
+          minTickGap={24}
+        />
         <YAxis yAxisId='left' tickLine={false} axisLine={false} width={48} />
         <YAxis
           yAxisId='right'
@@ -902,7 +1043,10 @@ function DepartmentModelDistributionTable(props: {
         <TableBody>
           {props.items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={3} className='text-center text-muted-foreground'>
+              <TableCell
+                colSpan={3}
+                className='text-muted-foreground text-center'
+              >
                 {t('No model distribution for this time range')}
               </TableCell>
             </TableRow>
@@ -940,14 +1084,19 @@ function DepartmentUserRankingTable(props: {
         <TableBody>
           {props.items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={4} className='text-center text-muted-foreground'>
+              <TableCell
+                colSpan={4}
+                className='text-muted-foreground text-center'
+              >
                 {t('No department members consumed within this time range')}
               </TableCell>
             </TableRow>
           ) : (
             props.items.map((item) => (
               <TableRow key={item.user_id}>
-                <TableCell className='font-medium'>{item.username || item.user_id}</TableCell>
+                <TableCell className='font-medium'>
+                  {item.username || item.user_id}
+                </TableCell>
                 <TableCell>{formatNumber(item.request_count)}</TableCell>
                 <TableCell>{formatNumber(item.token_count)}</TableCell>
                 <TableCell>{formatQuota(item.quota)}</TableCell>
@@ -1016,7 +1165,8 @@ function EnterpriseUsageSummaryCards(props: {
       modelCount: modelCounts.size,
       topModelName: topModel?.[0] ?? '-',
       topModelRequests: topModel?.[1] ?? 0,
-      unassignedCount: props.items.filter((item) => item.dept_id == null).length,
+      unassignedCount: props.items.filter((item) => item.dept_id == null)
+        .length,
     }
   }, [props.items])
 
@@ -1116,7 +1266,9 @@ function EnterpriseUsageSummaryCards(props: {
 }
 
 export function normalizeDepartmentUsageItems(
-  items: DepartmentUsageSummaryItem[]
+  items: DepartmentUsageSummaryItem[],
+  summarySort: DepartmentUsageSummarySort = 'requests',
+  summaryOrder: UsageSortOrder = 'desc'
 ): DepartmentUsageSummaryItem[] {
   return [...items]
     .map((item) => ({
@@ -1125,16 +1277,60 @@ export function normalizeDepartmentUsageItems(
       model_distribution: item.model_distribution ?? [],
     }))
     .sort((a, b) => {
-      if (b.request_count !== a.request_count) {
-        return b.request_count - a.request_count
-      }
-      if (b.quota !== a.quota) {
-        return b.quota - a.quota
-      }
-      return (a.dept_name || 'Unassigned').localeCompare(
-        b.dept_name || 'Unassigned'
-      )
+      return compareDepartmentUsageItems(a, b, summarySort, summaryOrder)
     })
+}
+
+export function compareDepartmentUsageItems(
+  a: DepartmentUsageSummaryItem,
+  b: DepartmentUsageSummaryItem,
+  summarySort: DepartmentUsageSummarySort,
+  summaryOrder: UsageSortOrder
+) {
+  const applyOrder = (value: number) =>
+    summaryOrder === 'asc' ? value : -value
+  const compareNumber = (left: number, right: number) =>
+    left < right ? -1 : left > right ? 1 : 0
+  const compareName = (left: string, right: string) =>
+    left.localeCompare(right, undefined, { sensitivity: 'base' })
+  const sortName = (item: DepartmentUsageSummaryItem) =>
+    item.dept_name || 'Unassigned'
+  const compareOptionalId = (
+    left: number | null | undefined,
+    right: number | null | undefined
+  ) => {
+    if (left == null && right == null) return 0
+    if (left == null) return 1
+    if (right == null) return -1
+    return compareNumber(left, right)
+  }
+
+  let primary = 0
+  if (summarySort === 'quota') {
+    primary = compareNumber(a.quota, b.quota)
+  } else if (summarySort === 'users') {
+    primary = compareNumber(a.user_count, b.user_count)
+  } else if (summarySort === 'dept_name') {
+    primary = compareName(sortName(a), sortName(b))
+  } else {
+    primary = compareNumber(a.request_count, b.request_count)
+  }
+  if (primary !== 0) {
+    return applyOrder(primary)
+  }
+  if (a.request_count !== b.request_count) {
+    return b.request_count - a.request_count
+  }
+  if (a.quota !== b.quota) {
+    return b.quota - a.quota
+  }
+  if (a.user_count !== b.user_count) {
+    return b.user_count - a.user_count
+  }
+  if (compareName(sortName(a), sortName(b)) !== 0) {
+    return compareName(sortName(a), sortName(b))
+  }
+  return compareOptionalId(a.dept_id, b.dept_id)
 }
 
 export function normalizeDepartmentUsageDetail(
@@ -1172,7 +1368,8 @@ export function sortDepartmentUserRanking(
           : b.quota - a.quota
     if (primary !== 0) return primary
     if (b.quota !== a.quota) return b.quota - a.quota
-    if (b.request_count !== a.request_count) return b.request_count - a.request_count
+    if (b.request_count !== a.request_count)
+      return b.request_count - a.request_count
     if (b.token_count !== a.token_count) return b.token_count - a.token_count
     return a.username.localeCompare(b.username)
   })
@@ -1183,8 +1380,7 @@ export function resolveRecentLogsSearch(
   selectedLogUser?: string
 ) {
   const selectedUsername =
-    selectedLogUser &&
-    entry.filters.username_options.includes(selectedLogUser)
+    selectedLogUser && entry.filters.username_options.includes(selectedLogUser)
       ? selectedLogUser
       : entry.filters.username_options[0]
 
@@ -1230,11 +1426,17 @@ function formatDateInputValue(unixSeconds: number): string {
 }
 
 function formatRangeEndInputValue(unixSeconds: number): string {
-  return dayjs(unixSeconds * 1000).subtract(1, 'day').format('YYYY-MM-DD')
+  return dayjs(unixSeconds * 1000)
+    .subtract(1, 'day')
+    .format('YYYY-MM-DD')
 }
 
 function buildRangeLabel(from: number, to: number): string {
   return `${formatDateStr(new Date(from * 1000))} ~ ${formatDateStr(
-    new Date(dayjs(to * 1000).subtract(1, 'second').valueOf())
+    new Date(
+      dayjs(to * 1000)
+        .subtract(1, 'second')
+        .valueOf()
+    )
   )}`
 }

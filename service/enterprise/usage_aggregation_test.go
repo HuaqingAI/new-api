@@ -1,6 +1,7 @@
 package enterprise
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -146,6 +147,7 @@ func TestUsageAggregationExpandsLogsAcrossMultipleDepartmentsAndUnassignedBucket
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 3)
@@ -234,6 +236,7 @@ func TestUsageAggregationRespectsMembershipEffectiveWindow(t *testing.T) {
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 2)
@@ -307,6 +310,7 @@ func TestUsageAggregationIsIdempotentAndSortsModelDistribution(t *testing.T) {
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 1)
@@ -319,6 +323,125 @@ func TestUsageAggregationIsIdempotentAndSortsModelDistribution(t *testing.T) {
 	var watermark model.Option
 	require.NoError(t, db.Where("key = ?", UsageAggregationWatermarkOptionKey(0)).First(&watermark).Error)
 	require.Equal(t, "1700003600", watermark.Value)
+}
+
+func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	parentID := 100
+	deptID := 101
+	seedUsageTestDepartment(t, db, parentID, "Platform")
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:          deptID,
+		TenantId:    0,
+		Name:        "Engineering",
+		ParentId:    &parentID,
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+
+	snapshotA := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &deptID,
+		DeptName:         "Engineering",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     5,
+		PromptTokens:     60,
+		CompletionTokens: 30,
+		Quota:            150,
+	}
+	require.NoError(t, snapshotA.SetModelDistribution(nil))
+	require.NoError(t, snapshotA.SetUserIds([]int{101, 102}))
+	snapshotB := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           nil,
+		DeptName:         "",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     3,
+		PromptTokens:     30,
+		CompletionTokens: 10,
+		Quota:            50,
+	}
+	require.NoError(t, snapshotB.SetModelDistribution(nil))
+	require.NoError(t, snapshotB.SetUserIds([]int{999}))
+	require.NoError(t, db.Create(&snapshotA).Error)
+	require.NoError(t, db.Create(&snapshotB).Error)
+
+	service := NewUsageExportService(db)
+	result, err := service.ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
+		TenantId: 0,
+		From:     1714521600,
+		To:       1714608000,
+		Sort: UsageSummarySort{
+			Field: UsageSummarySortByRequests,
+			Order: UsageSortOrderDesc,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "usage-department-20240501-20240501.csv", result.FileName)
+	require.Len(t, result.Rows, 2)
+	require.Equal(t, "Engineering", result.Rows[0].DeptName)
+	require.Equal(t, "Platform", result.Rows[0].ParentDepartment)
+	require.Equal(t, "未归属", result.Rows[1].DeptName)
+	require.Equal(t, "", result.Rows[1].ParentDepartment)
+
+	var buffer bytes.Buffer
+	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, result))
+	csvText := buffer.String()
+	require.Contains(t, csvText, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
+	require.Contains(t, csvText, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
+	require.Contains(t, csvText, "101,Engineering,Platform,1714521600,1714608000,5,60,30,150,2")
+	require.Contains(t, csvText, ",未归属,,1714521600,1714608000,3,30,10,50,1")
+	require.NotContains(t, csvText, "null")
+	require.NotContains(t, csvText, "<nil>")
+
+	lines := strings.Split(strings.TrimSpace(csvText), "\n")
+	require.GreaterOrEqual(t, len(lines), 4)
+	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
+	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.Equal(t, "101,Engineering,Platform,1714521600,1714608000,5,60,30,150,2", lines[2])
+	require.Equal(t, ",未归属,,1714521600,1714608000,3,30,10,50,1", lines[3])
+}
+
+func TestUsageExportSortsDepartmentNamesWithStableTieBreakers(t *testing.T) {
+	items := []UsageDepartmentSummaryItem{
+		{
+			DeptId:       intPtr(5),
+			DeptName:     "Alpha",
+			RequestCount: 10,
+			Quota:        100,
+			UserCount:    2,
+		},
+		{
+			DeptId:       intPtr(3),
+			DeptName:     "Alpha",
+			RequestCount: 10,
+			Quota:        100,
+			UserCount:    2,
+		},
+		{
+			DeptId:       nil,
+			DeptName:     "",
+			RequestCount: 10,
+			Quota:        100,
+			UserCount:    2,
+		},
+	}
+
+	sorted := SortUsageDepartmentSummaryItems(items, UsageSummarySort{
+		Field: UsageSummarySortByName,
+		Order: UsageSortOrderAsc,
+	})
+
+	require.Len(t, sorted, 3)
+	require.NotNil(t, sorted[0].DeptId)
+	require.Equal(t, 3, *sorted[0].DeptId)
+	require.NotNil(t, sorted[1].DeptId)
+	require.Equal(t, 5, *sorted[1].DeptId)
+	require.Nil(t, sorted[2].DeptId)
 }
 
 func TestUsageSummaryReturnsEmptyArrayForModelDistribution(t *testing.T) {
@@ -341,6 +464,7 @@ func TestUsageSummaryReturnsEmptyArrayForModelDistribution(t *testing.T) {
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 1)
@@ -414,6 +538,7 @@ func TestUsageAggregationRecomputesWindowAndRemovesStaleBuckets(t *testing.T) {
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 1)
@@ -459,6 +584,7 @@ func TestUsageSummaryCountsDistinctUsersAcrossWindows(t *testing.T) {
 		TenantId: 0,
 		From:     1700000000,
 		To:       1700007200,
+		Sort:     DefaultUsageSummarySort(),
 	})
 	require.NoError(t, err)
 	require.Len(t, rows.Items, 1)

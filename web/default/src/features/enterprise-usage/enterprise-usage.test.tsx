@@ -16,27 +16,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 import { isRedirect } from '@tanstack/react-router'
+import i18n from '@/i18n/config'
+import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
+import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
+import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import i18n from '@/i18n/config'
-import { ROLE } from '@/lib/roles'
-import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
 import { useAuthStore } from '@/stores/auth-store'
-import { departmentDetailQueryKey, departmentSummaryQueryKey } from './api'
+import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { buildSearchParams } from '@/features/usage-logs/lib/filter'
+import {
+  departmentDetailQueryKey,
+  departmentSummaryQueryKey,
+  exportDepartmentUsageCSV,
+} from './api'
 import {
   EnterpriseUsageContent,
+  compareDepartmentUsageItems,
   enterpriseUsageSearchSchema,
   formatModelDistributionSummary,
   normalizeDepartmentUsageDetail,
   normalizeDepartmentUsageItems,
+  resolveDepartmentUsageExportParams,
   resolveEnterpriseUsageRange,
   resolveRecentLogsSearch,
   sortDepartmentUserRanking,
 } from './index'
-import { buildSearchParams } from '@/features/usage-logs/lib/filter'
 import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageSummaryItem,
@@ -113,35 +121,40 @@ describe('Enterprise usage overview dashboard', () => {
   })
 
   test('builds a serializable feature-scoped query key for department summary requests', () => {
+    assert.deepEqual(departmentSummaryQueryKey(1748390400, 1748476799), [
+      'enterprise',
+      'usage',
+      'department-summary',
+      {
+        from: 1748390400,
+        to: 1748476799,
+        summarySort: undefined,
+        summaryOrder: undefined,
+      },
+    ])
+
     assert.deepEqual(
-      departmentSummaryQueryKey(1748390400, 1748476799),
+      departmentSummaryQueryKey(1748390400, 1748476800, 2, 'quota', 'asc'),
       [
         'enterprise',
         'usage',
         'department-summary',
-        { from: 1748390400, to: 1748476799 },
+        {
+          from: 1748390400,
+          to: 1748476800,
+          tenantId: 2,
+          summarySort: 'quota',
+          summaryOrder: 'asc',
+        },
       ]
     )
 
-    assert.deepEqual(
-      departmentSummaryQueryKey(1748390400, 1748476800, 2),
-      [
-        'enterprise',
-        'usage',
-        'department-summary',
-        { from: 1748390400, to: 1748476800, tenantId: 2 },
-      ]
-    )
-
-    assert.deepEqual(
-      departmentDetailQueryKey(5, 1748390400, 1748476800, 2),
-      [
-        'enterprise',
-        'usage',
-        'department-detail',
-        { deptId: 5, from: 1748390400, to: 1748476800, tenantId: 2 },
-      ]
-    )
+    assert.deepEqual(departmentDetailQueryKey(5, 1748390400, 1748476800, 2), [
+      'enterprise',
+      'usage',
+      'department-detail',
+      { deptId: 5, from: 1748390400, to: 1748476800, tenantId: 2 },
+    ])
   })
 
   test('route guard redirects non-admin users to 403 and allows admins', () => {
@@ -248,6 +261,11 @@ describe('Enterprise usage overview dashboard', () => {
           onRetryDetail={() => undefined}
           rankSort='quota'
           onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
           selectedLogUser={undefined}
           onOpenRecentLogs={() => undefined}
         />
@@ -304,6 +322,11 @@ describe('Enterprise usage overview dashboard', () => {
           onRetryDetail={() => undefined}
           rankSort='quota'
           onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
           selectedLogUser={undefined}
           onOpenRecentLogs={() => undefined}
         />
@@ -338,6 +361,11 @@ describe('Enterprise usage overview dashboard', () => {
           onRetryDetail={() => undefined}
           rankSort='quota'
           onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
           selectedLogUser={undefined}
           onOpenRecentLogs={() => undefined}
         />
@@ -378,6 +406,11 @@ describe('Enterprise usage overview dashboard', () => {
           onRetryDetail={() => undefined}
           rankSort='quota'
           onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
           selectedLogUser={undefined}
           onOpenRecentLogs={() => undefined}
         />
@@ -461,6 +494,175 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(normalized[1]?.dept_name, 'Engineering')
     assert.equal(normalized[2]?.dept_name, 'Ops')
     assert.deepEqual(normalized[2]?.model_distribution, [])
+
+    const byUsersAsc = normalizeDepartmentUsageItems(
+      [
+        departmentUsageItem({ dept_id: 9, dept_name: 'Gamma', user_count: 8 }),
+        departmentUsageItem({ dept_id: 8, dept_name: 'Alpha', user_count: 2 }),
+      ],
+      'users',
+      'asc'
+    )
+    assert.equal(byUsersAsc[0]?.dept_name, 'Alpha')
+  })
+
+  test('uses the same summary sort comparator semantics for page ordering and export state', () => {
+    const alpha = departmentUsageItem({
+      dept_id: 1,
+      dept_name: 'Alpha',
+      request_count: 3,
+      quota: 100,
+      user_count: 4,
+    })
+    const beta = departmentUsageItem({
+      dept_id: 2,
+      dept_name: 'Beta',
+      request_count: 9,
+      quota: 200,
+      user_count: 2,
+    })
+
+    assert.equal(
+      compareDepartmentUsageItems(alpha, beta, 'requests', 'desc') > 0,
+      true
+    )
+    assert.equal(
+      compareDepartmentUsageItems(alpha, beta, 'dept_name', 'asc') < 0,
+      true
+    )
+    assert.equal(
+      compareDepartmentUsageItems(alpha, beta, 'users', 'desc') < 0,
+      true
+    )
+
+    const duplicateNameHigherId = departmentUsageItem({
+      dept_id: 5,
+      dept_name: 'Alpha',
+      request_count: 10,
+      quota: 100,
+      user_count: 2,
+    })
+    const duplicateNameLowerId = departmentUsageItem({
+      dept_id: 3,
+      dept_name: 'Alpha',
+      request_count: 10,
+      quota: 100,
+      user_count: 2,
+    })
+    assert.equal(
+      compareDepartmentUsageItems(
+        duplicateNameHigherId,
+        duplicateNameLowerId,
+        'dept_name',
+        'asc'
+      ) > 0,
+      true
+    )
+  })
+
+  test('exports csv with summary filters only and parses filename from headers', async () => {
+    const originalGet = api.get
+    const calls: Array<{ url: string; params?: unknown }> = []
+
+    api.get = (async (url: string, config?: Record<string, unknown>) => {
+      calls.push({ url, params: config?.params })
+      return {
+        data: new Blob([Buffer.from('csv')], { type: 'text/csv' }),
+        headers: {
+          'content-disposition':
+            'attachment; filename="usage-department-20240501-20240531.csv"',
+        },
+      }
+    }) as typeof api.get
+
+    try {
+      const result = await exportDepartmentUsageCSV({
+        from: 1714521600,
+        to: 1717113600,
+        tenantId: 7,
+        summarySort: 'users',
+        summaryOrder: 'asc',
+      })
+
+      assert.equal(result.fileName, 'usage-department-20240501-20240531.csv')
+      assert.equal(calls.length, 1)
+      assert.deepEqual(calls[0], {
+        url: '/api/enterprise/usage/export',
+        params: {
+          from: 1714521600,
+          to: 1717113600,
+          tenant_id: 7,
+          summary_sort: 'users',
+          summary_order: 'asc',
+        },
+      })
+      assert.ok(result.blob instanceof Blob)
+    } finally {
+      api.get = originalGet
+    }
+  })
+
+  test('rejects export responses that return business-error json blobs', async () => {
+    const originalGet = api.get
+
+    api.get = (async () => {
+      return {
+        data: new Blob(
+          [
+            JSON.stringify({
+              success: false,
+              message: 'common.invalid_params',
+            }),
+          ],
+          { type: 'application/json' }
+        ),
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+        },
+      }
+    }) as typeof api.get
+
+    try {
+      await assert.rejects(
+        () =>
+          exportDepartmentUsageCSV({
+            from: 1714521600,
+            to: 1717113600,
+          }),
+        /common\.invalid_params/
+      )
+    } finally {
+      api.get = originalGet
+    }
+  })
+
+  test('derives export params from summary filters without leaking detail-only search state', () => {
+    assert.deepEqual(
+      resolveDepartmentUsageExportParams(
+        {
+          preset: 'custom',
+          from: 1714521600,
+          to: 1717113600,
+          tenant_id: 7,
+          dept_id: 99,
+          sort: 'tokens',
+          summary_sort: 'users',
+          summary_order: 'asc',
+          log_user: 'alice',
+        },
+        {
+          from: 1714521600,
+          to: 1717113600,
+        }
+      ),
+      {
+        from: 1714521600,
+        to: 1717113600,
+        tenantId: 7,
+        summarySort: 'users',
+        summaryOrder: 'asc',
+      }
+    )
   })
 
   test('normalizes detail arrays and sorts rankings by selected metric', () => {
@@ -551,7 +753,9 @@ describe('Enterprise usage overview dashboard', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <EnterpriseUsageContent
-          items={[departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })]}
+          items={[
+            departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' }),
+          ]}
           selectedDepartmentId={1}
           detail={detailUsageItem()}
           detailLoading={false}
@@ -574,6 +778,11 @@ describe('Enterprise usage overview dashboard', () => {
           onRetryDetail={() => undefined}
           rankSort='quota'
           onSortChange={() => undefined}
+          summarySort='requests'
+          summaryOrder='desc'
+          onSummarySortChange={() => undefined}
+          onExport={() => undefined}
+          exportLoading={false}
           selectedLogUser='alice'
           onOpenRecentLogs={() => undefined}
         />

@@ -31,6 +31,7 @@ type UsageSummaryQuery struct {
 	TenantId int
 	From     int64
 	To       int64
+	Sort     UsageSummarySort
 }
 
 type UsageDepartmentSummaryItem struct {
@@ -260,15 +261,7 @@ func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) 
 		})
 		items = append(items, *item)
 	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].DeptId == nil && items[j].DeptId != nil {
-			return false
-		}
-		if items[i].DeptId != nil && items[j].DeptId == nil {
-			return true
-		}
-		return items[i].DeptName < items[j].DeptName
-	})
+	items = SortUsageDepartmentSummaryItems(items, query.Sort)
 	if items == nil {
 		items = []UsageDepartmentSummaryItem{}
 	}

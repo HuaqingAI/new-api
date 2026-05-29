@@ -89,7 +89,9 @@ export async function replaceUserDepartments(
 export async function getDepartmentMembers(
   departmentId: number
 ): Promise<ApiResponse<DepartmentMembersResponse>> {
-  const res = await api.get(`/api/enterprise/departments/${departmentId}/members`)
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/members`
+  )
   return res.data
 }
 
@@ -97,9 +99,12 @@ export async function getDepartmentBudget(
   departmentId: number,
   tenantId?: number
 ): Promise<ApiResponse<DepartmentBudgetResponse>> {
-  const res = await api.get(`/api/enterprise/departments/${departmentId}/budget`, {
-    params: tenantId === undefined ? undefined : { tenant_id: tenantId },
-  })
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/budget`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
   return res.data
 }
 
@@ -111,9 +116,12 @@ export async function getDepartmentBudgets(
     sort_order?: 'asc' | 'desc'
   }
 ): Promise<ApiResponse<DepartmentBudgetListResponse>> {
-  const res = await api.get(`/api/enterprise/departments/${departmentId}/budgets`, {
-    params,
-  })
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/budgets`,
+    {
+      params,
+    }
+  )
   return res.data
 }
 

@@ -60,6 +60,9 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.POST("/api/enterprise/departments/:id/members", AddDepartmentMember)
 	router.DELETE("/api/enterprise/departments/:id/members/:user_id", DeactivateDepartmentMember)
 	router.POST("/api/enterprise/departments/:id/members/:user_id/restore", RestoreDepartmentMember)
+	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
+	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
+	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

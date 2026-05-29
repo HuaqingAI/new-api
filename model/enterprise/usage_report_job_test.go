@@ -38,6 +38,9 @@ func TestUsageReportJobJSONWrappersNormalizeEmptyValues(t *testing.T) {
 	require.JSONEq(t, `[]`, job.Receivers)
 	require.NoError(t, job.SetLastSnapshot(nil))
 	require.JSONEq(t, `{}`, job.LastSnapshot)
+	snapshot, err = job.ParsedLastSnapshot()
+	require.NoError(t, err)
+	require.Nil(t, snapshot)
 }
 
 func TestUsageReportJobTextFieldsDoNotDeclareDBDefaults(t *testing.T) {

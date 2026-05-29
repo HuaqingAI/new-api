@@ -241,7 +241,7 @@ func SaveDepartmentUsageReportConfig(c *gin.Context) {
 		Receivers: req.Receivers,
 		Frequency: readOptionalString(req.Frequency),
 		RangeType: readOptionalString(req.RangeType),
-		Enabled:   boolValue(req.Enabled),
+		Enabled:   req.Enabled,
 	}
 
 	var result entservice.UsageReportJobResult

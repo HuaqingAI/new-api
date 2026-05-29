@@ -1,6 +1,7 @@
 package enterprise
 
 import (
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -141,7 +142,7 @@ func (j *UsageReportJob) SetLastSnapshot(snapshot *UsageReportSnapshot) error {
 }
 
 func (j UsageReportJob) ParsedLastSnapshot() (*UsageReportSnapshot, error) {
-	if j.LastSnapshot == "" {
+	if strings.TrimSpace(j.LastSnapshot) == "" || strings.TrimSpace(j.LastSnapshot) == "{}" {
 		return nil, nil
 	}
 	var snapshot UsageReportSnapshot

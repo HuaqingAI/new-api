@@ -25,7 +25,7 @@ type UsageReportConfigInput struct {
 	Receivers []string
 	Frequency string
 	RangeType string
-	Enabled   bool
+	Enabled   *bool
 }
 
 type UsageReportSummary struct {
@@ -124,7 +124,6 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 	}
 
 	now := s.now().Unix()
-	nextRunAt := computeUsageReportNextRunAt(input.Frequency, now)
 
 	var existing entmodel.UsageReportJob
 	err := s.db.Where("tenant_id = ?", input.TenantId).First(&existing).Error
@@ -133,11 +132,19 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 	}
 
 	if err == gorm.ErrRecordNotFound {
+		enabled := false
+		if input.Enabled != nil {
+			enabled = *input.Enabled
+		}
+		nextRunAt := int64(0)
+		if enabled {
+			nextRunAt = computeUsageReportNextRunAt(input.Frequency, now)
+		}
 		job := entmodel.UsageReportJob{
 			TenantId:  input.TenantId,
 			Frequency: input.Frequency,
 			RangeType: input.RangeType,
-			Enabled:   input.Enabled,
+			Enabled:   enabled,
 			Status:    entmodel.UsageReportStatusPending,
 			NextRunAt: nextRunAt,
 		}
@@ -153,19 +160,29 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 		return mapUsageReportJob(job)
 	}
 
+	enabled := existing.Enabled
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
 	updates := map[string]any{
 		"frequency":   input.Frequency,
 		"range_type":  input.RangeType,
-		"enabled":     input.Enabled,
-		"next_run_at": nextRunAt,
+		"enabled":     enabled,
 	}
 	if err := existing.SetReceivers(input.Receivers); err != nil {
 		return UsageReportJobResult{}, err
 	}
 	updates["receivers"] = existing.Receivers
-	if !input.Enabled {
+	if enabled {
+		updates["next_run_at"] = computeUsageReportNextRunAt(input.Frequency, now)
+		if !existing.Enabled {
+			updates["status"] = entmodel.UsageReportStatusPending
+			updates["error_reason"] = ""
+		}
+	} else {
 		updates["status"] = entmodel.UsageReportStatusPending
 		updates["error_reason"] = ""
+		updates["next_run_at"] = int64(0)
 	}
 	if err := s.db.Model(&existing).Updates(updates).Error; err != nil {
 		return UsageReportJobResult{}, err
@@ -199,6 +216,14 @@ func (s *UsageReportService) RunDueReports(ctx context.Context) (UsageReportDisp
 
 func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageReportJob) error {
 	now := s.now().Unix()
+	if err := s.db.Model(job).Updates(map[string]any{
+		"status":       entmodel.UsageReportStatusRunning,
+		"error_reason": "",
+	}).Error; err != nil {
+		return err
+	}
+	job.Status = entmodel.UsageReportStatusRunning
+	job.ErrorReason = ""
 	windowStart, windowEnd := usageReportWindow(job.RangeType, now)
 	summary, err := s.aggregation.GetDepartmentSummary(UsageSummaryQuery{
 		TenantId: job.TenantId,
@@ -447,7 +472,7 @@ func buildUsageReportSubject(rangeType string, windowStart int64, windowEnd int6
 func buildUsageReportHTML(snapshot *entmodel.UsageReportSnapshot) string {
 	var builder strings.Builder
 	builder.WriteString("<div>")
-	builder.WriteString("<p>部门间数值不可加和。</p>")
+	builder.WriteString(fmt.Sprintf("<p>%s</p>", html.EscapeString(usageExportDisclaimer)))
 	builder.WriteString(fmt.Sprintf("<p>统计周期：%s ~ %s</p>", time.Unix(snapshot.WindowStart, 0).Format("2006-01-02"), time.Unix(snapshot.WindowEnd-1, 0).Format("2006-01-02")))
 	builder.WriteString(fmt.Sprintf("<p>部门总览：部门数 %d，请求数 %d，Prompt Tokens %d，Completion Tokens %d，Quota %d，用户数 %d。</p>", snapshot.DepartmentCount, snapshot.RequestCount, snapshot.PromptTokens, snapshot.CompletionTokens, snapshot.Quota, snapshot.UserCount))
 	builder.WriteString("<p>Top 部门：</p><ul>")

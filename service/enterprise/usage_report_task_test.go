@@ -28,7 +28,7 @@ func TestUsageReportServiceSaveConfigValidatesInput(t *testing.T) {
 		Receivers: []string{"bad-email"},
 		Frequency: entmodel.UsageReportFrequencyDaily,
 		RangeType: entmodel.UsageReportRangeLast7Days,
-		Enabled:   true,
+		Enabled:   boolPtr(true),
 	})
 	require.ErrorIs(t, err, ErrUsageReportInvalidEmail)
 
@@ -37,7 +37,7 @@ func TestUsageReportServiceSaveConfigValidatesInput(t *testing.T) {
 		Receivers: []string{"ops@example.com"},
 		Frequency: "hourly",
 		RangeType: entmodel.UsageReportRangeLast7Days,
-		Enabled:   true,
+		Enabled:   boolPtr(true),
 	})
 	require.ErrorIs(t, err, ErrUsageReportInvalidInput)
 }
@@ -51,7 +51,7 @@ func TestUsageReportServiceSaveConfigAndGetConfig(t *testing.T) {
 		Receivers: []string{"ops@example.com", "cto@example.com"},
 		Frequency: entmodel.UsageReportFrequencyWeekly,
 		RangeType: entmodel.UsageReportRangeLast30Days,
-		Enabled:   true,
+		Enabled:   boolPtr(true),
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"ops@example.com", "cto@example.com"}, saved.Receivers)
@@ -63,6 +63,10 @@ func TestUsageReportServiceSaveConfigAndGetConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, saved.Receivers, got.Receivers)
 	require.Equal(t, saved.Frequency, got.Frequency)
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func TestBuildUsageReportSnapshotDetectsGrowth(t *testing.T) {

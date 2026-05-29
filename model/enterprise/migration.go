@@ -10,6 +10,7 @@ func Migrate(db *gorm.DB) error {
 		&UserDepartment{},
 		&DepartmentRole{},
 		&AdminAction{},
+		&UsageSnapshot{},
 		&DingTalkConfig{},
 		&DingTalkIdentity{},
 		&DingTalkSyncTask{},

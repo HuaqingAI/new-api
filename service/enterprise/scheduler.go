@@ -18,7 +18,7 @@ const (
 
 var enterpriseSchedulerOnce sync.Once
 
-func StartEnterpriseWalletTasks() {
+func StartEnterpriseTasks() {
 	enterpriseSchedulerOnce.Do(func() {
 		if !common.IsMasterNode {
 			return
@@ -29,19 +29,26 @@ func StartEnterpriseWalletTasks() {
 			ticker := time.NewTicker(enterpriseWalletTaskTickInterval)
 			defer ticker.Stop()
 
-			runEnterpriseWalletTasksOnce(ctx)
+			runEnterpriseTasksOnce(ctx)
 			for range ticker.C {
-				runEnterpriseWalletTasksOnce(ctx)
+				runEnterpriseTasksOnce(ctx)
 			}
 		})
 	})
 }
 
-func runEnterpriseWalletTasksOnce(ctx context.Context) {
+func StartEnterpriseWalletTasks() {
+	StartEnterpriseTasks()
+}
+
+func runEnterpriseTasksOnce(ctx context.Context) {
 	if _, err := ExpireBalanceAllocations(nil, 200, common.GetTimestamp()); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("enterprise balance expiry task failed: %v", err))
 	}
 	if _, err := SyncWalletStates(nil, 200); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("enterprise wallet state sync task failed: %v", err))
+	}
+	if _, err := RunUsageAggregationTaskOnce(ctx); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("enterprise usage aggregation task failed: %v", err))
 	}
 }

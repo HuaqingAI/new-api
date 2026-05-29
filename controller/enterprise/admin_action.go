@@ -13,7 +13,10 @@ import (
 
 func ListAdminActions(c *gin.Context) {
 	var query dtoenterprise.AdminActionQuery
-	_ = c.ShouldBindQuery(&query)
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 
 	result, err := adminActionService().List(entservice.AdminActionQuery{
 		TenantId:   query.TenantId,

@@ -14,7 +14,7 @@ type AdminAction struct {
 	ObjectType  string `json:"object_type" gorm:"type:varchar(64);not null;index:idx_ent_admin_actions_object"`
 	ObjectId    string `json:"object_id" gorm:"type:varchar(128);not null;default:'';index:idx_ent_admin_actions_object"`
 	DiffSummary string `json:"diff_summary" gorm:"type:varchar(1024);not null;default:''"`
-	Payload     string `json:"payload" gorm:"type:text;not null;default:'{}'"`
+	Payload     string `json:"payload" gorm:"type:text;not null"`
 	CreatedAt   int64  `json:"created_at" gorm:"type:bigint;not null;default:0;index:idx_ent_admin_actions_created"`
 }
 
@@ -25,6 +25,9 @@ func (AdminAction) TableName() string {
 func (a *AdminAction) BeforeCreate(tx *gorm.DB) error {
 	if a.CreatedAt == 0 {
 		a.CreatedAt = time.Now().Unix()
+	}
+	if a.Payload == "" {
+		a.Payload = "{}"
 	}
 	return nil
 }

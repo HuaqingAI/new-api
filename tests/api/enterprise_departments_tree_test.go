@@ -165,6 +165,68 @@ func TestEnterpriseDepartmentMembersAPIUsesBackendDepartmentPermission(t *testin
 	require.Contains(t, deniedPayload.Message, "error.enterprise.permission.dept_admin_required")
 }
 
+func TestEnterpriseDepartmentMembersAPIChecksTenantScopedDepartmentPermission(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2001, Username: "member", Password: "password123", Group: "vip", AffCode: "member-api"}).Error)
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2002, Username: "new-member", Password: "password123", Group: "vip", AffCode: "new-member-api"}).Error)
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.Department{
+		enterpriseDepartment(1, nil, "Tenant zero Engineering", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+		{
+			Id:          101,
+			TenantId:    1,
+			Name:        "Tenant one Engineering",
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+	}).Error)
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.UserDepartment{
+		{
+			TenantId:       1,
+			UserId:         2001,
+			DepartmentId:   101,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		TenantId:     1,
+		UserId:       1001,
+		DepartmentId: 101,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+
+	withoutTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members", cookies)
+	withoutTenantPayload := decodeDepartmentMembersAPIResponse(t, withoutTenant)
+	require.False(t, withoutTenantPayload.Success)
+	require.Contains(t, withoutTenantPayload.Message, "error.enterprise.permission.dept_admin_required")
+
+	withTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members?tenant_id=1", cookies)
+	withTenantPayload := decodeDepartmentMembersAPIResponse(t, withTenant)
+	require.True(t, withTenantPayload.Success, withTenantPayload.Message)
+	require.Contains(t, string(withTenantPayload.Data), "member")
+
+	add := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/101/members?tenant_id=1", cookies, map[string]any{"user_id": 2002})
+	addPayload := decodeDepartmentMembersAPIResponse(t, add)
+	require.True(t, addPayload.Success, addPayload.Message)
+
+	deactivate := fixture.performEnterpriseRequest(t, http.MethodDelete, "/api/enterprise/departments/101/members/2001?tenant_id=1", cookies)
+	deactivatePayload := decodeDepartmentMembersAPIResponse(t, deactivate)
+	require.True(t, deactivatePayload.Success, deactivatePayload.Message)
+
+	var membership modelenterprise.UserDepartment
+	require.NoError(t, fixture.db.Where("tenant_id = ? AND department_id = ? AND user_id = ?", 1, 101, 2001).First(&membership).Error)
+	require.Equal(t, constant.EnterpriseMembershipStatusInactive, membership.Status)
+
+	var action modelenterprise.AdminAction
+	require.NoError(t, fixture.db.Where("tenant_id = ? AND object_id = ?", 1, "101:2001").First(&action).Error)
+	require.Equal(t, "enterprise.organization.membership.disable", action.ActionType)
+}
+
 func TestEnterpriseAdminActionsAPIRequiresEnterpriseAdmin(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 	require.NoError(t, fixture.db.Create(&modelenterprise.AdminAction{
@@ -261,6 +323,16 @@ func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
 	require.True(t, actionsPayload.Success, actionsPayload.Message)
 	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.grant")
 	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.revoke")
+}
+
+func TestEnterpriseAdminActionsAPIRejectsInvalidQuery(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	recorder := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=bad", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	payload := decodeAdminActionsAPIResponse(t, recorder)
+
+	require.False(t, payload.Success)
+	require.Contains(t, payload.Message, "common.invalid_params")
 }
 
 func TestEnterpriseDepartmentTreeAPIMapsInvalidNameHistoryToBusinessError(t *testing.T) {

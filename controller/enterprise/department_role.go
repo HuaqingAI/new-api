@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -70,7 +71,10 @@ func RevokeDepartmentAdmin(c *gin.Context) {
 		return
 	}
 
-	tenantId := 0
+	tenantId, ok := parseDepartmentRoleTenantId(c)
+	if !ok {
+		return
+	}
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := entservice.NewPermissionService(tx).RevokeDepartmentAdmin(entservice.DepartmentAdminRoleInput{
 			TenantId:     tenantId,
@@ -98,6 +102,42 @@ func RevokeDepartmentAdmin(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, nil)
+}
+
+func parseDepartmentRoleTenantId(c *gin.Context) (int, bool) {
+	if c.Request.Method == http.MethodGet || c.Query("tenant_id") != "" {
+		raw := c.Query("tenant_id")
+		if raw == "" {
+			return 0, true
+		}
+		tenantId, err := strconv.Atoi(raw)
+		if err != nil || tenantId < 0 {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return 0, false
+		}
+		return tenantId, true
+	}
+	if c.Request.Body == nil || c.Request.ContentLength == 0 {
+		return 0, true
+	}
+	var req struct {
+		TenantId *int `json:"tenant_id,omitempty"`
+	}
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return 0, false
+	}
+	if c.Query("tenant_id") != "" {
+		return 0, true
+	}
+	if req.TenantId == nil {
+		return 0, true
+	}
+	if *req.TenantId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return 0, false
+	}
+	return *req.TenantId, true
 }
 
 func writeDepartmentRoleError(c *gin.Context, err error) {

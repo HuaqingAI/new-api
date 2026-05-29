@@ -23,7 +23,7 @@ type Department struct {
 	ExternalId  string `json:"external_id" gorm:"type:varchar(128);not null;default:'';index:idx_departments_source_external"`
 	SyncStatus  int    `json:"sync_status" gorm:"not null;default:0"`
 	SyncError   string `json:"sync_error" gorm:"type:varchar(1024);not null;default:''"`
-	NameHistory string `json:"name_history" gorm:"type:text;not null;default:'[]'"`
+	NameHistory string `json:"name_history" gorm:"type:text;not null"`
 	CreatedAt   int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt   int64  `json:"updated_at" gorm:"bigint"`
 	DeletedAt   int64  `json:"deleted_at" gorm:"bigint;not null;default:0"`

@@ -70,3 +70,60 @@ GPT-5 Codex
 - Added backend-only enterprise admin authorization for audit APIs with `error.enterprise.permission.admin_required`.
 - Wrote audit records for membership replacement/add/disable/restore and department-admin grant/revoke.
 - Added sensitive payload/diff redaction tests for secret/token/webhook-like fields.
+
+### File List
+
+- `_bmad-output/implementation-artifacts/1-4-record-enterprise-organization-audit.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `controller/enterprise/admin_action.go`
+- `controller/enterprise/department_membership.go`
+- `controller/enterprise/department_membership_test.go`
+- `controller/enterprise/department_role.go`
+- `dto/enterprise/admin_action.go`
+- `dto/enterprise/department_role.go`
+- `i18n/keys.go`
+- `i18n/locales/en.yaml`
+- `i18n/locales/zh-CN.yaml`
+- `i18n/locales/zh-TW.yaml`
+- `middleware/enterprise_admin.go`
+- `middleware/enterprise_dept_admin.go`
+- `model/enterprise/admin_action.go`
+- `model/enterprise/admin_action_test.go`
+- `model/enterprise/migration.go`
+- `router/enterprise-router.go`
+- `service/enterprise/admin_action.go`
+- `service/enterprise/admin_action_test.go`
+- `service/enterprise/errors.go`
+- `service/enterprise/permission.go`
+- `tests/api/enterprise_departments_tree_test.go`
+
+### Change Log
+
+- 2026-05-28: Initial Story 1.4 implementation completed on `codex/story-1-4`.
+- 2026-05-29: Senior Developer Review applied tenant-scoped permission fixes, query validation fixes, recursive audit redaction, focused regression tests, and review documentation.
+
+## Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex
+Date: 2026-05-29
+Outcome: Approved after automatic fixes.
+
+### Findings and Fixes
+
+- [HIGH] Department-member routes accepted `tenant_id`, but `EnterpriseDepartmentAdmin` always checked tenant `0`, so a department-admin permission check could authorize a different tenant from the one mutated or listed. Fixed by parsing `tenant_id` in `middleware/enterprise_dept_admin.go` and aligning membership mutation parsing in `controller/enterprise/department_membership.go`.
+- [HIGH] Department-admin revoke ignored non-zero tenant context, so roles outside tenant `0` could not be revoked or audited under the correct tenant. Fixed in `controller/enterprise/department_role.go`.
+- [MEDIUM] Admin action list and membership query handlers ignored query bind errors, causing malformed values such as `page=bad` to fall back silently. Fixed by returning `common.invalid_params`.
+- [MEDIUM] Audit payload redaction sanitized nested maps but not arrays containing maps or sensitive strings. Fixed recursive array/string redaction in `service/enterprise/admin_action.go`.
+- [MEDIUM] Story documentation lacked the File List, Change Log, and Senior Developer Review record required by the review workflow. Added this section and the implementation file list.
+
+### Validation
+
+- Passed: `go test ./service/enterprise`
+- Passed: `go test ./tests/api`
+- Passed: `go test ./controller/enterprise ./middleware`
+- Passed: `git diff --check`
+
+### Review Notes
+
+- Story status remains `done`; no critical issues remain after fixes.
+- Existing local worktree state includes a pre-review `.gitignore` modification and `_bmad-output/story-automator/` artifacts. They were not application source review targets and were left untouched.

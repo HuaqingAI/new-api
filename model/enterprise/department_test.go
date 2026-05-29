@@ -1,6 +1,8 @@
 package enterprise
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -53,7 +55,15 @@ func TestMigrateCreatesSQLiteDepartmentTableAndIndexes(t *testing.T) {
 		require.True(t, db.Migrator().HasIndex(&Department{}, index), index)
 		require.LessOrEqual(t, len(index), 64)
 	}
-	require.True(t, db.Migrator().HasConstraint(&Department{}, "chk_departments_parent_not_self"))
+}
+
+func TestDepartmentParentIdDoesNotDeclareMySQLIncompatibleCheck(t *testing.T) {
+	field, ok := reflect.TypeOf(Department{}).FieldByName("ParentId")
+	require.True(t, ok)
+
+	gormTag := field.Tag.Get("gorm")
+	require.NotContains(t, gormTag, "check:")
+	require.False(t, strings.Contains(gormTag, "parent_id") && strings.Contains(gormTag, "<> id"))
 }
 
 func TestDepartmentBeforeCreateDefaults(t *testing.T) {

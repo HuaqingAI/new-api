@@ -28,6 +28,7 @@ import {
   buildDiscordOAuthUrl,
   buildOIDCOAuthUrl,
   buildLinuxDOOAuthUrl,
+  buildDingTalkOAuthUrl,
 } from '../lib/oauth'
 import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
 
@@ -185,6 +186,32 @@ export function useOAuthLogin(status: SystemStatus | null) {
     }
   }
 
+  const handleDingTalkLogin = async () => {
+    if (!status?.dingtalk_client_id || !status?.dingtalk_callback_url) return
+
+    setIsLoading(true)
+    try {
+      await resetSession()
+      const state = await getOAuthState()
+      if (!state) {
+        toast.error(t('Failed to initialize OAuth'))
+        return
+      }
+
+      const url = buildDingTalkOAuthUrl(
+        status.dingtalk_client_id,
+        state,
+        status.dingtalk_callback_url,
+        status.dingtalk_authorization_endpoint
+      )
+      window.open(url, '_self')
+    } catch (_error) {
+      toast.error(t('Failed to start DingTalk login'))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleTelegramLogin = () => {
     toast.info(t('Telegram login requires widget integration; coming soon'))
   }
@@ -229,6 +256,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
     handleDiscordLogin,
     handleOIDCLogin,
     handleLinuxDOLogin,
+    handleDingTalkLogin,
     handleTelegramLogin,
     handleCustomOAuthLogin,
   }

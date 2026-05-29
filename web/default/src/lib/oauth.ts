@@ -69,6 +69,25 @@ export function buildLinuxDOOAuthUrl(clientId: string, state: string): string {
   return `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${clientId}&state=${state}`
 }
 
+/**
+ * Build DingTalk OAuth URL
+ */
+export function buildDingTalkOAuthUrl(
+  clientId: string,
+  state: string,
+  callbackUrl: string,
+  authorizationEndpoint = 'https://login.dingtalk.com/oauth2/auth'
+): string {
+  const url = new URL(authorizationEndpoint)
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', callbackUrl)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('scope', 'openid')
+  url.searchParams.set('state', state)
+  url.searchParams.set('prompt', 'consent')
+  return url.toString()
+}
+
 // ============================================================================
 // OAuth Helper Functions
 // ============================================================================
@@ -140,5 +159,25 @@ export async function handleLinuxDOOAuth(clientId: string): Promise<void> {
   if (!state) return
 
   const url = buildLinuxDOOAuthUrl(clientId, state)
+  window.open(url, '_blank')
+}
+
+/**
+ * Handle DingTalk OAuth binding/login
+ */
+export async function handleDingTalkOAuth(
+  clientId: string,
+  callbackUrl: string,
+  authorizationEndpoint?: string
+): Promise<void> {
+  const state = await getOAuthState()
+  if (!state) return
+
+  const url = buildDingTalkOAuthUrl(
+    clientId,
+    state,
+    callbackUrl,
+    authorizationEndpoint
+  )
   window.open(url, '_blank')
 }

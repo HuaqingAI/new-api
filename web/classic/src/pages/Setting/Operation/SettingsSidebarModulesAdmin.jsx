@@ -126,6 +126,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         deployment: true,
         redemption: true,
         user: true,
+        enterprise: true,
         subscription: true,
         setting: true,
       },
@@ -271,6 +272,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           description: t('兑换码生成管理'),
         },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
+        {
+          key: 'enterprise',
+          title: t('企业组织'),
+          description: t('部门成员关系'),
+        },
         {
           key: 'setting',
           title: t('系统设置'),

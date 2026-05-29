@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  Building2,
   CreditCard,
   FileText,
   FlaskConical,
@@ -28,6 +29,7 @@ import {
   MessageSquare,
   Radio,
   Settings,
+  ShieldCheck,
   Ticket,
   User,
   Users,
@@ -130,6 +132,16 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Enterprise Organization'),
+            url: '/enterprise-organization',
+            icon: Building2,
+          },
+          {
+            title: t('DingTalk Integration'),
+            url: '/enterprise-dingtalk',
+            icon: ShieldCheck,
           },
           {
             title: t('Redemption Codes'),

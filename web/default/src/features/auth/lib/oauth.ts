@@ -23,6 +23,7 @@ export {
   buildDiscordOAuthUrl,
   buildOIDCOAuthUrl,
   buildLinuxDOOAuthUrl,
+  buildDingTalkOAuthUrl,
 } from '@/lib/oauth'
 
 // ============================================================================
@@ -84,6 +85,16 @@ export function getAvailableOAuthProviders(
     })
   }
 
+  if (status.dingtalk_oauth) {
+    providers.push({
+      name: 'DingTalk',
+      type: 'dingtalk',
+      enabled: true,
+      clientId: status.dingtalk_client_id,
+      authEndpoint: status.dingtalk_authorization_endpoint,
+    })
+  }
+
   return providers
 }
 
@@ -98,6 +109,7 @@ export function hasOAuthProviders(status: SystemStatus | null): boolean {
     status.oidc_enabled ||
     status.linuxdo_oauth ||
     status.telegram_oauth ||
+    status.dingtalk_oauth ||
     status.wechat_login
   )
 }

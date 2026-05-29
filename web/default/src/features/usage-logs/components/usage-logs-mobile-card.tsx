@@ -38,6 +38,11 @@ import type { LogCategory } from '../types'
 import { LOG_TYPE_ENUM } from '../constants'
 import { getLogTypeConfig } from '../lib/utils'
 
+type CommonLogMobileRow = {
+  created_at?: number
+  type?: number
+}
+
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/30',
   [LOG_TYPE_ENUM.REFUND]: 'bg-blue-50/30 dark:bg-blue-950/15 border-blue-200/50 dark:border-blue-900/30',
@@ -183,6 +188,9 @@ function CommonLogsCard<TData>({
 
   const modelCell = cells.get('model_name')
   const quotaCell = cells.get('quota')
+  const originalLog = cells.get('created_at')?.row.original as
+    | CommonLogMobileRow
+    | undefined
 
   return (
     <div className='space-y-2.5'>
@@ -200,8 +208,8 @@ function CommonLogsCard<TData>({
             {t('Time')}
           </div>
           <MobileLogTimeStatus
-            createdAt={cells.get('created_at')?.row.original?.created_at}
-            type={cells.get('created_at')?.row.original?.type}
+            createdAt={originalLog?.created_at}
+            type={originalLog?.type}
           />
         </div>
         <SummaryField

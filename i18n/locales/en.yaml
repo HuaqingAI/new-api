@@ -23,6 +23,16 @@ common.already_exists: "Already exists"
 common.name_cannot_be_empty: "Name cannot be empty"
 common.batch_too_many: "Too many items in batch request, maximum is {{.Max}}"
 
+# Enterprise organization messages
+enterprise.organization.department_not_found: "Department does not exist"
+enterprise.organization.membership_not_found: "Department membership does not exist"
+enterprise.organization.membership_already_exists: "Department membership already exists"
+enterprise.organization.duplicate_department: "Duplicate department ID"
+enterprise.organization.admin_action_not_found: "Enterprise admin action does not exist"
+enterprise.organization.department_role_not_found: "Department administrator role does not exist"
+error.enterprise.permission.dept_admin_required: "Department administrator permission is required"
+error.enterprise.permission.admin_required: "Enterprise administrator permission is required"
+
 # Auth middleware messages
 auth.not_logged_in: "Unauthorized, not logged in and no access token provided"
 auth.access_token_invalid: "Unauthorized, invalid access token"
@@ -277,3 +287,24 @@ custom_oauth.name_empty: "Provider name cannot be empty"
 custom_oauth.has_bindings: "Cannot delete provider with existing user bindings"
 custom_oauth.binding_not_found: "OAuth binding not found"
 custom_oauth.provider_id_field_invalid: "Could not extract user ID from provider response"
+
+# Enterprise organization messages
+error.enterprise.organization.department_not_found: "Department not found"
+error.enterprise.organization.invalid_name_history: "Department name history is invalid"
+error.enterprise.organization.department_tree_failed: "Failed to load department tree"
+
+# Enterprise DingTalk messages
+enterprise.dingtalk.config_not_found: "DingTalk configuration does not exist"
+enterprise.dingtalk.missing_credentials: "DingTalk credentials are required before enabling login or sync"
+enterprise.dingtalk.invalid_callback_url: "DingTalk callback URL must be a valid HTTPS URL"
+enterprise.dingtalk.saved: "DingTalk configuration saved"
+enterprise.dingtalk.connectivity_tested: "DingTalk connectivity test completed"
+enterprise.dingtalk.oauth_not_enabled: "DingTalk login is not enabled"
+enterprise.dingtalk.oauth_invalid_identity: "DingTalk login did not return a valid employee identity"
+enterprise.dingtalk.oauth_provider_failed: "DingTalk login verification failed"
+enterprise.dingtalk.oauth_user_disabled: "This DingTalk employee is disabled or the local account is disabled"
+enterprise.dingtalk.oauth_out_of_scope: "This DingTalk employee is outside the allowed sync scope"
+enterprise.dingtalk.oauth_binding_conflict: "This DingTalk employee cannot be safely bound to the current account"
+enterprise.dingtalk.sync_started: "DingTalk address book sync started"
+enterprise.dingtalk.sync_not_enabled: "DingTalk address book sync is not enabled"
+enterprise.dingtalk.sync_task_not_found: "DingTalk sync task not found"

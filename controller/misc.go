@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
@@ -61,6 +62,7 @@ func GetStatus(c *gin.Context) {
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
 		"telegram_oauth":              common.TelegramOAuthEnabled,
 		"telegram_bot_name":           common.TelegramBotName,
+		"dingtalk_oauth":              false,
 		"theme":                       system_setting.GetThemeSettings().Frontend,
 		"system_name":                 common.SystemName,
 		"logo":                        common.Logo,
@@ -133,6 +135,13 @@ func GetStatus(c *gin.Context) {
 		data["faq"] = console_setting.GetFAQ()
 	}
 
+	if dingtalkStatus := getDingTalkOAuthStatus(); dingtalkStatus != nil {
+		data["dingtalk_oauth"] = true
+		data["dingtalk_client_id"] = dingtalkStatus.AppKey
+		data["dingtalk_callback_url"] = dingtalkStatus.CallbackUrl
+		data["dingtalk_authorization_endpoint"] = "https://login.dingtalk.com/oauth2/auth"
+	}
+
 	// Add enabled custom OAuth providers
 	customProviders := oauth.GetEnabledCustomProviders()
 	if len(customProviders) > 0 {
@@ -167,6 +176,28 @@ func GetStatus(c *gin.Context) {
 		"data":    data,
 	})
 	return
+}
+
+type dingTalkOAuthStatus struct {
+	AppKey      string
+	CallbackUrl string
+}
+
+func getDingTalkOAuthStatus() *dingTalkOAuthStatus {
+	if model.DB == nil {
+		return nil
+	}
+	var config entmodel.DingTalkConfig
+	if err := model.DB.Where("tenant_id = ? AND login_enabled = ?", 0, true).First(&config).Error; err != nil {
+		return nil
+	}
+	if strings.TrimSpace(config.AppKey) == "" || strings.TrimSpace(config.CallbackUrl) == "" {
+		return nil
+	}
+	return &dingTalkOAuthStatus{
+		AppKey:      config.AppKey,
+		CallbackUrl: config.CallbackUrl,
+	}
 }
 
 func GetNotice(c *gin.Context) {

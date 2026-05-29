@@ -24,6 +24,16 @@ common.already_exists: "已存在"
 common.name_cannot_be_empty: "名稱不能為空"
 common.batch_too_many: "批次請求數量過多，最多 {{.Max}} 條"
 
+# Enterprise organization messages
+enterprise.organization.department_not_found: "部門不存在"
+enterprise.organization.membership_not_found: "部門成員關係不存在"
+enterprise.organization.membership_already_exists: "部門成員關係已存在"
+enterprise.organization.duplicate_department: "部門 ID 重複"
+enterprise.organization.admin_action_not_found: "企業管理操作記錄不存在"
+enterprise.organization.department_role_not_found: "部門管理員角色不存在"
+error.enterprise.permission.dept_admin_required: "需要部門管理員權限"
+error.enterprise.permission.admin_required: "需要企業管理員權限"
+
 # Auth middleware messages
 auth.not_logged_in: "無權進行此操作，未登入且未提供 access token"
 auth.access_token_invalid: "無權進行此操作，access token 無效"
@@ -278,3 +288,24 @@ custom_oauth.name_empty: "供應者名稱不能為空"
 custom_oauth.has_bindings: "無法刪除已有使用者綁定的供應者"
 custom_oauth.binding_not_found: "OAuth 綁定不存在"
 custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用者 ID"
+
+# Enterprise organization messages
+error.enterprise.organization.department_not_found: "部門不存在"
+error.enterprise.organization.invalid_name_history: "部門歷史名稱資料無效"
+error.enterprise.organization.department_tree_failed: "載入部門樹失敗"
+
+# Enterprise DingTalk messages
+enterprise.dingtalk.config_not_found: "釘釘配置不存在"
+enterprise.dingtalk.missing_credentials: "啟用釘釘登入或同步前必須填寫釘釘憑據"
+enterprise.dingtalk.invalid_callback_url: "釘釘回調地址必須是有效的 HTTPS URL"
+enterprise.dingtalk.saved: "釘釘配置已儲存"
+enterprise.dingtalk.connectivity_tested: "釘釘連通性測試已完成"
+enterprise.dingtalk.oauth_not_enabled: "釘釘登入未啟用"
+enterprise.dingtalk.oauth_invalid_identity: "釘釘登入未返回有效員工身份"
+enterprise.dingtalk.oauth_provider_failed: "釘釘登入校驗失敗"
+enterprise.dingtalk.oauth_user_disabled: "該釘釘員工已停用或本地帳號已停用"
+enterprise.dingtalk.oauth_out_of_scope: "該釘釘員工不在允許同步範圍內"
+enterprise.dingtalk.oauth_binding_conflict: "該釘釘員工無法安全綁定到目前帳號"
+enterprise.dingtalk.sync_started: "釘釘通訊錄同步已啟動"
+enterprise.dingtalk.sync_not_enabled: "釘釘通訊錄同步未啟用"
+enterprise.dingtalk.sync_task_not_found: "釘釘同步任務不存在"

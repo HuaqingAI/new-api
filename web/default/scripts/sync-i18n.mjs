@@ -46,6 +46,7 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'Cloudflare',
   'Cohere',
   'DeepSeek',
+  'DingTalk',
   'Discord',
   'DoubaoVideo',
   'FastGPT',
@@ -316,5 +317,4 @@ main().catch((err) => {
   console.error(err)
   process.exitCode = 1
 })
-
 

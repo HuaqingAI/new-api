@@ -24,6 +24,16 @@ common.already_exists: "已存在"
 common.name_cannot_be_empty: "名称不能为空"
 common.batch_too_many: "批量请求数量过多，最多 {{.Max}} 条"
 
+# Enterprise organization messages
+enterprise.organization.department_not_found: "部门不存在"
+enterprise.organization.membership_not_found: "部门成员关系不存在"
+enterprise.organization.membership_already_exists: "部门成员关系已存在"
+enterprise.organization.duplicate_department: "部门 ID 重复"
+enterprise.organization.admin_action_not_found: "企业管理操作记录不存在"
+enterprise.organization.department_role_not_found: "部门管理员角色不存在"
+error.enterprise.permission.dept_admin_required: "需要部门管理员权限"
+error.enterprise.permission.admin_required: "需要企业管理员权限"
+
 # Auth middleware messages
 auth.not_logged_in: "无权进行此操作，未登录且未提供 access token"
 auth.access_token_invalid: "无权进行此操作，access token 无效"
@@ -278,3 +288,24 @@ custom_oauth.name_empty: "提供商名称不能为空"
 custom_oauth.has_bindings: "无法删除已有用户绑定的提供商"
 custom_oauth.binding_not_found: "OAuth 绑定不存在"
 custom_oauth.provider_id_field_invalid: "无法从提供商响应中提取用户 ID"
+
+# Enterprise organization messages
+error.enterprise.organization.department_not_found: "部门不存在"
+error.enterprise.organization.invalid_name_history: "部门历史名称数据无效"
+error.enterprise.organization.department_tree_failed: "加载部门树失败"
+
+# Enterprise DingTalk messages
+enterprise.dingtalk.config_not_found: "钉钉配置不存在"
+enterprise.dingtalk.missing_credentials: "启用钉钉登录或同步前必须填写钉钉凭据"
+enterprise.dingtalk.invalid_callback_url: "钉钉回调地址必须是有效的 HTTPS URL"
+enterprise.dingtalk.saved: "钉钉配置已保存"
+enterprise.dingtalk.connectivity_tested: "钉钉连通性测试已完成"
+enterprise.dingtalk.oauth_not_enabled: "钉钉登录未启用"
+enterprise.dingtalk.oauth_invalid_identity: "钉钉登录未返回有效员工身份"
+enterprise.dingtalk.oauth_provider_failed: "钉钉登录校验失败"
+enterprise.dingtalk.oauth_user_disabled: "该钉钉员工已停用或本地账号已停用"
+enterprise.dingtalk.oauth_out_of_scope: "该钉钉员工不在允许同步范围内"
+enterprise.dingtalk.oauth_binding_conflict: "该钉钉员工无法安全绑定到当前账号"
+enterprise.dingtalk.sync_started: "钉钉通讯录同步已启动"
+enterprise.dingtalk.sync_not_enabled: "钉钉通讯录同步未启用"
+enterprise.dingtalk.sync_task_not_found: "钉钉同步任务不存在"

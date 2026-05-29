@@ -47,6 +47,59 @@ export type DepartmentUsageSummaryResponse = {
   items: DepartmentUsageSummaryItem[]
 }
 
+export type DepartmentUsageUserRankItem = {
+  user_id: number
+  username: string
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  token_count: number
+  quota: number
+}
+
+export type DepartmentUsageTrendPoint = {
+  window_start: number
+  window_end: number
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  token_count: number
+  quota: number
+  user_count: number
+}
+
+export type DepartmentUsageLogFilters = {
+  department_id: number | null
+  department_name: string
+  start_timestamp: number
+  end_timestamp: number
+  username: string
+  username_options: string[]
+}
+
+export type DepartmentUsageLogEntryLink = {
+  path: string
+  section: string
+  filters: DepartmentUsageLogFilters
+}
+
+export type DepartmentUsageDetailResponse = {
+  dept_id: number | null
+  dept_name: string
+  window_start: number
+  window_end: number
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  token_count: number
+  quota: number
+  user_count: number
+  user_ranking: DepartmentUsageUserRankItem[]
+  model_distribution: UsageModelDistributionItem[]
+  trend: DepartmentUsageTrendPoint[]
+  recent_logs_entry: DepartmentUsageLogEntryLink
+}
+
 export type EnterpriseUsagePreset =
   | 'today'
   | 'yesterday'
@@ -59,4 +112,9 @@ export type EnterpriseUsageSearch = {
   from?: number
   to?: number
   tenant_id?: number
+  dept_id?: number
+  sort?: DepartmentUsageUserRankSort
+  log_user?: string
 }
+
+export type DepartmentUsageUserRankSort = 'quota' | 'requests' | 'tokens'

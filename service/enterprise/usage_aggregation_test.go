@@ -466,6 +466,193 @@ func TestUsageSummaryCountsDistinctUsersAcrossWindows(t *testing.T) {
 	require.Equal(t, int64(3), rows.Items[0].RequestCount)
 }
 
+func TestUsageDetailBuildsRankingTrendAndAllowsMultiDepartmentDuplication(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	seedUsageTestUser(t, db, 101, "alice")
+	seedUsageTestUser(t, db, 102, "bob")
+	seedUsageTestDepartment(t, db, 1, "Engineering")
+	seedUsageTestDepartment(t, db, 2, "Operations")
+
+	require.NoError(t, db.Create(&[]entmodel.UserDepartment{
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   1,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+			JoinedAt:       0,
+			LeftAt:         0,
+		},
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   2,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+			JoinedAt:       0,
+			LeftAt:         0,
+		},
+		{
+			TenantId:       0,
+			UserId:         102,
+			DepartmentId:   1,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+			JoinedAt:       0,
+			LeftAt:         0,
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			Id:               1,
+			UserId:           101,
+			Username:         "alice",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            100,
+			PromptTokens:     40,
+			CompletionTokens: 20,
+			CreatedAt:        1700000100,
+		},
+		{
+			Id:               2,
+			UserId:           101,
+			Username:         "alice",
+			Type:             model.LogTypeConsume,
+			ModelName:        "claude-sonnet-4",
+			Quota:            200,
+			PromptTokens:     80,
+			CompletionTokens: 40,
+			CreatedAt:        1700003900,
+		},
+		{
+			Id:               3,
+			UserId:           102,
+			Username:         "bob",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            50,
+			PromptTokens:     20,
+			CompletionTokens: 10,
+			CreatedAt:        1700000200,
+		},
+	}).Error)
+
+	service := NewUsageAggregationService(db)
+	_, err := service.AggregateWindow(UsageAggregationWindow{
+		TenantId:    0,
+		WindowStart: 1700000000,
+		WindowEnd:   1700003600,
+	})
+	require.NoError(t, err)
+	_, err = service.AggregateWindow(UsageAggregationWindow{
+		TenantId:    0,
+		WindowStart: 1700003600,
+		WindowEnd:   1700007200,
+	})
+	require.NoError(t, err)
+
+	deptId := 1
+	detail, err := service.GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &deptId,
+		From:     1700000000,
+		To:       1700007200,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Engineering", detail.DeptName)
+	require.Equal(t, int64(3), detail.RequestCount)
+	require.Equal(t, int64(140), detail.PromptTokens)
+	require.Equal(t, int64(70), detail.CompletionTokens)
+	require.Equal(t, int64(210), detail.TokenCount)
+	require.Equal(t, int64(350), detail.Quota)
+	require.Equal(t, int64(2), detail.UserCount)
+	require.Len(t, detail.UserRanking, 2)
+	require.Equal(t, "alice", detail.UserRanking[0].Username)
+	require.Equal(t, int64(300), detail.UserRanking[0].Quota)
+	require.Equal(t, int64(2), detail.UserRanking[0].RequestCount)
+	require.Equal(t, "bob", detail.UserRanking[1].Username)
+	require.Equal(t, int64(50), detail.UserRanking[1].Quota)
+	require.Equal(t, int64(30), detail.UserRanking[1].TokenCount)
+	require.Len(t, detail.ModelDistribution, 2)
+	require.Equal(t, "claude-sonnet-4", detail.ModelDistribution[0].ModelName)
+	require.Equal(t, int64(200), detail.ModelDistribution[0].Quota)
+	require.Equal(t, "gpt-4o", detail.ModelDistribution[1].ModelName)
+	require.Len(t, detail.Trend, 2)
+	require.Equal(t, int64(1700000000), detail.Trend[0].WindowStart)
+	require.Equal(t, int64(2), detail.Trend[0].RequestCount)
+	require.Equal(t, int64(1700003600), detail.Trend[1].WindowStart)
+	require.Equal(t, int64(1), detail.Trend[1].RequestCount)
+	require.Equal(t, "/usage-logs/common", detail.RecentLogsLink.Path)
+	require.Equal(t, "common", detail.RecentLogsLink.Section)
+	require.Equal(t, "Engineering", detail.RecentLogsLink.DepartmentName)
+	require.Equal(t, int64(1700000000), detail.RecentLogsLink.StartTimestamp)
+	require.Equal(t, int64(1700007199), detail.RecentLogsLink.EndTimestamp)
+	require.Equal(t, []string{"alice", "bob"}, detail.RecentLogsLink.Usernames)
+
+	otherDeptId := 2
+	otherDetail, err := service.GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &otherDeptId,
+		From:     1700000000,
+		To:       1700007200,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Operations", otherDetail.DeptName)
+	require.Equal(t, int64(2), otherDetail.RequestCount)
+	require.Equal(t, int64(1), otherDetail.UserCount)
+	require.Len(t, otherDetail.UserRanking, 1)
+	require.Equal(t, "alice", otherDetail.UserRanking[0].Username)
+}
+
+func TestUsageDetailReturnsEmptyArraysForAdjacentWindow(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	deptId := 1
+
+	detail, err := NewUsageAggregationService(db).GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &deptId,
+		From:     1700000000,
+		To:       1700003600,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1700000000), detail.WindowStart)
+	require.Equal(t, int64(1700003600), detail.WindowEnd)
+	require.NotNil(t, detail.UserRanking)
+	require.Empty(t, detail.UserRanking)
+	require.NotNil(t, detail.ModelDistribution)
+	require.Empty(t, detail.ModelDistribution)
+	require.NotNil(t, detail.Trend)
+	require.Empty(t, detail.Trend)
+	require.Equal(t, "/usage-logs/common", detail.RecentLogsLink.Path)
+	require.Equal(t, "common", detail.RecentLogsLink.Section)
+	require.Equal(t, deptId, *detail.RecentLogsLink.DepartmentId)
+	require.Equal(t, int64(1700003599), detail.RecentLogsLink.EndTimestamp)
+	require.NotNil(t, detail.RecentLogsLink.Usernames)
+	require.Empty(t, detail.RecentLogsLink.Usernames)
+}
+
+func TestUsageDetailRejectsInvalidQuery(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	deptId := 1
+
+	_, err := NewUsageAggregationService(db).GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   nil,
+		From:     1700000000,
+		To:       1700003600,
+	})
+	require.ErrorIs(t, err, ErrInvalidUsageDetailQuery)
+
+	_, err = NewUsageAggregationService(db).GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &deptId,
+		From:     1700003600,
+		To:       1700000000,
+	})
+	require.ErrorIs(t, err, ErrInvalidUsageDetailQuery)
+}
+
 func TestRunUsageAggregationTaskOnceStartsFromEarliestMissingWindow(t *testing.T) {
 	db := newUsageAggregationTestDB(t)
 	seedUsageTestUser(t, db, 101, "alice")

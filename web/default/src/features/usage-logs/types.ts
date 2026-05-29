@@ -41,6 +41,10 @@ export interface CommonFilters {
   startTime?: Date
   endTime?: Date
   channel?: string
+  departmentContext?: {
+    departmentId?: number
+    departmentName?: string
+  }
 }
 
 /**

@@ -20,14 +20,30 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   AlertTriangle,
+  ArrowLeft,
   BarChart3,
   Coins,
+  ExternalLink,
+  LineChart,
   RefreshCw,
   Rows3,
   Users,
 } from 'lucide-react'
+import {
+  CartesianGrid,
+  Line,
+  LineChart as RechartsLineChart,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { useTranslation } from 'react-i18next'
 import z from 'zod'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import dayjs from '@/lib/dayjs'
@@ -62,11 +78,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useDepartmentUsageDetail } from './hooks/use-department-usage-detail'
 import { useDepartmentUsageSummary } from './hooks/use-department-usage-summary'
 import type {
+  DepartmentUsageDetailResponse,
+  DepartmentUsageLogEntryLink,
   DepartmentUsageSummaryItem,
+  DepartmentUsageUserRankItem,
+  DepartmentUsageUserRankSort,
   EnterpriseUsagePreset,
   EnterpriseUsageSearch,
+  DepartmentUsageTrendPoint,
   UsageModelDistributionItem,
 } from './types'
 
@@ -83,6 +105,9 @@ export const enterpriseUsageSearchSchema = z.object({
   from: z.coerce.number().int().optional().catch(undefined),
   to: z.coerce.number().int().optional().catch(undefined),
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
+  dept_id: z.coerce.number().int().positive().optional().catch(undefined),
+  sort: z.enum(['quota', 'requests', 'tokens']).optional().catch('quota'),
+  log_user: z.string().optional().catch(undefined),
 })
 
 type ResolvedEnterpriseUsageRange = {
@@ -224,6 +249,12 @@ export function EnterpriseUsageOverview() {
     to: resolvedRange.to,
     tenantId: search.tenant_id,
   })
+  const detailQuery = useDepartmentUsageDetail({
+    deptId: search.dept_id,
+    from: resolvedRange.from,
+    to: resolvedRange.to,
+    tenantId: search.tenant_id,
+  })
 
   const customRangeState = getCustomRangeState(customFromDate, customToDate)
 
@@ -246,7 +277,12 @@ export function EnterpriseUsageOverview() {
     setCustomToDate(formatDateInputValue(nextRange.to))
     navigate({
       to: '/enterprise-usage',
-      search: { preset },
+      search: (prev) => ({
+        ...prev,
+        preset,
+        from: undefined,
+        to: undefined,
+      }),
     })
   }
 
@@ -254,11 +290,58 @@ export function EnterpriseUsageOverview() {
     if (!customRangeState.isValid) return
     navigate({
       to: '/enterprise-usage',
-      search: {
+      search: (prev) => ({
+        ...prev,
         preset: 'custom',
         from: customRangeState.from,
         to: customRangeState.to,
-      },
+      }),
+    })
+  }
+
+  const handleSelectDepartment = (deptId: number | null) => {
+    if (deptId == null) return
+    const nextSort: DepartmentUsageUserRankSort =
+      search.sort === 'requests' || search.sort === 'tokens'
+        ? search.sort
+        : 'quota'
+    navigate({
+      to: '/enterprise-usage',
+      search: (prev) => ({
+        ...prev,
+        dept_id: deptId,
+        sort: nextSort,
+        log_user: undefined,
+      }),
+    })
+  }
+
+  const handleBackToOverview = () => {
+    navigate({
+      to: '/enterprise-usage',
+      search: (prev) => ({
+        ...prev,
+        dept_id: undefined,
+        log_user: undefined,
+      }),
+    })
+  }
+
+  const handleSortChange = (sort: DepartmentUsageUserRankSort) => {
+    navigate({
+      to: '/enterprise-usage',
+      search: (prev) => ({
+        ...prev,
+        sort,
+      }),
+    })
+  }
+
+  const handleOpenRecentLogs = (entry: DepartmentUsageLogEntryLink) => {
+    void navigate({
+      to: '/usage-logs/$section',
+      params: { section: entry.section as 'common' },
+      search: resolveRecentLogsSearch(entry, search.log_user),
     })
   }
 
@@ -300,6 +383,14 @@ export function EnterpriseUsageOverview() {
                   : null
               }
               rangeLabel={resolvedRange.rangeLabel}
+              selectedDepartmentId={search.dept_id}
+              detail={detailQuery.data ?? null}
+              detailLoading={detailQuery.isLoading}
+              detailErrorMessage={
+                detailQuery.error instanceof Error
+                  ? detailQuery.error.message
+                  : null
+              }
               customRange={{
                 from: customFromDate,
                 to: customToDate,
@@ -315,6 +406,13 @@ export function EnterpriseUsageOverview() {
                 resolvedRange.isCustom ? 'custom' : resolvedRange.preset
               }
               onRetry={() => usageQuery.refetch()}
+              onSelectDepartment={handleSelectDepartment}
+              onBackToOverview={handleBackToOverview}
+              onRetryDetail={() => detailQuery.refetch()}
+              rankSort={search.sort ?? 'quota'}
+              onSortChange={handleSortChange}
+              selectedLogUser={search.log_user}
+              onOpenRecentLogs={handleOpenRecentLogs}
             />
           )}
         </SectionPageLayout.Content>
@@ -325,6 +423,10 @@ export function EnterpriseUsageOverview() {
 
 type EnterpriseUsageContentProps = {
   items: DepartmentUsageSummaryItem[]
+  selectedDepartmentId?: number
+  detail: DepartmentUsageDetailResponse | null
+  detailLoading: boolean
+  detailErrorMessage: string | null
   isLoading: boolean
   errorMessage: string | null
   rangeLabel: string
@@ -338,6 +440,13 @@ type EnterpriseUsageContentProps = {
   onPresetChange: (preset: EnterpriseUsagePreset) => void
   selectedPreset: EnterpriseUsagePreset
   onRetry: () => void
+  onSelectDepartment: (deptId: number | null) => void
+  onBackToOverview: () => void
+  onRetryDetail: () => void
+  rankSort: DepartmentUsageUserRankSort
+  onSortChange: (sort: DepartmentUsageUserRankSort) => void
+  selectedLogUser?: string
+  onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
 }
 
 export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
@@ -469,6 +578,7 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                       <TableHead>{t('Quota')}</TableHead>
                       <TableHead>{t('Users')}</TableHead>
                       <TableHead>{t('Model Distribution')}</TableHead>
+                      <TableHead>{t('Actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -490,15 +600,362 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                             t
                           )}
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant={
+                              props.selectedDepartmentId === item.dept_id
+                                ? 'default'
+                                : 'outline'
+                            }
+                            disabled={item.dept_id == null}
+                            onClick={() => props.onSelectDepartment(item.dept_id)}
+                          >
+                            {t('View Details')}
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
+              {props.selectedDepartmentId ? (
+                <DepartmentUsageDetailPanel
+                  detail={props.detail}
+                  isLoading={props.detailLoading}
+                  errorMessage={props.detailErrorMessage}
+                  rankSort={props.rankSort}
+                  onSortChange={props.onSortChange}
+                  onBack={props.onBackToOverview}
+                  onRetry={props.onRetryDetail}
+                  selectedLogUser={props.selectedLogUser}
+                  onOpenRecentLogs={props.onOpenRecentLogs}
+                />
+              ) : null}
             </div>
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+const detailTrendChartConfig = {
+  quota: {
+    label: 'Quota',
+    color: 'var(--color-chart-1)',
+  },
+  requests: {
+    label: 'Requests',
+    color: 'var(--color-chart-2)',
+  },
+} satisfies ChartConfig
+
+function DepartmentUsageDetailPanel(props: {
+  detail: DepartmentUsageDetailResponse | null
+  isLoading: boolean
+  errorMessage: string | null
+  rankSort: DepartmentUsageUserRankSort
+  onSortChange: (sort: DepartmentUsageUserRankSort) => void
+  onBack: () => void
+  onRetry: () => void
+  selectedLogUser?: string
+  onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card className='border-dashed'>
+      <CardHeader className='gap-3'>
+        <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='space-y-1'>
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='-ml-3 w-fit'
+              onClick={props.onBack}
+            >
+              <ArrowLeft className='size-4' />
+              {t('Back to overview')}
+            </Button>
+            <CardTitle>
+              {props.detail?.dept_name || t('Department Usage Details')}
+            </CardTitle>
+            <CardDescription>
+              {props.detail?.dept_name
+                ? t('Inspect top users, model mix, time trend, and recent logs.')
+                : t('Select a department to inspect drill-down usage details.')}
+            </CardDescription>
+          </div>
+          {props.detail ? (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => props.onOpenRecentLogs(props.detail!.recent_logs_entry)}
+            >
+              <ExternalLink className='size-4' />
+              {t('Open Recent Logs')}
+            </Button>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {props.isLoading ? (
+          <EnterpriseUsageSkeleton />
+        ) : props.errorMessage ? (
+          <Alert variant='destructive' className='gap-2'>
+            <AlertTriangle className='size-4' />
+            <AlertTitle>{t('Unable to load department usage')}</AlertTitle>
+            <AlertDescription>{t(props.errorMessage)}</AlertDescription>
+            <div className='pt-2'>
+              <Button variant='outline' size='sm' onClick={props.onRetry}>
+                {t('Retry')}
+              </Button>
+            </div>
+          </Alert>
+        ) : props.detail == null ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <LineChart className='size-5' />
+              </EmptyMedia>
+              <EmptyTitle>{t('Department Usage Details')}</EmptyTitle>
+              <EmptyDescription>
+                {t('Select a department to inspect drill-down usage details.')}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div className='space-y-4'>
+            <EnterpriseUsageSummaryCards
+              items={[
+                {
+                  dept_id: props.detail.dept_id,
+                  dept_name: props.detail.dept_name,
+                  window_start: props.detail.window_start,
+                  window_end: props.detail.window_end,
+                  request_count: props.detail.request_count,
+                  prompt_tokens: props.detail.prompt_tokens,
+                  completion_tokens: props.detail.completion_tokens,
+                  quota: props.detail.quota,
+                  user_count: props.detail.user_count,
+                  model_distribution: props.detail.model_distribution,
+                },
+              ]}
+            />
+            <div className='grid gap-4 xl:grid-cols-[1.1fr_0.9fr]'>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Usage Trend')}</CardTitle>
+                  <CardDescription>
+                    {t('Hourly snapshot trend for the selected department.')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DepartmentUsageTrendChart trend={props.detail.trend} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Model Distribution')}</CardTitle>
+                  <CardDescription>
+                    {t('Models ranked by quota and request count inside this department.')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DepartmentModelDistributionTable
+                    items={props.detail.model_distribution}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            <Card>
+              <CardHeader className='gap-3'>
+                <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                  <div>
+                    <CardTitle>{t('User Ranking')}</CardTitle>
+                    <CardDescription>
+                      {t('Ranking is calculated only within the current department scope.')}
+                    </CardDescription>
+                  </div>
+                  <div className='flex flex-wrap gap-2'>
+                    {(
+                      [
+                        ['quota', t('Sort by Quota')],
+                        ['requests', t('Sort by Requests')],
+                        ['tokens', t('Sort by Tokens')],
+                      ] as const
+                    ).map(([sort, label]) => (
+                      <Button
+                        key={sort}
+                        type='button'
+                        size='sm'
+                        variant={props.rankSort === sort ? 'default' : 'outline'}
+                        onClick={() => props.onSortChange(sort)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className='space-y-3'>
+                <DepartmentUserRankingTable
+                  items={sortDepartmentUserRanking(
+                    props.detail.user_ranking,
+                    props.rankSort
+                  )}
+                />
+                <div className='flex flex-wrap gap-2 text-xs text-muted-foreground'>
+                  <span>{t('Recent Logs User Filter')}:</span>
+                  {props.detail.recent_logs_entry.filters.username_options.map(
+                    (username) => (
+                      <span
+                        key={username}
+                        className={
+                          username === props.selectedLogUser
+                            ? 'rounded-full bg-primary/10 px-2 py-1 text-primary'
+                            : 'rounded-full bg-muted px-2 py-1'
+                        }
+                      >
+                        {username}
+                      </span>
+                    )
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DepartmentUsageTrendChart(props: {
+  trend: DepartmentUsageTrendPoint[]
+}) {
+  const { t } = useTranslation()
+  const data = props.trend.map((point) => ({
+    label: dayjs(point.window_start * 1000).format('MM-DD HH:mm'),
+    quota: point.quota,
+    requests: point.request_count,
+  }))
+
+  if (data.length === 0) {
+    return <div className='text-sm text-muted-foreground'>{t('No trend data for this time range')}</div>
+  }
+
+  return (
+    <ChartContainer config={detailTrendChartConfig} className='h-72 w-full'>
+      <RechartsLineChart accessibilityLayer data={data}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey='label' tickLine={false} axisLine={false} minTickGap={24} />
+        <YAxis yAxisId='left' tickLine={false} axisLine={false} width={48} />
+        <YAxis
+          yAxisId='right'
+          orientation='right'
+          tickLine={false}
+          axisLine={false}
+          width={48}
+        />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Line
+          yAxisId='left'
+          type='monotone'
+          dataKey='quota'
+          stroke='var(--color-quota)'
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          yAxisId='right'
+          type='monotone'
+          dataKey='requests'
+          stroke='var(--color-requests)'
+          strokeWidth={2}
+          dot={false}
+        />
+      </RechartsLineChart>
+    </ChartContainer>
+  )
+}
+
+function DepartmentModelDistributionTable(props: {
+  items: UsageModelDistributionItem[]
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='overflow-x-auto'>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('Model')}</TableHead>
+            <TableHead>{t('Requests')}</TableHead>
+            <TableHead>{t('Quota')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {props.items.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={3} className='text-center text-muted-foreground'>
+                {t('No model distribution for this time range')}
+              </TableCell>
+            </TableRow>
+          ) : (
+            props.items.map((item) => (
+              <TableRow key={item.model_name}>
+                <TableCell className='font-medium'>{item.model_name}</TableCell>
+                <TableCell>{formatNumber(item.request_count)}</TableCell>
+                <TableCell>{formatQuota(item.quota)}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function DepartmentUserRankingTable(props: {
+  items: DepartmentUsageUserRankItem[]
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='overflow-x-auto'>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('User')}</TableHead>
+            <TableHead>{t('Requests')}</TableHead>
+            <TableHead>{t('Tokens')}</TableHead>
+            <TableHead>{t('Quota')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {props.items.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={4} className='text-center text-muted-foreground'>
+                {t('No department members consumed within this time range')}
+              </TableCell>
+            </TableRow>
+          ) : (
+            props.items.map((item) => (
+              <TableRow key={item.user_id}>
+                <TableCell className='font-medium'>{item.username || item.user_id}</TableCell>
+                <TableCell>{formatNumber(item.request_count)}</TableCell>
+                <TableCell>{formatNumber(item.token_count)}</TableCell>
+                <TableCell>{formatQuota(item.quota)}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -678,6 +1135,66 @@ export function normalizeDepartmentUsageItems(
         b.dept_name || 'Unassigned'
       )
     })
+}
+
+export function normalizeDepartmentUsageDetail(
+  detail: DepartmentUsageDetailResponse
+): DepartmentUsageDetailResponse {
+  return {
+    ...detail,
+    dept_name: detail.dept_name || '',
+    user_ranking: detail.user_ranking ?? [],
+    model_distribution: detail.model_distribution ?? [],
+    trend: detail.trend ?? [],
+    recent_logs_entry: {
+      ...detail.recent_logs_entry,
+      filters: {
+        ...detail.recent_logs_entry.filters,
+        department_id: detail.recent_logs_entry.filters.department_id ?? null,
+        username: detail.recent_logs_entry.filters.username ?? '',
+        username_options:
+          detail.recent_logs_entry.filters.username_options ?? [],
+      },
+    },
+  }
+}
+
+export function sortDepartmentUserRanking(
+  items: DepartmentUsageUserRankItem[],
+  sort: DepartmentUsageUserRankSort
+): DepartmentUsageUserRankItem[] {
+  return [...items].sort((a, b) => {
+    const primary =
+      sort === 'requests'
+        ? b.request_count - a.request_count
+        : sort === 'tokens'
+          ? b.token_count - a.token_count
+          : b.quota - a.quota
+    if (primary !== 0) return primary
+    if (b.quota !== a.quota) return b.quota - a.quota
+    if (b.request_count !== a.request_count) return b.request_count - a.request_count
+    if (b.token_count !== a.token_count) return b.token_count - a.token_count
+    return a.username.localeCompare(b.username)
+  })
+}
+
+export function resolveRecentLogsSearch(
+  entry: DepartmentUsageLogEntryLink,
+  selectedLogUser?: string
+) {
+  const selectedUsername =
+    selectedLogUser &&
+    entry.filters.username_options.includes(selectedLogUser)
+      ? selectedLogUser
+      : entry.filters.username_options[0]
+
+  return {
+    departmentId: entry.filters.department_id ?? undefined,
+    departmentName: entry.filters.department_name || undefined,
+    startTime: entry.filters.start_timestamp * 1000,
+    endTime: (entry.filters.end_timestamp + 1) * 1000,
+    username: selectedUsername || undefined,
+  }
 }
 
 function getCustomRangeState(fromDate: string, toDate: string) {

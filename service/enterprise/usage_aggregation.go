@@ -18,6 +18,7 @@ const usageSnapshotUnassignedBucket = "unassigned"
 var (
 	ErrInvalidUsageAggregationWindow = errors.New("enterprise usage aggregation window invalid")
 	ErrInvalidUsageSummaryQuery      = errors.New("enterprise usage summary query invalid")
+	ErrInvalidUsageDetailQuery       = errors.New("enterprise usage detail query invalid")
 )
 
 type UsageAggregationWindow struct {
@@ -47,6 +48,61 @@ type UsageDepartmentSummaryItem struct {
 
 type UsageDepartmentSummaryResult struct {
 	Items []UsageDepartmentSummaryItem
+}
+
+type UsageDetailQuery struct {
+	TenantId int
+	DeptId   *int
+	From     int64
+	To       int64
+}
+
+type UsageDepartmentUserRankItem struct {
+	UserId           int
+	Username         string
+	RequestCount     int64
+	PromptTokens     int64
+	CompletionTokens int64
+	TokenCount       int64
+	Quota            int64
+}
+
+type UsageDepartmentTrendPoint struct {
+	WindowStart      int64
+	WindowEnd        int64
+	RequestCount     int64
+	PromptTokens     int64
+	CompletionTokens int64
+	TokenCount       int64
+	Quota            int64
+	UserCount        int64
+}
+
+type UsageRecentLogsLink struct {
+	Path          string
+	Section       string
+	DepartmentId  *int
+	DepartmentName string
+	StartTimestamp int64
+	EndTimestamp   int64
+	Usernames      []string
+}
+
+type UsageDepartmentDetailResult struct {
+	DeptId            *int
+	DeptName          string
+	WindowStart       int64
+	WindowEnd         int64
+	RequestCount      int64
+	PromptTokens      int64
+	CompletionTokens  int64
+	TokenCount        int64
+	Quota             int64
+	UserCount         int64
+	UserRanking       []UsageDepartmentUserRankItem
+	ModelDistribution []entmodel.UsageSnapshotModelStat
+	Trend             []UsageDepartmentTrendPoint
+	RecentLogsLink    UsageRecentLogsLink
 }
 
 type UsageAggregationService struct {
@@ -217,6 +273,114 @@ func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) 
 		items = []UsageDepartmentSummaryItem{}
 	}
 	return UsageDepartmentSummaryResult{Items: items}, nil
+}
+
+func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (UsageDepartmentDetailResult, error) {
+	if query.DeptId == nil || query.From < 0 || query.To <= 0 || query.From >= query.To {
+		return UsageDepartmentDetailResult{
+			UserRanking:       []UsageDepartmentUserRankItem{},
+			ModelDistribution: []entmodel.UsageSnapshotModelStat{},
+			Trend:             []UsageDepartmentTrendPoint{},
+			RecentLogsLink: UsageRecentLogsLink{
+				Path:     "/usage-logs/common",
+				Section:  "common",
+				Usernames: []string{},
+			},
+		}, ErrInvalidUsageDetailQuery
+	}
+
+	var snapshots []entmodel.UsageSnapshot
+	if err := s.db.
+		Where("tenant_id = ? AND dept_id = ? AND window_start >= ? AND window_end <= ?", query.TenantId, *query.DeptId, query.From, query.To).
+		Order("window_start ASC, id ASC").
+		Find(&snapshots).Error; err != nil {
+		return UsageDepartmentDetailResult{
+			UserRanking:       []UsageDepartmentUserRankItem{},
+			ModelDistribution: []entmodel.UsageSnapshotModelStat{},
+			Trend:             []UsageDepartmentTrendPoint{},
+			RecentLogsLink: UsageRecentLogsLink{
+				Path:     "/usage-logs/common",
+				Section:  "common",
+				Usernames: []string{},
+			},
+		}, err
+	}
+
+	result := UsageDepartmentDetailResult{
+		DeptId:            query.DeptId,
+		WindowStart:       query.From,
+		WindowEnd:         query.To,
+		UserRanking:       []UsageDepartmentUserRankItem{},
+		ModelDistribution: []entmodel.UsageSnapshotModelStat{},
+		Trend:             []UsageDepartmentTrendPoint{},
+		RecentLogsLink: UsageRecentLogsLink{
+			Path:           "/usage-logs/common",
+			Section:        "common",
+			DepartmentId:   query.DeptId,
+			StartTimestamp: query.From,
+			EndTimestamp:   query.To - 1,
+			Usernames:      []string{},
+		},
+	}
+	if len(snapshots) == 0 {
+		return result, nil
+	}
+
+	result.DeptName = normalizeUsageDeptName(query.DeptId, snapshots[0].DeptName)
+
+	allUserIds := map[int]struct{}{}
+	for _, snapshot := range snapshots {
+		result.RequestCount += snapshot.RequestCount
+		result.PromptTokens += snapshot.PromptTokens
+		result.CompletionTokens += snapshot.CompletionTokens
+		result.Quota += snapshot.Quota
+
+		stats, err := snapshot.ParsedModelDistribution()
+		if err != nil {
+			return UsageDepartmentDetailResult{}, err
+		}
+		result.ModelDistribution = mergeUsageModelStats(result.ModelDistribution, stats)
+
+		userIds, err := snapshot.ParsedUserIds()
+		if err != nil {
+			return UsageDepartmentDetailResult{}, err
+		}
+		for _, userId := range userIds {
+			allUserIds[userId] = struct{}{}
+		}
+
+		result.Trend = append(result.Trend, UsageDepartmentTrendPoint{
+			WindowStart:      snapshot.WindowStart,
+			WindowEnd:        snapshot.WindowEnd,
+			RequestCount:     snapshot.RequestCount,
+			PromptTokens:     snapshot.PromptTokens,
+			CompletionTokens: snapshot.CompletionTokens,
+			TokenCount:       snapshot.PromptTokens + snapshot.CompletionTokens,
+			Quota:            snapshot.Quota,
+			UserCount:        snapshot.UserCount,
+		})
+	}
+	result.TokenCount = result.PromptTokens + result.CompletionTokens
+	result.UserCount = int64(len(allUserIds))
+	sort.Slice(result.ModelDistribution, func(i, j int) bool {
+		if result.ModelDistribution[i].Quota != result.ModelDistribution[j].Quota {
+			return result.ModelDistribution[i].Quota > result.ModelDistribution[j].Quota
+		}
+		if result.ModelDistribution[i].RequestCount != result.ModelDistribution[j].RequestCount {
+			return result.ModelDistribution[i].RequestCount > result.ModelDistribution[j].RequestCount
+		}
+		return result.ModelDistribution[i].ModelName < result.ModelDistribution[j].ModelName
+	})
+
+	userIds := sortedUsageBucketUserIDs(allUserIds)
+	userRanking, usernames, err := s.buildDepartmentUserRanking(query, userIds)
+	if err != nil {
+		return UsageDepartmentDetailResult{}, err
+	}
+	result.UserRanking = userRanking
+	result.RecentLogsLink.DepartmentName = result.DeptName
+	result.RecentLogsLink.Usernames = usernames
+	return result, nil
 }
 
 func (s *UsageAggregationService) getWatermark(tenantId int) (int64, error) {
@@ -469,6 +633,91 @@ func mergeUsageModelStats(base []entmodel.UsageSnapshotModelStat, extra []entmod
 		merged = append(merged, *stat)
 	}
 	return merged
+}
+
+func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQuery, userIds []int) ([]UsageDepartmentUserRankItem, []string, error) {
+	if len(userIds) == 0 {
+		return []UsageDepartmentUserRankItem{}, []string{}, nil
+	}
+
+	var logs []model.Log
+	if err := s.logDB.
+		Select("user_id", "username", "model_name", "quota", "prompt_tokens", "completion_tokens", "created_at").
+		Where("type = ? AND created_at >= ? AND created_at < ? AND user_id IN ?", model.LogTypeConsume, query.From, query.To, userIds).
+		Order("created_at ASC, id ASC").
+		Find(&logs).Error; err != nil {
+		return nil, nil, err
+	}
+
+	memberships, _, err := s.loadMembershipContext(query.TenantId, userIds, query.From, query.To)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ranking := make(map[int]*UsageDepartmentUserRankItem, len(userIds))
+	for _, logRow := range logs {
+		if !usageLogMatchesDepartment(logRow, query.DeptId, memberships[logRow.UserId]) {
+			continue
+		}
+
+		item, ok := ranking[logRow.UserId]
+		if !ok {
+			item = &UsageDepartmentUserRankItem{
+				UserId:   logRow.UserId,
+				Username: logRow.Username,
+			}
+			ranking[logRow.UserId] = item
+		}
+		if item.Username == "" {
+			item.Username = logRow.Username
+		}
+		item.RequestCount++
+		item.PromptTokens += int64(logRow.PromptTokens)
+		item.CompletionTokens += int64(logRow.CompletionTokens)
+		item.TokenCount += int64(logRow.PromptTokens + logRow.CompletionTokens)
+		item.Quota += int64(logRow.Quota)
+	}
+
+	items := make([]UsageDepartmentUserRankItem, 0, len(ranking))
+	usernames := make([]string, 0, len(ranking))
+	for _, item := range ranking {
+		items = append(items, *item)
+		if item.Username != "" {
+			usernames = append(usernames, item.Username)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Quota != items[j].Quota {
+			return items[i].Quota > items[j].Quota
+		}
+		if items[i].RequestCount != items[j].RequestCount {
+			return items[i].RequestCount > items[j].RequestCount
+		}
+		if items[i].TokenCount != items[j].TokenCount {
+			return items[i].TokenCount > items[j].TokenCount
+		}
+		if items[i].Username != items[j].Username {
+			return items[i].Username < items[j].Username
+		}
+		return items[i].UserId < items[j].UserId
+	})
+	sort.Strings(usernames)
+	return items, usernames, nil
+}
+
+func usageLogMatchesDepartment(logRow model.Log, deptId *int, memberships []entmodel.UserDepartment) bool {
+	if deptId == nil {
+		return false
+	}
+	for _, membership := range memberships {
+		if membership.DepartmentId != *deptId {
+			continue
+		}
+		if usageMembershipEffectiveAt(membership, logRow.CreatedAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func deleteUsageSnapshotsForWindow(tx *gorm.DB, window UsageAggregationWindow) error {

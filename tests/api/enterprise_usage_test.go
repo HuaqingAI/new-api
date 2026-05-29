@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
@@ -190,4 +191,147 @@ func TestEnterpriseUsageSummaryAPIPreservesMultiDepartmentAttributionAcrossWindo
 	require.Equal(t, int64(2), operations.RequestCount)
 	require.Equal(t, int64(1), operations.UserCount)
 	require.Len(t, operations.ModelDistribution, 1)
+}
+
+func TestEnterpriseUsageDetailAPIRequiresEnterpriseAdminAndReturnsFilterContext(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}, &model.Log{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 101, Username: "alice", Password: "password123", Group: "default", AffCode: "alice-usage"}).Error)
+	require.NoError(t, fixture.db.Create(&model.User{Id: 102, Username: "bob", Password: "password123", Group: "default", AffCode: "bob-usage"}).Error)
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.Department{
+		enterpriseDepartment(11, nil, "Engineering", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+		enterpriseDepartment(22, nil, "Operations", constant.DepartmentStatusEnabled, constant.DepartmentSourceTypeManual, constant.DepartmentSyncStatusOK),
+	}).Error)
+	require.NoError(t, fixture.db.Create(&[]modelenterprise.UserDepartment{
+		{
+			UserId:         101,
+			DepartmentId:   11,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			UserId:         101,
+			DepartmentId:   22,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			UserId:         102,
+			DepartmentId:   11,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+	}).Error)
+
+	snapshotA := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           intPtr(11),
+		DeptName:         "Engineering",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     2,
+		PromptTokens:     60,
+		CompletionTokens: 30,
+		Quota:            150,
+	}
+	require.NoError(t, snapshotA.SetModelDistribution([]modelenterprise.UsageSnapshotModelStat{
+		{ModelName: "gpt-4o", RequestCount: 2, PromptTokens: 60, CompletionTokens: 30, Quota: 150},
+	}))
+	require.NoError(t, snapshotA.SetUserIds([]int{101, 102}))
+	snapshotB := modelenterprise.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           intPtr(11),
+		DeptName:         "Engineering",
+		WindowStart:      1700003600,
+		WindowEnd:        1700007200,
+		RequestCount:     1,
+		PromptTokens:     80,
+		CompletionTokens: 40,
+		Quota:            200,
+	}
+	require.NoError(t, snapshotB.SetModelDistribution([]modelenterprise.UsageSnapshotModelStat{
+		{ModelName: "claude-sonnet-4", RequestCount: 1, PromptTokens: 80, CompletionTokens: 40, Quota: 200},
+	}))
+	require.NoError(t, snapshotB.SetUserIds([]int{101}))
+	require.NoError(t, fixture.db.Create(&snapshotA).Error)
+	require.NoError(t, fixture.db.Create(&snapshotB).Error)
+	require.NoError(t, fixture.db.Create(&[]model.Log{
+		{
+			Id:               1,
+			UserId:           101,
+			Username:         "alice",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            100,
+			PromptTokens:     40,
+			CompletionTokens: 20,
+			CreatedAt:        1700000100,
+		},
+		{
+			Id:               2,
+			UserId:           102,
+			Username:         "bob",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            50,
+			PromptTokens:     20,
+			CompletionTokens: 10,
+			CreatedAt:        1700000200,
+		},
+		{
+			Id:               3,
+			UserId:           101,
+			Username:         "alice",
+			Type:             model.LogTypeConsume,
+			ModelName:        "claude-sonnet-4",
+			Quota:            200,
+			PromptTokens:     80,
+			CompletionTokens: 40,
+			CreatedAt:        1700003900,
+		},
+	}).Error)
+
+	commonUser := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=11&from=1700000000&to=1700007200", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	admin := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=11&from=1700000000&to=1700007200", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	adminPayload := decodeAdminActionsAPIResponse(t, admin)
+	require.True(t, adminPayload.Success, adminPayload.Message)
+
+	var response dtoenterprise.DepartmentUsageDetailResponse
+	require.NoError(t, common.Unmarshal(adminPayload.Data, &response))
+	require.Equal(t, "Engineering", response.DeptName)
+	require.Equal(t, int64(3), response.RequestCount)
+	require.Equal(t, int64(210), response.TokenCount)
+	require.Len(t, response.UserRanking, 2)
+	require.Equal(t, "alice", response.UserRanking[0].Username)
+	require.Len(t, response.ModelDistribution, 2)
+	require.Len(t, response.Trend, 2)
+	require.Equal(t, "/usage-logs/common", response.RecentLogsEntry.Path)
+	require.Equal(t, int64(1700000000), response.RecentLogsEntry.Filters.StartTimestamp)
+	require.Equal(t, int64(1700007199), response.RecentLogsEntry.Filters.EndTimestamp)
+	require.Equal(t, []string{"alice", "bob"}, response.RecentLogsEntry.Filters.UsernameOptions)
+}
+
+func TestEnterpriseUsageDetailAPIRejectsInvalidParamsAndReturnsEmptyArrays(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	invalid := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=11&from=1700003600&to=1700000000", adminCookies)
+	invalidPayload := decodeAdminActionsAPIResponse(t, invalid)
+	require.False(t, invalidPayload.Success)
+	require.Equal(t, "common.invalid_params", invalidPayload.Message)
+
+	empty := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=11&from=1700000000&to=1700003600", adminCookies)
+	emptyPayload := decodeAdminActionsAPIResponse(t, empty)
+	require.True(t, emptyPayload.Success, emptyPayload.Message)
+	require.Contains(t, string(emptyPayload.Data), `"user_ranking":[]`)
+	require.Contains(t, string(emptyPayload.Data), `"model_distribution":[]`)
+	require.Contains(t, string(emptyPayload.Data), `"username_options":[]`)
+}
+
+func intPtr(value int) *int {
+	return &value
 }

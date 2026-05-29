@@ -35,9 +35,9 @@ const logTypeSearchSchema = z
   )
   .catch([])
 
-const usageLogsSearchSchema = z.object({
-  page: z.number().optional().catch(1),
-  pageSize: z.number().optional().catch(undefined),
+export const usageLogsSearchSchema = z.object({
+  page: z.coerce.number().int().positive().optional().catch(1),
+  pageSize: z.coerce.number().int().positive().optional().catch(undefined),
   type: logTypeSearchSchema.optional(),
   filter: z.string().optional().catch(''),
   model: z.string().optional().catch(''),
@@ -47,8 +47,10 @@ const usageLogsSearchSchema = z.object({
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
-  startTime: z.number().optional(),
-  endTime: z.number().optional(),
+  startTime: z.coerce.number().int().optional().catch(undefined),
+  endTime: z.coerce.number().int().optional().catch(undefined),
+  departmentId: z.coerce.number().int().positive().optional().catch(undefined),
+  departmentName: z.string().optional().catch(''),
 })
 
 export const Route = createFileRoute('/_authenticated/usage-logs/$section')({

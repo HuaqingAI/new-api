@@ -17,7 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import type { ApiResponse, DepartmentUsageSummaryResponse } from './types'
+import type {
+  ApiResponse,
+  DepartmentUsageDetailResponse,
+  DepartmentUsageSummaryResponse,
+} from './types'
 
 export const enterpriseUsageQueryKey = ['enterprise', 'usage'] as const
 
@@ -33,6 +37,21 @@ export function departmentSummaryQueryKey(
   ] as const
 }
 
+export function departmentDetailQueryKey(
+  deptId: number,
+  from: number,
+  to: number,
+  tenantId?: number
+) {
+  return [
+    ...enterpriseUsageQueryKey,
+    'department-detail',
+    tenantId === undefined
+      ? { deptId, from, to }
+      : { deptId, from, to, tenantId },
+  ] as const
+}
+
 export async function getDepartmentUsageSummary(params: {
   from: number
   to: number
@@ -40,6 +59,23 @@ export async function getDepartmentUsageSummary(params: {
 }): Promise<ApiResponse<DepartmentUsageSummaryResponse>> {
   const res = await api.get('/api/enterprise/usage/department-summary', {
     params: {
+      from: params.from,
+      to: params.to,
+      ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function getDepartmentUsageDetail(params: {
+  deptId: number
+  from: number
+  to: number
+  tenantId?: number
+}): Promise<ApiResponse<DepartmentUsageDetailResponse>> {
+  const res = await api.get('/api/enterprise/usage/department-detail', {
+    params: {
+      dept_id: params.deptId,
       from: params.from,
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),

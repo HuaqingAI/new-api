@@ -25,15 +25,22 @@ import i18n from '@/i18n/config'
 import { ROLE } from '@/lib/roles'
 import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
 import { useAuthStore } from '@/stores/auth-store'
-import { departmentSummaryQueryKey } from './api'
+import { departmentDetailQueryKey, departmentSummaryQueryKey } from './api'
 import {
   EnterpriseUsageContent,
   enterpriseUsageSearchSchema,
   formatModelDistributionSummary,
+  normalizeDepartmentUsageDetail,
   normalizeDepartmentUsageItems,
   resolveEnterpriseUsageRange,
+  resolveRecentLogsSearch,
+  sortDepartmentUserRanking,
 } from './index'
-import type { DepartmentUsageSummaryItem } from './types'
+import { buildSearchParams } from '@/features/usage-logs/lib/filter'
+import type {
+  DepartmentUsageDetailResponse,
+  DepartmentUsageSummaryItem,
+} from './types'
 
 describe('Enterprise usage overview dashboard', () => {
   test('resolves default and preset-backed time windows into exact query params', () => {
@@ -41,23 +48,23 @@ describe('Enterprise usage overview dashboard', () => {
 
     const today = resolveEnterpriseUsageRange({}, now)
     assert.equal(today.preset, 'today')
-    assert.equal(today.from, 1779984000)
-    assert.equal(today.to, 1780070400)
+    assert.equal(today.from, 1780012800)
+    assert.equal(today.to, 1780099200)
     assert.equal(today.rangeLabel, '2026-05-29 ~ 2026-05-29')
 
     const yesterday = resolveEnterpriseUsageRange({ preset: 'yesterday' }, now)
-    assert.equal(yesterday.from, 1779897600)
-    assert.equal(yesterday.to, 1779984000)
+    assert.equal(yesterday.from, 1779926400)
+    assert.equal(yesterday.to, 1780012800)
     assert.equal(yesterday.rangeLabel, '2026-05-28 ~ 2026-05-28')
 
     const last7 = resolveEnterpriseUsageRange({ preset: 'last7d' }, now)
-    assert.equal(last7.from, 1779465600)
-    assert.equal(last7.to, 1780070400)
+    assert.equal(last7.from, 1779494400)
+    assert.equal(last7.to, 1780099200)
     assert.equal(last7.rangeLabel, '2026-05-23 ~ 2026-05-29')
 
     const last30 = resolveEnterpriseUsageRange({ preset: 'last30d' }, now)
-    assert.equal(last30.from, 1777478400)
-    assert.equal(last30.to, 1780070400)
+    assert.equal(last30.from, 1777507200)
+    assert.equal(last30.to, 1780099200)
     assert.equal(last30.rangeLabel, '2026-04-30 ~ 2026-05-29')
   })
 
@@ -77,7 +84,7 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(custom.from, 1748390400)
     assert.equal(custom.to, 1748476800)
     assert.equal(custom.customToDate, '2025-05-28')
-    assert.equal(custom.rangeLabel, '2025-05-28 ~ 2025-05-29')
+    assert.equal(custom.rangeLabel, '2025-05-28 ~ 2025-05-28')
 
     const invalid = resolveEnterpriseUsageRange(
       {
@@ -123,6 +130,16 @@ describe('Enterprise usage overview dashboard', () => {
         'usage',
         'department-summary',
         { from: 1748390400, to: 1748476800, tenantId: 2 },
+      ]
+    )
+
+    assert.deepEqual(
+      departmentDetailQueryKey(5, 1748390400, 1748476800, 2),
+      [
+        'enterprise',
+        'usage',
+        'department-detail',
+        { deptId: 5, from: 1748390400, to: 1748476800, tenantId: 2 },
       ]
     )
   })
@@ -209,6 +226,10 @@ describe('Enterprise usage overview dashboard', () => {
               ],
             }),
           ]}
+          selectedDepartmentId={undefined}
+          detail={null}
+          detailLoading={false}
+          detailErrorMessage={null}
           isLoading={false}
           errorMessage={null}
           rangeLabel='2026-05-28 ~ 2026-05-28'
@@ -222,6 +243,13 @@ describe('Enterprise usage overview dashboard', () => {
           onPresetChange={() => undefined}
           selectedPreset='today'
           onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          selectedLogUser={undefined}
+          onOpenRecentLogs={() => undefined}
         />
       </I18nextProvider>
     )
@@ -243,6 +271,7 @@ describe('Enterprise usage overview dashboard', () => {
       'Last 30 Days',
       'Custom',
       'Apply',
+      'View Details',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -253,6 +282,10 @@ describe('Enterprise usage overview dashboard', () => {
       <I18nextProvider i18n={i18n}>
         <EnterpriseUsageContent
           items={[]}
+          selectedDepartmentId={undefined}
+          detail={null}
+          detailLoading={false}
+          detailErrorMessage={null}
           isLoading={false}
           errorMessage={null}
           rangeLabel='2026-05-29 ~ 2026-05-29'
@@ -266,6 +299,13 @@ describe('Enterprise usage overview dashboard', () => {
           onPresetChange={() => undefined}
           selectedPreset='today'
           onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          selectedLogUser={undefined}
+          onOpenRecentLogs={() => undefined}
         />
       </I18nextProvider>
     )
@@ -276,6 +316,10 @@ describe('Enterprise usage overview dashboard', () => {
       <I18nextProvider i18n={i18n}>
         <EnterpriseUsageContent
           items={[]}
+          selectedDepartmentId={undefined}
+          detail={null}
+          detailLoading={false}
+          detailErrorMessage={null}
           isLoading={false}
           errorMessage='common.invalid_params'
           rangeLabel='2026-05-29 ~ 2026-05-29'
@@ -289,6 +333,13 @@ describe('Enterprise usage overview dashboard', () => {
           onPresetChange={() => undefined}
           selectedPreset='custom'
           onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          selectedLogUser={undefined}
+          onOpenRecentLogs={() => undefined}
         />
       </I18nextProvider>
     )
@@ -305,6 +356,10 @@ describe('Enterprise usage overview dashboard', () => {
       <I18nextProvider i18n={i18n}>
         <EnterpriseUsageContent
           items={[]}
+          selectedDepartmentId={undefined}
+          detail={null}
+          detailLoading={false}
+          detailErrorMessage={null}
           isLoading
           errorMessage={null}
           rangeLabel='2026-05-29 ~ 2026-05-29'
@@ -318,6 +373,13 @@ describe('Enterprise usage overview dashboard', () => {
           onPresetChange={() => undefined}
           selectedPreset='today'
           onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          selectedLogUser={undefined}
+          onOpenRecentLogs={() => undefined}
         />
       </I18nextProvider>
     )
@@ -400,6 +462,189 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(normalized[2]?.dept_name, 'Ops')
     assert.deepEqual(normalized[2]?.model_distribution, [])
   })
+
+  test('normalizes detail arrays and sorts rankings by selected metric', () => {
+    const normalized = normalizeDepartmentUsageDetail(
+      detailUsageItem({
+        user_ranking: undefined as never,
+        model_distribution: undefined as never,
+        trend: undefined as never,
+        recent_logs_entry: {
+          path: '/usage-logs/common',
+          section: 'common',
+          filters: {
+            department_id: 1,
+            department_name: 'Engineering',
+            start_timestamp: 1748476800,
+            end_timestamp: 1748563199,
+            username: '',
+            username_options: undefined as never,
+          },
+        },
+      })
+    )
+
+    assert.deepEqual(normalized.user_ranking, [])
+    assert.deepEqual(normalized.model_distribution, [])
+    assert.deepEqual(normalized.trend, [])
+    assert.deepEqual(normalized.recent_logs_entry.filters.username_options, [])
+
+    const byRequests = sortDepartmentUserRanking(
+      detailUsageItem().user_ranking,
+      'requests'
+    )
+    assert.equal(byRequests[0]?.username, 'alice')
+
+    const byTokens = sortDepartmentUserRanking(
+      [
+        ...detailUsageItem().user_ranking,
+        {
+          user_id: 3,
+          username: 'carol',
+          request_count: 1,
+          prompt_tokens: 100,
+          completion_tokens: 200,
+          token_count: 300,
+          quota: 50000,
+        },
+      ],
+      'tokens'
+    )
+    assert.equal(byTokens[0]?.username, 'alice')
+
+    const quotaOrder = sortDepartmentUserRanking(
+      [
+        {
+          user_id: 1,
+          username: 'alice',
+          request_count: 4,
+          prompt_tokens: 400,
+          completion_tokens: 160,
+          token_count: 560,
+          quota: 120000,
+        },
+        {
+          user_id: 2,
+          username: 'bob',
+          request_count: 6,
+          prompt_tokens: 260,
+          completion_tokens: 120,
+          token_count: 380,
+          quota: 90000,
+        },
+      ],
+      'quota'
+    )
+    assert.deepEqual(
+      quotaOrder.map((item) => item.username),
+      ['alice', 'bob']
+    )
+
+    const requestOrder = sortDepartmentUserRanking(quotaOrder, 'requests')
+    assert.deepEqual(
+      requestOrder.map((item) => item.username),
+      ['bob', 'alice']
+    )
+  })
+
+  test('renders detail drill-down with disclaimer, sorting controls and recent logs entry', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <EnterpriseUsageContent
+          items={[departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })]}
+          selectedDepartmentId={1}
+          detail={detailUsageItem()}
+          detailLoading={false}
+          detailErrorMessage={null}
+          isLoading={false}
+          errorMessage={null}
+          rangeLabel='2026-05-28 ~ 2026-05-29'
+          customRange={{
+            from: '2026-05-28',
+            to: '2026-05-29',
+            isValid: true,
+          }}
+          onCustomRangeChange={() => undefined}
+          onApplyCustomRange={() => undefined}
+          onPresetChange={() => undefined}
+          selectedPreset='today'
+          onRetry={() => undefined}
+          onSelectDepartment={() => undefined}
+          onBackToOverview={() => undefined}
+          onRetryDetail={() => undefined}
+          rankSort='quota'
+          onSortChange={() => undefined}
+          selectedLogUser='alice'
+          onOpenRecentLogs={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Engineering',
+      'Usage Trend',
+      'User Ranking',
+      'Sort by Quota',
+      'Sort by Requests',
+      'Sort by Tokens',
+      'Open Recent Logs',
+      'Back to overview',
+      'Recent Logs User Filter',
+      'Inspect top users, model mix, time trend, and recent logs.',
+      'alice',
+      'bob',
+      'claude-sonnet-4',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('preserves department context when opening recent logs filters', () => {
+    const params = buildSearchParams(
+      {
+        startTime: new Date(1748476800000),
+        endTime: new Date(1748563200000),
+        username: 'alice',
+        departmentContext: {
+          departmentId: 1,
+          departmentName: 'Engineering',
+        },
+      },
+      'common'
+    )
+
+    assert.equal(params.departmentId, 1)
+    assert.equal(params.departmentName, 'Engineering')
+    assert.equal(params.username, 'alice')
+  })
+
+  test('prefers the selected log user when present and falls back to the first available username', () => {
+    const entry = detailUsageItem().recent_logs_entry
+
+    assert.deepEqual(resolveRecentLogsSearch(entry, 'bob'), {
+      departmentId: 1,
+      departmentName: 'Engineering',
+      startTime: 1748476800000,
+      endTime: 1748563200000,
+      username: 'bob',
+    })
+
+    assert.deepEqual(resolveRecentLogsSearch(entry, 'carol'), {
+      departmentId: 1,
+      departmentName: 'Engineering',
+      startTime: 1748476800000,
+      endTime: 1748563200000,
+      username: 'alice',
+    })
+
+    assert.deepEqual(resolveRecentLogsSearch(entry), {
+      departmentId: 1,
+      departmentName: 'Engineering',
+      startTime: 1748476800000,
+      endTime: 1748563200000,
+      username: 'alice',
+    })
+  })
 })
 
 function departmentUsageItem(
@@ -416,6 +661,94 @@ function departmentUsageItem(
     quota: 250000,
     user_count: 2,
     model_distribution: [],
+    ...overrides,
+  }
+}
+
+function detailUsageItem(
+  overrides: Partial<DepartmentUsageDetailResponse> = {}
+): DepartmentUsageDetailResponse {
+  return {
+    dept_id: 1,
+    dept_name: 'Engineering',
+    window_start: 1748476800,
+    window_end: 1748563200,
+    request_count: 6,
+    prompt_tokens: 600,
+    completion_tokens: 240,
+    token_count: 840,
+    quota: 180000,
+    user_count: 2,
+    user_ranking: [
+      {
+        user_id: 1,
+        username: 'alice',
+        request_count: 4,
+        prompt_tokens: 400,
+        completion_tokens: 160,
+        token_count: 560,
+        quota: 120000,
+      },
+      {
+        user_id: 2,
+        username: 'bob',
+        request_count: 2,
+        prompt_tokens: 200,
+        completion_tokens: 80,
+        token_count: 280,
+        quota: 60000,
+      },
+    ],
+    model_distribution: [
+      {
+        model_name: 'gpt-4o',
+        request_count: 4,
+        prompt_tokens: 400,
+        completion_tokens: 160,
+        quota: 120000,
+      },
+      {
+        model_name: 'claude-sonnet-4',
+        request_count: 2,
+        prompt_tokens: 200,
+        completion_tokens: 80,
+        quota: 60000,
+      },
+    ],
+    trend: [
+      {
+        window_start: 1748476800,
+        window_end: 1748480400,
+        request_count: 3,
+        prompt_tokens: 300,
+        completion_tokens: 120,
+        token_count: 420,
+        quota: 90000,
+        user_count: 2,
+      },
+      {
+        window_start: 1748480400,
+        window_end: 1748484000,
+        request_count: 3,
+        prompt_tokens: 300,
+        completion_tokens: 120,
+        token_count: 420,
+        quota: 90000,
+        user_count: 1,
+      },
+    ],
+    recent_logs_entry: {
+      path: '/usage-logs/common',
+      section: 'common',
+      filters: {
+        department_id: 1,
+        department_name: 'Engineering',
+        start_timestamp: 1748476800,
+        end_timestamp: 1748563199,
+        username: '',
+        username_options: ['alice', 'bob'],
+      },
+    },
     ...overrides,
   }
 }

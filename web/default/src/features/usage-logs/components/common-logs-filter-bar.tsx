@@ -88,6 +88,13 @@ export function CommonLogsFilterBar<TData>(
         : start,
       endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
       channel: searchParams.channel || undefined,
+      departmentContext:
+        searchParams.departmentId || searchParams.departmentName
+          ? {
+              departmentId: searchParams.departmentId,
+              departmentName: searchParams.departmentName || undefined,
+            }
+          : undefined,
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
@@ -108,6 +115,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
+    searchParams.departmentId,
+    searchParams.departmentName,
     searchParams.model,
     searchParams.token,
     searchParams.group,
@@ -149,6 +158,8 @@ export function CommonLogsFilterBar<TData>(
       to: '/usage-logs/$section',
       params: { section: 'common' },
       search: {
+        departmentId: filters.departmentContext?.departmentId,
+        departmentName: filters.departmentContext?.departmentName,
         page: 1,
         type: [LOG_TYPE_ALL_VALUE],
         startTime: start.getTime(),
@@ -157,7 +168,7 @@ export function CommonLogsFilterBar<TData>(
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [navigate, queryClient])
+  }, [filters.departmentContext, navigate, queryClient])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

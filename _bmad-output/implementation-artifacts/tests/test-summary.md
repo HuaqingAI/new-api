@@ -3,24 +3,42 @@
 ## Generated Tests
 
 ### API Tests
-- [x] `tests/api/enterprise_usage_test.go` - 管理员权限、非法时间范围、空快照列表，以及多部门重复计入口径在跨窗口聚合后仍保留
-- [x] `controller/enterprise/usage_test.go` - 控制器参数校验、未归属部门归一化、`model_distribution` 空数组契约
+- [x] `controller/enterprise/usage_test.go` - `department-detail` 参数校验、空数组归一化、趋势与最近日志筛选上下文
+- [x] `tests/api/enterprise_usage_test.go` - `department-detail` 权限边界、跨窗口空结果、最近日志入口筛选上下文、管理员访问契约
 
-### E2E Tests
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 时间预设解析、自定义范围解析、管理员路由门禁、固定 disclaimer、未归属行、模型分布摘要、loading/empty/error 状态
+### Service Tests
+- [x] `service/enterprise/usage_aggregation_test.go` - 单部门详情排行、模型分布、趋势窗口、多部门重复出现语义、无结果窗口、非法查询
+
+### UI / E2E-Style Tests
+- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 详情 query key、详情数据归一化、排行按 `quota/requests/tokens` 切换、详情面板渲染、最近日志入口的部门/时间/用户筛选映射与默认用户回退
 
 ## Coverage
 
-- API endpoint: `GET /api/enterprise/usage/department-summary` 4/4 critical scenarios covered
-- UI feature: `enterprise-usage` 8/8 targeted story behaviors covered
+- API endpoints: `department-summary`, `department-detail` covered
+- UI features: 总览时间范围、免责声明、详情 drill-down、排序切换后的榜单顺序、趋势/模型分布、最近日志入口筛选上下文 covered
+- Critical error cases: 非法时间范围、缺失 `dept_id`、非管理员访问、空窗口结果 covered
 
 ## Validation
 
-- [x] `bun run typecheck`
-- [x] `bun run test:e2e`
-- [x] `env GOCACHE=/private/tmp/new-api-go-build go test ./controller/enterprise ./tests/api -run 'Test(UsageSummary|EnterpriseUsageSummary)' -count=1`
+- `GOCACHE=/private/tmp/new-api-go-cache go test ./service/enterprise ./controller/enterprise ./tests/api -run 'Usage|EnterpriseUsage'` ✅
+- `bun run test:e2e` in `web/default/` ✅
+
+## Checklist
+
+- [x] API tests generated (if applicable)
+- [x] E2E tests generated (project uses build-time `node:test` UI automation rather than Playwright)
+- [x] Tests use standard test framework APIs
+- [x] Tests cover happy path
+- [x] Tests cover 1-2 critical error cases
+- [x] All generated tests run successfully
+- [x] Tests use proper locators / output assertions for the existing framework
+- [x] Tests have clear descriptions
+- [x] No hardcoded waits or sleeps
+- [x] Tests are independent
+- [x] Test summary created
+- [x] Tests saved to appropriate directories
+- [x] Summary includes coverage metrics
 
 ## Notes
 
-- 项目当前没有 Playwright/Cypress；Story 4.2 的“E2E”沿用现有 `rsbuild` + `node:test` 静态渲染测试流水。
-- `bun run test:e2e` 存在既有 `supports-color` 构建 warning，但不影响测试通过。
+- Frontend repo does not use browser-driven Playwright/Cypress for this feature. The existing automation pattern is Rsbuild test bundle + `node:test`, so the 4.3 UI coverage was added there to stay consistent with project conventions.

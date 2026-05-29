@@ -186,6 +186,59 @@ func TestQuotaAllocationListRejectsMismatchedDepartmentID(t *testing.T) {
 	require.Equal(t, "common.invalid_params", response.Message)
 }
 
+func TestQuotaAllocationAPIRevokeWorkflow(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/quota-allocations", CreateQuotaAllocation)
+	router.GET("/api/enterprise/quota-allocations", ListQuotaAllocations)
+	router.POST("/api/enterprise/quota-allocations/:id/revoke", RevokeQuotaAllocation)
+
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           1,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:       2006,
+		Username: "quota-member-six",
+		Password: "pwd",
+		Group:    "default",
+		AffCode:  "quota-member-six-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:     0,
+		UserId:       2006,
+		DepartmentId: 1,
+		Status:       1,
+	}).Error)
+
+	create := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations", dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2006,
+		CommittedQuota:     int64Ptr(300),
+	})
+	createResponse := decodeEnterpriseAPIResponse(t, create)
+	require.True(t, createResponse.Success, createResponse.Message)
+
+	revoke := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations/1/revoke", dtoenterprise.RevokeQuotaAllocationRequest{
+		DepartmentId: 1,
+		Reason:       "cleanup",
+	})
+	revokeResponse := decodeEnterpriseAPIResponse(t, revoke)
+	require.True(t, revokeResponse.Success, revokeResponse.Message)
+	require.Contains(t, string(revokeResponse.Data), `"status":"revoked"`)
+	require.Contains(t, string(revokeResponse.Data), `"processed_at":`)
+
+	list := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/quota-allocations?department_budget_id=1&department_id=1", nil)
+	listResponse := decodeEnterpriseAPIResponse(t, list)
+	require.True(t, listResponse.Success, listResponse.Message)
+	require.Contains(t, string(listResponse.Data), `"status":"revoked"`)
+}
+
 func int64Ptr(value int64) *int64 {
 	return &value
 }

@@ -34,6 +34,7 @@ var (
 	ErrQuotaAllocationWalletProtected                    = errors.New("enterprise quota allocation wallet protected")
 	ErrQuotaAllocationWalletNotFound                     = errors.New("enterprise quota allocation wallet not found")
 	ErrQuotaAllocationWalletOrderInvalid                 = errors.New("enterprise quota allocation wallet order invalid")
+	ErrQuotaAllocationAlreadyProcessed                   = errors.New("enterprise quota allocation already processed")
 	ErrDingTalkMissingCredentials                        = errors.New("enterprise dingtalk credentials missing")
 	ErrDingTalkInvalidCallbackURL                        = errors.New("enterprise dingtalk callback url invalid")
 	ErrDingTalkConfigNotFound                            = errors.New("enterprise dingtalk config not found")

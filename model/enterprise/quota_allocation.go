@@ -8,8 +8,11 @@ import (
 )
 
 const (
-	QuotaAllocationStatusActive    = "active"
-	QuotaAllocationStatusCancelled = "cancelled"
+	QuotaAllocationStatusActive   = "active"
+	QuotaAllocationStatusPaused   = "paused"
+	QuotaAllocationStatusRevoked  = "revoked"
+	QuotaAllocationStatusExpired  = "expired"
+	QuotaAllocationStatusCanceled = "cancelled"
 )
 
 type QuotaAllocation struct {
@@ -30,6 +33,7 @@ type QuotaAllocation struct {
 	BeforeBudgetSnapshot   string `json:"before_budget_snapshot" gorm:"type:text"`
 	AfterBudgetSnapshot    string `json:"after_budget_snapshot" gorm:"type:text"`
 	Status                 string `json:"status" gorm:"type:varchar(32);not null;default:'active';index:idx_ent_quota_alloc_status"`
+	ProcessedAt            int64  `json:"processed_at" gorm:"type:bigint;not null;default:0;index:idx_ent_quota_alloc_processed_at"`
 	CreatedAt              int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt              int64  `json:"updated_at" gorm:"bigint"`
 }

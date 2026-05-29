@@ -132,6 +132,7 @@ export type QuotaAllocationItem = {
   expires_at_snapshot: number
   reason: string
   status: string
+  processed_at: number
   created_at: number
   updated_at: number
 }
@@ -161,6 +162,12 @@ export type CreateQuotaAllocationPayload = {
   department_id: number
   target_user_id: number
   committed_quota?: number
+  reason?: string
+}
+
+export type RevokeQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
   reason?: string
 }
 

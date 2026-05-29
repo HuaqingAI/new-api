@@ -77,6 +77,39 @@ func ListQuotaAllocations(c *gin.Context) {
 	})
 }
 
+func RevokeQuotaAllocation(c *gin.Context) {
+	allocationId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || allocationId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req dtoenterprise.RevokeQuotaAllocationRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	item, err := entservice.NewQuotaAllocationService(model.DB).Revoke(entservice.RevokeQuotaAllocationInput{
+		TenantId:      tenantId,
+		DepartmentId:  req.DepartmentId,
+		AllocationId:  allocationId,
+		ActorId:       c.GetInt("id"),
+		RevokeReason:  req.Reason,
+		TriggeredBy:   entservice.QuotaAllocationProcessTriggerManual,
+		TriggeredTime: common.GetTimestamp(),
+	})
+	if err != nil {
+		writeQuotaAllocationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.QuotaAllocationResponse{
+		Item: mapQuotaAllocationItemDTO(item),
+	})
+}
+
 func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterprise.QuotaAllocationItem {
 	return &dtoenterprise.QuotaAllocationItem{
 		Id:                     item.Id,
@@ -94,6 +127,7 @@ func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterpri
 		ExpiresAtSnapshot:      item.ExpiresAtSnapshot,
 		Reason:                 item.Reason,
 		Status:                 item.Status,
+		ProcessedAt:            item.ProcessedAt,
 		CreatedAt:              item.CreatedAt,
 		UpdatedAt:              item.UpdatedAt,
 	}

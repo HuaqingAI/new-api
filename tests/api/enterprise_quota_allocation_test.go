@@ -297,6 +297,123 @@ func TestEnterpriseQuotaAllocationAPIConcurrentListConsistent(t *testing.T) {
 	}
 }
 
+func TestEnterpriseQuotaAllocationAPIRevokeIsIdempotentAndDoesNotDeleteWallet(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}, &model.UserSubscription{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2007, Username: "member-seven", Password: "password123", Group: "vip", AffCode: "member-seven-api"}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:          1,
+		TenantId:    0,
+		Name:        "Engineering",
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.UserDepartment{
+		TenantId:     0,
+		UserId:       2007,
+		DepartmentId: 1,
+		Status:       constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentBudget{
+		Id:           1,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         modelenterprise.DepartmentBudgetTypeBalance,
+		Status:       modelenterprise.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+
+	create := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations", cookies, dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2007,
+		CommittedQuota:     int64PtrValue(300),
+	})
+	payload := decodeDepartmentMembersAPIResponse(t, create)
+	require.True(t, payload.Success, payload.Message)
+
+	revokeBody := dtoenterprise.RevokeQuotaAllocationRequest{DepartmentId: 1, Reason: "cleanup"}
+	first := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations/1/revoke", cookies, revokeBody)
+	firstPayload := decodeDepartmentMembersAPIResponse(t, first)
+	require.True(t, firstPayload.Success, firstPayload.Message)
+	require.Contains(t, string(firstPayload.Data), `"status":"revoked"`)
+
+	second := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations/1/revoke", cookies, revokeBody)
+	secondPayload := decodeDepartmentMembersAPIResponse(t, second)
+	require.True(t, secondPayload.Success, secondPayload.Message)
+	require.Contains(t, string(secondPayload.Data), `"status":"revoked"`)
+
+	var allocation modelenterprise.QuotaAllocation
+	require.NoError(t, fixture.db.Where("id = ?", 1).First(&allocation).Error)
+	require.Equal(t, modelenterprise.QuotaAllocationStatusRevoked, allocation.Status)
+	require.NotZero(t, allocation.ProcessedAt)
+
+	var wallet model.UserSubscription
+	require.NoError(t, fixture.db.Where("source_allocation_id = ?", 1).First(&wallet).Error)
+	require.Equal(t, "revoked", wallet.Status)
+
+	var walletCount int64
+	require.NoError(t, fixture.db.Model(&model.UserSubscription{}).Where("source_allocation_id = ?", 1).Count(&walletCount).Error)
+	require.Equal(t, int64(1), walletCount)
+}
+
+func TestEnterpriseQuotaAllocationAPIRevokeRequiresDepartmentAdmin(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.User{}, &model.UserSubscription{}))
+	require.NoError(t, fixture.db.Create(&model.User{Id: 2008, Username: "member-eight", Password: "password123", Group: "vip", AffCode: "member-eight-api"}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:          1,
+		TenantId:    0,
+		Name:        "Engineering",
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.UserDepartment{
+		TenantId:     0,
+		UserId:       2008,
+		DepartmentId: 1,
+		Status:       constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentBudget{
+		Id:           1,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         modelenterprise.DepartmentBudgetTypeBalance,
+		Status:       modelenterprise.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	create := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations", adminCookies, dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2008,
+		CommittedQuota:     int64PtrValue(300),
+	})
+	createPayload := decodeDepartmentMembersAPIResponse(t, create)
+	require.True(t, createPayload.Success, createPayload.Message)
+
+	userCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+	revoke := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations/1/revoke", userCookies, dtoenterprise.RevokeQuotaAllocationRequest{
+		DepartmentId: 1,
+	})
+	revokePayload := decodeDepartmentMembersAPIResponse(t, revoke)
+	require.False(t, revokePayload.Success)
+	require.Equal(t, "error.enterprise.permission.dept_admin_required", revokePayload.Message)
+}
+
 func int64PtrValue(value int64) *int64 {
 	return &value
 }

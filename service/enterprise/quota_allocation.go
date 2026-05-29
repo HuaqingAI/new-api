@@ -31,6 +31,22 @@ type CreateQuotaAllocationInput struct {
 	Reason             string
 }
 
+const (
+	QuotaAllocationProcessTriggerManual = "manual_revoke"
+	QuotaAllocationProcessTriggerExpiry = "balance_expiry_task"
+	QuotaAllocationProcessTriggerSync   = "wallet_state_sync_task"
+)
+
+type RevokeQuotaAllocationInput struct {
+	TenantId      int
+	DepartmentId  int
+	AllocationId  int
+	ActorId       int
+	RevokeReason  string
+	TriggeredBy   string
+	TriggeredTime int64
+}
+
 type QuotaAllocationItem struct {
 	Id                     int    `json:"id"`
 	TenantId               int    `json:"tenant_id"`
@@ -47,6 +63,7 @@ type QuotaAllocationItem struct {
 	ExpiresAtSnapshot      int64  `json:"expires_at_snapshot"`
 	Reason                 string `json:"reason"`
 	Status                 string `json:"status"`
+	ProcessedAt            int64  `json:"processed_at"`
 	CreatedAt              int64  `json:"created_at"`
 	UpdatedAt              int64  `json:"updated_at"`
 }
@@ -129,6 +146,127 @@ func (s *QuotaAllocationService) Create(input CreateQuotaAllocationInput) (Quota
 			}
 			wallet.SourceAllocationId = allocation.Id
 
+			result = mapQuotaAllocationItem(allocation)
+			return nil
+		})
+	})
+	return result, err
+}
+
+func (s *QuotaAllocationService) Revoke(input RevokeQuotaAllocationInput) (QuotaAllocationItem, error) {
+	if input.AllocationId <= 0 || input.DepartmentId <= 0 {
+		return QuotaAllocationItem{}, ErrQuotaAllocationInvalidInput
+	}
+	if input.TriggeredTime <= 0 {
+		input.TriggeredTime = common.GetTimestamp()
+	}
+	if strings.TrimSpace(input.TriggeredBy) == "" {
+		input.TriggeredBy = QuotaAllocationProcessTriggerManual
+	}
+	if input.TriggeredBy == QuotaAllocationProcessTriggerManual && input.ActorId <= 0 {
+		return QuotaAllocationItem{}, ErrQuotaAllocationInvalidInput
+	}
+
+	var result QuotaAllocationItem
+	err := s.withAllocationRetry(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			var allocation entmodel.QuotaAllocation
+			query := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ? AND department_id = ?", input.AllocationId, input.DepartmentId)
+			if input.TenantId > 0 {
+				query = query.Where("tenant_id = ?", input.TenantId)
+			}
+			if err := query.First(&allocation).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return ErrQuotaAllocationBudgetNotFound
+				}
+				return err
+			}
+
+			if allocation.ProcessedAt > 0 || allocation.Status == entmodel.QuotaAllocationStatusRevoked || allocation.Status == entmodel.QuotaAllocationStatusExpired {
+				result = mapQuotaAllocationItem(allocation)
+				return nil
+			}
+
+			var budget entmodel.DepartmentBudget
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ? AND department_id = ?", allocation.DepartmentBudgetId, allocation.DepartmentId).
+				First(&budget).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return ErrQuotaAllocationBudgetNotFound
+				}
+				return err
+			}
+			var wallet model.UserSubscription
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ? AND source_allocation_id = ?", allocation.WalletId, allocation.Id).
+				First(&wallet).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return ErrQuotaAllocationWalletNotFound
+				}
+				return err
+			}
+
+			nextStatus := entmodel.QuotaAllocationStatusRevoked
+			walletStatus := "revoked"
+			if input.TriggeredBy == QuotaAllocationProcessTriggerExpiry {
+				nextStatus = entmodel.QuotaAllocationStatusExpired
+				walletStatus = "expired"
+			}
+
+			beforeSnapshot, err := marshalBudgetSnapshot(budget)
+			if err != nil {
+				return err
+			}
+			if err := s.applyAllocationRevokeBudgetUpdate(tx, &budget, allocation, wallet); err != nil {
+				return err
+			}
+			if err := tx.Model(&model.UserSubscription{}).
+				Where("id = ? AND status IN ?", wallet.Id, []string{"active", "paused"}).
+				Updates(map[string]any{
+					"status":     walletStatus,
+					"updated_at": common.GetTimestamp(),
+				}).Error; err != nil {
+				return err
+			}
+
+			var refreshedBudget entmodel.DepartmentBudget
+			if err := tx.Where("id = ?", budget.Id).First(&refreshedBudget).Error; err != nil {
+				return err
+			}
+			afterSnapshot, err := marshalBudgetSnapshot(refreshedBudget)
+			if err != nil {
+				return err
+			}
+			reason := strings.TrimSpace(allocation.Reason)
+			if extraReason := strings.TrimSpace(input.RevokeReason); extraReason != "" {
+				if reason != "" {
+					reason += " | "
+				}
+				reason += extraReason
+			}
+			if trigger := strings.TrimSpace(input.TriggeredBy); trigger != "" {
+				if reason != "" {
+					reason += " | "
+				}
+				reason += trigger
+			}
+			if err := tx.Model(&entmodel.QuotaAllocation{}).
+				Where("id = ? AND processed_at = 0", allocation.Id).
+				Updates(map[string]any{
+					"status":                 nextStatus,
+					"processed_at":           input.TriggeredTime,
+					"actor_id":               input.ActorId,
+					"reason":                 reason,
+					"before_budget_snapshot": beforeSnapshot,
+					"after_budget_snapshot":  afterSnapshot,
+					"updated_at":             common.GetTimestamp(),
+				}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id = ?", allocation.Id).First(&allocation).Error; err != nil {
+				return err
+			}
 			result = mapQuotaAllocationItem(allocation)
 			return nil
 		})
@@ -239,7 +377,7 @@ func marshalBudgetSnapshot(budget entmodel.DepartmentBudget) (string, error) {
 func (s *QuotaAllocationService) ensureNoAllocationWalletConflict(tx *gorm.DB, walletId int) error {
 	var count int64
 	if err := tx.Model(&entmodel.QuotaAllocation{}).
-		Where("wallet_id = ? AND status <> ?", walletId, entmodel.QuotaAllocationStatusCancelled).
+		Where("wallet_id = ? AND status NOT IN ?", walletId, []string{entmodel.QuotaAllocationStatusRevoked, entmodel.QuotaAllocationStatusExpired, entmodel.QuotaAllocationStatusCanceled}).
 		Count(&count).Error; err != nil {
 		return err
 	}
@@ -247,6 +385,48 @@ func (s *QuotaAllocationService) ensureNoAllocationWalletConflict(tx *gorm.DB, w
 		return errors.New("enterprise allocation wallet already linked")
 	}
 	return nil
+}
+
+func (s *QuotaAllocationService) applyAllocationRevokeBudgetUpdate(tx *gorm.DB, budget *entmodel.DepartmentBudget, allocation entmodel.QuotaAllocation, wallet model.UserSubscription) error {
+	if tx == nil || budget == nil {
+		return ErrQuotaAllocationInvalidInput
+	}
+	unspent := wallet.AmountTotal - wallet.AmountUsed
+	if unspent < 0 {
+		unspent = 0
+	}
+	consumed := wallet.AmountUsed
+	if consumed < 0 {
+		consumed = 0
+	}
+	refundable := allocation.CommittedQuota - consumed
+	if refundable < 0 {
+		refundable = 0
+	}
+	if unspent < refundable {
+		refundable = unspent
+	}
+
+	switch allocation.BudgetTypeSnapshot {
+	case entmodel.DepartmentBudgetTypeSubscription:
+		return tx.Model(&entmodel.DepartmentBudget{}).
+			Where("id = ?", budget.Id).
+			Updates(map[string]any{
+				"allocated_total": gorm.Expr("CASE WHEN allocated_total >= ? THEN allocated_total - ? ELSE 0 END", allocation.CommittedQuota, allocation.CommittedQuota),
+				"remaining":       gorm.Expr("CASE WHEN cycle_quota >= (CASE WHEN allocated_total >= ? THEN allocated_total - ? ELSE 0 END) THEN cycle_quota - (CASE WHEN allocated_total >= ? THEN allocated_total - ? ELSE 0 END) ELSE 0 END", allocation.CommittedQuota, allocation.CommittedQuota, allocation.CommittedQuota, allocation.CommittedQuota),
+				"updated_at":      common.GetTimestamp(),
+			}).Error
+	default:
+		if refundable <= 0 {
+			return nil
+		}
+		return tx.Model(&entmodel.DepartmentBudget{}).
+			Where("id = ?", budget.Id).
+			Updates(map[string]any{
+				"remaining":  gorm.Expr("remaining + ?", refundable),
+				"updated_at": common.GetTimestamp(),
+			}).Error
+	}
 }
 
 func (s *QuotaAllocationService) ensureAllocationBackfillInvariant(tx *gorm.DB, walletId int, allocationId int) error {
@@ -333,6 +513,7 @@ func mapQuotaAllocationItem(allocation entmodel.QuotaAllocation) QuotaAllocation
 		ExpiresAtSnapshot:      allocation.ExpiresAtSnapshot,
 		Reason:                 allocation.Reason,
 		Status:                 allocation.Status,
+		ProcessedAt:            allocation.ProcessedAt,
 		CreatedAt:              allocation.CreatedAt,
 		UpdatedAt:              allocation.UpdatedAt,
 	}

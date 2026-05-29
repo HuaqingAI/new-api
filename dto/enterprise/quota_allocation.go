@@ -30,8 +30,15 @@ type QuotaAllocationItem struct {
 	ExpiresAtSnapshot      int64  `json:"expires_at_snapshot"`
 	Reason                 string `json:"reason"`
 	Status                 string `json:"status"`
+	ProcessedAt            int64  `json:"processed_at"`
 	CreatedAt              int64  `json:"created_at"`
 	UpdatedAt              int64  `json:"updated_at"`
+}
+
+type RevokeQuotaAllocationRequest struct {
+	TenantId     *int   `json:"tenant_id,omitempty"`
+	DepartmentId int    `json:"department_id"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 type QuotaAllocationResponse struct {

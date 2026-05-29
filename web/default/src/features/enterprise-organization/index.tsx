@@ -28,6 +28,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  ShieldX,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -94,6 +95,7 @@ import {
   getQuotaAllocations,
   getUserDepartments,
   quotaAllocationQueryKey,
+  revokeQuotaAllocation,
   replaceUserDepartments,
   restoreDepartmentMember,
 } from './api'
@@ -185,11 +187,15 @@ export function createAllocationSchema(t: (key: string) => string) {
 }
 
 export function __testRenderApiMessage(
-  result: ApiResponse<EnterpriseBudgetErrorData> | null | undefined,
+  result: ApiResponse<EnterpriseBudgetErrorData | unknown> | null | undefined,
   translator: (key: string) => string
 ) {
   if (!result) return translator('Request failed')
-  if (result.data?.reason) return translator(result.data.reason)
+  const maybeReason =
+    result.data && typeof result.data === 'object' && 'reason' in result.data
+      ? (result.data as EnterpriseBudgetErrorData).reason
+      : undefined
+  if (maybeReason) return translator(maybeReason)
   if (result.message) return translator(result.message)
   return translator('Request failed')
 }
@@ -205,6 +211,17 @@ function statusLabel(status: MembershipStatus, t: (key: string) => string) {
   if (status === 2) return t('Inactive')
   if (status === 3) return t('Left')
   return t('Pending')
+}
+
+function enterpriseBudgetStatusLabel(
+  status: string,
+  t: (key: string) => string
+) {
+  if (status === 'active') return t('Active')
+  if (status === 'paused') return t('Paused')
+  if (status === 'revoked') return t('Revoked')
+  if (status === 'expired') return t('Expired')
+  return status || '-'
 }
 
 function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
@@ -806,6 +823,23 @@ function DepartmentBudgetPanel() {
     },
   })
 
+  const revokeMutation = useMutation({
+    mutationFn: async (allocationId: number) =>
+      revokeQuotaAllocation(allocationId, {
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
+      toast.success(t('Wallet allocation revoked'))
+    },
+  })
+
   if (allocationForm.getValues('tenant_id') !== tenantId) {
     allocationForm.setValue('tenant_id', tenantId)
   }
@@ -1072,6 +1106,10 @@ function DepartmentBudgetPanel() {
             <QuotaAllocationTable
               items={allocationListQuery.data ?? []}
               loading={allocationListQuery.isLoading}
+              onRevoke={(allocationId) => revokeMutation.mutate(allocationId)}
+              revokePendingId={
+                revokeMutation.isPending ? revokeMutation.variables : null
+              }
             />
           </CardContent>
         </Card>
@@ -1083,9 +1121,13 @@ function DepartmentBudgetPanel() {
 export function QuotaAllocationTable({
   items,
   loading,
+  onRevoke,
+  revokePendingId,
 }: {
   items: QuotaAllocationItem[]
   loading: boolean
+  onRevoke?: (allocationId: number) => void
+  revokePendingId?: number | null
 }) {
   const { t } = useTranslation()
 
@@ -1118,7 +1160,9 @@ export function QuotaAllocationTable({
           <TableHead>{t('Allocation Quota')}</TableHead>
           <TableHead>{t('Wallet ID')}</TableHead>
           <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Processed At')}</TableHead>
           <TableHead>{t('Created At')}</TableHead>
+          <TableHead>{t('Actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -1128,9 +1172,33 @@ export function QuotaAllocationTable({
             <TableCell>{item.committed_quota}</TableCell>
             <TableCell>{item.wallet_id}</TableCell>
             <TableCell>
-              <Badge variant='secondary'>{item.status}</Badge>
+              <Badge variant='secondary'>
+                {enterpriseBudgetStatusLabel(item.status, t)}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              {item.processed_at ? formatTimestamp(item.processed_at) : '-'}
             </TableCell>
             <TableCell>{formatTimestamp(item.created_at)}</TableCell>
+            <TableCell>
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                disabled={
+                  !onRevoke ||
+                  item.status === 'revoked' ||
+                  item.status === 'expired' ||
+                  revokePendingId === item.id
+                }
+                onClick={() => onRevoke?.(item.id)}
+              >
+                <ShieldX data-icon='inline-start' />
+                {item.status === 'revoked' || item.status === 'expired'
+                  ? t('Already processed')
+                  : t('Revoke allocation')}
+              </Button>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -1187,6 +1255,10 @@ export function DepartmentBudgetStatusCard({
               ? t('Balance Budget')
               : t('Subscription Budget')
           }
+        />
+        <BudgetStat
+          label={t('Budget Status')}
+          value={enterpriseBudgetStatusLabel(item.status, t)}
         />
         <BudgetStat label={t('Remaining Quota')} value={String(item.remaining)} />
         <BudgetStat label={t('Total Quota')} value={String(item.total_quota)} />

@@ -12,6 +12,8 @@ const (
 	DepartmentBudgetTypeSubscription = "subscription"
 
 	DepartmentBudgetStatusActive  = "active"
+	DepartmentBudgetStatusPaused  = "paused"
+	DepartmentBudgetStatusRevoked = "revoked"
 	DepartmentBudgetStatusExpired = "expired"
 )
 

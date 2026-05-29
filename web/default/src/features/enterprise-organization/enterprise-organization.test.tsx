@@ -346,6 +346,7 @@ describe('Enterprise organization department tree workflow', () => {
               actor_id: 1001,
               committed_quota: 300,
               status: 'active',
+              processed_at: 1700000300,
             }),
           ]}
         />
@@ -357,13 +358,56 @@ describe('Enterprise organization department tree workflow', () => {
       'Allocation Quota',
       'Wallet ID',
       'Status',
+      'Processed At',
+      'Actions',
       '2001',
       '300',
       '301',
-      'active',
+      'Active',
+      'Revoke allocation',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('renders revoked allocation as already processed', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable
+          loading={false}
+          items={[
+            quotaAllocation({
+              id: 8,
+              status: 'revoked',
+              processed_at: 1700000400,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Revoked/)
+    assert.match(html, /Already processed/)
+  })
+
+  test('renders expired allocation as already processed', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable
+          loading={false}
+          items={[
+            quotaAllocation({
+              id: 9,
+              status: 'expired',
+              processed_at: 1700000500,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Expired/)
+    assert.match(html, /Already processed/)
   })
 })
 
@@ -445,6 +489,7 @@ function quotaAllocation(
     expires_at_snapshot: overrides.expires_at_snapshot ?? 0,
     reason: overrides.reason ?? '',
     status: overrides.status ?? 'active',
+    processed_at: overrides.processed_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

@@ -2,6 +2,7 @@ package enterprise_test
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +20,8 @@ import (
 func newQuotaAllocationTestService(t *testing.T) (*entservice.QuotaAllocationService, *gorm.DB) {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file:quota-allocation-test?mode=memory&cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -377,4 +379,136 @@ func TestCreateQuotaAllocationConcurrentSubscriptionBudget(t *testing.T) {
 		require.False(t, exists, "duplicate allocation backlink %d", wallet.SourceAllocationId)
 		allocationIDs[wallet.SourceAllocationId] = struct{}{}
 	}
+}
+
+func TestRevokeBalanceQuotaAllocationRecoversUnspentAndMarksWalletRevoked(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", item.WalletId).Update("amount_used", int64(120)).Error)
+
+	revoked, err := svc.Revoke(entservice.RevokeQuotaAllocationInput{
+		TenantId:      0,
+		DepartmentId:  1,
+		AllocationId:  item.Id,
+		ActorId:       1001,
+		RevokeReason:  "cleanup",
+		TriggeredBy:   entservice.QuotaAllocationProcessTriggerManual,
+		TriggeredTime: common.GetTimestamp(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.QuotaAllocationStatusRevoked, revoked.Status)
+	require.NotZero(t, revoked.ProcessedAt)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 1).First(&budget).Error)
+	require.Equal(t, int64(880), budget.Remaining)
+
+	var wallet model.UserSubscription
+	require.NoError(t, db.Where("id = ?", item.WalletId).First(&wallet).Error)
+	require.Equal(t, "revoked", wallet.Status)
+	require.Equal(t, int64(300), wallet.AmountTotal)
+	require.Equal(t, int64(120), wallet.AmountUsed)
+
+	var allocation entmodel.QuotaAllocation
+	require.NoError(t, db.Where("id = ?", item.Id).First(&allocation).Error)
+	require.Equal(t, entmodel.QuotaAllocationStatusRevoked, allocation.Status)
+	require.NotZero(t, allocation.ProcessedAt)
+	require.Contains(t, allocation.Reason, "cleanup")
+}
+
+func TestRevokeSubscriptionQuotaAllocationReleasesCommitmentWithoutRefundingUsage(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Updates(map[string]any{
+		"type":             entmodel.DepartmentBudgetTypeSubscription,
+		"remaining":        int64(600),
+		"allocated_total":  int64(0),
+		"cycle_quota":      int64(600),
+		"cycle_type":       "monthly",
+		"cycle_started_at": time.Now().Unix(),
+	}).Error)
+
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     250,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", item.WalletId).Updates(map[string]any{
+		"amount_used":      int64(80),
+		"next_reset_time":  time.Now().Add(time.Hour).Unix(),
+		"last_reset_time":  time.Now().Unix(),
+	}).Error)
+
+	revoked, err := svc.Revoke(entservice.RevokeQuotaAllocationInput{
+		TenantId:      0,
+		DepartmentId:  1,
+		AllocationId:  item.Id,
+		ActorId:       1001,
+		TriggeredBy:   entservice.QuotaAllocationProcessTriggerManual,
+		TriggeredTime: common.GetTimestamp(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.QuotaAllocationStatusRevoked, revoked.Status)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 1).First(&budget).Error)
+	require.Equal(t, int64(0), budget.AllocatedTotal)
+	require.Equal(t, int64(600), budget.Remaining)
+
+	var wallet model.UserSubscription
+	require.NoError(t, db.Where("id = ?", item.WalletId).First(&wallet).Error)
+	require.Equal(t, "revoked", wallet.Status)
+	require.NotZero(t, wallet.NextResetTime)
+}
+
+func TestRevokeQuotaAllocationIsIdempotent(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", item.WalletId).Update("amount_used", int64(100)).Error)
+
+	first, err := svc.Revoke(entservice.RevokeQuotaAllocationInput{
+		TenantId:      0,
+		DepartmentId:  1,
+		AllocationId:  item.Id,
+		ActorId:       1001,
+		TriggeredBy:   entservice.QuotaAllocationProcessTriggerManual,
+		TriggeredTime: common.GetTimestamp(),
+	})
+	require.NoError(t, err)
+
+	second, err := svc.Revoke(entservice.RevokeQuotaAllocationInput{
+		TenantId:      0,
+		DepartmentId:  1,
+		AllocationId:  item.Id,
+		ActorId:       1001,
+		TriggeredBy:   entservice.QuotaAllocationProcessTriggerManual,
+		TriggeredTime: common.GetTimestamp() + 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, first.ProcessedAt, second.ProcessedAt)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 1).First(&budget).Error)
+	require.Equal(t, int64(900), budget.Remaining)
 }

@@ -4,39 +4,46 @@
 
 ### API Tests
 
-- [x] `service/enterprise/quota_allocation_test.go` - service-level quota allocation coverage for happy path, rollback, budget reason mapping, and 50-request concurrency across balance/subscription budgets
-- [x] `controller/enterprise/quota_allocation_test.go` - controller workflow plus stable error mapping for both `subscription_cycle_allocated_exceeded` and `balance_remaining_insufficient`
-- [x] `tests/api/enterprise_quota_allocation_test.go` - routed API coverage for wallet creation, side-effect-free failure paths, budget-reason responses, and real concurrent allocation/list consistency with duplicate-backlink guards
+- [x] `service/enterprise/wallet_state_sync_test.go` - added sync-task coverage for revoked-budget rerun idempotency and expired-parent budget batch revocation
+- [x] Existing story 3.4 backend tests remain in place across:
+  `service/enterprise/quota_allocation_test.go`,
+  `service/enterprise/balance_expiry_task_test.go`,
+  `controller/enterprise/quota_allocation_test.go`,
+  `tests/api/enterprise_quota_allocation_test.go`
 
 ### E2E Tests
 
-- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - enterprise organization workflow coverage for allocation schema validation, allocation list rendering, both budget-insufficient reason keys, and fallback behavior
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - added explicit UI coverage for `expired` allocations rendering as already processed
 
 ## Coverage
 
-- Allocation API endpoints: `POST /api/enterprise/quota-allocations`, `GET /api/enterprise/quota-allocations` covered
+- Allocation API endpoints covered:
+  `POST /api/enterprise/quota-allocations`
+  `GET /api/enterprise/quota-allocations`
+  `POST /api/enterprise/quota-allocations/:id/revoke`
 - Backend acceptance-critical scenarios covered:
-  - balance-budget allocation success creates wallet + ledger
-  - subscription-budget over-allocation returns `enterprise_budget_insufficient` with `subscription_cycle_allocated_exceeded`
-  - balance-budget over-allocation returns `enterprise_budget_insufficient` with `balance_remaining_insufficient`
-  - failed allocations leave no wallet or allocation side effects
-  - 50 concurrent requests respect parent budget invariants for both budget types
-  - concurrent API allocation attempts cap successes at parent capacity and keep list results aligned with persisted wallet/allocation rows
-  - concurrent success paths do not produce duplicate wallet ids or duplicate allocation backfill pointers
+  - balance revoke refunds only unspent quota and marks wallet revoked
+  - subscription revoke releases parent commitment without refunding current-cycle usage
+  - repeated revoke stays idempotent through `processed_at`
+  - balance expiry refunds once and stays idempotent on rerun
+  - parent paused status bulk-sync pauses child allocations and wallets
+  - parent revoked status bulk-sync revokes child allocations and wallets
+  - parent expired status bulk-sync revokes child allocations and wallets
+  - revoked-budget sync reruns do not double-refund or change `processed_at`
 - Frontend acceptance-critical scenarios covered:
-  - allocation form rejects empty target/quota
-  - allocation table renders committed quota, wallet id, and status
-  - API error rendering surfaces both `balance_remaining_insufficient` and `subscription_cycle_allocated_exceeded`
-  - API error rendering prefers `data.reason`, then falls back to `message`, then generic failure text
+  - allocation table renders action/state columns including `Processed At`
+  - revoked allocations render as already processed
+  - expired allocations render as already processed
+  - allocation workflow still covers empty state, validation, and error-reason rendering
 
 ## Validation
 
-- [x] `GOCACHE=/private/tmp/new-api-gocache go test ./service/enterprise -run 'TestCreateQuotaAllocationConcurrent|TestCreateQuotaAllocationReturnsSpecificBudgetReasons|TestCreateQuotaAllocationSubscriptionBudgetTracksAllocatedTotal'`
-- [x] `GOCACHE=/private/tmp/new-api-gocache go test ./controller/enterprise -run 'QuotaAllocation'`
-- [x] `GOCACHE=/private/tmp/new-api-gocache go test ./tests/api -run 'TestEnterpriseQuotaAllocationAPI'`
-- [x] `cd web/default && bun test ./src/features/enterprise-organization/enterprise-organization.test.tsx`
-- [ ] `RUN_ENTERPRISE_BUDGET_LONG_TEST=1 GOCACHE=/private/tmp/new-api-gocache go test -run TestQuotaAllocationLongRunningMixedBudgetLoad ./service/enterprise`
-  - This remains opt-in by design and was not executed in the default verification pass.
+- [x] `GOCACHE=/private/tmp/new-api-go-cache GOTMPDIR=/private/tmp/new-api-go-tmp go test ./service/enterprise -run 'Test(RevokeBalanceQuotaAllocationRecoversUnspentAndMarksWalletRevoked|RevokeSubscriptionQuotaAllocationReleasesCommitmentWithoutRefundingUsage|RevokeQuotaAllocationIsIdempotent|ExpireBalanceAllocationsMarksAllocationExpiredAndRefundsOnce|SyncWalletStatesRevokesActiveChildrenForRevokedBudget|SyncWalletStatesPausesChildrenForPausedBudget|SyncWalletStatesRevokedBudgetIsIdempotentAcrossRuns|SyncWalletStatesRevokesChildrenForExpiredBudget)$'`
+- [x] `GOCACHE=/private/tmp/new-api-go-cache GOTMPDIR=/private/tmp/new-api-go-tmp go test ./controller/enterprise`
+- [x] `GOCACHE=/private/tmp/new-api-go-cache GOTMPDIR=/private/tmp/new-api-go-tmp go test ./tests/api`
+- [x] `cd web/default && bun run test:e2e`
+- [ ] `GOCACHE=/private/tmp/new-api-go-cache GOTMPDIR=/private/tmp/new-api-go-tmp go test ./service/enterprise`
+  - blocked by sandbox restrictions in unrelated `dingtalk_connectivity_test.go`, which tries to open a local listener via `httptest.NewServer` and fails with `bind: operation not permitted`
 
 ## Checklist Review
 
@@ -45,9 +52,8 @@
 - [x] Tests use standard test framework APIs
 - [x] Tests cover happy path
 - [x] Tests cover 1-2 critical error cases
-- [x] All generated tests run successfully
+- [x] All generated story-targeted tests run successfully
 - [x] Tests use proper locators (semantic, accessible)
-  - The frontend harness is SSR/workflow-oriented and does not rely on brittle waits or DOM timing.
 - [x] Tests have clear descriptions
 - [x] No hardcoded waits or sleeps
 - [x] Tests are independent (no order dependency)
@@ -55,10 +61,8 @@
 - [x] Tests saved to appropriate directories
 - [x] Summary includes coverage metrics
 
-## Notes
+## Auto-Applied Gaps
 
-- Auto-applied gaps:
-  - upgraded `tests/api/enterprise_quota_allocation_test.go` from repeated serial creates to true concurrent creates with success/failure counting and persisted uniqueness checks
-  - verified routed API failures still return stable budget-insufficient reason keys under concurrent pressure
-  - confirmed frontend workflow coverage includes the subscription-budget-specific reason key alongside balance and fallback behavior
-- The long-run 10-minute harness is present and stronger now, but still intentionally gated behind `RUN_ENTERPRISE_BUDGET_LONG_TEST=1`.
+- Added backend regression coverage for `wallet_state_sync_task` rerun idempotency so revoked parents cannot refund twice.
+- Added backend coverage for expired parent-budget sync, matching story 3.4 state-propagation expectations.
+- Added frontend coverage for `expired` allocation rows to ensure processed-state UI stays aligned with revoke/expiry semantics.

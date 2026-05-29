@@ -299,6 +299,9 @@ func migrateDB() error {
 		if err := ensureEnterpriseDepartmentBudgetTableSQLite(); err != nil {
 			return err
 		}
+		if err := ensureEnterpriseQuotaAllocationTableSQLite(); err != nil {
+			return err
+		}
 	} else {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
@@ -524,6 +527,39 @@ func ensureEnterpriseDepartmentBudgetTableSQLite() error {
 	}
 	required := []sqliteColumnDef{
 		{Name: "allocated_total", DDL: "`allocated_total` bigint NOT NULL DEFAULT 0"},
+		{Name: "parent_status", DDL: "`parent_status` varchar(32) NOT NULL DEFAULT ''"},
+	}
+	for _, col := range required {
+		if _, ok := existing[col.Name]; ok {
+			continue
+		}
+		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureEnterpriseQuotaAllocationTableSQLite() error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	tableName := "enterprise_quota_allocations"
+	if !DB.Migrator().HasTable(tableName) {
+		return nil
+	}
+	var cols []struct {
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
+		return err
+	}
+	existing := make(map[string]struct{}, len(cols))
+	for _, c := range cols {
+		existing[c.Name] = struct{}{}
+	}
+	required := []sqliteColumnDef{
+		{Name: "processed_at", DDL: "`processed_at` bigint NOT NULL DEFAULT 0"},
 	}
 	for _, col := range required {
 		if _, ok := existing[col.Name]; ok {

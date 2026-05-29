@@ -28,6 +28,7 @@ import type {
   DepartmentTreeNode,
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
+  RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
   UserDepartmentsResponse,
 } from './types'
@@ -119,6 +120,17 @@ export async function createQuotaAllocation(
   payload: CreateQuotaAllocationPayload
 ): Promise<ApiResponse<QuotaAllocationResponse>> {
   const res = await api.post('/api/enterprise/quota-allocations', payload)
+  return res.data
+}
+
+export async function revokeQuotaAllocation(
+  allocationId: number,
+  payload: RevokeQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/revoke`,
+    payload
+  )
   return res.data
 }
 

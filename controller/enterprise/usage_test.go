@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/stretchr/testify/require"
 )
@@ -41,5 +43,11 @@ func TestUsageSummaryAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.True(t, okResponse.Success, okResponse.Message)
 	require.Contains(t, okRecorder.Body.String(), `"dept_name":"未归属"`)
 	require.Contains(t, okRecorder.Body.String(), `"model_distribution":[]`)
-}
 
+	var payload dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(okResponse.Data, &payload))
+	require.Len(t, payload.Items, 1)
+	require.NotNil(t, payload.Items[0].ModelDistribution)
+	require.Equal(t, int64(1700000000), payload.Items[0].WindowStart)
+	require.Equal(t, int64(1700003600), payload.Items[0].WindowEnd)
+}

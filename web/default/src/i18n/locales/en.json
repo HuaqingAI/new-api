@@ -4645,6 +4645,25 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Department Usage Overview": "Department Usage Overview",
+    "Department totals are non-additive": "Department totals are non-additive",
+    "Department totals cannot be added together across departments.": "Department totals cannot be added together across departments.",
+    "Last 30 Days": "Last 30 Days",
+    "Last 7 Days": "Last 7 Days",
+    "Unable to load department usage": "Unable to load department usage",
+    "Usage snapshots are empty for the selected time window.": "Usage snapshots are empty for the selected time window.",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "Review department-level traffic, tokens, quota, and model mix for a selected time range.",
+    "Prompt Tokens": "Prompt Tokens",
+    "Completion Tokens": "Completion Tokens",
+    "Requests": "Requests",
+    "Model Distribution": "Model Distribution",
+    "Top Model": "Top Model",
+    "Start time must be earlier than end time for a custom range": "Start time must be earlier than end time for a custom range",
+    "No department usage data for this time range": "No department usage data for this time range",
+    "Only enterprise administrators can review department usage dashboards.": "Only enterprise administrators can review department usage dashboards.",
+    "Yesterday": "Yesterday",
+    "enterprise.usage.more_models": "+{{count}} more models",
+    "enterprise.usage.multi_dept_disclaimer": "Department totals cannot be added together across departments."
   }
 }

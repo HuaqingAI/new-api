@@ -13,6 +13,8 @@ export default defineConfig({
         './src/features/enterprise-organization/enterprise-organization.test.tsx',
       'enterprise-dingtalk':
         './src/features/enterprise-dingtalk/enterprise-dingtalk.test.tsx',
+      'enterprise-usage':
+        './src/features/enterprise-usage/enterprise-usage.test.tsx',
       'subscription-plans-card':
         './src/features/wallet/components/subscription-plans-card.test.tsx',
       'user-subscriptions-dialog':

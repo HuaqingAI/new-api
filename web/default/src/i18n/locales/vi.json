@@ -4645,6 +4645,24 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Department Usage Overview": "Tổng quan mức sử dụng theo phòng ban",
+    "Department totals are non-additive": "Tổng giữa các phòng ban không thể cộng gộp",
+    "Department totals cannot be added together across departments.": "Không thể cộng trực tiếp số liệu giữa các phòng ban.",
+    "Last 30 Days": "30 ngày gần đây",
+    "Last 7 Days": "7 ngày gần đây",
+    "Unable to load department usage": "Không thể tải mức sử dụng theo phòng ban",
+    "Usage snapshots are empty for the selected time window.": "Ảnh chụp mức sử dụng trống trong khoảng thời gian đã chọn.",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "Xem lưu lượng, token, hạn mức và phân bố mô hình theo phòng ban trong khoảng thời gian đã chọn.",
+    "Prompt Tokens": "Token đầu vào",
+    "Completion Tokens": "Token đầu ra",
+    "Requests": "Số yêu cầu",
+    "Model Distribution": "Phân bố mô hình",
+    "Start time must be earlier than end time for a custom range": "Thời gian bắt đầu phải sớm hơn thời gian kết thúc đối với khoảng tùy chỉnh",
+    "No department usage data for this time range": "Không có dữ liệu sử dụng phòng ban trong khoảng thời gian này",
+    "Only enterprise administrators can review department usage dashboards.": "Chỉ quản trị viên doanh nghiệp mới có thể xem bảng điều khiển mức sử dụng theo phòng ban.",
+    "Yesterday": "Hôm qua",
+    "enterprise.usage.more_models": "+{{count}} mô hình khác",
+    "enterprise.usage.multi_dept_disclaimer": "Không thể cộng trực tiếp số liệu giữa các phòng ban."
   }
 }

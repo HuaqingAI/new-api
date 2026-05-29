@@ -4645,6 +4645,24 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Department Usage Overview": "Обзор использования по отделам",
+    "Department totals are non-additive": "Итоги по отделам не суммируются",
+    "Department totals cannot be added together across departments.": "Показатели разных отделов нельзя складывать между собой.",
+    "Last 30 Days": "Последние 30 дней",
+    "Last 7 Days": "Последние 7 дней",
+    "Unable to load department usage": "Не удалось загрузить использование по отделам",
+    "Usage snapshots are empty for the selected time window.": "Снимки использования пусты для выбранного временного окна.",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "Просматривайте трафик, токены, квоту и распределение моделей по отделам за выбранный период.",
+    "Prompt Tokens": "Входные токены",
+    "Completion Tokens": "Выходные токены",
+    "Requests": "Запросы",
+    "Model Distribution": "Распределение моделей",
+    "Start time must be earlier than end time for a custom range": "Для пользовательского диапазона время начала должно быть раньше времени окончания",
+    "No department usage data for this time range": "Нет данных об использовании отделов за этот период",
+    "Only enterprise administrators can review department usage dashboards.": "Только администраторы предприятия могут просматривать панели использования по отделам.",
+    "Yesterday": "Вчера",
+    "enterprise.usage.more_models": "+ещё {{count}} моделей",
+    "enterprise.usage.multi_dept_disclaimer": "Показатели разных отделов нельзя складывать между собой."
   }
 }

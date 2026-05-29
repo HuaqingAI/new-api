@@ -4645,6 +4645,25 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Department Usage Overview": "部门用量总览",
+    "Department totals are non-additive": "部门间总量不可直接相加",
+    "Department totals cannot be added together across departments.": "部门间数值不可加和。",
+    "Last 30 Days": "近 30 天",
+    "Last 7 Days": "近 7 天",
+    "Unable to load department usage": "无法加载部门用量",
+    "Usage snapshots are empty for the selected time window.": "所选时间窗口内没有用量快照数据。",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "按时间范围查看部门级请求量、Token、额度和模型分布。",
+    "Prompt Tokens": "输入 Tokens",
+    "Completion Tokens": "输出 Tokens",
+    "Requests": "请求数",
+    "Model Distribution": "模型分布",
+    "Top Model": "主力模型",
+    "Start time must be earlier than end time for a custom range": "自定义时间范围的开始时间必须早于结束时间",
+    "No department usage data for this time range": "该时间范围内暂无部门用量数据",
+    "Only enterprise administrators can review department usage dashboards.": "只有企业管理员可以查看部门用量看板。",
+    "Yesterday": "昨天",
+    "enterprise.usage.more_models": "+{{count}} 个更多模型",
+    "enterprise.usage.multi_dept_disclaimer": "部门间数值不可加和。"
   }
 }

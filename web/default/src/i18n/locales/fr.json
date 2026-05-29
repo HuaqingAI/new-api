@@ -4645,6 +4645,24 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Department Usage Overview": "Vue d'ensemble de l'utilisation par département",
+    "Department totals are non-additive": "Les totaux par département ne sont pas additifs",
+    "Department totals cannot be added together across departments.": "Les totaux des départements ne peuvent pas être additionnés entre départements.",
+    "Last 30 Days": "30 derniers jours",
+    "Last 7 Days": "7 derniers jours",
+    "Unable to load department usage": "Impossible de charger l'utilisation par département",
+    "Usage snapshots are empty for the selected time window.": "Les instantanés d'utilisation sont vides pour la période sélectionnée.",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "Consultez le trafic, les jetons, le quota et la répartition des modèles par département pour une période donnée.",
+    "Prompt Tokens": "Jetons d'entrée",
+    "Completion Tokens": "Jetons de sortie",
+    "Requests": "Requêtes",
+    "Model Distribution": "Répartition des modèles",
+    "Start time must be earlier than end time for a custom range": "L'heure de début doit être antérieure à l'heure de fin pour une plage personnalisée",
+    "No department usage data for this time range": "Aucune donnée d'utilisation par département pour cette période",
+    "Only enterprise administrators can review department usage dashboards.": "Seuls les administrateurs d'entreprise peuvent consulter les tableaux de bord d'utilisation par département.",
+    "Yesterday": "Hier",
+    "enterprise.usage.more_models": "+{{count}} modèles supplémentaires",
+    "enterprise.usage.multi_dept_disclaimer": "Les totaux des départements ne peuvent pas être additionnés entre départements."
   }
 }

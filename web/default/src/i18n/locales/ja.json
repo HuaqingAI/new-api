@@ -4645,6 +4645,24 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Department Usage Overview": "部署利用状況の概要",
+    "Department totals are non-additive": "部署間の合計は単純加算できません",
+    "Department totals cannot be added together across departments.": "部署間の数値は単純に合算できません。",
+    "Last 30 Days": "直近 30 日",
+    "Last 7 Days": "直近 7 日",
+    "Unable to load department usage": "部署利用状況を読み込めません",
+    "Usage snapshots are empty for the selected time window.": "選択した時間帯の利用スナップショットは空です。",
+    "Review department-level traffic, tokens, quota, and model mix for a selected time range.": "選択した期間の部署別トラフィック、トークン、クォータ、モデル構成を確認します。",
+    "Prompt Tokens": "入力トークン",
+    "Completion Tokens": "出力トークン",
+    "Requests": "リクエスト数",
+    "Model Distribution": "モデル分布",
+    "Start time must be earlier than end time for a custom range": "カスタム期間では開始時刻を終了時刻より前にしてください",
+    "No department usage data for this time range": "この期間の部署利用データはありません",
+    "Only enterprise administrators can review department usage dashboards.": "部署利用ダッシュボードを確認できるのは企業管理者のみです。",
+    "Yesterday": "昨日",
+    "enterprise.usage.more_models": "+{{count}} 件の追加モデル",
+    "enterprise.usage.multi_dept_disclaimer": "部署間の数値は単純に合算できません。"
   }
 }

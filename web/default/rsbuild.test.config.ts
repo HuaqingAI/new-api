@@ -17,6 +17,8 @@ export default defineConfig({
         './src/features/wallet/components/subscription-plans-card.test.tsx',
       'user-subscriptions-dialog':
         './src/features/subscriptions/components/dialogs/user-subscriptions-dialog.test.tsx',
+      'quota-settings-section':
+        './src/features/system-settings/general/quota-settings-section.test.tsx',
     },
   },
   resolve: {

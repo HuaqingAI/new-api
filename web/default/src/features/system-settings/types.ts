@@ -191,6 +191,8 @@ export type BillingSettings = {
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
+  'quota_setting.enterprise_budget_warning_threshold': number
+  'quota_setting.enterprise_budget_critical_threshold': number
   QuotaPerUnit: number
   USDExchangeRate: number
   'general_setting.quota_display_type': string

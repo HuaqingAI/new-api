@@ -47,21 +47,46 @@ import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
-const quotaSchema = z.object({
-  QuotaForNewUser: z.coerce.number().min(0),
-  PreConsumedQuota: z.coerce.number().min(0),
-  QuotaForInviter: z.coerce.number().min(0),
-  QuotaForInvitee: z.coerce.number().min(0),
-  TopUpLink: z.string(),
-  general_setting: z.object({
-    docs_link: z.string(),
-  }),
-  quota_setting: z.object({
-    enable_free_model_pre_consume: z.boolean(),
-  }),
-})
+export const enterpriseBudgetThresholdValidationMessage =
+  'Enterprise budget thresholds must satisfy 0 < warning < critical <= 100'
 
-type QuotaFormValues = z.infer<typeof quotaSchema>
+export function createQuotaSettingsSchema(t: (key: string) => string) {
+  return z
+    .object({
+      QuotaForNewUser: z.coerce.number().min(0),
+      PreConsumedQuota: z.coerce.number().min(0),
+      QuotaForInviter: z.coerce.number().min(0),
+      QuotaForInvitee: z.coerce.number().min(0),
+      TopUpLink: z.string(),
+      general_setting: z.object({
+        docs_link: z.string(),
+      }),
+      quota_setting: z.object({
+        enable_free_model_pre_consume: z.boolean(),
+        enterprise_budget_warning_threshold: z.coerce.number().int().positive(),
+        enterprise_budget_critical_threshold: z.coerce.number().int().positive(),
+      }),
+    })
+    .superRefine((value, ctx) => {
+      const warning = value.quota_setting.enterprise_budget_warning_threshold
+      const critical = value.quota_setting.enterprise_budget_critical_threshold
+
+      if (!(warning > 0 && warning < critical && critical <= 100)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['quota_setting', 'enterprise_budget_warning_threshold'],
+          message: t(enterpriseBudgetThresholdValidationMessage),
+        })
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['quota_setting', 'enterprise_budget_critical_threshold'],
+          message: t(enterpriseBudgetThresholdValidationMessage),
+        })
+      }
+    })
+}
+
+type QuotaFormValues = z.infer<ReturnType<typeof createQuotaSettingsSchema>>
 
 type QuotaSettingsSectionProps = {
   defaultValues: QuotaFormValues
@@ -74,6 +99,7 @@ export function QuotaSettingsSection({
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const quotaSchema = createQuotaSettingsSchema(t)
   const handleNumberChange =
     (onChange: (value: number | string) => void) =>
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -243,6 +269,58 @@ export function QuotaSettingsSection({
                 )}
               />
             </SettingsFormGridItem>
+
+            <FormField
+              control={form.control}
+              name='quota_setting.enterprise_budget_warning_threshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Enterprise Budget Warning Threshold')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      max={99}
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Show warning status when usage ratio reaches this percentage.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='quota_setting.enterprise_budget_critical_threshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Enterprise Budget Critical Threshold')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      max={100}
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Show critical status when usage ratio reaches this percentage.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

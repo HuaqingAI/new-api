@@ -25,6 +25,7 @@ common.batch_too_many: "Too many items in batch request, maximum is {{.Max}}"
 
 # Enterprise organization messages
 enterprise.organization.department_not_found: "Department does not exist"
+enterprise.organization.department_budget_not_found: "Department budget pool does not exist"
 enterprise.organization.membership_not_found: "Department membership does not exist"
 enterprise.organization.membership_already_exists: "Department membership already exists"
 enterprise.organization.duplicate_department: "Duplicate department ID"
@@ -37,6 +38,7 @@ enterprise.organization.department_budget_invalid_cycle_type: "Subscription budg
 enterprise.organization.department_budget_invalid_custom_seconds: "Custom cycle must be greater than 0 seconds"
 enterprise.organization.department_budget_invalid_cycle_started_at: "Subscription budget cycle start time is required"
 enterprise.organization.department_budget_type_immutable: "Department budget type cannot be changed once created"
+enterprise.organization.department_budget_threshold_invalid: "Enterprise budget thresholds must satisfy 0 < warning < critical <= 100"
 enterprise.organization.enterprise_budget_insufficient: "Department budget is insufficient"
 enterprise.organization.balance_remaining_insufficient: "Allocation exceeds the remaining balance budget"
 enterprise.organization.subscription_cycle_allocated_exceeded: "Allocation exceeds the subscription budget cycle commitment limit"

@@ -22,6 +22,9 @@ import type {
   ApiResponse,
   CreateDepartmentBudgetPayload,
   CreateQuotaAllocationPayload,
+  DepartmentBudgetDetailResponse,
+  DepartmentBudgetListResponse,
+  DepartmentBudgetSortField,
   DepartmentBudgetResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
@@ -46,6 +49,16 @@ export const departmentBudgetQueryKey = [
 export const quotaAllocationQueryKey = [
   ...enterpriseOrganizationQueryKey,
   'quota-allocation',
+] as const
+
+export const departmentBudgetListQueryKey = [
+  ...enterpriseOrganizationQueryKey,
+  'department-budget-list',
+] as const
+
+export const departmentBudgetDetailQueryKey = [
+  ...enterpriseOrganizationQueryKey,
+  'department-budget-detail',
 ] as const
 
 export async function getDepartmentTree(): Promise<
@@ -87,6 +100,34 @@ export async function getDepartmentBudget(
   const res = await api.get(`/api/enterprise/departments/${departmentId}/budget`, {
     params: tenantId === undefined ? undefined : { tenant_id: tenantId },
   })
+  return res.data
+}
+
+export async function getDepartmentBudgets(
+  departmentId: number,
+  params?: {
+    tenant_id?: number
+    sort_by?: DepartmentBudgetSortField
+    sort_order?: 'asc' | 'desc'
+  }
+): Promise<ApiResponse<DepartmentBudgetListResponse>> {
+  const res = await api.get(`/api/enterprise/departments/${departmentId}/budgets`, {
+    params,
+  })
+  return res.data
+}
+
+export async function getDepartmentBudgetDetail(
+  departmentId: number,
+  budgetId: number,
+  tenantId?: number
+): Promise<ApiResponse<DepartmentBudgetDetailResponse>> {
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/budgets/${budgetId}`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
   return res.data
 }
 

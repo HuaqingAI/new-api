@@ -118,10 +118,110 @@ func GetDepartmentBudget(c *gin.Context) {
 	})
 }
 
+func ListDepartmentBudgets(c *gin.Context) {
+	departmentId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+
+	var req dtoenterprise.DepartmentBudgetListQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	result, err := entservice.NewDepartmentBudgetService(model.DB).ListByDepartment(departmentId, tenantId, entservice.DepartmentBudgetListQuery{
+		SortBy:    req.SortBy,
+		SortOrder: req.SortOrder,
+	})
+	if err != nil {
+		writeDepartmentBudgetError(c, err)
+		return
+	}
+
+	items := make([]dtoenterprise.DepartmentBudgetItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, *mapDepartmentBudgetItemDTO(item))
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentBudgetListResponse{
+		Items: items,
+		Thresholds: dtoenterprise.DepartmentBudgetThresholds{
+			Warning:  result.Thresholds.Warning,
+			Critical: result.Thresholds.Critical,
+		},
+	})
+}
+
+func GetDepartmentBudgetDetail(c *gin.Context) {
+	departmentId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+	budgetId, ok := parsePathInt(c, "budget_id")
+	if !ok {
+		return
+	}
+	tenantId, ok := parseMembershipTenantIdQuery(c)
+	if !ok {
+		return
+	}
+
+	result, err := entservice.NewDepartmentBudgetService(model.DB).GetDetail(departmentId, budgetId, tenantId)
+	if err != nil {
+		writeDepartmentBudgetError(c, err)
+		return
+	}
+
+	wallets := make([]dtoenterprise.DepartmentBudgetWalletDetail, 0, len(result.Wallets))
+	for _, wallet := range result.Wallets {
+		wallets = append(wallets, dtoenterprise.DepartmentBudgetWalletDetail{
+			AllocationId:             wallet.AllocationId,
+			AllocationStatus:         wallet.AllocationStatus,
+			TargetUserId:             wallet.TargetUserId,
+			TargetUsername:           wallet.TargetUsername,
+			TargetDisplayName:        wallet.TargetDisplayName,
+			WalletId:                 wallet.WalletId,
+			WalletStatus:             wallet.WalletStatus,
+			Quota:                    wallet.Quota,
+			RemainQuota:              wallet.RemainQuota,
+			CycleType:                wallet.CycleType,
+			CycleStartedAt:           wallet.CycleStartedAt,
+			NextResetTime:            wallet.NextResetTime,
+			ExpiresAt:                wallet.ExpiresAt,
+			SourceAllocationId:       wallet.SourceAllocationId,
+			SourceParentBudgetId:     wallet.SourceParentBudgetId,
+			SourceParentBudgetType:   wallet.SourceParentBudgetType,
+			SourceParentBudgetStatus: wallet.SourceParentBudgetStatus,
+			CommittedQuota:           wallet.CommittedQuota,
+			ProcessedAt:              wallet.ProcessedAt,
+			CreatedAt:                wallet.CreatedAt,
+			UpdatedAt:                wallet.UpdatedAt,
+			Reason:                   wallet.Reason,
+		})
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentBudgetDetailResponse{
+		Budget:  mapDepartmentBudgetItemDTO(result.Budget),
+		Wallets: wallets,
+		Thresholds: dtoenterprise.DepartmentBudgetThresholds{
+			Warning:  result.Thresholds.Warning,
+			Critical: result.Thresholds.Critical,
+		},
+	})
+}
+
 func writeDepartmentBudgetError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrDepartmentNotFound):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentNotFound)
+	case errors.Is(err, entservice.ErrQuotaAllocationBudgetNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetNotFound)
 	case errors.Is(err, entservice.ErrDepartmentBudgetInvalidType):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetInvalidType)
 	case errors.Is(err, entservice.ErrDepartmentBudgetInvalidQuota):
@@ -136,6 +236,8 @@ func writeDepartmentBudgetError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetInvalidCycleStartedAt)
 	case errors.Is(err, entservice.ErrDepartmentBudgetTypeImmutable):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetTypeImmutable)
+	case errors.Is(err, entservice.ErrDepartmentBudgetThresholdInvalid):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetThresholdInvalid)
 	case errors.Is(err, entservice.ErrInvalidDepartmentBudgetInput):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	default:
@@ -150,7 +252,8 @@ func shouldAuditDepartmentBudgetFailure(err error) bool {
 		errors.Is(err, entservice.ErrDepartmentBudgetInvalidCycleType) ||
 		errors.Is(err, entservice.ErrDepartmentBudgetInvalidCustomSeconds) ||
 		errors.Is(err, entservice.ErrDepartmentBudgetInvalidCycleStartedAt) ||
-		errors.Is(err, entservice.ErrDepartmentBudgetTypeImmutable)
+		errors.Is(err, entservice.ErrDepartmentBudgetTypeImmutable) ||
+		errors.Is(err, entservice.ErrDepartmentBudgetThresholdInvalid)
 }
 
 func mapDepartmentBudgetItemDTO(item entservice.DepartmentBudgetItem) *dtoenterprise.DepartmentBudgetItem {
@@ -162,12 +265,15 @@ func mapDepartmentBudgetItemDTO(item entservice.DepartmentBudgetItem) *dtoenterp
 		Status:         item.Status,
 		TotalQuota:     item.TotalQuota,
 		Remaining:      item.Remaining,
+		AllocatedTotal: item.AllocatedTotal,
 		CycleQuota:     item.CycleQuota,
 		CycleType:      item.CycleType,
 		CycleStartedAt: item.CycleStartedAt,
 		CustomSeconds:  item.CustomSeconds,
 		ExpiresAt:      item.ExpiresAt,
 		ParentStatus:   item.ParentStatus,
+		UsageRatio:     item.UsageRatio,
+		ThresholdState: string(item.ThresholdState),
 		CreatedAt:      item.CreatedAt,
 		UpdatedAt:      item.UpdatedAt,
 	}

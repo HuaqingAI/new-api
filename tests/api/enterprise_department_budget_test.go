@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
+	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/stretchr/testify/require"
 )
@@ -190,6 +191,82 @@ func TestEnterpriseDepartmentBudgetAPIRejectsBudgetTypeSwitchForDepartment(t *te
 	require.Contains(t, switchPayload.Message, "enterprise.organization.department_budget_type_immutable")
 }
 
-func intPtr(value int) *int {
-	return &value
+func TestEnterpriseDepartmentBudgetListAndDetailAPI(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.AutoMigrate(&model.Option{}, &model.User{}, &model.UserSubscription{}))
+	require.NoError(t, fixture.db.Create(&model.User{
+		Id:          2001,
+		Username:    "alice",
+		DisplayName: "Alice",
+		Password:    "password123",
+		AffCode:     "alice-aff",
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:          1,
+		TenantId:    0,
+		Name:        "Engineering",
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentBudget{
+		Id:             8,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           modelenterprise.DepartmentBudgetTypeSubscription,
+		Status:         modelenterprise.DepartmentBudgetStatusActive,
+		CycleQuota:     500,
+		Remaining:      100,
+		AllocatedTotal: 400,
+		CycleType:      "monthly",
+		CycleStartedAt: 1700000000,
+		ParentStatus:   modelenterprise.DepartmentBudgetStatusPaused,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.QuotaAllocation{
+		Id:                 9,
+		TenantId:           0,
+		DepartmentBudgetId: 8,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		WalletId:           19,
+		CommittedQuota:     300,
+		BudgetTypeSnapshot: modelenterprise.DepartmentBudgetTypeSubscription,
+		CycleTypeSnapshot:  "monthly",
+		Status:             modelenterprise.QuotaAllocationStatusExpired,
+		ProcessedAt:        1700000200,
+		CreatedAt:          1700000000,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&model.UserSubscription{
+		Id:                 19,
+		UserId:             2001,
+		AmountTotal:        300,
+		AmountUsed:         30,
+		Status:             "expired",
+		SourceType:         model.SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: 9,
+		NextResetTime:      1700000300,
+		EndTime:            1700000400,
+	}).Error)
+	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+
+	list := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/budgets?sort_by=usage_ratio&sort_order=desc", cookies)
+	listPayload := decodeDepartmentMembersAPIResponse(t, list)
+	require.True(t, listPayload.Success, listPayload.Message)
+	require.Contains(t, string(listPayload.Data), `"usage_ratio":80`)
+	require.Contains(t, string(listPayload.Data), `"threshold_state":"warning"`)
+
+	detail := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/budgets/8", cookies)
+	detailPayload := decodeDepartmentMembersAPIResponse(t, detail)
+	require.True(t, detailPayload.Success, detailPayload.Message)
+	require.Contains(t, string(detailPayload.Data), `"target_username":"alice"`)
+	require.Contains(t, string(detailPayload.Data), `"remain_quota":270`)
+	require.Contains(t, string(detailPayload.Data), `"wallet_status":"expired"`)
+	require.Contains(t, string(detailPayload.Data), `"source_parent_budget_status":"active"`)
 }

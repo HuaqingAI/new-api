@@ -13,6 +13,9 @@ import { I18nextProvider } from 'react-i18next'
 import {
   __testRenderApiMessage,
   EnterpriseOrganizationContent,
+  DepartmentBudgetDetailTable,
+  DepartmentBudgetListCard,
+  DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
   QuotaAllocationTable,
   createBudgetSchema,
@@ -20,6 +23,7 @@ import {
 } from './index'
 import type {
   ApiResponse,
+  DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
@@ -120,7 +124,7 @@ describe('Enterprise organization department tree workflow', () => {
       </I18nextProvider>
     )
 
-    assert.match(emptyHtml, /Current Budget Pool/)
+    assert.match(emptyHtml, /Budget Pool Overview/)
     assert.match(emptyHtml, /No budget pool yet/)
 
     const filledHtml = renderToStaticMarkup(
@@ -317,6 +321,196 @@ describe('Enterprise organization department tree workflow', () => {
     assert.doesNotMatch(html, />Custom \\(seconds\\)</)
   })
 
+  test('renders budget pool list with selectable threshold states and usage metrics', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          loading={false}
+          selectedBudgetId={12}
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onSelectBudget={() => undefined}
+          onSortByChange={() => undefined}
+          onSortOrderChange={() => undefined}
+          items={[
+            departmentBudget({
+              id: 12,
+              type: 'subscription',
+              status: 'active',
+              remaining: 100,
+              allocated_total: 400,
+              cycle_quota: 500,
+              usage_ratio: 80,
+              threshold_state: 'warning',
+            }),
+            departmentBudget({
+              id: 13,
+              type: 'balance',
+              status: 'paused',
+              total_quota: 1000,
+              remaining: 50,
+              allocated_total: 950,
+              cycle_quota: 0,
+              usage_ratio: 95,
+              threshold_state: 'critical',
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Budget Pool List',
+      'Usage Ratio',
+      'Threshold State',
+      'Subscription Budget',
+      'Balance Budget',
+      '80%',
+      '95%',
+      'Warning',
+      'Critical',
+      'Paused',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders budget overview threshold window and parent lifecycle state', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({
+            id: 14,
+            type: 'subscription',
+            status: 'active',
+            cycle_quota: 500,
+            remaining: 100,
+            allocated_total: 400,
+            usage_ratio: 80,
+            threshold_state: 'warning',
+            parent_status: 'paused',
+          })}
+          selectedBudget={departmentBudget({
+            id: 14,
+            type: 'subscription',
+            status: 'active',
+            cycle_quota: 500,
+            remaining: 100,
+            allocated_total: 400,
+            usage_ratio: 80,
+            threshold_state: 'warning',
+            parent_status: 'paused',
+          })}
+          thresholds={{ warning: 70, critical: 90 }}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Budget Pool Overview',
+      'Threshold Window',
+      '70% / 90%',
+      'Parent Status',
+      'Paused',
+      'Threshold State',
+      'Warning',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders budget detail wallet lineage with revoked and expired states', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetDetailTable
+          loading={false}
+          budget={departmentBudget({
+            id: 15,
+            type: 'subscription',
+            status: 'active',
+            cycle_quota: 500,
+            remaining: 100,
+            allocated_total: 400,
+          })}
+          wallets={[
+            walletDetail({
+              allocation_id: 31,
+              allocation_status: 'revoked',
+              wallet_id: 41,
+              wallet_status: 'expired',
+              target_user_id: 2001,
+              target_username: 'alice',
+              target_display_name: 'Alice',
+              quota: 300,
+              remain_quota: 180,
+              cycle_type: 'monthly',
+              next_reset_time: 1700000500,
+              source_allocation_id: 31,
+              source_parent_budget_id: 15,
+              source_parent_budget_type: 'subscription',
+              source_parent_budget_status: 'paused',
+              processed_at: 1700000600,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Target User',
+      'Wallet',
+      'Cycle / Expiry',
+      'Wallet Status',
+      'Allocation Status',
+      'Alice',
+      'User ID #2001',
+      '#41',
+      '300',
+      '180',
+      'Monthly',
+      'Next Reset',
+      'Expired',
+      'Revoked',
+      'Allocation #31',
+      'Parent Budget #15',
+      'Subscription Budget',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders budget detail empty states for unselected and wallet-free pools', () => {
+    const unselectedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetDetailTable
+          loading={false}
+          budget={null}
+          wallets={[]}
+        />
+      </I18nextProvider>
+    )
+    assert.match(unselectedHtml, /Select a budget pool/)
+    assert.match(
+      unselectedHtml,
+      /Choose a budget pool from the list to inspect derived wallets and allocation lineage\./
+    )
+
+    const noWalletHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetDetailTable
+          loading={false}
+          budget={departmentBudget({ id: 16 })}
+          wallets={[]}
+        />
+      </I18nextProvider>
+    )
+    assert.match(noWalletHtml, /No derived wallets yet/)
+    assert.match(
+      noWalletHtml,
+      /This budget pool has no derived wallets yet\. Create an allocation below to start tracking wallet state\./
+    )
+  })
+
   test('renders quota allocation empty state with enterprise wallet guidance', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -459,12 +653,15 @@ function departmentBudget(
     status: overrides.status ?? 'active',
     total_quota: overrides.total_quota ?? 0,
     remaining: overrides.remaining ?? 300,
+    allocated_total: overrides.allocated_total ?? 0,
     cycle_quota: overrides.cycle_quota ?? 300,
     cycle_type: overrides.cycle_type ?? 'weekly',
     cycle_started_at: overrides.cycle_started_at ?? 1700000000,
     custom_seconds: overrides.custom_seconds ?? 0,
     expires_at: overrides.expires_at ?? 0,
     parent_status: overrides.parent_status ?? '',
+    usage_ratio: overrides.usage_ratio ?? 0,
+    threshold_state: overrides.threshold_state ?? 'healthy',
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }
@@ -492,6 +689,35 @@ function quotaAllocation(
     processed_at: overrides.processed_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function walletDetail(
+  overrides: Partial<DepartmentBudgetDetailResponse['wallets'][number]> = {}
+): DepartmentBudgetDetailResponse['wallets'][number] {
+  return {
+    allocation_id: overrides.allocation_id ?? 1,
+    allocation_status: overrides.allocation_status ?? 'active',
+    target_user_id: overrides.target_user_id ?? 2001,
+    target_username: overrides.target_username ?? 'alice',
+    target_display_name: overrides.target_display_name ?? 'Alice',
+    wallet_id: overrides.wallet_id ?? 101,
+    wallet_status: overrides.wallet_status ?? 'active',
+    quota: overrides.quota ?? 300,
+    remain_quota: overrides.remain_quota ?? 250,
+    cycle_type: overrides.cycle_type ?? 'monthly',
+    cycle_started_at: overrides.cycle_started_at ?? 1700000000,
+    next_reset_time: overrides.next_reset_time ?? 1700000200,
+    expires_at: overrides.expires_at ?? 0,
+    source_allocation_id: overrides.source_allocation_id ?? 1,
+    source_parent_budget_id: overrides.source_parent_budget_id ?? 1,
+    source_parent_budget_type: overrides.source_parent_budget_type ?? 'subscription',
+    source_parent_budget_status: overrides.source_parent_budget_status ?? 'active',
+    committed_quota: overrides.committed_quota ?? 300,
+    processed_at: overrides.processed_at ?? 0,
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+    reason: overrides.reason ?? '',
   }
 }
 

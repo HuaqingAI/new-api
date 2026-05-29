@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -117,6 +118,35 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
+func parseEnterpriseBudgetThresholdValue(value string) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(value))
+}
+
+func validateEnterpriseBudgetThresholdOption(key string, value string) error {
+	quotaSetting := operation_setting.GetQuotaSetting()
+	warning := quotaSetting.EnterpriseBudgetWarningThreshold
+	critical := quotaSetting.EnterpriseBudgetCriticalThreshold
+
+	parsed, err := parseEnterpriseBudgetThresholdValue(value)
+	if err != nil {
+		return entservice.ErrDepartmentBudgetThresholdInvalid
+	}
+
+	switch key {
+	case "quota_setting.enterprise_budget_warning_threshold":
+		warning = parsed
+	case "quota_setting.enterprise_budget_critical_threshold":
+		critical = parsed
+	default:
+		return nil
+	}
+
+	if !operation_setting.IsEnterpriseBudgetThresholdsValid(warning, critical) {
+		return entservice.ErrDepartmentBudgetThresholdInvalid
+	}
+	return nil
+}
+
 func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
@@ -136,6 +166,13 @@ func UpdateOption(c *gin.Context) {
 		option.Value = common.Interface2String(option.Value.(int))
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
+	}
+	if option.Key == "quota_setting.enterprise_budget_warning_threshold" ||
+		option.Key == "quota_setting.enterprise_budget_critical_threshold" {
+		if err := validateEnterpriseBudgetThresholdOption(option.Key, option.Value.(string)); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetThresholdInvalid)
+			return
+		}
 	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":

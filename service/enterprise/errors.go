@@ -23,6 +23,7 @@ var (
 	ErrDepartmentBudgetInvalidCustomSeconds              = errors.New("enterprise department budget custom seconds invalid")
 	ErrDepartmentBudgetInvalidCycleStartedAt             = errors.New("enterprise department budget cycle started at invalid")
 	ErrDepartmentBudgetTypeImmutable                     = errors.New("enterprise department budget type immutable")
+	ErrDepartmentBudgetThresholdInvalid                  = errors.New("enterprise department budget threshold invalid")
 	ErrQuotaAllocationInvalidInput                       = errors.New("enterprise quota allocation input invalid")
 	ErrQuotaAllocationBudgetNotFound                     = errors.New("enterprise quota allocation budget not found")
 	ErrQuotaAllocationBudgetInactive                     = errors.New("enterprise quota allocation budget inactive")

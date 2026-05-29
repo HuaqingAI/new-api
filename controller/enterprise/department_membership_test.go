@@ -40,7 +40,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.UserSubscription{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.UserSubscription{}, &model.Option{}))
 	require.NoError(t, entmodel.AutoMigrate(db))
 
 	require.NoError(t, db.Create(&model.User{Id: 100, Username: "alice", Password: "password123", DisplayName: "Alice", Group: "vip", AffCode: "alice-api"}).Error)

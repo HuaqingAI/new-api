@@ -44,6 +44,100 @@ func TestDepartmentBudgetAPIWorkflow(t *testing.T) {
 	require.Equal(t, "enterprise_department_budget", actions[0].ObjectType)
 }
 
+func TestDepartmentBudgetListAndDetailAPI(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.GET("/api/enterprise/departments/:id/budgets", ListDepartmentBudgets)
+	router.GET("/api/enterprise/departments/:id/budgets/:budget_id", GetDepartmentBudgetDetail)
+
+	require.NoError(t, db.Create(&model.User{
+		Id:          2001,
+		Username:    "budget-alice",
+		DisplayName: "Alice",
+		Password:    "password123",
+		AffCode:     "budget-alice-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:             1,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		Status:         entmodel.DepartmentBudgetStatusActive,
+		CycleQuota:     500,
+		Remaining:      100,
+		AllocatedTotal: 400,
+		CycleType:      "monthly",
+		CycleStartedAt: 1700000000,
+		ParentStatus:   entmodel.DepartmentBudgetStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           2,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusPaused,
+		TotalQuota:   1000,
+		Remaining:    900,
+		ParentStatus: entmodel.DepartmentBudgetStatusPaused,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.QuotaAllocation{
+		Id:                 3,
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		WalletId:           9,
+		CommittedQuota:     300,
+		BudgetTypeSnapshot: entmodel.DepartmentBudgetTypeSubscription,
+		CycleTypeSnapshot:  "monthly",
+		Status:             entmodel.QuotaAllocationStatusActive,
+		CreatedAt:          1700000000,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserSubscription{
+		Id:                 9,
+		UserId:             2001,
+		AmountTotal:        300,
+		AmountUsed:         25,
+		Status:             "active",
+		SourceType:         model.SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: 3,
+		NextResetTime:      1700000500,
+		EndTime:            1700000800,
+	}).Error)
+
+	listRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/departments/1/budgets?sort_by=usage_ratio&sort_order=desc", nil)
+	listResponse := decodeEnterpriseAPIResponse(t, listRecorder)
+	require.True(t, listResponse.Success, listResponse.Message)
+	listData := decodeEnterpriseData[dtoenterprise.DepartmentBudgetListResponse](t, listResponse)
+	require.Len(t, listData.Items, 2)
+	require.Equal(t, 1, listData.Items[0].Id)
+	require.Equal(t, float64(80), listData.Items[0].UsageRatio)
+	require.Equal(t, "warning", listData.Items[0].ThresholdState)
+	require.Equal(t, 80, listData.Thresholds.Warning)
+	require.Equal(t, 95, listData.Thresholds.Critical)
+
+	detailRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/departments/1/budgets/1", nil)
+	detailResponse := decodeEnterpriseAPIResponse(t, detailRecorder)
+	require.True(t, detailResponse.Success, detailResponse.Message)
+	detailData := decodeEnterpriseData[dtoenterprise.DepartmentBudgetDetailResponse](t, detailResponse)
+	require.NotNil(t, detailData.Budget)
+	require.Equal(t, 1, detailData.Budget.Id)
+	require.Len(t, detailData.Wallets, 1)
+	require.Equal(t, 2001, detailData.Wallets[0].TargetUserId)
+	require.Equal(t, "budget-alice", detailData.Wallets[0].TargetUsername)
+	require.Equal(t, int64(275), detailData.Wallets[0].RemainQuota)
+	require.Equal(t, entmodel.DepartmentBudgetStatusActive, detailData.Wallets[0].SourceParentBudgetStatus)
+}
+
+func TestDepartmentBudgetDetailReturnsBudgetNotFound(t *testing.T) {
+	router, _ := setupEnterpriseControllerTest(t)
+	router.GET("/api/enterprise/departments/:id/budgets/:budget_id", GetDepartmentBudgetDetail)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/departments/1/budgets/999", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.organization.department_budget_not_found", response.Message)
+}
+
 func TestDepartmentBudgetAPIRejectsInvalidPayload(t *testing.T) {
 	router, _ := setupEnterpriseControllerTest(t)
 	router.POST("/api/enterprise/departments/:id/budget", CreateDepartmentBudget)
@@ -130,7 +224,7 @@ func setupEnterpriseBudgetPermissionDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	model.DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Option{}))
 	require.NoError(t, entmodel.AutoMigrate(db))
 	require.NoError(t, db.Create(&model.User{Id: 200, Username: "viewer", Password: "password123", AffCode: "viewer-aff"}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{Id: 1, TenantId: 0, Name: "Engineering", Status: constant.EnterpriseDepartmentStatusActive}).Error)

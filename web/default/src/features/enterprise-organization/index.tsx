@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -65,6 +65,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -82,14 +83,18 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatTimestamp } from '@/lib/format'
+import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
 import {
   addDepartmentMember,
   createQuotaAllocation,
   deactivateDepartmentMember,
   createDepartmentBudget,
+  departmentBudgetDetailQueryKey,
+  departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
   enterpriseOrganizationQueryKey,
+  getDepartmentBudgetDetail,
+  getDepartmentBudgets,
   getDepartmentBudget,
   getDepartmentMembers,
   getQuotaAllocations,
@@ -103,7 +108,10 @@ import { DepartmentTree } from './components/DepartmentTree'
 import { useDepartmentTree } from './hooks/use-department-tree'
 import type {
   ApiResponse,
+  DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
+  DepartmentBudgetSortField,
+  DepartmentBudgetWalletDetail,
   DepartmentMemberItem,
   EnterpriseBudgetErrorData,
   MembershipStatus,
@@ -187,7 +195,7 @@ export function createAllocationSchema(t: (key: string) => string) {
 }
 
 export function __testRenderApiMessage(
-  result: ApiResponse<EnterpriseBudgetErrorData | unknown> | null | undefined,
+  result: { message?: string; data?: unknown } | null | undefined,
   translator: (key: string) => string
 ) {
   if (!result) return translator('Request failed')
@@ -222,6 +230,32 @@ function enterpriseBudgetStatusLabel(
   if (status === 'revoked') return t('Revoked')
   if (status === 'expired') return t('Expired')
   return status || '-'
+}
+
+function enterpriseBudgetStatusVariant(status: string) {
+  if (status === 'active') return 'success' as const
+  if (status === 'paused') return 'warning' as const
+  if (status === 'revoked' || status === 'expired') return 'danger' as const
+  return 'neutral' as const
+}
+
+function thresholdStateLabel(
+  status: string,
+  t: (key: string) => string
+) {
+  if (status === 'critical') return t('Critical')
+  if (status === 'warning') return t('Warning')
+  return t('Healthy')
+}
+
+function thresholdStateVariant(status: string) {
+  if (status === 'critical') return 'danger' as const
+  if (status === 'warning') return 'warning' as const
+  return 'success' as const
+}
+
+function formatBudgetType(type: string, t: (key: string) => string) {
+  return type === 'balance' ? t('Balance Budget') : t('Subscription Budget')
 }
 
 function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
@@ -695,7 +729,7 @@ function DepartmentBudgetPanel() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const renderApiMessage = (
-    result: ApiResponse<EnterpriseBudgetErrorData> | null | undefined
+    result: ApiResponse<unknown> | null | undefined
   ) => __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
@@ -731,6 +765,9 @@ function DepartmentBudgetPanel() {
   const departmentId = form.watch('department_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
+  const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null)
 
   const budgetQuery = useQuery({
     queryKey: [...departmentBudgetQueryKey, tenantId, departmentId],
@@ -745,20 +782,95 @@ function DepartmentBudgetPanel() {
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
 
+  const budgetListQuery = useQuery({
+    queryKey: [
+      ...departmentBudgetListQueryKey,
+      tenantId,
+      departmentId,
+      sortBy,
+      sortOrder,
+    ],
+    queryFn: async () => {
+      if (!departmentId) {
+        return {
+          items: [],
+          thresholds: { warning: 80, critical: 95 },
+        }
+      }
+      const result = await getDepartmentBudgets(departmentId, {
+        tenant_id: tenantId || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      })
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          items: [],
+          thresholds: { warning: 80, critical: 95 },
+        }
+      )
+    },
+    enabled: Boolean(departmentId),
+  })
+
+  const effectiveBudgetId =
+    selectedBudgetId ??
+    budgetListQuery.data?.items[0]?.id ??
+    currentBudgetId ??
+    null
+
+  const budgetDetailQuery = useQuery({
+    queryKey: [
+      ...departmentBudgetDetailQueryKey,
+      tenantId,
+      departmentId,
+      effectiveBudgetId,
+    ],
+    queryFn: async (): Promise<DepartmentBudgetDetailResponse> => {
+      if (!departmentId || !effectiveBudgetId) {
+        return {
+          budget: null,
+          wallets: [],
+          thresholds:
+            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 },
+        }
+      }
+      const result = await getDepartmentBudgetDetail(
+        departmentId,
+        effectiveBudgetId,
+        tenantId || undefined
+      )
+      if (!result.success) throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          budget: null,
+          wallets: [],
+          thresholds:
+            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 },
+        }
+      )
+    },
+    enabled: Boolean(departmentId && effectiveBudgetId),
+  })
+
   const allocationListQuery = useQuery({
     queryKey: [
       ...quotaAllocationQueryKey,
       tenantId,
       departmentId,
-      currentBudgetId,
+      effectiveBudgetId,
     ],
     queryFn: async () => {
-      if (!currentBudgetId || !departmentId) return []
-      const result = await getQuotaAllocations(currentBudgetId, tenantId, departmentId)
+      if (!effectiveBudgetId || !departmentId) return []
+      const result = await getQuotaAllocations(
+        effectiveBudgetId,
+        tenantId,
+        departmentId
+      )
       if (!result.success) throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
     },
-    enabled: Boolean(currentBudgetId && departmentId),
+    enabled: Boolean(effectiveBudgetId && departmentId),
   })
 
   const createMutation = useMutation({
@@ -793,10 +905,13 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
       await queryClient.invalidateQueries({
         queryKey: enterpriseOrganizationQueryKey,
       })
       const budgetId = result.data?.item?.id ?? 0
+      setSelectedBudgetId(budgetId || null)
       allocationForm.setValue('department_budget_id', budgetId)
       toast.success(t('Department budget saved'))
     },
@@ -818,6 +933,8 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
       await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
       toast.success(t('Wallet allocation created'))
     },
@@ -835,20 +952,40 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({ queryKey: departmentBudgetQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetListQueryKey })
+      await queryClient.invalidateQueries({ queryKey: departmentBudgetDetailQueryKey })
       await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
       toast.success(t('Wallet allocation revoked'))
     },
   })
 
-  if (allocationForm.getValues('tenant_id') !== tenantId) {
-    allocationForm.setValue('tenant_id', tenantId)
-  }
-  if (allocationForm.getValues('department_id') !== departmentId) {
-    allocationForm.setValue('department_id', departmentId)
-  }
-  if (allocationForm.getValues('department_budget_id') !== currentBudgetId) {
-    allocationForm.setValue('department_budget_id', currentBudgetId)
-  }
+  useEffect(() => {
+    if (allocationForm.getValues('tenant_id') !== tenantId) {
+      allocationForm.setValue('tenant_id', tenantId)
+    }
+  }, [allocationForm, tenantId])
+
+  useEffect(() => {
+    if (allocationForm.getValues('department_id') !== departmentId) {
+      allocationForm.setValue('department_id', departmentId)
+    }
+  }, [allocationForm, departmentId])
+
+  useEffect(() => {
+    const nextBudgetId = effectiveBudgetId ?? 0
+    if (allocationForm.getValues('department_budget_id') !== nextBudgetId) {
+      allocationForm.setValue('department_budget_id', nextBudgetId)
+    }
+  }, [allocationForm, effectiveBudgetId])
+
+  useEffect(() => {
+    if (
+      selectedBudgetId !== null &&
+      budgetListQuery.data?.items?.some((item) => item.id === selectedBudgetId) === false
+    ) {
+      setSelectedBudgetId(null)
+    }
+  }, [budgetListQuery.data?.items, selectedBudgetId])
 
   return (
     <div className='grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
@@ -1031,17 +1168,39 @@ function DepartmentBudgetPanel() {
         </CardContent>
       </Card>
       <div className='space-y-4'>
-        <DepartmentBudgetStatusCard item={budgetQuery.data ?? null} />
+        <DepartmentBudgetOverviewCard
+          item={budgetQuery.data ?? null}
+          selectedBudget={budgetDetailQuery.data?.budget ?? null}
+          thresholds={
+            budgetDetailQuery.data?.thresholds ??
+            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 }
+          }
+        />
+        <DepartmentBudgetListCard
+          items={budgetListQuery.data?.items ?? []}
+          loading={budgetListQuery.isLoading}
+          selectedBudgetId={effectiveBudgetId}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSelectBudget={(budgetId) => setSelectedBudgetId(budgetId)}
+          onSortByChange={setSortBy}
+          onSortOrderChange={setSortOrder}
+        />
         <Card>
           <CardHeader>
-            <CardTitle>{t('Allocate Wallet')}</CardTitle>
+            <CardTitle>{t('Budget Wallet Detail')}</CardTitle>
             <CardDescription>
               {t(
-                'Allocate department budget into a member wallet without leaving the budget tab.'
+                'Track the selected budget pool, its derived wallets, and the source allocation chain in one place.'
               )}
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-4'>
+            <DepartmentBudgetDetailTable
+              budget={budgetDetailQuery.data?.budget ?? null}
+              wallets={budgetDetailQuery.data?.wallets ?? []}
+              loading={budgetDetailQuery.isLoading}
+            />
             <Form {...allocationForm}>
               <form
                 className='grid gap-4 md:grid-cols-2'
@@ -1095,7 +1254,7 @@ function DepartmentBudgetPanel() {
                 <div className='md:col-span-2 flex justify-end'>
                   <Button
                     type='submit'
-                    disabled={!currentBudgetId || allocationMutation.isPending}
+                    disabled={!effectiveBudgetId || allocationMutation.isPending}
                   >
                     <CreditCard data-icon='inline-start' />
                     {t('Create wallet allocation')}
@@ -1206,18 +1365,290 @@ export function QuotaAllocationTable({
   )
 }
 
-export function DepartmentBudgetStatusCard({
-  item,
+export function DepartmentBudgetListCard({
+  items,
+  loading,
+  selectedBudgetId,
+  sortBy,
+  sortOrder,
+  onSelectBudget,
+  onSortByChange,
+  onSortOrderChange,
 }: {
-  item: DepartmentBudgetItem | null
+  items: DepartmentBudgetItem[]
+  loading: boolean
+  selectedBudgetId: number | null
+  sortBy: DepartmentBudgetSortField
+  sortOrder: 'asc' | 'desc'
+  onSelectBudget: (budgetId: number) => void
+  onSortByChange: (field: DepartmentBudgetSortField) => void
+  onSortOrderChange: (order: 'asc' | 'desc') => void
 }) {
   const { t } = useTranslation()
 
-  if (!item) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Budget Pool List')}</CardTitle>
+        <CardDescription>
+          {t('Sort budget pools by usage, remaining quota, type, or status and open one detail view at a time.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='grid gap-3 md:grid-cols-2'>
+          <div className='space-y-2'>
+            <Label>{t('Sort By')}</Label>
+            <Select
+              value={sortBy}
+              onValueChange={(value) =>
+                onSortByChange(value as DepartmentBudgetSortField)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='usage_ratio'>{t('Usage Ratio')}</SelectItem>
+                <SelectItem value='remaining'>{t('Remaining Quota')}</SelectItem>
+                <SelectItem value='type'>{t('Budget Type')}</SelectItem>
+                <SelectItem value='status'>{t('Budget Status')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Sort Order')}</Label>
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => onSortOrderChange(value as 'asc' | 'desc')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='desc'>{t('Descending')}</SelectItem>
+                <SelectItem value='asc'>{t('Ascending')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {loading ? (
+          <Skeleton className='h-40 w-full' />
+        ) : items.length === 0 ? (
+          <Empty className='min-h-[220px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Coins className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No budget pools yet')}</EmptyTitle>
+              <EmptyDescription>
+                {t('Create the first pool for this department to unlock health monitoring and wallet tracing.')}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('Budget Type')}</TableHead>
+                <TableHead>{t('Remaining Quota')}</TableHead>
+                <TableHead>{t('Allocated Total')}</TableHead>
+                <TableHead>{t('Usage Ratio')}</TableHead>
+                <TableHead>{t('Budget Status')}</TableHead>
+                <TableHead>{t('Threshold State')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => {
+                const selected = selectedBudgetId === item.id
+                return (
+                  <TableRow
+                    key={item.id}
+                    className={selected ? 'bg-muted/50' : undefined}
+                    onClick={() => onSelectBudget(item.id)}
+                  >
+                    <TableCell>
+                      <div className='flex min-w-[160px] flex-col gap-1'>
+                        <span className='font-medium'>{formatBudgetType(item.type, t)}</span>
+                        <span className='text-muted-foreground text-xs'>
+                          #{item.id}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatNumber(item.remaining)}</TableCell>
+                    <TableCell>{formatNumber(item.allocated_total)}</TableCell>
+                    <TableCell>{formatPercent(item.usage_ratio)}</TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        label={enterpriseBudgetStatusLabel(item.status, t)}
+                        variant={enterpriseBudgetStatusVariant(item.status)}
+                        copyable={false}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        label={thresholdStateLabel(item.threshold_state, t)}
+                        variant={thresholdStateVariant(item.threshold_state)}
+                        copyable={false}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function DepartmentBudgetDetailTable({
+  budget,
+  wallets,
+  loading,
+}: {
+  budget: DepartmentBudgetItem | null
+  wallets: DepartmentBudgetWalletDetail[]
+  loading: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-36 w-full' />
+  }
+
+  if (!budget) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <CreditCard className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
+          <EmptyDescription>
+            {t('Choose a budget pool from the list to inspect derived wallets and allocation lineage.')}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  if (wallets.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Users className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No derived wallets yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t('This budget pool has no derived wallets yet. Create an allocation below to start tracking wallet state.')}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Target User')}</TableHead>
+          <TableHead>{t('Wallet')}</TableHead>
+          <TableHead>{t('Quota')}</TableHead>
+          <TableHead>{t('Remain Quota')}</TableHead>
+          <TableHead>{t('Cycle / Expiry')}</TableHead>
+          <TableHead>{t('Wallet Status')}</TableHead>
+          <TableHead>{t('Allocation Status')}</TableHead>
+          <TableHead>{t('Source')}</TableHead>
+          <TableHead>{t('Processed At')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {wallets.map((wallet) => (
+          <TableRow key={wallet.allocation_id}>
+            <TableCell>
+              <div className='flex min-w-[180px] flex-col gap-1'>
+                <span className='font-medium'>
+                  {wallet.target_display_name || wallet.target_username || `#${wallet.target_user_id}`}
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {t('User ID')} #{wallet.target_user_id}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>
+              <div className='flex min-w-[120px] flex-col gap-1'>
+                <span className='font-medium'>#{wallet.wallet_id}</span>
+                <span className='text-muted-foreground text-xs'>
+                  {formatBudgetType(wallet.source_parent_budget_type, t)}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>{formatNumber(wallet.quota)}</TableCell>
+            <TableCell>{formatNumber(wallet.remain_quota)}</TableCell>
+            <TableCell>
+              <div className='flex min-w-[180px] flex-col gap-1 text-sm'>
+                <span>{formatBudgetCycleType(wallet.cycle_type, t)}</span>
+                <span className='text-muted-foreground text-xs'>
+                  {wallet.next_reset_time
+                    ? `${t('Next Reset')}: ${formatTimestamp(wallet.next_reset_time)}`
+                    : wallet.expires_at
+                      ? `${t('Expires At (optional)')}: ${formatTimestamp(wallet.expires_at)}`
+                      : '-'}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>
+              <StatusBadge
+                label={enterpriseBudgetStatusLabel(wallet.wallet_status, t)}
+                variant={enterpriseBudgetStatusVariant(wallet.wallet_status)}
+                copyable={false}
+              />
+            </TableCell>
+            <TableCell>
+              <StatusBadge
+                label={enterpriseBudgetStatusLabel(wallet.allocation_status, t)}
+                variant={enterpriseBudgetStatusVariant(wallet.allocation_status)}
+                copyable={false}
+              />
+            </TableCell>
+            <TableCell>
+              <div className='flex min-w-[160px] flex-col gap-1 text-sm'>
+                <span>{t('Allocation')} #{wallet.source_allocation_id}</span>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Parent Budget')} #{wallet.source_parent_budget_id}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>
+              {wallet.processed_at ? formatTimestamp(wallet.processed_at) : '-'}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+export function DepartmentBudgetOverviewCard({
+  item,
+  selectedBudget,
+  thresholds,
+}: {
+  item: DepartmentBudgetItem | null
+  selectedBudget: DepartmentBudgetItem | null
+  thresholds: { warning: number; critical: number }
+}) {
+  const { t } = useTranslation()
+  const budget = selectedBudget ?? item
+
+  if (!budget) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{t('Current Budget Pool')}</CardTitle>
+          <CardTitle>{t('Budget Pool Overview')}</CardTitle>
           <CardDescription>
             {t('The selected department does not have a budget pool yet.')}
           </CardDescription>
@@ -1242,55 +1673,111 @@ export function DepartmentBudgetStatusCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('Current Budget Pool')}</CardTitle>
+        <CardTitle>{t('Budget Pool Overview')}</CardTitle>
         <CardDescription>
-          {t('Shows the latest budget pool saved for this department.')}
+          {t('Shows the selected budget pool health, usage thresholds, and lifecycle status.')}
         </CardDescription>
       </CardHeader>
       <CardContent className='grid gap-3 sm:grid-cols-2'>
         <BudgetStat
           label={t('Budget Type')}
-          value={
-            item.type === 'balance'
-              ? t('Balance Budget')
-              : t('Subscription Budget')
-          }
+          value={formatBudgetType(budget.type, t)}
         />
         <BudgetStat
           label={t('Budget Status')}
-          value={enterpriseBudgetStatusLabel(item.status, t)}
+          value={enterpriseBudgetStatusLabel(budget.status, t)}
         />
-        <BudgetStat label={t('Remaining Quota')} value={String(item.remaining)} />
-        <BudgetStat label={t('Total Quota')} value={String(item.total_quota)} />
-        <BudgetStat label={t('Cycle Quota')} value={String(item.cycle_quota)} />
+        <BudgetStat
+          label={t('Threshold State')}
+          value={thresholdStateLabel(budget.threshold_state, t)}
+          badgeVariant={thresholdStateVariant(budget.threshold_state)}
+        />
+        <BudgetStat
+          label={t('Usage Ratio')}
+          value={formatPercent(budget.usage_ratio)}
+        />
+        <BudgetStat
+          label={t('Remaining Quota')}
+          value={formatNumber(budget.remaining)}
+        />
+        <BudgetStat
+          label={t('Allocated Total')}
+          value={formatNumber(budget.allocated_total)}
+        />
+        <BudgetStat
+          label={t('Total Quota')}
+          value={formatNumber(budget.total_quota)}
+        />
+        <BudgetStat
+          label={t('Cycle Quota')}
+          value={formatNumber(budget.cycle_quota)}
+        />
         <BudgetStat
           label={t('Cycle Type')}
-          value={formatBudgetCycleType(item.cycle_type, t)}
+          value={formatBudgetCycleType(budget.cycle_type, t)}
         />
         <BudgetStat
           label={t('Cycle Start Time')}
-          value={item.cycle_started_at ? formatTimestamp(item.cycle_started_at) : '-'}
+          value={budget.cycle_started_at ? formatTimestamp(budget.cycle_started_at) : '-'}
         />
         <BudgetStat
           label={t('Custom Cycle Seconds')}
-          value={item.custom_seconds ? String(item.custom_seconds) : '-'}
+          value={budget.custom_seconds ? formatNumber(budget.custom_seconds) : '-'}
         />
         <BudgetStat
           label={t('Expires At (optional)')}
-          value={item.expires_at ? formatTimestamp(item.expires_at) : '-'}
+          value={budget.expires_at ? formatTimestamp(budget.expires_at) : '-'}
+        />
+        <BudgetStat
+          label={t('Threshold Window')}
+          value={`${thresholds.warning}% / ${thresholds.critical}%`}
+        />
+        <BudgetStat
+          label={t('Parent Status')}
+          value={enterpriseBudgetStatusLabel(budget.parent_status, t)}
         />
       </CardContent>
     </Card>
   )
 }
 
-function BudgetStat({ label, value }: { label: string; value: string }) {
+export function DepartmentBudgetStatusCard({
+  item,
+}: {
+  item: DepartmentBudgetItem | null
+}) {
+  return (
+    <DepartmentBudgetOverviewCard
+      item={item}
+      selectedBudget={item}
+      thresholds={{ warning: 80, critical: 95 }}
+    />
+  )
+}
+
+function BudgetStat({
+  label,
+  value,
+  badgeVariant,
+}: {
+  label: string
+  value: string
+  badgeVariant?: 'success' | 'warning' | 'danger' | 'neutral'
+}) {
   return (
     <div className='rounded-lg border p-3'>
       <div className='text-muted-foreground text-xs'>{label}</div>
       <div className='mt-1 flex items-center gap-2 font-medium'>
         <CalendarClock className='size-4 text-muted-foreground' />
-        <span>{value}</span>
+        {badgeVariant ? (
+          <StatusBadge
+            label={value}
+            variant={badgeVariant}
+            copyable={false}
+          />
+        ) : (
+          <span>{value}</span>
+        )}
       </div>
     </div>
   )

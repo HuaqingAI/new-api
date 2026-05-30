@@ -46,6 +46,7 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedEnterpriseUsageIndexRouteImport } from './routes/_authenticated/enterprise-usage/index'
 import { Route as AuthenticatedEnterpriseOrganizationIndexRouteImport } from './routes/_authenticated/enterprise-organization/index'
 import { Route as AuthenticatedEnterpriseDingtalkIndexRouteImport } from './routes/_authenticated/enterprise-dingtalk/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
@@ -263,6 +264,12 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEnterpriseUsageIndexRoute =
+  AuthenticatedEnterpriseUsageIndexRouteImport.update({
+    id: '/enterprise-usage/',
+    path: '/enterprise-usage/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedEnterpriseOrganizationIndexRoute =
   AuthenticatedEnterpriseOrganizationIndexRouteImport.update({
     id: '/enterprise-organization/',
@@ -441,6 +448,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -501,6 +509,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-dingtalk': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/enterprise-usage': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -565,6 +574,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/_authenticated/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/_authenticated/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -628,6 +638,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/enterprise-dingtalk/'
     | '/enterprise-organization/'
+    | '/enterprise-usage/'
     | '/keys/'
     | '/models/'
     | '/playground/'
@@ -688,6 +699,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/enterprise-dingtalk'
     | '/enterprise-organization'
+    | '/enterprise-usage'
     | '/keys'
     | '/models'
     | '/playground'
@@ -751,6 +763,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/enterprise-dingtalk/'
     | '/_authenticated/enterprise-organization/'
+    | '/_authenticated/enterprise-usage/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
@@ -1060,6 +1073,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/enterprise-usage/': {
+      id: '/_authenticated/enterprise-usage/'
+      path: '/enterprise-usage'
+      fullPath: '/enterprise-usage/'
+      preLoaderRoute: typeof AuthenticatedEnterpriseUsageIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/enterprise-organization/': {
       id: '/_authenticated/enterprise-organization/'
       path: '/enterprise-organization'
@@ -1326,6 +1346,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedEnterpriseDingtalkIndexRoute: typeof AuthenticatedEnterpriseDingtalkIndexRoute
   AuthenticatedEnterpriseOrganizationIndexRoute: typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  AuthenticatedEnterpriseUsageIndexRoute: typeof AuthenticatedEnterpriseUsageIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1352,6 +1373,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedEnterpriseDingtalkIndexRoute,
   AuthenticatedEnterpriseOrganizationIndexRoute:
     AuthenticatedEnterpriseOrganizationIndexRoute,
+  AuthenticatedEnterpriseUsageIndexRoute:
+    AuthenticatedEnterpriseUsageIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,

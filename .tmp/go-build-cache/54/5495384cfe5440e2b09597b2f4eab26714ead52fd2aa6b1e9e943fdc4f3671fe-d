@@ -1,0 +1,7 @@
+package cpu
+//go:cgo_import_dynamic host_processor_info host_processor_info ""
+//go:cgo_import_dynamic host_statistics host_statistics ""
+//go:cgo_import_dynamic mach_host_self mach_host_self ""
+//go:cgo_import_dynamic mach_task_self_ mach_task_self_ ""
+//go:cgo_import_dynamic vm_deallocate vm_deallocate ""
+//go:cgo_import_dynamic _ _ "/usr/lib/libSystem.B.dylib"

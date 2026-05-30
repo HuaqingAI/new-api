@@ -265,6 +265,7 @@ func TestDingTalkSyncResolveConflictRejectsMissingCandidateAndIdentityConflict(t
 	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{})
 	require.NoError(t, db.Create(&model.User{Id: 706, Username: "candidate-a", Email: "candidate-a@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "cana"}).Error)
 	require.NoError(t, db.Create(&model.User{Id: 707, Username: "candidate-b", Status: common.UserStatusEnabled, Group: "default", AffCode: "canb"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 708, Username: "candidate-c", Status: common.UserStatusEnabled, Group: "default", AffCode: "canc"}).Error)
 	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
 		TenantId:       0,
 		IdentityKey:    "union:already-bound",
@@ -299,7 +300,7 @@ func TestDingTalkSyncResolveConflictRejectsMissingCandidateAndIdentityConflict(t
 		UnionId:        "split-mobile",
 		ExternalUserId: "staff-split-mobile",
 		Mobile:         "13833333333",
-		UserId:         707,
+		UserId:         708,
 		Status:         entservice.DingTalkIdentityStatusActive,
 	}).Error)
 	require.NoError(t, db.Create(&entmodel.DingTalkSyncConflict{

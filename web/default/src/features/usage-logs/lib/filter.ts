@@ -39,10 +39,13 @@ export function buildSearchParams(
   filters: LogFilters,
   logCategory: LogCategory
 ): Record<string, unknown> {
+  const preservedContext = (filters as Record<string, unknown>)
+    .departmentContext as Record<string, unknown> | undefined
   const baseParams: Record<string, unknown> = {
     ...(filters.startTime && { startTime: filters.startTime.getTime() }),
     ...(filters.endTime && { endTime: filters.endTime.getTime() }),
     ...(filters.channel && { channel: filters.channel }),
+    ...(preservedContext ?? {}),
   }
 
   switch (logCategory) {

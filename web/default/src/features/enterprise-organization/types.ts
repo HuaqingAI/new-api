@@ -44,6 +44,10 @@ export type ApiResponse<T = unknown> = {
   data?: T
 }
 
+export type EnterpriseBudgetErrorData = {
+  reason?: string
+}
+
 export type MembershipStatus = 1 | 2 | 3 | 4
 
 export type UserDepartmentItem = {
@@ -86,6 +90,138 @@ export type UserDepartmentsResponse = {
 export type DepartmentMembersResponse = {
   items: DepartmentMemberItem[]
   total: number
+}
+
+export type DepartmentBudgetType = 'balance' | 'subscription'
+export type DepartmentBudgetStatus = 'active' | 'paused' | 'revoked' | 'expired'
+
+export type DepartmentBudgetThresholdState = 'healthy' | 'warning' | 'critical'
+
+export type DepartmentBudgetSortField =
+  | 'usage_ratio'
+  | 'remaining'
+  | 'type'
+  | 'status'
+
+export type DepartmentBudgetThresholds = {
+  warning: number
+  critical: number
+}
+
+export type DepartmentBudgetItem = {
+  id: number
+  tenant_id: number
+  department_id: number
+  type: DepartmentBudgetType
+  status: DepartmentBudgetStatus | string
+  total_quota: number
+  remaining: number
+  allocated_total: number
+  cycle_quota: number
+  cycle_type: string
+  cycle_started_at: number
+  custom_seconds: number
+  expires_at: number
+  parent_status: string
+  usage_ratio: number
+  threshold_state: DepartmentBudgetThresholdState | string
+  created_at: number
+  updated_at: number
+}
+
+export type DepartmentBudgetResponse = {
+  item: DepartmentBudgetItem | null
+}
+
+export type DepartmentBudgetListResponse = {
+  items: DepartmentBudgetItem[]
+  thresholds: DepartmentBudgetThresholds
+}
+
+export type DepartmentBudgetWalletDetail = {
+  allocation_id: number
+  allocation_status: string
+  target_user_id: number
+  target_username: string
+  target_display_name: string
+  wallet_id: number
+  wallet_status: string
+  quota: number
+  remain_quota: number
+  cycle_type: string
+  cycle_started_at: number
+  next_reset_time: number
+  expires_at: number
+  source_allocation_id: number
+  source_parent_budget_id: number
+  source_parent_budget_type: string
+  source_parent_budget_status: string
+  committed_quota: number
+  processed_at: number
+  created_at: number
+  updated_at: number
+  reason: string
+}
+
+export type DepartmentBudgetDetailResponse = {
+  budget: DepartmentBudgetItem | null
+  wallets: DepartmentBudgetWalletDetail[]
+  thresholds: DepartmentBudgetThresholds
+}
+
+export type QuotaAllocationItem = {
+  id: number
+  tenant_id: number
+  department_budget_id: number
+  department_id: number
+  target_user_id: number
+  wallet_id: number
+  actor_id: number
+  committed_quota: number
+  budget_type_snapshot: string
+  cycle_type_snapshot: string
+  cycle_started_at_snapshot: number
+  custom_seconds_snapshot: number
+  expires_at_snapshot: number
+  reason: string
+  status: string
+  processed_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type QuotaAllocationResponse = {
+  item: QuotaAllocationItem | null
+}
+
+export type QuotaAllocationListResponse = {
+  items: QuotaAllocationItem[]
+}
+
+export type CreateDepartmentBudgetPayload = {
+  tenant_id?: number
+  type: DepartmentBudgetType
+  total_quota?: number
+  cycle_quota?: number
+  cycle_type?: string
+  cycle_started_at?: number
+  custom_seconds?: number
+  expires_at?: number
+}
+
+export type CreateQuotaAllocationPayload = {
+  tenant_id?: number
+  department_budget_id: number
+  department_id: number
+  target_user_id: number
+  committed_quota?: number
+  reason?: string
+}
+
+export type RevokeQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  reason?: string
 }
 
 export type ReplaceUserDepartmentsPayload = {

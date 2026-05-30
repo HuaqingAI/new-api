@@ -32,6 +32,8 @@ const defaultBillingSettings: BillingSettings = {
   TopUpLink: '',
   'general_setting.docs_link': '',
   'quota_setting.enable_free_model_pre_consume': true,
+  'quota_setting.enterprise_budget_warning_threshold': 80,
+  'quota_setting.enterprise_budget_critical_threshold': 95,
   QuotaPerUnit: 500000,
   USDExchangeRate: 7,
   'general_setting.quota_display_type': 'USD',

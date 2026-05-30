@@ -1,0 +1,4 @@
+=== RUN   TestGetBudgetDepartmentReturnsBudgetOwnerDepartment
+--- PASS: TestGetBudgetDepartmentReturnsBudgetOwnerDepartment (0.01s)
+PASS
+ok  	github.com/QuantumNous/new-api/service/enterprise	0.625s

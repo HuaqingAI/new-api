@@ -86,6 +86,14 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       ...(searchParams.channel
         ? { channel: String(searchParams.channel) }
         : {}),
+      ...(searchParams.departmentId || searchParams.departmentName
+        ? {
+            departmentContext: {
+              departmentId: searchParams.departmentId,
+              departmentName: searchParams.departmentName || undefined,
+            },
+          }
+        : {}),
     }
     const next: TaskLogsFilters =
       props.logCategory === 'drawing'
@@ -104,6 +112,8 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
+    searchParams.departmentId,
+    searchParams.departmentName,
     searchParams.filter,
   ])
 
@@ -136,13 +146,15 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
       search: {
+        departmentId: filters.departmentContext?.departmentId,
+        departmentName: filters.departmentContext?.departmentName,
         page: 1,
         startTime: start.getTime(),
         endTime: end.getTime(),
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
-  }, [navigate, props.logCategory, queryClient])
+  }, [filters.departmentContext, navigate, props.logCategory, queryClient])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

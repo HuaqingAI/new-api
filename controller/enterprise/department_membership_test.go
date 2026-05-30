@@ -40,7 +40,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.UserSubscription{}, &model.Option{}, &model.Log{}))
 	require.NoError(t, entmodel.AutoMigrate(db))
 
 	require.NoError(t, db.Create(&model.User{Id: 100, Username: "alice", Password: "password123", DisplayName: "Alice", Group: "vip", AffCode: "alice-api"}).Error)
@@ -60,6 +60,11 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.POST("/api/enterprise/departments/:id/members", AddDepartmentMember)
 	router.DELETE("/api/enterprise/departments/:id/members/:user_id", DeactivateDepartmentMember)
 	router.POST("/api/enterprise/departments/:id/members/:user_id/restore", RestoreDepartmentMember)
+	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
+	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
+	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
+	router.GET("/api/enterprise/usage/reports", GetDepartmentUsageReportConfig)
+	router.PUT("/api/enterprise/usage/reports", SaveDepartmentUsageReportConfig)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

@@ -7,7 +7,7 @@
     "dev": "rsbuild dev",
     "build": "rsbuild build",
     "build:check": "tsc -b && rsbuild build",
-    "test:e2e": "rsbuild build --config rsbuild.test.config.ts && node .tmp/tests/enterprise-organization.mjs && node .tmp/tests/enterprise-dingtalk.mjs",
+    "test:e2e": "rsbuild build --config rsbuild.test.config.ts && node .tmp/tests/enterprise-organization.mjs && node .tmp/tests/enterprise-dingtalk.mjs && node .tmp/tests/enterprise-usage.mjs && node .tmp/tests/subscription-plans-card.mjs && node .tmp/tests/user-subscriptions-dialog.mjs && node .tmp/tests/quota-settings-section.mjs",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "preview": "rsbuild preview",

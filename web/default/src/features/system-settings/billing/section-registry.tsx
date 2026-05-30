@@ -68,6 +68,10 @@ const BILLING_SECTIONS = [
           quota_setting: {
             enable_free_model_pre_consume:
               settings['quota_setting.enable_free_model_pre_consume'],
+            enterprise_budget_warning_threshold:
+              settings['quota_setting.enterprise_budget_warning_threshold'],
+            enterprise_budget_critical_threshold:
+              settings['quota_setting.enterprise_budget_critical_threshold'],
           },
         }}
         complianceConfirmed={

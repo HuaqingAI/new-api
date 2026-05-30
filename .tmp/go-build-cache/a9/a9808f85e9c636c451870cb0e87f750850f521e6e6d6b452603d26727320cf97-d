@@ -1,0 +1,8 @@
+./authenticator.go
+./const.go
+./credential.go
+./doc.go
+./login.go
+./registration.go
+./types.go
+./util.go

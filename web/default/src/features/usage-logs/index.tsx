@@ -51,10 +51,28 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   },
 }
 
+export function getUsageLogsPageTitleKey(section: UsageLogsSectionId): string {
+  return SECTION_META[section].titleKey
+}
+
+export function getUsageLogsDepartmentContextLabel(params: {
+  departmentId?: number
+  departmentName?: string
+}): string {
+  if (params.departmentName) {
+    return params.departmentName
+  }
+  if (typeof params.departmentId === 'number') {
+    return `#${params.departmentId}`
+  }
+  return ''
+}
+
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const params = route.useParams()
+  const searchParams = route.useSearch()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
@@ -103,19 +121,25 @@ function UsageLogsContent() {
     [navigate]
   )
 
-  const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
+  const pageTitleKey = getUsageLogsPageTitleKey(activeCategory)
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
+  const departmentContextLabel = getUsageLogsDepartmentContextLabel({
+    departmentId: searchParams.departmentId,
+    departmentName: searchParams.departmentName,
+  })
 
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t(pageMeta.titleKey)}
-        </SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t(pageTitleKey)}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='space-y-4'>
+            {departmentContextLabel ? (
+              <div className='text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm'>
+                {t('Context')}: {t('Department')} {departmentContextLabel}
+              </div>
+            ) : null}
             {showTaskSwitcher && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>

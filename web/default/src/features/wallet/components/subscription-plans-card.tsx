@@ -49,6 +49,7 @@ import {
 import {
   getPublicPlans,
   getSelfSubscriptionFull,
+  reorderSelfSubscription,
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
@@ -88,6 +89,30 @@ function getBillingPreferenceLabel(
     default:
       return preference
   }
+}
+
+export function getSubscriptionCardTitle(
+  sub: UserSubscriptionRecord['subscription'],
+  t: (key: string) => string,
+  planTitle?: string
+): string {
+  if (planTitle) {
+    return `${planTitle} · ${t('Subscription')} #${sub.id}`
+  }
+  if (sub.source_type === 'enterprise_allocation') {
+    return `${t('Enterprise Allocation Wallet')} · ${t('Subscription')} #${sub.id}`
+  }
+  return `${t('Subscription')} #${sub.id}`
+}
+
+export function getManagedSubscriptionNote(
+  sub: UserSubscriptionRecord['subscription'],
+  t: (key: string) => string
+): string | null {
+  if (sub.source_type !== 'enterprise_allocation') {
+    return null
+  }
+  return `${t('Managed by department')} · ${t('Cannot be deleted by user')}`
 }
 
 export function SubscriptionPlansCard({
@@ -163,6 +188,28 @@ export function SubscriptionPlansCard({
       await fetchSelfSubscription()
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  const handleSelfMove = async (
+    subId: number,
+    currentSortOrder: number,
+    direction: 'up' | 'down'
+  ) => {
+    const delta = direction === 'up' ? -100 : 100
+    try {
+      const res = await reorderSelfSubscription({
+        user_subscription_id: subId,
+        target_sort_order: currentSortOrder + delta,
+      })
+      if (res.success) {
+        toast.success(t('Subscription priority updated'))
+        await fetchSelfSubscription()
+      } else {
+        toast.error(res.message || t('Request failed'))
+      }
+    } catch {
+      toast.error(t('Request failed'))
     }
   }
 
@@ -417,9 +464,11 @@ export function SubscriptionPlansCard({
                       <div className='flex items-center justify-between'>
                         <div className='flex items-center gap-2'>
                           <span className='font-medium'>
-                            {planTitle
-                              ? `${planTitle} · ${t('Subscription')} #${subscription?.id}`
-                              : `${t('Subscription')} #${subscription?.id}`}
+                            {getSubscriptionCardTitle(
+                              subscription!,
+                              t,
+                              planTitle
+                            )}
                           </span>
                           {isActive ? (
                             <StatusBadge
@@ -467,6 +516,47 @@ export function SubscriptionPlansCard({
                           ).toLocaleString()}
                         </div>
                       )}
+                      <div className='text-muted-foreground mt-1'>
+                        {t('Source')}:{' '}
+                        {subscription?.source_type ||
+                          subscription?.source ||
+                          '-'}{' '}
+                        · {t('Subscription Priority')}:{' '}
+                        {subscription?.sort_order ?? 0}
+                      </div>
+                      {getManagedSubscriptionNote(subscription!, t) && (
+                        <div className='text-muted-foreground mt-1'>
+                          {getManagedSubscriptionNote(subscription!, t)}
+                        </div>
+                      )}
+                      <div className='mt-2 flex flex-wrap gap-2'>
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          onClick={() =>
+                            handleSelfMove(
+                              subscription!.id,
+                              subscription?.sort_order ?? 0,
+                              'up'
+                            )
+                          }
+                        >
+                          {t('Move Up')}
+                        </Button>
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          onClick={() =>
+                            handleSelfMove(
+                              subscription!.id,
+                              subscription?.sort_order ?? 0,
+                              'down'
+                            )
+                          }
+                        >
+                          {t('Move Down')}
+                        </Button>
+                      </div>
                       <div className='text-muted-foreground mt-1'>
                         {t('Total Quota')}:{' '}
                         {totalAmount > 0 ? (

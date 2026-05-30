@@ -58,6 +58,7 @@ import {
   createUserSubscription,
   invalidateUserSubscription,
   deleteUserSubscription,
+  reorderUserSubscriptionByAdmin,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
@@ -100,6 +101,17 @@ function SubscriptionStatusBadge(props: {
       copyable={false}
     />
   )
+}
+
+export function renderSubscriptionSourceLabel(
+  sub: UserSubscriptionRecord['subscription'],
+  t: (key: string) => string,
+  planTitle?: string
+) {
+  if (sub.source_type === 'enterprise_allocation') {
+    return planTitle || t('Enterprise Allocation Wallet')
+  }
+  return planTitle || `#${sub.plan_id}`
 }
 
 export function UserSubscriptionsDialog(props: Props) {
@@ -194,6 +206,28 @@ export function UserSubscriptionsDialog(props: Props) {
     }
   }
 
+  const handleMove = async (
+    subId: number,
+    currentSortOrder: number,
+    direction: 'up' | 'down'
+  ) => {
+    const delta = direction === 'up' ? -100 : 100
+    try {
+      const res = await reorderUserSubscriptionByAdmin({
+        user_subscription_id: subId,
+        target_sort_order: currentSortOrder + delta,
+      })
+      if (res.success) {
+        toast.success(t('Subscription priority updated'))
+        await loadData()
+      } else {
+        toast.error(res.message || t('Request failed'))
+      }
+    } catch {
+      toast.error(t('Request failed'))
+    }
+  }
+
   return (
     <>
       <Sheet open={props.open} onOpenChange={props.onOpenChange}>
@@ -283,6 +317,9 @@ export function UserSubscriptionsDialog(props: Props) {
                       const total = Number(sub.amount_total || 0)
                       const used = Number(sub.amount_used || 0)
 
+                      const isEnterpriseAllocation =
+                        sub.source_type === 'enterprise_allocation'
+
                       return (
                         <TableRow key={sub.id}>
                           <TableCell>
@@ -291,11 +328,19 @@ export function UserSubscriptionsDialog(props: Props) {
                           <TableCell>
                             <div>
                               <div className='font-medium'>
-                                {planTitleMap.get(sub.plan_id) ||
-                                  `#${sub.plan_id}`}
+                                {renderSubscriptionSourceLabel(
+                                  sub,
+                                  t,
+                                  planTitleMap.get(sub.plan_id)
+                                )}
                               </div>
                               <div className='text-muted-foreground text-sm'>
-                                {t('Source')}: {sub.source || '-'}
+                                {t('Source')}:{' '}
+                                {sub.source_type || sub.source || '-'}
+                              </div>
+                              <div className='text-muted-foreground text-sm'>
+                                {t('Subscription Priority')}:{' '}
+                                {sub.sort_order ?? 0}
                               </div>
                             </div>
                           </TableCell>
@@ -320,6 +365,28 @@ export function UserSubscriptionsDialog(props: Props) {
                               <Button
                                 size='sm'
                                 variant='outline'
+                                onClick={() =>
+                                  handleMove(sub.id, sub.sort_order ?? 0, 'up')
+                                }
+                              >
+                                {t('Move Up')}
+                              </Button>
+                              <Button
+                                size='sm'
+                                variant='outline'
+                                onClick={() =>
+                                  handleMove(
+                                    sub.id,
+                                    sub.sort_order ?? 0,
+                                    'down'
+                                  )
+                                }
+                              >
+                                {t('Move Down')}
+                              </Button>
+                              <Button
+                                size='sm'
+                                variant='outline'
                                 disabled={!isActive}
                                 onClick={() =>
                                   setConfirmAction({
@@ -333,6 +400,7 @@ export function UserSubscriptionsDialog(props: Props) {
                               <Button
                                 size='sm'
                                 variant='destructive'
+                                disabled={isEnterpriseAllocation}
                                 onClick={() =>
                                   setConfirmAction({
                                     type: 'delete',
@@ -340,7 +408,9 @@ export function UserSubscriptionsDialog(props: Props) {
                                   })
                                 }
                               >
-                                {t('Delete')}
+                                {isEnterpriseAllocation
+                                  ? t('Managed by department')
+                                  : t('Delete')}
                               </Button>
                             </div>
                           </TableCell>

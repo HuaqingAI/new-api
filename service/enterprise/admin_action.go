@@ -11,16 +11,19 @@ import (
 )
 
 const (
-	AdminActionMembershipReplace = "enterprise.organization.membership.replace"
-	AdminActionMembershipAdd     = "enterprise.organization.membership.add"
-	AdminActionMembershipDisable = "enterprise.organization.membership.disable"
-	AdminActionMembershipRestore = "enterprise.organization.membership.restore"
-	AdminActionDeptAdminGrant    = "enterprise.organization.department_admin.grant"
-	AdminActionDeptAdminRevoke   = "enterprise.organization.department_admin.revoke"
-	AdminActionDingTalkConfigSet = "enterprise.dingtalk.config.set"
-	AdminActionDingTalkTest      = "enterprise.dingtalk.connectivity.test"
-	AdminActionDingTalkSyncStart = "enterprise.dingtalk.sync.start"
+	AdminActionMembershipReplace      = "enterprise.organization.membership.replace"
+	AdminActionMembershipAdd          = "enterprise.organization.membership.add"
+	AdminActionMembershipDisable      = "enterprise.organization.membership.disable"
+	AdminActionMembershipRestore      = "enterprise.organization.membership.restore"
+	AdminActionDeptAdminGrant         = "enterprise.organization.department_admin.grant"
+	AdminActionDeptAdminRevoke        = "enterprise.organization.department_admin.revoke"
+	AdminActionDingTalkConfigSet      = "enterprise.dingtalk.config.set"
+	AdminActionDingTalkTest           = "enterprise.dingtalk.connectivity.test"
+	AdminActionDingTalkSyncStart      = "enterprise.dingtalk.sync.start"
 	AdminActionDingTalkConflictBindCandidate = "enterprise.dingtalk.sync_conflict.bind_candidate"
+	AdminActionUsageReportSet         = "enterprise.usage.report.set"
+	AdminActionDepartmentBudgetCreate = "enterprise.organization.department_budget.create"
+	AdminActionDepartmentBudgetReject = "enterprise.organization.department_budget.reject"
 
 	AdminObjectUserDepartment   = "enterprise_user_department"
 	AdminObjectDepartmentMember = "enterprise_department_member"
@@ -28,6 +31,8 @@ const (
 	AdminObjectDingTalkConfig   = "enterprise_dingtalk_config"
 	AdminObjectDingTalkSyncTask = "enterprise_dingtalk_sync_task"
 	AdminObjectDingTalkSyncConflict = "enterprise_dingtalk_sync_conflict"
+	AdminObjectUsageReportJob   = "enterprise_usage_report_job"
+	AdminObjectDepartmentBudget = "enterprise_department_budget"
 )
 
 type AdminActionService struct {

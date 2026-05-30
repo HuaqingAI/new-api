@@ -18,10 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
 import * as z from 'zod'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useForm, useWatch } from 'react-hook-form'
 import {
   AlertCircle,
   Building2,
@@ -35,9 +35,9 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
 import {
@@ -153,9 +153,7 @@ const dingTalkConfigSchema = (t: (key: string) => string) =>
       }
     })
 
-type DingTalkConfigFormValues = z.infer<
-  ReturnType<typeof dingTalkConfigSchema>
->
+type DingTalkConfigFormValues = z.infer<ReturnType<typeof dingTalkConfigSchema>>
 
 const emptyConfig: DingTalkConfig = {
   id: 0,
@@ -171,9 +169,7 @@ const emptyConfig: DingTalkConfig = {
   updated_at: 0,
 }
 
-function configToFormValues(
-  config: DingTalkConfig
-): DingTalkConfigFormValues {
+function configToFormValues(config: DingTalkConfig): DingTalkConfigFormValues {
   return {
     corp_id: config.corp_id ?? '',
     app_key: config.app_key ?? '',
@@ -195,7 +191,8 @@ export function EnterpriseDingTalk() {
     queryKey: enterpriseDingTalkQueryKey,
     queryFn: async () => {
       const result = await getDingTalkConfig()
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data ?? emptyConfig
     },
   })
@@ -214,7 +211,10 @@ export function EnterpriseDingTalk() {
 
   const mutation = useMutation({
     mutationFn: async (values: DingTalkConfigFormValues) => {
-      if ((values.login_enabled || values.sync_enabled) && !config.has_app_secret) {
+      if (
+        (values.login_enabled || values.sync_enabled) &&
+        !config.has_app_secret
+      ) {
         if (!values.app_secret.trim()) {
           throw new Error(t('App secret is required when enabling DingTalk'))
         }
@@ -231,13 +231,16 @@ export function EnterpriseDingTalk() {
       const result = await saveDingTalkConfig(
         appSecret ? { ...payload, app_secret: appSecret } : payload
       )
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data ?? emptyConfig
     },
     onSuccess: async (saved) => {
       queryClient.setQueryData(enterpriseDingTalkQueryKey, saved)
       form.reset(configToFormValues(saved))
-      await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseDingTalkQueryKey,
+      })
       toast.success(t('DingTalk configuration saved'))
     },
     onError: (error) => {
@@ -248,7 +251,8 @@ export function EnterpriseDingTalk() {
   const connectivityMutation = useMutation({
     mutationFn: async () => {
       const result = await testDingTalkConnectivity()
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data
     },
     onSuccess: (result) => {
@@ -269,7 +273,8 @@ export function EnterpriseDingTalk() {
     enabled: canEdit,
     queryFn: async () => {
       const result = await listDingTalkSyncLogs({ page: 1, page_size: 8 })
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data
     },
   })
@@ -283,7 +288,8 @@ export function EnterpriseDingTalk() {
         page: 1,
         page_size: 5,
       })
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data
     },
   })
@@ -291,7 +297,8 @@ export function EnterpriseDingTalk() {
   const syncMutation = useMutation({
     mutationFn: async () => {
       const result = await startDingTalkFullSync(true)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       if (!result.data) throw new Error(t('Missing sync task status'))
       return result.data
     },
@@ -303,7 +310,9 @@ export function EnterpriseDingTalk() {
       } else {
         toast.success(t('DingTalk sync started'))
       }
-      await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkSyncLogsQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseDingTalkSyncLogsQueryKey,
+      })
       await queryClient.invalidateQueries({
         queryKey: enterpriseDingTalkSyncConflictsQueryKey,
       })
@@ -341,7 +350,8 @@ export function EnterpriseDingTalk() {
       const taskId = syncMutation.data?.id
       if (!taskId) return null
       const result = await getDingTalkSyncTask(taskId)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data ?? null
     },
   })
@@ -360,7 +370,9 @@ export function EnterpriseDingTalk() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('DingTalk Integration')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('DingTalk Integration')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
           variant='outline'
@@ -379,7 +391,9 @@ export function EnterpriseDingTalk() {
               <AlertCircle className='size-4' />
               <AlertTitle>{t('Root access required')}</AlertTitle>
               <AlertDescription>
-                {t('Only root administrators can edit DingTalk app credentials.')}
+                {t(
+                  'Only root administrators can edit DingTalk app credentials.'
+                )}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -399,10 +413,16 @@ export function EnterpriseDingTalk() {
                       <div>
                         <CardTitle>{t('Enterprise App')}</CardTitle>
                         <CardDescription>
-                          {t('Configure the DingTalk app used for login and address book sync.')}
+                          {t(
+                            'Configure the DingTalk app used for login and address book sync.'
+                          )}
                         </CardDescription>
                       </div>
-                      <Badge variant={config.has_app_secret ? 'secondary' : 'outline'}>
+                      <Badge
+                        variant={
+                          config.has_app_secret ? 'secondary' : 'outline'
+                        }
+                      >
                         {config.has_app_secret
                           ? t('Secret saved')
                           : t('Secret not set')}
@@ -469,7 +489,9 @@ export function EnterpriseDingTalk() {
                             />
                           </FormControl>
                           <FormDescription>
-                            {t('Saved secrets are never returned by the API or stored in page state.')}
+                            {t(
+                              'Saved secrets are never returned by the API or stored in page state.'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -491,7 +513,9 @@ export function EnterpriseDingTalk() {
                             />
                           </FormControl>
                           <FormDescription>
-                            {t('Use the same HTTPS callback URL in the DingTalk developer console.')}
+                            {t(
+                              'Use the same HTTPS callback URL in the DingTalk developer console.'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -507,13 +531,17 @@ export function EnterpriseDingTalk() {
                           <FormControl>
                             <Textarea
                               className='min-h-24'
-                              placeholder={t('One department ID or rule per line')}
+                              placeholder={t(
+                                'One department ID or rule per line'
+                              )}
                               disabled={!canEdit}
                               {...field}
                             />
                           </FormControl>
                           <FormDescription>
-                            {t('Limit address book sync to selected DingTalk departments or leave blank for all.')}
+                            {t(
+                              'Limit address book sync to selected DingTalk departments or leave blank for all.'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -528,14 +556,18 @@ export function EnterpriseDingTalk() {
                       <div>
                         <CardTitle>{t('Enablement')}</CardTitle>
                         <CardDescription>
-                          {t('Credentials and a valid callback URL are required before enabling either switch.')}
+                          {t(
+                            'Credentials and a valid callback URL are required before enabling either switch.'
+                          )}
                         </CardDescription>
                       </div>
                       <Button
                         type='button'
                         variant='outline'
                         size='sm'
-                        disabled={!canTestConnectivity || connectivityMutation.isPending}
+                        disabled={
+                          !canTestConnectivity || connectivityMutation.isPending
+                        }
                         onClick={() => connectivityMutation.mutate()}
                       >
                         <Wifi className='size-4' />
@@ -547,13 +579,19 @@ export function EnterpriseDingTalk() {
                   </CardHeader>
                   <CardContent className='grid gap-4'>
                     {connectivityMutation.data ? (
-                      <EnterpriseDingTalkConnectivityResult result={connectivityMutation.data} />
+                      <EnterpriseDingTalkConnectivityResult
+                        result={connectivityMutation.data}
+                      />
                     ) : null}
                     {!canTestConnectivity && canEdit ? (
                       <p className='text-muted-foreground text-sm'>
                         {form.formState.isDirty
-                          ? t('Save the latest DingTalk settings before testing connectivity.')
-                          : t('Save valid DingTalk credentials before testing connectivity.')}
+                          ? t(
+                              'Save the latest DingTalk settings before testing connectivity.'
+                            )
+                          : t(
+                              'Save valid DingTalk credentials before testing connectivity.'
+                            )}
                       </p>
                     ) : null}
                     <div className='grid gap-4 md:grid-cols-2'>
@@ -563,7 +601,9 @@ export function EnterpriseDingTalk() {
                         render={({ field }) => (
                           <ToggleField
                             label={t('Enable DingTalk login')}
-                            description={t('Allow employees to sign in with DingTalk after OAuth is configured.')}
+                            description={t(
+                              'Allow employees to sign in with DingTalk after OAuth is configured.'
+                            )}
                             checked={field.value}
                             disabled={!canEdit}
                             onCheckedChange={field.onChange}
@@ -576,7 +616,9 @@ export function EnterpriseDingTalk() {
                         render={({ field }) => (
                           <ToggleField
                             label={t('Enable address book sync')}
-                            description={t('Allow manual and scheduled DingTalk department synchronization.')}
+                            description={t(
+                              'Allow manual and scheduled DingTalk department synchronization.'
+                            )}
                             checked={field.value}
                             disabled={!canEdit}
                             onCheckedChange={field.onChange}
@@ -588,11 +630,17 @@ export function EnterpriseDingTalk() {
                 </Card>
 
                 <div className='flex flex-wrap items-center justify-between gap-3'>
-                  <Button variant='outline' render={<Link to='/enterprise-organization' />}>
+                  <Button
+                    variant='outline'
+                    render={<Link to='/enterprise-organization' />}
+                  >
                     <Building2 className='size-4' />
                     {t('Enterprise Organization')}
                   </Button>
-                  <Button type='submit' disabled={!canEdit || mutation.isPending}>
+                  <Button
+                    type='submit'
+                    disabled={!canEdit || mutation.isPending}
+                  >
                     <Save className='size-4' />
                     {mutation.isPending ? t('Saving...') : t('Save')}
                   </Button>
@@ -604,9 +652,12 @@ export function EnterpriseDingTalk() {
                   task={taskQuery.data ?? syncMutation.data ?? null}
                   logs={syncLogsQuery.data?.items ?? []}
                   conflicts={syncConflictsQuery.data?.items ?? []}
-                  logsLoading={syncLogsQuery.isLoading || syncLogsQuery.isFetching}
+                  logsLoading={
+                    syncLogsQuery.isLoading || syncLogsQuery.isFetching
+                  }
                   conflictsLoading={
-                    syncConflictsQuery.isLoading || syncConflictsQuery.isFetching
+                    syncConflictsQuery.isLoading ||
+                    syncConflictsQuery.isFetching
                   }
                   syncing={syncMutation.isPending}
                   resolvingConflictId={
@@ -669,7 +720,9 @@ export function EnterpriseDingTalkSyncPanel({
           <div>
             <CardTitle>{t('Address Book Sync')}</CardTitle>
             <CardDescription>
-              {t('Start a DingTalk full sync and review the latest task result.')}
+              {t(
+                'Start a DingTalk full sync and review the latest task result.'
+              )}
             </CardDescription>
           </div>
           <div className='flex flex-wrap gap-2'>
@@ -698,7 +751,9 @@ export function EnterpriseDingTalkSyncPanel({
       <CardContent className='grid gap-4'>
         {!canSync ? (
           <p className='text-muted-foreground text-sm'>
-            {t('Enable address book sync and save valid DingTalk credentials before starting a sync.')}
+            {t(
+              'Enable address book sync and save valid DingTalk credentials before starting a sync.'
+            )}
           </p>
         ) : null}
         {task ? <DingTalkSyncTaskSummary task={task} /> : null}
@@ -837,9 +892,19 @@ export function DingTalkSyncConflictList({
 function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
   const { t } = useTranslation()
   const counters = [
-    [t('Departments'), task.departments_created + task.departments_updated + task.departments_disabled],
+    [
+      t('Departments'),
+      task.departments_created +
+        task.departments_updated +
+        task.departments_disabled,
+    ],
     [t('Users'), task.users_created + task.users_updated],
-    [t('Memberships'), task.memberships_created + task.memberships_updated + task.memberships_disabled],
+    [
+      t('Memberships'),
+      task.memberships_created +
+        task.memberships_updated +
+        task.memberships_disabled,
+    ],
     [t('Skipped'), task.skipped_count],
     [t('Failed'), task.failed_count],
   ] as const
@@ -848,7 +913,9 @@ function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
     <div className='grid gap-3 rounded-md border p-4 md:grid-cols-[minmax(0,1fr)_auto]'>
       <div className='min-w-0'>
         <div className='flex flex-wrap items-center gap-2'>
-          <Badge variant={task.status === 'failed' ? 'destructive' : 'secondary'}>
+          <Badge
+            variant={task.status === 'failed' ? 'destructive' : 'secondary'}
+          >
             {t(syncStatusLabel(task.status))}
           </Badge>
           <span className='text-muted-foreground text-sm'>
@@ -861,7 +928,7 @@ function DingTalkSyncTaskSummary({ task }: { task: DingTalkSyncTask }) {
       </div>
       <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-5'>
         {counters.map(([label, value]) => (
-          <div key={label} className='rounded-md bg-muted/50 px-3 py-2'>
+          <div key={label} className='bg-muted/50 rounded-md px-3 py-2'>
             <div className='text-muted-foreground'>{label}</div>
             <div className='font-medium'>{value}</div>
           </div>
@@ -907,7 +974,9 @@ function DingTalkSyncLogTable({
           {logs.map((log) => (
             <TableRow key={log.id}>
               <TableCell>
-                <Badge variant={log.status === 'failed' ? 'destructive' : 'outline'}>
+                <Badge
+                  variant={log.status === 'failed' ? 'destructive' : 'outline'}
+                >
                   {t(syncLogStatusLabel(log.status))}
                 </Badge>
               </TableCell>
@@ -985,7 +1054,11 @@ export function EnterpriseDingTalkConnectivityResult({
       )}
       variant={passed ? 'default' : 'destructive'}
     >
-      {passed ? <CheckCircle2 className='size-4' /> : <AlertCircle className='size-4' />}
+      {passed ? (
+        <CheckCircle2 className='size-4' />
+      ) : (
+        <AlertCircle className='size-4' />
+      )}
       <AlertTitle>{guidance.title}</AlertTitle>
       <AlertDescription>
         <div className='space-y-1'>
@@ -995,7 +1068,8 @@ export function EnterpriseDingTalkConnectivityResult({
             {result.stage ? (
               <>
                 {' '}
-                · {t('Stage')}: <span className='font-mono'>{result.stage}</span>
+                · {t('Stage')}:{' '}
+                <span className='font-mono'>{result.stage}</span>
               </>
             ) : null}
           </p>
@@ -1013,27 +1087,37 @@ function getConnectivityGuidance(
     case 'auth_success':
       return {
         title: t('DingTalk app is reachable'),
-        description: t('Credentials and address book permission are ready for login and sync.'),
+        description: t(
+          'Credentials and address book permission are ready for login and sync.'
+        ),
       }
     case 'auth_invalid_credentials':
       return {
         title: t('Check DingTalk app credentials'),
-        description: t('Confirm the Corp ID, App Key, and App Secret in the DingTalk developer console.'),
+        description: t(
+          'Confirm the Corp ID, App Key, and App Secret in the DingTalk developer console.'
+        ),
       }
     case 'auth_permission_insufficient':
       return {
         title: t('Grant address book permission'),
-        description: t('Enable address book read permission for this DingTalk app, then publish the app again.'),
+        description: t(
+          'Enable address book read permission for this DingTalk app, then publish the app again.'
+        ),
       }
     case 'network_unreachable':
       return {
         title: t('DingTalk network is unreachable'),
-        description: t('Check outbound network access and retry after the DingTalk OpenAPI endpoint is reachable.'),
+        description: t(
+          'Check outbound network access and retry after the DingTalk OpenAPI endpoint is reachable.'
+        ),
       }
     case 'callback_misconfigured':
       return {
         title: t('Fix DingTalk callback URL'),
-        description: t('Use the same valid HTTPS callback URL in new-api and the DingTalk developer console.'),
+        description: t(
+          'Use the same valid HTTPS callback URL in new-api and the DingTalk developer console.'
+        ),
       }
   }
 }

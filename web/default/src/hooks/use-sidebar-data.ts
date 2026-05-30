@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  BarChart3,
   Box,
   Building2,
   CreditCard,
@@ -137,6 +138,11 @@ export function useSidebarData(): SidebarData {
             title: t('Enterprise Organization'),
             url: '/enterprise-organization',
             icon: Building2,
+          },
+          {
+            title: t('Department Usage Overview'),
+            url: '/enterprise-usage',
+            icon: BarChart3,
           },
           {
             title: t('DingTalk Integration'),

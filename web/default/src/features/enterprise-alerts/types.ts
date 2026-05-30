@@ -50,6 +50,65 @@ export type AlertEventsResponse = {
   page_size: number
 }
 
+export type AlertRuleChannelType = 'email' | 'webhook' | 'dingtalk_robot'
+
+export type AlertRuleChannelConfigInput = {
+  type: AlertRuleChannelType
+  enabled?: boolean
+  receivers?: string[]
+  webhook_url?: string
+  webhook_secret?: string
+  dingtalk_robot_url?: string
+  dingtalk_robot_secret?: string
+}
+
+export type AlertRuleChannelConfigItem = {
+  type: AlertRuleChannelType
+  enabled: boolean
+  receivers: string[]
+  webhook_url?: string
+  webhook_secret_configured: boolean
+  webhook_secret_masked?: string
+  dingtalk_robot_secret_configured: boolean
+  dingtalk_robot_secret_masked?: string
+  dingtalk_robot_url?: string
+}
+
+export type AlertRuleItem = {
+  id: number
+  tenant_id: number
+  name: string
+  enabled: boolean
+  risk_types: string[]
+  department_ids: number[]
+  channel_configs: AlertRuleChannelConfigItem[]
+  dedupe_window_seconds: number
+  created_by: number
+  updated_by: number
+  created_at: number
+  updated_at: number
+}
+
+export type AlertRulesResponse = {
+  items: AlertRuleItem[]
+  total: number
+}
+
+export type AlertRuleResponse = {
+  item: AlertRuleItem
+}
+
+export type AlertRuleUpsertRequest = {
+  id?: number
+  tenant_id?: number
+  name?: string
+  enabled?: boolean
+  risk_types: string[]
+  department_ids: number[]
+  channel_configs: AlertRuleChannelConfigInput[]
+  dedupe_window_seconds?: number
+}
+
 export type EnterpriseAlertsSearch = {
   tenant_id?: number
   department_id?: number

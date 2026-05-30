@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
@@ -9,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func ListAlertEvents(c *gin.Context) {
@@ -80,11 +82,223 @@ func ListAlertEvents(c *gin.Context) {
 	})
 }
 
+func ListAlertRules(c *gin.Context) {
+	var query dtoenterprise.AlertRulesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, query.TenantId)
+	if !ok {
+		return
+	}
+
+	result, err := entservice.NewAlertService(model.DB).ListAlertRules(tenantId)
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	items := make([]dtoenterprise.AlertRuleItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, mapAlertRuleItem(item))
+	}
+	if items == nil {
+		items = []dtoenterprise.AlertRuleItem{}
+	}
+
+	common.ApiSuccess(c, dtoenterprise.AlertRulesResponse{
+		Items: items,
+		Total: result.Total,
+	})
+}
+
+func GetAlertRule(c *gin.Context) {
+	ruleId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+	var query dtoenterprise.AlertRulesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, query.TenantId)
+	if !ok {
+		return
+	}
+
+	item, err := entservice.NewAlertService(model.DB).GetAlertRule(tenantId, ruleId)
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.AlertRuleResponse{
+		Item: mapAlertRuleItem(item),
+	})
+}
+
+func SaveAlertRule(c *gin.Context) {
+	var req dtoenterprise.AlertRuleUpsertRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	input := entservice.AlertRuleInput{
+		Id:                  valueOrZero(req.Id),
+		TenantId:            tenantId,
+		Name:                readOptionalString(req.Name),
+		Enabled:             req.Enabled,
+		RiskTypes:           append([]string{}, req.RiskTypes...),
+		DepartmentIds:       append([]int{}, req.DepartmentIds...),
+		DedupeWindowSeconds: req.DedupeWindowSeconds,
+		ActorId:             c.GetInt("id"),
+	}
+	input.ChannelConfigs = mapAlertRuleChannelInputs(req.ChannelConfigs)
+
+	var result entservice.AlertRuleMutationResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		service := entservice.NewAlertService(tx)
+		var err error
+		result, err = service.SaveAlertRule(input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    tenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionAlertRuleSave,
+			ObjectType:  entservice.AdminObjectAlertRule,
+			ObjectId:    strconv.Itoa(result.Item.Id),
+			DiffSummary: result.AuditSummary,
+			Payload:     result.AuditPayload,
+		})
+	})
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.AlertRuleResponse{
+		Item: mapAlertRuleItem(result.Item),
+	})
+}
+
+func DeleteAlertRule(c *gin.Context) {
+	ruleId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+	var query dtoenterprise.AlertRulesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, query.TenantId)
+	if !ok {
+		return
+	}
+
+	var result entservice.AlertRuleMutationResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		service := entservice.NewAlertService(tx)
+		var err error
+		result, err = service.DeleteAlertRule(tenantId, ruleId, c.GetInt("id"))
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    tenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionAlertRuleDelete,
+			ObjectType:  entservice.AdminObjectAlertRule,
+			ObjectId:    strconv.Itoa(result.Item.Id),
+			DiffSummary: result.AuditSummary,
+			Payload:     result.AuditPayload,
+		})
+	})
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.AlertRuleResponse{
+		Item: mapAlertRuleItem(result.Item),
+	})
+}
+
 func writeAlertEventError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrInvalidAlertEventQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrAlertRuleInvalidInput), errors.Is(err, entservice.ErrAlertRuleChannelRequired):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrAlertRuleInvalidEmail):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertRuleInvalidEmail)
+	case errors.Is(err, entservice.ErrAlertRuleInvalidWebhookURL):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertRuleInvalidWebhook)
+	case errors.Is(err, entservice.ErrAlertRuleNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertRuleNotFound)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func mapAlertRuleChannelInputs(items []dtoenterprise.AlertRuleChannelConfigInput) []entservice.AlertRuleChannelInput {
+	out := make([]entservice.AlertRuleChannelInput, 0, len(items))
+	for _, item := range items {
+		out = append(out, entservice.AlertRuleChannelInput{
+			Type:          item.Type,
+			Enabled:       item.Enabled,
+			Receivers:     append([]string{}, item.Receivers...),
+			WebhookURL:    readOptionalString(item.WebhookURL),
+			WebhookSecret: item.WebhookSecret,
+			RobotWebhook:  readOptionalString(item.DingTalkRobotURL),
+			RobotSecret:   item.DingTalkRobotSecret,
+		})
+	}
+	return out
+}
+
+func mapAlertRuleItem(item entservice.AlertRuleItem) dtoenterprise.AlertRuleItem {
+	dto := dtoenterprise.AlertRuleItem{
+		Id:                  item.Id,
+		TenantId:            item.TenantId,
+		Name:                item.Name,
+		Enabled:             item.Enabled,
+		RiskTypes:           append([]string{}, item.RiskTypes...),
+		DepartmentIds:       append([]int{}, item.DepartmentIds...),
+		ChannelConfigs:      []dtoenterprise.AlertRuleChannelConfigItem{},
+		DedupeWindowSeconds: item.DedupeWindowSeconds,
+		CreatedBy:           item.CreatedBy,
+		UpdatedBy:           item.UpdatedBy,
+		CreatedAt:           item.CreatedAt,
+		UpdatedAt:           item.UpdatedAt,
+	}
+	for _, channel := range item.ChannelConfigs {
+		dto.ChannelConfigs = append(dto.ChannelConfigs, dtoenterprise.AlertRuleChannelConfigItem{
+			Type:                     channel.Type,
+			Enabled:                  channel.Enabled,
+			Receivers:                append([]string{}, channel.Receivers...),
+			WebhookURL:               optionalString(channel.WebhookURL),
+			WebhookSecretConfigured:  channel.WebhookSecretConfigured,
+			WebhookSecretMasked:      channel.WebhookSecretMasked,
+			DingTalkRobotURL:         optionalString(channel.DingTalkRobotURL),
+			DingTalkSecretConfigured: channel.DingTalkSecretConfigured,
+			DingTalkSecretMasked:     channel.DingTalkSecretMasked,
+		})
+	}
+	return dto
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

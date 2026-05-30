@@ -6,6 +6,7 @@ import (
 
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,4 +59,106 @@ func TestAlertEventsAPIReturnsEmptyItemsArray(t *testing.T) {
 	response := decodeEnterpriseAPIResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	require.JSONEq(t, `{"items":[],"total":0,"page":1,"page_size":20}`, string(response.Data))
+}
+
+func TestAlertRulesAPIValidatesPersistsAndSanitizesSecrets(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	invalidRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/alerts/rules", map[string]any{
+		"name":       "Broken",
+		"risk_types": []string{"abuse"},
+		"channel_configs": []map[string]any{
+			{
+				"type":      "email",
+				"receivers": []string{"bad-email"},
+			},
+		},
+	})
+	invalidResponse := decodeEnterpriseAPIResponse(t, invalidRecorder)
+	require.False(t, invalidResponse.Success)
+	require.Equal(t, "enterprise.alert.rule_invalid_email", invalidResponse.Message)
+
+	saveRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/alerts/rules", map[string]any{
+		"name":                  "Critical abuse",
+		"enabled":               true,
+		"risk_types":            []string{"abuse", "sensitive_words"},
+		"department_ids":        []int{1, 2},
+		"dedupe_window_seconds": 300,
+		"channel_configs": []map[string]any{
+			{
+				"type":      "email",
+				"enabled":   true,
+				"receivers": []string{"ops@example.com"},
+			},
+			{
+				"type":           "webhook",
+				"enabled":        true,
+				"webhook_url":    "https://hooks.example.com/alerts?token=secret",
+				"webhook_secret": "plain-secret",
+			},
+		},
+	})
+	saveResponse := decodeEnterpriseAPIResponse(t, saveRecorder)
+	require.True(t, saveResponse.Success, saveResponse.Message)
+	require.NotContains(t, saveRecorder.Body.String(), "plain-secret")
+	require.NotContains(t, saveRecorder.Body.String(), "token=secret")
+
+	payload := decodeEnterpriseData[dtoenterprise.AlertRuleResponse](t, saveResponse)
+	require.Equal(t, "Critical abuse", payload.Item.Name)
+	require.Len(t, payload.Item.ChannelConfigs, 2)
+	require.True(t, payload.Item.ChannelConfigs[1].WebhookSecretConfigured)
+	require.NotEmpty(t, payload.Item.ChannelConfigs[1].WebhookSecretMasked)
+	require.NotContains(t, payload.Item.ChannelConfigs[1].WebhookSecretMasked, "plain-secret")
+
+	listRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/rules", nil)
+	listResponse := decodeEnterpriseAPIResponse(t, listRecorder)
+	require.True(t, listResponse.Success, listResponse.Message)
+	require.NotContains(t, listRecorder.Body.String(), "plain-secret")
+
+	detailRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/rules/1", nil)
+	detailResponse := decodeEnterpriseAPIResponse(t, detailRecorder)
+	require.True(t, detailResponse.Success, detailResponse.Message)
+	require.NotContains(t, detailRecorder.Body.String(), "plain-secret")
+
+	deleteRecorder := performEnterpriseRequest(t, router, http.MethodDelete, "/api/enterprise/alerts/rules/1", nil)
+	deleteResponse := decodeEnterpriseAPIResponse(t, deleteRecorder)
+	require.True(t, deleteResponse.Success, deleteResponse.Message)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 2)
+	require.Equal(t, entservice.AdminActionAlertRuleSave, actions[0].ActionType)
+	require.Equal(t, entservice.AdminActionAlertRuleDelete, actions[1].ActionType)
+	require.NotContains(t, actions[0].Payload, "plain-secret")
+	require.NotContains(t, actions[0].Payload, "token=secret")
+}
+
+func TestAlertRulesAPISupportsTenantScopeOnDetailAndDelete(t *testing.T) {
+	router, _ := setupEnterpriseControllerTest(t)
+
+	saveRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/alerts/rules?tenant_id=7", map[string]any{
+		"name":       "Tenant scoped",
+		"risk_types": []string{"abuse"},
+		"channel_configs": []map[string]any{
+			{
+				"type":      "email",
+				"receivers": []string{"ops@example.com"},
+			},
+		},
+	})
+	saveResponse := decodeEnterpriseAPIResponse(t, saveRecorder)
+	require.True(t, saveResponse.Success, saveResponse.Message)
+
+	detailRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/rules/1?tenant_id=7", nil)
+	detailResponse := decodeEnterpriseAPIResponse(t, detailRecorder)
+	require.True(t, detailResponse.Success, detailResponse.Message)
+
+	notFoundRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/rules/1", nil)
+	notFoundResponse := decodeEnterpriseAPIResponse(t, notFoundRecorder)
+	require.False(t, notFoundResponse.Success)
+	require.Equal(t, "enterprise.alert.rule_not_found", notFoundResponse.Message)
+
+	deleteRecorder := performEnterpriseRequest(t, router, http.MethodDelete, "/api/enterprise/alerts/rules/1?tenant_id=7", nil)
+	deleteResponse := decodeEnterpriseAPIResponse(t, deleteRecorder)
+	require.True(t, deleteResponse.Success, deleteResponse.Message)
 }

@@ -5128,6 +5128,246 @@
         ]
       }
     },
+    "/api/enterprise/alerts/rules": {
+      "get": {
+        "summary": "查询企业告警规则列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRulesResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "创建或更新企业告警规则",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRuleUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRuleResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/alerts/rules/{id}": {
+      "get": {
+        "summary": "获取企业告警规则详情",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRuleResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除企业告警规则",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertRuleResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/enterprise/usage/department-summary": {
       "get": {
         "summary": "获取部门用量汇总",
@@ -6343,6 +6583,192 @@
           },
           "summary": {
             "type": "string"
+          }
+        }
+      },
+      "AlertRuleChannelConfigInput": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "webhook",
+              "dingtalk_robot"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "receivers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "webhook_url": {
+            "type": "string"
+          },
+          "webhook_secret": {
+            "type": "string"
+          },
+          "dingtalk_robot_url": {
+            "type": "string"
+          },
+          "dingtalk_robot_secret": {
+            "type": "string"
+          }
+        }
+      },
+      "AlertRuleChannelConfigItem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "webhook",
+              "dingtalk_robot"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "receivers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "webhook_url": {
+            "type": "string"
+          },
+          "webhook_secret_configured": {
+            "type": "boolean"
+          },
+          "webhook_secret_masked": {
+            "type": "string"
+          },
+          "dingtalk_robot_url": {
+            "type": "string"
+          },
+          "dingtalk_robot_secret_configured": {
+            "type": "boolean"
+          },
+          "dingtalk_robot_secret_masked": {
+            "type": "string"
+          }
+        }
+      },
+      "AlertRuleItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "risk_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "department_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "channel_configs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertRuleChannelConfigItem"
+            }
+          },
+          "dedupe_window_seconds": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "integer"
+          },
+          "updated_by": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AlertRulesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertRuleItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "AlertRuleResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/AlertRuleItem"
+          }
+        }
+      },
+      "AlertRuleUpsertRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "risk_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "department_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "channel_configs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertRuleChannelConfigInput"
+            }
+          },
+          "dedupe_window_seconds": {
+            "type": "integer"
           }
         }
       },

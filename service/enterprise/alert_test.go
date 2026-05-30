@@ -324,3 +324,262 @@ func TestAlertServiceListAlertEventsRejectsInvalidQuery(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrInvalidAlertEventQuery)
 }
+
+func TestAlertServiceSaveAlertRuleValidatesAndMasksSecrets(t *testing.T) {
+	service, _ := setupAlertServiceTest(t)
+
+	_, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId: 0,
+		Name:     "Missing channels",
+		RiskTypes: []string{
+			"abuse",
+		},
+		ActorId: 100,
+	})
+	require.ErrorIs(t, err, ErrAlertRuleChannelRequired)
+
+	_, err = service.SaveAlertRule(AlertRuleInput{
+		TenantId: 0,
+		Name:     "Bad email",
+		RiskTypes: []string{
+			"abuse",
+		},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"not-an-email"},
+			},
+		},
+		ActorId: 100,
+	})
+	require.ErrorIs(t, err, ErrAlertRuleInvalidEmail)
+
+	_, err = service.SaveAlertRule(AlertRuleInput{
+		TenantId: 0,
+		Name:     "Bad webhook",
+		RiskTypes: []string{
+			"abuse",
+		},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"alice@example.com"},
+			},
+			{
+				Type:       entmodel.AlertRuleChannelWebhook,
+				Enabled:    alertBoolPtr(true),
+				WebhookURL: "ftp://bad.example.com",
+			},
+		},
+		ActorId: 100,
+	})
+	require.ErrorIs(t, err, ErrAlertRuleInvalidWebhookURL)
+
+	result, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:      0,
+		Name:          "Risk email rule",
+		RiskTypes:     []string{"abuse", "sensitive_words", "abuse"},
+		DepartmentIds: []int{11, 22, 11},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"alice@example.com", "alice@example.com", "bob@example.com"},
+			},
+			{
+				Type:          entmodel.AlertRuleChannelWebhook,
+				Enabled:       boolPtr(true),
+				WebhookURL:    "https://hooks.example.com/alerts?token=secret",
+				WebhookSecret: alertStringPtr("super-secret"),
+			},
+		},
+		DedupeWindowSeconds: alertIntPtr(600),
+		ActorId:             100,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Risk email rule", result.Item.Name)
+	require.Equal(t, []string{"abuse", "sensitive_words"}, result.Item.RiskTypes)
+	require.Equal(t, []int{11, 22}, result.Item.DepartmentIds)
+	require.Equal(t, 600, result.Item.DedupeWindowSeconds)
+	require.Len(t, result.Item.ChannelConfigs, 2)
+	require.Equal(t, []string{"alice@example.com", "bob@example.com"}, result.Item.ChannelConfigs[0].Receivers)
+	require.Equal(t, "https://hooks.example.com/alerts", result.Item.ChannelConfigs[1].WebhookURL)
+	require.True(t, result.Item.ChannelConfigs[1].WebhookSecretConfigured)
+	require.NotEmpty(t, result.Item.ChannelConfigs[1].WebhookSecretMasked)
+	require.NotContains(t, result.Item.ChannelConfigs[1].WebhookSecretMasked, "super-secret")
+	require.NotContains(t, result.AuditSummary, "super-secret")
+	require.NotContains(t, result.Item.ChannelConfigs[1].WebhookURL, "token=secret")
+	require.NotContains(t, result.AuditPayload["channel_configs"], "super-secret")
+}
+
+func TestAlertServiceSaveAlertRuleSupportsGlobalAndUpdateWithoutSecretLeak(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	created, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:  7,
+		Name:      "Global email rule",
+		RiskTypes: []string{"abuse"},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"owner@example.com"},
+			},
+			{
+				Type:         entmodel.AlertRuleChannelDingTalkRobot,
+				Enabled:      alertBoolPtr(true),
+				RobotWebhook: "https://oapi.dingtalk.com/robot/send?access_token=token",
+				RobotSecret:  alertStringPtr("ding-secret"),
+			},
+		},
+		Enabled: alertBoolPtr(true),
+		ActorId: 201,
+	})
+	require.NoError(t, err)
+	require.Empty(t, created.Item.DepartmentIds)
+	require.Len(t, created.Item.ChannelConfigs, 2)
+	require.Equal(t, "https://oapi.dingtalk.com/robot/send", created.Item.ChannelConfigs[1].DingTalkRobotURL)
+	require.True(t, created.Item.ChannelConfigs[1].DingTalkSecretConfigured)
+
+	updated, err := service.SaveAlertRule(AlertRuleInput{
+		Id:       created.Item.Id,
+		TenantId: 7,
+		Name:     "Global email rule v2",
+		RiskTypes: []string{
+			"sensitive_words",
+		},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"owner@example.com"},
+			},
+			{
+				Type:         entmodel.AlertRuleChannelDingTalkRobot,
+				Enabled:      alertBoolPtr(true),
+				RobotWebhook: "https://oapi.dingtalk.com/robot/send?access_token=token-updated",
+			},
+		},
+		Enabled: alertBoolPtr(false),
+		ActorId: 202,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated.PreviousItem)
+	require.Equal(t, "Global email rule", updated.PreviousItem.Name)
+	require.False(t, updated.Item.Enabled)
+	require.Equal(t, "https://oapi.dingtalk.com/robot/send", updated.Item.ChannelConfigs[1].DingTalkRobotURL)
+	require.True(t, updated.Item.ChannelConfigs[1].DingTalkSecretConfigured)
+
+	got, err := service.GetAlertRule(7, created.Item.Id)
+	require.NoError(t, err)
+	require.Equal(t, updated.Item.Name, got.Name)
+	require.True(t, got.ChannelConfigs[1].DingTalkSecretConfigured)
+	require.NotContains(t, got.ChannelConfigs[1].DingTalkSecretMasked, "ding-secret")
+
+	list, err := service.ListAlertRules(7)
+	require.NoError(t, err)
+	require.Equal(t, 1, list.Total)
+	require.Len(t, list.Items, 1)
+
+	var stored entmodel.AlertRule
+	require.NoError(t, db.Where("tenant_id = ? AND id = ?", 7, created.Item.Id).First(&stored).Error)
+	configs, err := stored.ParsedChannelConfigs()
+	require.NoError(t, err)
+	require.Equal(t, "ding-secret", configs[1].RobotSecret)
+}
+
+func TestAlertServiceDeleteAlertRuleAndOptionalChannelsDoNotBlockSave(t *testing.T) {
+	service, _ := setupAlertServiceTest(t)
+
+	created, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:  0,
+		Name:      "Email only",
+		RiskTypes: []string{"abuse"},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"ops@example.com"},
+			},
+			{
+				Type:       entmodel.AlertRuleChannelWebhook,
+				Enabled:    alertBoolPtr(false),
+				WebhookURL: "",
+			},
+		},
+		ActorId: 300,
+	})
+	require.NoError(t, err)
+	require.Len(t, created.Item.ChannelConfigs, 2)
+	require.False(t, created.Item.ChannelConfigs[1].Enabled)
+
+	deleted, err := service.DeleteAlertRule(0, created.Item.Id, 300)
+	require.NoError(t, err)
+	require.Equal(t, created.Item.Id, deleted.Item.Id)
+	require.Contains(t, deleted.AuditSummary, "Deleted alert rule")
+
+	_, err = service.GetAlertRule(0, created.Item.Id)
+	require.ErrorIs(t, err, ErrAlertRuleNotFound)
+}
+
+func TestAlertServiceSaveAlertRuleRetainsOptionalChannelsWhenUpdateOmitsThem(t *testing.T) {
+	service, _ := setupAlertServiceTest(t)
+
+	created, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:  9,
+		Name:      "Optional channels",
+		RiskTypes: []string{"abuse"},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"ops@example.com"},
+			},
+			{
+				Type:          entmodel.AlertRuleChannelWebhook,
+				Enabled:       alertBoolPtr(true),
+				WebhookURL:    "https://user:pass@hooks.example.com/alerts?token=secret",
+				WebhookSecret: alertStringPtr("kept-secret"),
+			},
+			{
+				Type:         entmodel.AlertRuleChannelDingTalkRobot,
+				Enabled:      alertBoolPtr(true),
+				RobotWebhook: "https://oapi.dingtalk.com/robot/send?access_token=old-token",
+				RobotSecret:  alertStringPtr("robot-secret"),
+			},
+		},
+		ActorId: 400,
+	})
+	require.NoError(t, err)
+
+	updated, err := service.SaveAlertRule(AlertRuleInput{
+		Id:       created.Item.Id,
+		TenantId: 9,
+		Name:     "Optional channels updated",
+		RiskTypes: []string{
+			"sensitive_words",
+		},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Receivers: []string{"ops@example.com"},
+			},
+		},
+		ActorId: 401,
+	})
+	require.NoError(t, err)
+	require.Len(t, updated.Item.ChannelConfigs, 3)
+	require.Equal(t, "https://hooks.example.com/alerts", updated.Item.ChannelConfigs[1].WebhookURL)
+	require.True(t, updated.Item.ChannelConfigs[1].WebhookSecretConfigured)
+	require.Equal(t, "https://oapi.dingtalk.com/robot/send", updated.Item.ChannelConfigs[2].DingTalkRobotURL)
+	require.True(t, updated.Item.ChannelConfigs[2].DingTalkSecretConfigured)
+	require.NotContains(t, updated.AuditPayload["channel_configs"], "kept-secret")
+	require.NotContains(t, updated.AuditPayload["channel_configs"], "user:pass")
+}
+
+func alertBoolPtr(value bool) *bool {
+	return &value
+}
+
+func alertIntPtr(value int) *int {
+	return &value
+}
+
+func alertStringPtr(value string) *string {
+	return &value
+}

@@ -97,3 +97,86 @@ func TestEnterpriseAlertsAPIHonorsTenantScopeAndEmptyResult(t *testing.T) {
 	require.NotNil(t, response.Items[0].DepartmentSnapshot)
 	require.Empty(t, response.Items[0].DepartmentSnapshot)
 }
+
+func TestEnterpriseAlertRulesAPIRequiresEnterpriseAdminAndSanitizesSecrets(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	commonUser := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/alerts/rules", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled), map[string]any{
+		"name":       "Rule",
+		"risk_types": []string{"abuse"},
+		"channel_configs": []map[string]any{
+			{
+				"type":      "email",
+				"receivers": []string{"ops@example.com"},
+			},
+		},
+	})
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	deptAdmin := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/alerts/rules", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled), map[string]any{
+		"name":       "Rule",
+		"risk_types": []string{"abuse"},
+		"channel_configs": []map[string]any{
+			{
+				"type":      "email",
+				"receivers": []string{"ops@example.com"},
+			},
+		},
+	})
+	deptAdminPayload := decodeAdminActionsAPIResponse(t, deptAdmin)
+	require.False(t, deptAdminPayload.Success)
+	require.Contains(t, deptAdminPayload.Message, "error.enterprise.permission.admin_required")
+
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	save := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/alerts/rules?tenant_id=7", adminCookies, map[string]any{
+		"name":            "Tenant 7 abuse",
+		"risk_types":      []string{"abuse"},
+		"department_ids":  []int{101},
+		"channel_configs": []map[string]any{{"type": "email", "receivers": []string{"ops@example.com"}}, {"type": "webhook", "enabled": true, "webhook_url": "https://hooks.example.com/path?credential=plain", "webhook_secret": "plain-secret"}},
+	})
+	savePayload := decodeAdminActionsAPIResponse(t, save)
+	require.True(t, savePayload.Success, savePayload.Message)
+	require.NotContains(t, string(savePayload.Data), "plain-secret")
+	require.NotContains(t, string(savePayload.Data), "credential=plain")
+
+	list := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/rules?tenant_id=7", adminCookies)
+	listPayload := decodeAdminActionsAPIResponse(t, list)
+	require.True(t, listPayload.Success, listPayload.Message)
+	require.NotContains(t, string(listPayload.Data), "plain-secret")
+
+	var actions []modelenterprise.AdminAction
+	require.NoError(t, fixture.db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Equal(t, "enterprise.alert.rule.save", actions[0].ActionType)
+	require.Equal(t, "enterprise_alert_rule", actions[0].ObjectType)
+	require.NotContains(t, actions[0].Payload, "plain-secret")
+	require.NotContains(t, actions[0].Payload, "credential=plain")
+}
+
+func TestEnterpriseAlertRulesAPIRejectsOptionalOnlyChannelsWithoutEmailLoop(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	recorder := fixture.performEnterpriseRequestWithBody(t, http.MethodPut, "/api/enterprise/alerts/rules", adminCookies, map[string]any{
+		"name":       "Webhook only",
+		"risk_types": []string{"abuse"},
+		"channel_configs": []map[string]any{
+			{
+				"type":        "webhook",
+				"enabled":     true,
+				"webhook_url": "https://hooks.example.com/path",
+			},
+		},
+	})
+	response := decodeAdminActionsAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "common.invalid_params", response.Message)
+}

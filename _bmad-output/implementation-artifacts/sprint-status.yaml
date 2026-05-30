@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-29 23:10:00 +08:00
+last_updated: 2026-05-31 03:04:00 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -73,8 +73,8 @@ development_status:
   4-5-configure-and-send-scheduled-usage-reports: done
   epic-4-retrospective: done
 
-  epic-5: backlog
-  5-1-record-content-risk-events: backlog
+  epic-5: in-progress
+  5-1-record-content-risk-events: done
   5-2-query-and-filter-risk-events: backlog
   5-3-configure-content-risk-alert-rules-and-channels: backlog
   5-4-send-traceable-alert-notifications: backlog

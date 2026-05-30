@@ -19,7 +19,6 @@
 ### Recommendations for Future Runs
 - Keep recovery checks on the shared sprint-status parser so resume logic and verification logic cannot drift.
 - Auto-finalize orchestration state when all stories and retrospectives are already done to avoid stale `IN_PROGRESS` state files.
-
 ## Run: 2026-05-30T23:56:15Z
 
 **Epic:** new-api - Epic Breakdown

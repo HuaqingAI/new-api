@@ -22,5 +22,7 @@ describe('Enterprise alerts classic helpers', () => {
     assert.match(source, /saveAlertRule/);
     assert.match(source, /投递结果/);
     assert.match(source, /getAlertDeliveries/);
+    assert.match(source, /resendAlertDelivery/);
+    assert.match(source, /人工重发/);
   });
 });

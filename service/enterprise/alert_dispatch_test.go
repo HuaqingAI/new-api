@@ -196,17 +196,17 @@ func TestAlertServiceListAlertDeliveriesFiltersTenantStatusAndPagination(t *test
 	require.NoError(t, db.Create(&deliveryOne).Error)
 
 	deliveryTwo := entmodel.AlertDelivery{
-		TenantId:      7,
-		EventId:       102,
-		RuleId:        202,
-		ChannelType:   entmodel.AlertRuleChannelEmail,
-		Status:        entmodel.AlertDeliveryStatusSent,
-		AttemptCount:  1,
-		MaxAttempts:   4,
-		SentAt:        1717117600,
-		DedupeKey:     "7:102:202:email:1717117500",
-		CreatedAt:     1717117500,
-		UpdatedAt:     1717117600,
+		TenantId:     7,
+		EventId:      102,
+		RuleId:       202,
+		ChannelType:  entmodel.AlertRuleChannelEmail,
+		Status:       entmodel.AlertDeliveryStatusSent,
+		AttemptCount: 1,
+		MaxAttempts:  4,
+		SentAt:       1717117600,
+		DedupeKey:    "7:102:202:email:1717117500",
+		CreatedAt:    1717117500,
+		UpdatedAt:    1717117600,
 	}
 	require.NoError(t, deliveryTwo.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
 		EventId:           102,
@@ -258,6 +258,169 @@ func TestAlertServiceListAlertDeliveriesFiltersTenantStatusAndPagination(t *test
 	require.NotNil(t, result.Items[0].Trace)
 	require.Equal(t, "req-101", result.Items[0].Trace.RequestId)
 	require.Equal(t, "/enterprise-alerts?event_id=101", result.Items[0].Trace.DetailRoute)
+	require.Equal(t, "Engineering (#11) · req-101 · /enterprise-alerts?event_id=101", result.Items[0].TraceSummary)
+}
+
+func TestAlertServiceResendAlertDeliveryCreatesManualPendingDelivery(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	parent := entmodel.AlertDelivery{
+		TenantId:      7,
+		EventId:       101,
+		RuleId:        201,
+		ChannelType:   entmodel.AlertRuleChannelWebhook,
+		Status:        entmodel.AlertDeliveryStatusFinalFailed,
+		AttemptCount:  4,
+		MaxAttempts:   4,
+		FinalFailedAt: 1717117500,
+		ErrorReason:   "webhook timeout",
+		DedupeKey:     "7:101:201:webhook:1717117200",
+		CreatedAt:     1717117200,
+		UpdatedAt:     1717117500,
+	}
+	require.NoError(t, parent.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:           101,
+		RequestId:         "req-101",
+		TenantId:          7,
+		Username:          "alice",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Engineering (#11)",
+		EventSummary:      "review requested",
+		RuleId:            201,
+		RuleName:          "Webhook alert",
+		DetailRoute:       "/enterprise-alerts?event_id=101",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, db.Create(&parent).Error)
+
+	service.now = func() time.Time { return time.Unix(1717117600, 0) }
+	result, err := service.ResendAlertDelivery(7, parent.Id, 999)
+	require.NoError(t, err)
+	require.True(t, result.Created)
+	require.Equal(t, entmodel.AlertDeliveryStatusPending, result.Item.Status)
+	require.Equal(t, entmodel.AlertDeliveryTriggerManual, result.Item.TriggerSource)
+	require.NotNil(t, result.Item.ManualParentId)
+	require.Equal(t, parent.Id, *result.Item.ManualParentId)
+	require.Equal(t, parent.EventId, result.Item.EventId)
+	require.Equal(t, parent.RuleId, result.Item.RuleId)
+	require.Equal(t, int64(0), result.Item.FinalFailedAt)
+	require.Empty(t, result.Item.ErrorReason)
+
+	var deliveries []entmodel.AlertDelivery
+	require.NoError(t, db.Order("id ASC").Find(&deliveries).Error)
+	require.Len(t, deliveries, 2)
+	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, deliveries[0].Status)
+	require.Equal(t, entmodel.AlertDeliveryStatusPending, deliveries[1].Status)
+	require.Equal(t, entmodel.AlertDeliveryTriggerManual, deliveries[1].TriggerSource)
+	require.Equal(t, parent.Id, *deliveries[1].ManualParentId)
+	require.NotEqual(t, deliveries[0].DedupeKey, deliveries[1].DedupeKey)
+}
+
+func TestAlertServiceResendAlertDeliveryReusesInFlightManualResend(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	parent := entmodel.AlertDelivery{
+		TenantId:      7,
+		EventId:       101,
+		RuleId:        201,
+		ChannelType:   entmodel.AlertRuleChannelWebhook,
+		Status:        entmodel.AlertDeliveryStatusFinalFailed,
+		AttemptCount:  4,
+		MaxAttempts:   4,
+		FinalFailedAt: 1717117500,
+		ErrorReason:   "webhook timeout",
+		DedupeKey:     "7:101:201:webhook:1717117200",
+		CreatedAt:     1717117200,
+		UpdatedAt:     1717117500,
+	}
+	require.NoError(t, parent.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:           101,
+		RequestId:         "req-101",
+		TenantId:          7,
+		Username:          "alice",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Engineering (#11)",
+		EventSummary:      "review requested",
+		RuleId:            201,
+		RuleName:          "Webhook alert",
+		DetailRoute:       "/enterprise-alerts?event_id=101",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, db.Create(&parent).Error)
+
+	manualParentId := parent.Id
+	child := entmodel.AlertDelivery{
+		TenantId:       7,
+		EventId:        101,
+		RuleId:         201,
+		ChannelType:    entmodel.AlertRuleChannelWebhook,
+		Status:         entmodel.AlertDeliveryStatusPending,
+		AttemptCount:   0,
+		MaxAttempts:    4,
+		NextRetryAt:    1717117600,
+		DedupeKey:      "7:101:201:webhook:manual:1:1",
+		TriggerSource:  entmodel.AlertDeliveryTriggerManual,
+		ManualParentId: &manualParentId,
+		CreatedAt:      1717117600,
+		UpdatedAt:      1717117600,
+	}
+	require.NoError(t, child.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:           101,
+		RequestId:         "req-101",
+		TenantId:          7,
+		Username:          "alice",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Engineering (#11)",
+		EventSummary:      "review requested",
+		RuleId:            201,
+		RuleName:          "Webhook alert",
+		DetailRoute:       "/enterprise-alerts?event_id=101",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, db.Create(&child).Error)
+
+	result, err := service.ResendAlertDelivery(7, parent.Id, 999)
+	require.NoError(t, err)
+	require.False(t, result.Created)
+	require.Equal(t, child.Id, result.Item.Id)
+
+	var deliveries []entmodel.AlertDelivery
+	require.NoError(t, db.Order("id ASC").Find(&deliveries).Error)
+	require.Len(t, deliveries, 2)
+}
+
+func TestAlertServiceResendAlertDeliveryRejectsNonFinalFailedStatus(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	delivery := entmodel.AlertDelivery{
+		TenantId:     7,
+		EventId:      101,
+		RuleId:       201,
+		ChannelType:  entmodel.AlertRuleChannelWebhook,
+		Status:       entmodel.AlertDeliveryStatusSent,
+		AttemptCount: 1,
+		MaxAttempts:  4,
+		DedupeKey:    "7:101:201:webhook:1717117200",
+		CreatedAt:    1717117200,
+		UpdatedAt:    1717117500,
+	}
+	require.NoError(t, delivery.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId: 101,
+		RuleId:  201,
+	}))
+	require.NoError(t, db.Create(&delivery).Error)
+
+	_, err := service.ResendAlertDelivery(7, delivery.Id, 999)
+	require.ErrorIs(t, err, ErrAlertDeliveryResendNotAllowed)
 }
 
 func TestAlertDispatchServiceSuccessMarksResentOnRetry(t *testing.T) {

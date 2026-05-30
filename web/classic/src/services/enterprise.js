@@ -52,6 +52,13 @@ export async function getAlertDeliveries(params = {}) {
   return res.data;
 }
 
+export async function resendAlertDelivery(id, params = {}) {
+  const res = await API.post(`/api/enterprise/alerts/deliveries/${id}/resend`, null, {
+    params,
+  });
+  return res.data;
+}
+
 export async function saveAlertRule(data) {
   const res = await API.put('/api/enterprise/alerts/rules', data);
   return res.data;

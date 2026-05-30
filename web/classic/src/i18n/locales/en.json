@@ -3857,6 +3857,13 @@
     "通道": "Channel",
     "追溯信息": "Trace Details",
     "错误原因": "Error Reason",
-    "暂无追溯信息": "No trace details yet"
+    "暂无追溯信息": "No trace details yet",
+    "触发来源": "Retry source",
+    "父投递": "Parent delivery",
+    "人工重发": "Manual resend",
+    "规则命中": "Rule match",
+    "重发": "Resend",
+    "已创建重发投递": "Resend created",
+    "已有未完成的人工重发": "Existing manual resend is still pending"
   }
 }

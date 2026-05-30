@@ -146,13 +146,15 @@ type AlertRuleMutationResult struct {
 }
 
 type AlertDeliveryQuery struct {
-	TenantId    int
-	RuleId      *int
-	EventId     *int
-	ChannelType string
-	Status      string
-	Page        int
-	PageSize    int
+	TenantId       int
+	RuleId         *int
+	EventId        *int
+	ManualParentId *int
+	ChannelType    string
+	Status         string
+	TriggerSource  string
+	Page           int
+	PageSize       int
 }
 
 type AlertDeliveryTraceItem struct {
@@ -190,6 +192,7 @@ type AlertDeliveryItem struct {
 	DedupeKey      string
 	TriggerSource  string
 	ManualParentId *int
+	TraceSummary   string
 	CreatedAt      int64
 	UpdatedAt      int64
 	Trace          *AlertDeliveryTraceItem
@@ -200,6 +203,13 @@ type AlertDeliveryListResult struct {
 	Total    int
 	Page     int
 	PageSize int
+}
+
+type AlertDeliveryResendResult struct {
+	Item         AlertDeliveryItem
+	Created      bool
+	AuditSummary string
+	AuditPayload map[string]any
 }
 
 type alertMatchedRule struct {
@@ -518,6 +528,9 @@ func (s *AlertService) ListAlertDeliveries(query AlertDeliveryQuery) (AlertDeliv
 	if query.EventId != nil && *query.EventId <= 0 {
 		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
 	}
+	if query.ManualParentId != nil && *query.ManualParentId <= 0 {
+		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+	}
 	page, pageSize := normalizeAlertEventPage(query.Page, query.PageSize)
 
 	db := s.db.Model(&entmodel.AlertDelivery{}).Where("tenant_id = ?", query.TenantId)
@@ -526,6 +539,9 @@ func (s *AlertService) ListAlertDeliveries(query AlertDeliveryQuery) (AlertDeliv
 	}
 	if query.EventId != nil {
 		db = db.Where("event_id = ?", *query.EventId)
+	}
+	if query.ManualParentId != nil {
+		db = db.Where("manual_parent_id = ?", *query.ManualParentId)
 	}
 	if channelType := normalizeAlertRuleChannelType(query.ChannelType); channelType != "" {
 		db = db.Where("channel_type = ?", channelType)
@@ -540,6 +556,14 @@ func (s *AlertService) ListAlertDeliveries(query AlertDeliveryQuery) (AlertDeliv
 			entmodel.AlertDeliveryStatusFinalFailed,
 			entmodel.AlertDeliveryStatusResent:
 			db = db.Where("status = ?", status)
+		default:
+			return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+		}
+	}
+	if triggerSource := strings.TrimSpace(query.TriggerSource); triggerSource != "" {
+		switch triggerSource {
+		case entmodel.AlertDeliveryTriggerRuleMatch, entmodel.AlertDeliveryTriggerManual:
+			db = db.Where("trigger_source = ?", triggerSource)
 		default:
 			return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
 		}
@@ -574,6 +598,103 @@ func (s *AlertService) ListAlertDeliveries(query AlertDeliveryQuery) (AlertDeliv
 		Total:    int(total),
 		Page:     page,
 		PageSize: pageSize,
+	}, nil
+}
+
+func (s *AlertService) ResendAlertDelivery(tenantId int, deliveryId int, actorId int) (AlertDeliveryResendResult, error) {
+	if s == nil || s.db == nil {
+		return AlertDeliveryResendResult{}, ErrAlertDeliveryNotFound
+	}
+	if tenantId < 0 || deliveryId <= 0 || actorId <= 0 {
+		return AlertDeliveryResendResult{}, ErrInvalidAlertDeliveryQuery
+	}
+
+	var parent entmodel.AlertDelivery
+	if err := s.db.Where("tenant_id = ? AND id = ?", tenantId, deliveryId).First(&parent).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return AlertDeliveryResendResult{}, ErrAlertDeliveryNotFound
+		}
+		return AlertDeliveryResendResult{}, err
+	}
+	if parent.Status != entmodel.AlertDeliveryStatusFinalFailed {
+		return AlertDeliveryResendResult{}, ErrAlertDeliveryResendNotAllowed
+	}
+
+	var existing entmodel.AlertDelivery
+	err := s.db.
+		Where(
+			"tenant_id = ? AND manual_parent_id = ? AND trigger_source = ? AND status IN ?",
+			tenantId,
+			parent.Id,
+			entmodel.AlertDeliveryTriggerManual,
+			[]string{entmodel.AlertDeliveryStatusPending, entmodel.AlertDeliveryStatusFailed},
+		).
+		Order("created_at DESC, id DESC").
+		First(&existing).Error
+	if err == nil {
+		item, mapErr := mapAlertDeliveryItem(existing)
+		if mapErr != nil {
+			return AlertDeliveryResendResult{}, mapErr
+		}
+		return AlertDeliveryResendResult{
+			Item:         item,
+			Created:      false,
+			AuditSummary: buildAlertDeliveryResendAuditSummary(parent, existing, false),
+			AuditPayload: buildAlertDeliveryResendAuditPayload(parent, existing, actorId, false),
+		}, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return AlertDeliveryResendResult{}, err
+	}
+
+	round, err := nextManualAlertDeliveryRound(s.db, parent.Id)
+	if err != nil {
+		return AlertDeliveryResendResult{}, err
+	}
+	nowUnix := s.now().Unix()
+	child := entmodel.AlertDelivery{
+		TenantId:       parent.TenantId,
+		EventId:        parent.EventId,
+		RuleId:         parent.RuleId,
+		ChannelType:    parent.ChannelType,
+		Status:         entmodel.AlertDeliveryStatusPending,
+		AttemptCount:   0,
+		MaxAttempts:    parent.MaxAttempts,
+		NextRetryAt:    nowUnix,
+		LastAttemptAt:  0,
+		SentAt:         0,
+		FinalFailedAt:  0,
+		ErrorReason:    "",
+		DedupeKey:      buildManualAlertDeliveryDedupeKey(parent, round),
+		TriggerSource:  entmodel.AlertDeliveryTriggerManual,
+		ManualParentId: &parent.Id,
+		CreatedAt:      nowUnix,
+		UpdatedAt:      nowUnix,
+		TracePayload:   parent.TracePayload,
+	}
+	if child.MaxAttempts <= 0 {
+		child.MaxAttempts = entmodel.AlertDeliveryDefaultMaxAttempts
+	}
+	tracePayload, err := parent.ParsedTracePayload()
+	if err != nil {
+		return AlertDeliveryResendResult{}, err
+	}
+	if err := child.SetTracePayload(tracePayload); err != nil {
+		return AlertDeliveryResendResult{}, err
+	}
+	if err := s.db.Create(&child).Error; err != nil {
+		return AlertDeliveryResendResult{}, err
+	}
+
+	item, err := mapAlertDeliveryItem(child)
+	if err != nil {
+		return AlertDeliveryResendResult{}, err
+	}
+	return AlertDeliveryResendResult{
+		Item:         item,
+		Created:      true,
+		AuditSummary: buildAlertDeliveryResendAuditSummary(parent, child, true),
+		AuditPayload: buildAlertDeliveryResendAuditPayload(parent, child, actorId, true),
 	}, nil
 }
 
@@ -1194,6 +1315,7 @@ func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, e
 		DedupeKey:      delivery.DedupeKey,
 		TriggerSource:  delivery.TriggerSource,
 		ManualParentId: delivery.ManualParentId,
+		TraceSummary:   buildAlertDeliveryTraceSummary(trace),
 		CreatedAt:      delivery.CreatedAt,
 		UpdatedAt:      delivery.UpdatedAt,
 		Trace:          trace,
@@ -1376,6 +1498,80 @@ func buildAlertDeliveryDedupeKey(tenantId int, eventId int, ruleId int, channelT
 		channelType,
 		strconv.FormatInt(bucketStart, 10),
 	}, ":")
+}
+
+func buildManualAlertDeliveryDedupeKey(parent entmodel.AlertDelivery, round int64) string {
+	return strings.Join([]string{
+		strconv.Itoa(parent.TenantId),
+		strconv.Itoa(parent.EventId),
+		strconv.Itoa(parent.RuleId),
+		parent.ChannelType,
+		"manual",
+		strconv.Itoa(parent.Id),
+		strconv.FormatInt(round, 10),
+	}, ":")
+}
+
+func nextManualAlertDeliveryRound(db *gorm.DB, parentId int) (int64, error) {
+	var count int64
+	if err := db.Model(&entmodel.AlertDelivery{}).
+		Where("manual_parent_id = ? AND trigger_source = ?", parentId, entmodel.AlertDeliveryTriggerManual).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count + 1, nil
+}
+
+func buildAlertDeliveryTraceSummary(trace *AlertDeliveryTraceItem) string {
+	if trace == nil {
+		return ""
+	}
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(trace.DepartmentSummary) != "" {
+		parts = append(parts, trace.DepartmentSummary)
+	}
+	if strings.TrimSpace(trace.RequestId) != "" {
+		parts = append(parts, trace.RequestId)
+	}
+	if strings.TrimSpace(trace.DetailRoute) != "" {
+		parts = append(parts, trace.DetailRoute)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func buildAlertDeliveryResendAuditSummary(parent entmodel.AlertDelivery, child entmodel.AlertDelivery, created bool) string {
+	if created {
+		return fmt.Sprintf(
+			"Manual resend created delivery #%d from final_failed delivery #%d (event #%d, rule #%d, %s)",
+			child.Id,
+			parent.Id,
+			parent.EventId,
+			parent.RuleId,
+			parent.ChannelType,
+		)
+	}
+	return fmt.Sprintf(
+		"Manual resend reused delivery #%d for final_failed delivery #%d (event #%d, rule #%d, %s)",
+		child.Id,
+		parent.Id,
+		parent.EventId,
+		parent.RuleId,
+		parent.ChannelType,
+	)
+}
+
+func buildAlertDeliveryResendAuditPayload(parent entmodel.AlertDelivery, child entmodel.AlertDelivery, actorId int, created bool) map[string]any {
+	return map[string]any{
+		"actor_id":             actorId,
+		"original_delivery_id": parent.Id,
+		"new_delivery_id":      child.Id,
+		"event_id":             parent.EventId,
+		"rule_id":              parent.RuleId,
+		"channel_type":         parent.ChannelType,
+		"trigger_source":       child.TriggerSource,
+		"manual_parent_id":     child.ManualParentId,
+		"created":              created,
+	}
 }
 
 func summarizeAlertDepartments(snapshot []entmodel.AlertEventDepartmentSnapshot) string {

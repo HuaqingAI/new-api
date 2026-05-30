@@ -92,6 +92,7 @@ export type AlertDeliveryItem = {
   dedupe_key: string
   trigger_source: string
   manual_parent_id?: number
+  trace_summary: string
   created_at: number
   updated_at: number
   trace?: AlertDeliveryTraceItem
@@ -102,6 +103,11 @@ export type AlertDeliveriesResponse = {
   total: number
   page: number
   page_size: number
+}
+
+export type AlertDeliveryResendResponse = {
+  item: AlertDeliveryItem
+  created: boolean
 }
 
 export type AlertRuleChannelType = 'email' | 'webhook' | 'dingtalk_robot'
@@ -180,8 +186,10 @@ export type EnterpriseAlertDeliveriesSearch = {
   tenant_id?: number
   rule_id?: number
   event_id?: number
+  manual_parent_id?: number
   channel_type?: AlertRuleChannelType
   status?: AlertDeliveryStatus
+  trigger_source?: 'rule_match' | 'manual_resend'
   page?: number
   page_size?: number
 }

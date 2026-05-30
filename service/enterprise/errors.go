@@ -63,6 +63,7 @@ var (
 	ErrAlertRuleInvalidWebhookURL                        = errors.New("enterprise alert rule webhook url invalid")
 	ErrAlertRuleChannelRequired                          = errors.New("enterprise alert rule channel required")
 	ErrAlertDeliveryNotFound                             = errors.New("enterprise alert delivery not found")
+	ErrAlertDeliveryResendNotAllowed                     = errors.New("enterprise alert delivery resend not allowed")
 )
 
 type QuotaAllocationBudgetError struct {

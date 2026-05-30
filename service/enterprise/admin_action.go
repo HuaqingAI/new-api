@@ -26,6 +26,7 @@ const (
 	AdminActionDepartmentBudgetReject        = "enterprise.organization.department_budget.reject"
 	AdminActionAlertRuleSave                 = "enterprise.alert.rule.save"
 	AdminActionAlertRuleDelete               = "enterprise.alert.rule.delete"
+	AdminActionAlertDeliveryResend           = "enterprise.alert.delivery.resend"
 
 	AdminObjectUserDepartment       = "enterprise_user_department"
 	AdminObjectDepartmentMember     = "enterprise_department_member"
@@ -36,6 +37,7 @@ const (
 	AdminObjectUsageReportJob       = "enterprise_usage_report_job"
 	AdminObjectDepartmentBudget     = "enterprise_department_budget"
 	AdminObjectAlertRule            = "enterprise_alert_rule"
+	AdminObjectAlertDelivery        = "enterprise_alert_delivery"
 )
 
 type AdminActionService struct {

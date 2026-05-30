@@ -1,6 +1,7 @@
 package enterprise
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -24,6 +25,7 @@ type AlertEvent struct {
 	RiskType           string `json:"risk_type" gorm:"type:varchar(64);not null;default:'';index:idx_alert_events_risk_type"`
 	ActionResult       string `json:"action_result" gorm:"type:varchar(64);not null;default:''"`
 	DepartmentSnapshot string `json:"department_snapshot" gorm:"type:text;not null"`
+	DepartmentTokens   string `json:"department_tokens" gorm:"type:text;not null"`
 	Summary            string `json:"summary" gorm:"type:text;not null"`
 	CreatedAt          int64  `json:"created_at" gorm:"type:bigint;not null;default:0;index:idx_alert_events_tenant_created,priority:2"`
 	UpdatedAt          int64  `json:"updated_at" gorm:"type:bigint;not null;default:0"`
@@ -58,6 +60,7 @@ func (e *AlertEvent) SetDepartmentSnapshot(snapshot []AlertEventDepartmentSnapsh
 		return err
 	}
 	e.DepartmentSnapshot = string(data)
+	e.DepartmentTokens = buildAlertEventDepartmentTokens(snapshot)
 	return nil
 }
 
@@ -92,5 +95,43 @@ func (e *AlertEvent) normalize() error {
 	if e.Summary == "" {
 		e.Summary = ""
 	}
+	if e.DepartmentTokens == "" {
+		e.DepartmentTokens = buildAlertEventDepartmentTokens(snapshotOrEmpty(e))
+	}
 	return nil
+}
+
+func snapshotOrEmpty(e *AlertEvent) []AlertEventDepartmentSnapshot {
+	if e == nil {
+		return []AlertEventDepartmentSnapshot{}
+	}
+	snapshot, err := e.ParsedDepartmentSnapshot()
+	if err != nil || snapshot == nil {
+		return []AlertEventDepartmentSnapshot{}
+	}
+	return snapshot
+}
+
+func buildAlertEventDepartmentTokens(snapshot []AlertEventDepartmentSnapshot) string {
+	if len(snapshot) == 0 {
+		return "|"
+	}
+	tokenMap := make(map[int]struct{}, len(snapshot))
+	tokens := make([]byte, 0, len(snapshot)*8)
+	tokens = append(tokens, '|')
+	for _, item := range snapshot {
+		if item.DepartmentId <= 0 {
+			continue
+		}
+		if _, exists := tokenMap[item.DepartmentId]; exists {
+			continue
+		}
+		tokenMap[item.DepartmentId] = struct{}{}
+		tokens = append(tokens, []byte(strconv.Itoa(item.DepartmentId))...)
+		tokens = append(tokens, '|')
+	}
+	if len(tokens) == 1 {
+		return "|"
+	}
+	return string(tokens)
 }

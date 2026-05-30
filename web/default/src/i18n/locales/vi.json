@@ -4710,6 +4710,16 @@
     "Bind DingTalk identity": "Liên kết danh tính DingTalk",
     "Bind candidate": "Liên kết người dùng ứng viên",
     "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Liên kết danh tính DingTalk này với người dùng ứng viên #{{id}} và đánh dấu xung đột đã giải quyết.",
-    "DingTalk sync conflict resolved": "Xung đột đồng bộ DingTalk đã được giải quyết"
+    "DingTalk sync conflict resolved": "Xung đột đồng bộ DingTalk đã được giải quyết",
+    "Enterprise Alerts": "Sự kiện rủi ro doanh nghiệp",
+    "Risk Type": "Loại rủi ro",
+    "Action Result": "Kết quả xử lý",
+    "Page Size": "Số mục mỗi trang",
+    "From Timestamp": "Mốc thời gian bắt đầu",
+    "To Timestamp": "Mốc thời gian kết thúc",
+    "No alert events found": "Không tìm thấy sự kiện rủi ro",
+    "Filter enterprise risk events by department snapshot, actor, model, risk type, and time window.": "Lọc sự kiện rủi ro doanh nghiệp theo ảnh chụp phòng ban, người dùng, mô hình, loại rủi ro và khoảng thời gian.",
+    "Only traceable summary fields are shown. Sensitive raw prompts are never returned here.": "Chỉ hiển thị các trường tóm tắt cần cho truy vết. Nội dung prompt nhạy cảm không bao giờ được trả về ở đây.",
+    "Adjust the filter set to widen the query window or inspect another department snapshot.": "Hãy điều chỉnh bộ lọc để mở rộng cửa sổ truy vấn hoặc kiểm tra một ảnh chụp phòng ban khác."
   }
 }

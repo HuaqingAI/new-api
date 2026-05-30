@@ -55,6 +55,7 @@ var (
 	ErrUsageReportInvalidInput                           = errors.New("enterprise usage report input invalid")
 	ErrUsageReportInvalidEmail                           = errors.New("enterprise usage report email invalid")
 	ErrUsageReportNotConfigured                          = errors.New("enterprise usage report not configured")
+	ErrInvalidAlertEventQuery                            = errors.New("enterprise alert event query invalid")
 )
 
 type QuotaAllocationBudgetError struct {

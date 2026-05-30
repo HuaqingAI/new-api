@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2025 QuantumNous
+Copyright (C) 2023-2026 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,24 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import {
+  EnterpriseAlertsPage,
+  enterpriseAlertsSearchSchema,
+} from '@/features/enterprise-alerts'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
-import { API } from '../helpers';
+export const Route = createFileRoute('/_authenticated/enterprise-alerts/')({
+  beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
 
-export async function getUserDepartments(userId) {
-  const res = await API.get(`/api/enterprise/users/${userId}/departments`);
-  return res.data;
-}
-
-export async function getDepartmentMembers(departmentId) {
-  const res = await API.get(
-    `/api/enterprise/departments/${departmentId}/members`,
-  );
-  return res.data;
-}
-
-export async function getAlertEvents(params = {}) {
-  const res = await API.get('/api/enterprise/alerts/events', {
-    params,
-  });
-  return res.data;
-}
+    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+      throw redirect({
+        to: '/403',
+      })
+    }
+  },
+  validateSearch: enterpriseAlertsSearchSchema,
+  component: EnterpriseAlertsPage,
+})

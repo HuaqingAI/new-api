@@ -157,3 +157,170 @@ func TestAlertServiceRecordRiskEventUsesTenantScopedMembershipSnapshot(t *testin
 	require.Equal(t, "1 sensitive word hits", event.Summary)
 	require.NotContains(t, event.Summary, "prompt contains secret")
 }
+
+func TestAlertServiceListAlertEventsFiltersByDepartmentSnapshotAndSortsStably(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	alpha := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1,
+		Username:     "alpha",
+		RequestId:    "req-3",
+		ModelName:    "gpt-4o",
+		RiskType:     AlertRiskTypeSensitiveWords,
+		ActionResult: AlertActionBlocked,
+		Summary:      "2 sensitive word hits",
+		CreatedAt:    1717117202,
+		UpdatedAt:    1717117202,
+	}
+	require.NoError(t, alpha.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+		{DepartmentId: 22, DepartmentName: "Security"},
+	}))
+
+	bravo := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       2,
+		Username:     "bravo",
+		RequestId:    "req-2",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "policy escalated",
+		CreatedAt:    1717117202,
+		UpdatedAt:    1717117202,
+	}
+	require.NoError(t, bravo.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 22, DepartmentName: "Security"},
+	}))
+
+	charlie := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       3,
+		Username:     "charlie",
+		RequestId:    "req-1",
+		ModelName:    "claude-sonnet-4",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review requested",
+		CreatedAt:    1717117201,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, charlie.SetDepartmentSnapshot(nil))
+
+	require.NoError(t, db.Create(&alpha).Error)
+	require.NoError(t, db.Create(&bravo).Error)
+	require.NoError(t, db.Create(&charlie).Error)
+
+	deptID := 22
+	pageOne, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:     0,
+		DepartmentId: &deptID,
+		Page:         1,
+		PageSize:     1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, pageOne.Total)
+	require.Equal(t, 1, pageOne.Page)
+	require.Equal(t, 1, pageOne.PageSize)
+	require.Len(t, pageOne.Items, 1)
+	require.Equal(t, "bravo", pageOne.Items[0].Username)
+
+	pageTwo, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:     0,
+		DepartmentId: &deptID,
+		Page:         2,
+		PageSize:     1,
+	})
+	require.NoError(t, err)
+	require.Len(t, pageTwo.Items, 1)
+	require.Equal(t, "alpha", pageTwo.Items[0].Username)
+
+	engineeringID := 11
+	engineering, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:     0,
+		DepartmentId: &engineeringID,
+	})
+	require.NoError(t, err)
+	require.Len(t, engineering.Items, 1)
+	require.Equal(t, "alpha", engineering.Items[0].Username)
+	require.Len(t, engineering.Items[0].DepartmentSnapshot, 2)
+}
+
+func TestAlertServiceListAlertEventsSupportsCombinedFiltersAndEmptySnapshotArray(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	event := entmodel.AlertEvent{
+		TenantId:     7,
+		UserId:       99,
+		Username:     "delta",
+		RequestId:    "req-combined",
+		ModelName:    "gpt-4.1",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "policy only",
+		CreatedAt:    1717117209,
+		UpdatedAt:    1717117209,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot(nil))
+	require.NoError(t, db.Create(&event).Error)
+
+	from := int64(1717117200)
+	to := int64(1717117210)
+	userID := 99
+	result, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:  7,
+		UserId:    &userID,
+		Username:  "delta",
+		ModelName: "gpt-4.1",
+		RiskType:  "abuse",
+		From:      &from,
+		To:        &to,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.NotNil(t, result.Items[0].DepartmentSnapshot)
+	require.Empty(t, result.Items[0].DepartmentSnapshot)
+	require.Equal(t, "policy only", result.Items[0].Summary)
+}
+
+func TestAlertServiceListAlertEventsFallsBackToSnapshotForLegacyRowsWithoutTokens(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	event := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       12,
+		Username:     "legacy",
+		RequestId:    "req-legacy-filter",
+		ModelName:    "gpt-4o",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "legacy snapshot row",
+		CreatedAt:    1717117208,
+		UpdatedAt:    1717117208,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 88, DepartmentName: "Risk"},
+	}))
+	require.NoError(t, db.Create(&event).Error)
+	require.NoError(t, db.Model(&entmodel.AlertEvent{}).Where("id = ?", event.Id).UpdateColumn("department_tokens", "").Error)
+
+	deptID := 88
+	result, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:     0,
+		DepartmentId: &deptID,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "legacy", result.Items[0].Username)
+}
+
+func TestAlertServiceListAlertEventsRejectsInvalidQuery(t *testing.T) {
+	service, _ := setupAlertServiceTest(t)
+	deptID := 0
+	_, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:     0,
+		DepartmentId: &deptID,
+	})
+	require.ErrorIs(t, err, ErrInvalidAlertEventQuery)
+}

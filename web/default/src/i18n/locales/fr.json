@@ -4710,6 +4710,16 @@
     "Bind DingTalk identity": "Lier l'identité DingTalk",
     "Bind candidate": "Lier le candidat",
     "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Lier cette identité DingTalk à l'utilisateur candidat #{{id}} et marquer le conflit comme résolu.",
-    "DingTalk sync conflict resolved": "Conflit de synchronisation DingTalk résolu"
+    "DingTalk sync conflict resolved": "Conflit de synchronisation DingTalk résolu",
+    "Enterprise Alerts": "Alertes d’entreprise",
+    "Risk Type": "Type de risque",
+    "Action Result": "Résultat de l’action",
+    "Page Size": "Taille de page",
+    "From Timestamp": "Horodatage de début",
+    "To Timestamp": "Horodatage de fin",
+    "No alert events found": "Aucun événement de risque trouvé",
+    "Filter enterprise risk events by department snapshot, actor, model, risk type, and time window.": "Filtrez les événements de risque d’entreprise par instantané de département, acteur, modèle, type de risque et fenêtre temporelle.",
+    "Only traceable summary fields are shown. Sensitive raw prompts are never returned here.": "Seuls les champs de résumé nécessaires à la traçabilité sont affichés. Les prompts sensibles bruts ne sont jamais renvoyés ici.",
+    "Adjust the filter set to widen the query window or inspect another department snapshot.": "Ajustez les filtres pour élargir la fenêtre de recherche ou examiner un autre instantané de département."
   }
 }

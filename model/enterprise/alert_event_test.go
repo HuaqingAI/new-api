@@ -10,6 +10,25 @@ import (
 	"gorm.io/gorm"
 )
 
+type legacyAlertEvent struct {
+	Id                 int    `gorm:"primaryKey"`
+	TenantId           int    `gorm:"type:int;not null;default:0"`
+	UserId             int    `gorm:"type:int;not null;default:0"`
+	Username           string `gorm:"type:text;not null;default:''"`
+	RequestId          string `gorm:"type:text;not null;default:''"`
+	ModelName          string `gorm:"type:text;not null;default:''"`
+	RiskType           string `gorm:"type:text;not null;default:''"`
+	ActionResult       string `gorm:"type:text;not null;default:''"`
+	DepartmentSnapshot string `gorm:"type:text;not null"`
+	Summary            string `gorm:"type:text;not null"`
+	CreatedAt          int64  `gorm:"type:bigint;not null;default:0"`
+	UpdatedAt          int64  `gorm:"type:bigint;not null;default:0"`
+}
+
+func (legacyAlertEvent) TableName() string {
+	return "enterprise_alert_events"
+}
+
 func TestAlertEventJSONWrappersNormalizeEmptyValues(t *testing.T) {
 	event := AlertEvent{}
 
@@ -76,6 +95,7 @@ func TestMigrateCreatesAlertEventTableAndIndexes(t *testing.T) {
 		"risk_type",
 		"action_result",
 		"department_snapshot",
+		"department_tokens",
 		"summary",
 		"created_at",
 		"updated_at",
@@ -107,7 +127,64 @@ func TestAlertEventBeforeCreateAppliesApplicationDefaults(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&event).Error)
 	require.JSONEq(t, `[]`, event.DepartmentSnapshot)
+	require.Equal(t, "|", event.DepartmentTokens)
 	require.Equal(t, "", event.Summary)
 	require.NotZero(t, event.CreatedAt)
 	require.NotZero(t, event.UpdatedAt)
+}
+
+func TestAlertEventSetDepartmentSnapshotBuildsCrossDBFilterTokens(t *testing.T) {
+	event := AlertEvent{}
+
+	require.NoError(t, event.SetDepartmentSnapshot([]AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+		{DepartmentId: 22, DepartmentName: "Security"},
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+	}))
+
+	require.Equal(t, "|11|22|", event.DepartmentTokens)
+}
+
+func TestMigrateBackfillsDepartmentTokensForLegacyAlertEvents(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+
+	require.NoError(t, db.AutoMigrate(&legacyAlertEvent{}))
+
+	legacy := AlertEvent{
+		TenantId:     0,
+		UserId:       9,
+		Username:     "legacy",
+		RequestId:    "req-legacy",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "legacy row",
+		CreatedAt:    1717117201,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, legacy.SetDepartmentSnapshot([]AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+		{DepartmentId: 22, DepartmentName: "Security"},
+	}))
+
+	require.NoError(t, db.Create(&legacyAlertEvent{
+		TenantId:           legacy.TenantId,
+		UserId:             legacy.UserId,
+		Username:           legacy.Username,
+		RequestId:          legacy.RequestId,
+		ModelName:          legacy.ModelName,
+		RiskType:           legacy.RiskType,
+		ActionResult:       legacy.ActionResult,
+		DepartmentSnapshot: legacy.DepartmentSnapshot,
+		Summary:            legacy.Summary,
+		CreatedAt:          legacy.CreatedAt,
+		UpdatedAt:          legacy.UpdatedAt,
+	}).Error)
+
+	require.NoError(t, Migrate(db))
+
+	var stored AlertEvent
+	require.NoError(t, db.First(&stored).Error)
+	require.Equal(t, "|11|22|", stored.DepartmentTokens)
 }

@@ -3825,6 +3825,15 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "企业风险事件": "Enterprise Alerts",
+    "企业风险事件列表": "Enterprise Alert Events",
+    "风险类型": "Risk Type",
+    "动作结果": "Action Result",
+    "每页条数": "Page Size",
+    "发生时间": "Created At",
+    "暂无风险事件": "No alert events found",
+    "请调整筛选条件后重试": "Adjust the filters and try again",
+    "第 {{page}} 页，共 {{total}} 条": "Page {{page}}, total {{total}}"
   }
 }

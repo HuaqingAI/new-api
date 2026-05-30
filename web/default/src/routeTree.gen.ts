@@ -46,6 +46,7 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedEnterpriseAlertsIndexRouteImport } from './routes/_authenticated/enterprise-alerts/index'
 import { Route as AuthenticatedEnterpriseUsageIndexRouteImport } from './routes/_authenticated/enterprise-usage/index'
 import { Route as AuthenticatedEnterpriseOrganizationIndexRouteImport } from './routes/_authenticated/enterprise-organization/index'
 import { Route as AuthenticatedEnterpriseDingtalkIndexRouteImport } from './routes/_authenticated/enterprise-dingtalk/index'
@@ -264,6 +265,12 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEnterpriseAlertsIndexRoute =
+  AuthenticatedEnterpriseAlertsIndexRouteImport.update({
+    id: '/enterprise-alerts/',
+    path: '/enterprise-alerts/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedEnterpriseUsageIndexRoute =
   AuthenticatedEnterpriseUsageIndexRouteImport.update({
     id: '/enterprise-usage/',
@@ -448,6 +455,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
@@ -509,6 +517,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-dingtalk': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/enterprise-alerts': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/enterprise-usage': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
@@ -574,6 +583,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/_authenticated/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  '/_authenticated/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/_authenticated/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
@@ -638,6 +648,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/enterprise-dingtalk/'
     | '/enterprise-organization/'
+    | '/enterprise-alerts/'
     | '/enterprise-usage/'
     | '/keys/'
     | '/models/'
@@ -699,6 +710,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/enterprise-dingtalk'
     | '/enterprise-organization'
+    | '/enterprise-alerts'
     | '/enterprise-usage'
     | '/keys'
     | '/models'
@@ -763,6 +775,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/enterprise-dingtalk/'
     | '/_authenticated/enterprise-organization/'
+    | '/_authenticated/enterprise-alerts/'
     | '/_authenticated/enterprise-usage/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
@@ -1073,6 +1086,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/enterprise-alerts/': {
+      id: '/_authenticated/enterprise-alerts/'
+      path: '/enterprise-alerts'
+      fullPath: '/enterprise-alerts/'
+      preLoaderRoute: typeof AuthenticatedEnterpriseAlertsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/enterprise-usage/': {
       id: '/_authenticated/enterprise-usage/'
       path: '/enterprise-usage'
@@ -1346,6 +1366,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedEnterpriseDingtalkIndexRoute: typeof AuthenticatedEnterpriseDingtalkIndexRoute
   AuthenticatedEnterpriseOrganizationIndexRoute: typeof AuthenticatedEnterpriseOrganizationIndexRoute
+  AuthenticatedEnterpriseAlertsIndexRoute: typeof AuthenticatedEnterpriseAlertsIndexRoute
   AuthenticatedEnterpriseUsageIndexRoute: typeof AuthenticatedEnterpriseUsageIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
@@ -1373,6 +1394,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedEnterpriseDingtalkIndexRoute,
   AuthenticatedEnterpriseOrganizationIndexRoute:
     AuthenticatedEnterpriseOrganizationIndexRoute,
+  AuthenticatedEnterpriseAlertsIndexRoute:
+    AuthenticatedEnterpriseAlertsIndexRoute,
   AuthenticatedEnterpriseUsageIndexRoute:
     AuthenticatedEnterpriseUsageIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,

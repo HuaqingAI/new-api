@@ -109,3 +109,14 @@ export async function listDingTalkSyncConflicts(params?: {
   })
   return res.data
 }
+
+export async function bindDingTalkSyncConflictCandidate(
+  conflictId: number,
+  candidateUserId: number
+): Promise<ApiResponse<unknown>> {
+  const res = await api.post(
+    `/api/enterprise/dingtalk/sync/conflicts/${conflictId}/bind-candidate`,
+    { candidate_user_id: candidateUserId }
+  )
+  return res.data
+}

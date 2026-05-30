@@ -376,6 +376,9 @@ const (
 	MsgEnterpriseDingTalkSyncStarted                   = "enterprise.dingtalk.sync_started"
 	MsgEnterpriseDingTalkSyncNotEnabled                = "enterprise.dingtalk.sync_not_enabled"
 	MsgEnterpriseDingTalkSyncTaskNotFound              = "enterprise.dingtalk.sync_task_not_found"
+	MsgEnterpriseDingTalkSyncConflictNotFound          = "enterprise.dingtalk.sync_conflict_not_found"
+	MsgEnterpriseDingTalkSyncConflictNotPending        = "enterprise.dingtalk.sync_conflict_not_pending"
+	MsgEnterpriseDingTalkSyncConflictNoCandidate       = "enterprise.dingtalk.sync_conflict_no_candidate"
 	MsgEnterpriseUsageReportInvalidEmail               = "enterprise.usage.report_invalid_email"
 	MsgEnterpriseUsageReportNotConfigured              = "enterprise.usage.report_not_configured"
 )

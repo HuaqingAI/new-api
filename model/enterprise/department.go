@@ -17,7 +17,7 @@ type Department struct {
 	Id          int    `json:"id" gorm:"primaryKey"`
 	TenantId    int    `json:"tenant_id" gorm:"not null;default:0;index:idx_departments_tenant"`
 	Name        string `json:"name" gorm:"type:varchar(255);not null"`
-	ParentId    *int   `json:"parent_id" gorm:"index:idx_departments_parent;check:chk_departments_parent_not_self,parent_id IS NULL OR parent_id <> id"`
+	ParentId    *int   `json:"parent_id" gorm:"index:idx_departments_parent"`
 	Status      int    `json:"status" gorm:"not null;default:1;index:idx_departments_status"`
 	SourceType  int    `json:"source_type" gorm:"not null;default:1;index:idx_departments_source_external"`
 	ExternalId  string `json:"external_id" gorm:"type:varchar(128);not null;default:'';index:idx_departments_source_external"`

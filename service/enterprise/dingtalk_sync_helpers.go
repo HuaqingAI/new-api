@@ -179,6 +179,16 @@ func dingtalkSyncIdentityKey(user DingTalkDepartmentUserInfo) string {
 	return ""
 }
 
+func dingtalkSyncConflictIdentityKey(conflict entmodel.DingTalkSyncConflict) string {
+	if strings.TrimSpace(conflict.UnionId) != "" {
+		return "union:" + strings.TrimSpace(conflict.UnionId)
+	}
+	if strings.TrimSpace(conflict.ExternalUserId) != "" {
+		return "user:" + strings.TrimSpace(conflict.ExternalUserId)
+	}
+	return ""
+}
+
 func sameOptionalInt(a *int, b *int) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil

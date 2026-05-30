@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "直近の送信エラー",
     "Yesterday": "昨日",
     "enterprise.usage.more_models": "+{{count}} 件の追加モデル",
-    "enterprise.usage.multi_dept_disclaimer": "部署間の数値は単純に合算できません。"
+    "enterprise.usage.multi_dept_disclaimer": "部署間の数値は単純に合算できません。",
+    "Bind DingTalk identity": "DingTalk ID を紐付ける",
+    "Bind candidate": "候補ユーザーを紐付ける",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "この DingTalk ID を候補ユーザー #{{id}} に紐付け、競合を解決済みにします。",
+    "DingTalk sync conflict resolved": "DingTalk 同期競合を解決しました"
   }
 }

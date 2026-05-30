@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "Last Delivery Error",
     "Yesterday": "Yesterday",
     "enterprise.usage.more_models": "+{{count}} more models",
-    "enterprise.usage.multi_dept_disclaimer": "Department totals cannot be added together across departments."
+    "enterprise.usage.multi_dept_disclaimer": "Department totals cannot be added together across departments.",
+    "Bind DingTalk identity": "Bind DingTalk identity",
+    "Bind candidate": "Bind candidate",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.",
+    "DingTalk sync conflict resolved": "DingTalk sync conflict resolved"
   }
 }

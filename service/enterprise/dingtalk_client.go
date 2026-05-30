@@ -15,6 +15,7 @@ import (
 
 const (
 	defaultDingTalkOpenAPIBaseURL = "https://oapi.dingtalk.com"
+	defaultDingTalkAPIBaseURL     = "https://api.dingtalk.com"
 	defaultDingTalkAPITimeout     = 10 * time.Second
 )
 
@@ -25,6 +26,7 @@ type DingTalkHTTPClient interface {
 type DingTalkClient struct {
 	httpClient     DingTalkHTTPClient
 	openAPIBaseURL string
+	apiBaseURL     string
 }
 
 type DingTalkClientOption func(*DingTalkClient)
@@ -44,18 +46,21 @@ type dingTalkAPIEnvelope struct {
 }
 
 type DingTalkOAuthToken struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	TokenType    string `json:"token_type"`
+	AccessToken           string
+	RefreshToken          string
+	ExpiresIn             int64
+	RefreshTokenExpiresIn int64
+	TokenType             string
+	OpenId                string
+	UnionId               string
 }
 
 type DingTalkOAuthUserInfo struct {
-	UnionId string `json:"union_id"`
-	OpenId  string `json:"open_id"`
-	Nick    string `json:"nick"`
-	Email   string `json:"email"`
-	Mobile  string `json:"mobile"`
+	UnionId string
+	OpenId  string
+	Nick    string
+	Email   string
+	Mobile  string
 }
 
 type DingTalkContactUserInfo struct {
@@ -90,6 +95,33 @@ type dingTalkOAuthTokenRequest struct {
 	ClientSecret string `json:"clientSecret"`
 	Code         string `json:"code"`
 	GrantType    string `json:"grantType"`
+}
+
+type dingTalkOAuthTokenResponse struct {
+	AccessToken                  string `json:"accessToken"`
+	AccessTokenLegacy            string `json:"access_token"`
+	RefreshToken                 string `json:"refreshToken"`
+	RefreshTokenLegacy           string `json:"refresh_token"`
+	ExpiresIn                    int64  `json:"expireIn"`
+	ExpiresInLegacy              int64  `json:"expires_in"`
+	RefreshTokenExpiresIn        int64  `json:"refreshExpireIn"`
+	RefreshTokenExpiresInLegacy  int64  `json:"refresh_expires_in"`
+	TokenType                    string `json:"tokenType"`
+	TokenTypeLegacy              string `json:"token_type"`
+	OpenId                       string `json:"openId"`
+	OpenIdLegacy                 string `json:"open_id"`
+	UnionId                      string `json:"unionId"`
+	UnionIdLegacy                string `json:"union_id"`
+}
+
+type dingTalkOAuthUserInfoResponse struct {
+	UnionId       string `json:"unionId"`
+	UnionIdLegacy string `json:"union_id"`
+	OpenId        string `json:"openId"`
+	OpenIdLegacy  string `json:"open_id"`
+	Nick          string `json:"nick"`
+	Email         string `json:"email"`
+	Mobile        string `json:"mobile"`
 }
 
 type dingTalkContactUserRequest struct {
@@ -143,6 +175,7 @@ func NewDingTalkClient(options ...DingTalkClientOption) *DingTalkClient {
 			Timeout: defaultDingTalkAPITimeout,
 		},
 		openAPIBaseURL: defaultDingTalkOpenAPIBaseURL,
+		apiBaseURL:     defaultDingTalkAPIBaseURL,
 	}
 	for _, option := range options {
 		option(client)
@@ -162,6 +195,14 @@ func WithDingTalkOpenAPIBaseURL(baseURL string) DingTalkClientOption {
 	return func(client *DingTalkClient) {
 		if strings.TrimSpace(baseURL) != "" {
 			client.openAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		}
+	}
+}
+
+func WithDingTalkAPIBaseURL(baseURL string) DingTalkClientOption {
+	return func(client *DingTalkClient) {
+		if strings.TrimSpace(baseURL) != "" {
+			client.apiBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 		}
 	}
 }
@@ -200,7 +241,7 @@ func (c *DingTalkClient) GetAccessToken(ctx context.Context, appKey string, appS
 }
 
 func (c *DingTalkClient) ExchangeOAuthCode(ctx context.Context, appKey string, appSecret string, code string) (DingTalkOAuthToken, error) {
-	tokenURL, err := url.Parse(c.openAPIBaseURL + "/v1.0/oauth2/userAccessToken")
+	tokenURL, err := url.Parse(c.apiBaseURL + "/v1.0/oauth2/userAccessToken")
 	if err != nil {
 		return DingTalkOAuthToken{}, err
 	}
@@ -226,22 +267,36 @@ func (c *DingTalkClient) ExchangeOAuthCode(ctx context.Context, appKey string, a
 	}
 	defer resp.Body.Close()
 
-	var payload DingTalkOAuthToken
+	var payload dingTalkOAuthTokenResponse
 	if err := common.DecodeJson(resp.Body, &payload); err != nil {
 		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_response_invalid"}
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_http_error"}
 	}
-	if strings.TrimSpace(payload.AccessToken) == "" {
+	token := DingTalkOAuthToken{
+		AccessToken:           firstNonEmpty(payload.AccessToken, payload.AccessTokenLegacy),
+		RefreshToken:          firstNonEmpty(payload.RefreshToken, payload.RefreshTokenLegacy),
+		ExpiresIn:             payload.ExpiresIn,
+		RefreshTokenExpiresIn: payload.RefreshTokenExpiresIn,
+		TokenType:             firstNonEmpty(payload.TokenType, payload.TokenTypeLegacy),
+		OpenId:                firstNonEmpty(payload.OpenId, payload.OpenIdLegacy),
+		UnionId:               firstNonEmpty(payload.UnionId, payload.UnionIdLegacy),
+	}
+	if token.ExpiresIn == 0 {
+		token.ExpiresIn = payload.ExpiresInLegacy
+	}
+	if token.RefreshTokenExpiresIn == 0 {
+		token.RefreshTokenExpiresIn = payload.RefreshTokenExpiresInLegacy
+	}
+	if token.AccessToken == "" {
 		return DingTalkOAuthToken{}, &DingTalkAPIError{Stage: "oauth_token", HTTPStatus: resp.StatusCode, Summary: "oauth_token_empty"}
 	}
-	payload.AccessToken = strings.TrimSpace(payload.AccessToken)
-	return payload, nil
+	return token, nil
 }
 
 func (c *DingTalkClient) GetOAuthUserInfo(ctx context.Context, userAccessToken string) (DingTalkOAuthUserInfo, error) {
-	userURL, err := url.Parse(c.openAPIBaseURL + "/v1.0/contact/users/me")
+	userURL, err := url.Parse(c.apiBaseURL + "/v1.0/contact/users/me")
 	if err != nil {
 		return DingTalkOAuthUserInfo{}, err
 	}
@@ -257,21 +312,24 @@ func (c *DingTalkClient) GetOAuthUserInfo(ctx context.Context, userAccessToken s
 	}
 	defer resp.Body.Close()
 
-	var payload DingTalkOAuthUserInfo
+	var payload dingTalkOAuthUserInfoResponse
 	if err := common.DecodeJson(resp.Body, &payload); err != nil {
 		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_response_invalid"}
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_http_error"}
 	}
-	payload.UnionId = strings.TrimSpace(payload.UnionId)
-	payload.OpenId = strings.TrimSpace(payload.OpenId)
-	payload.Email = strings.TrimSpace(payload.Email)
-	payload.Mobile = strings.TrimSpace(payload.Mobile)
-	if payload.UnionId == "" && payload.OpenId == "" {
+	user := DingTalkOAuthUserInfo{
+		UnionId: firstNonEmpty(payload.UnionId, payload.UnionIdLegacy),
+		OpenId:  firstNonEmpty(payload.OpenId, payload.OpenIdLegacy),
+		Nick:    strings.TrimSpace(payload.Nick),
+		Email:   strings.TrimSpace(payload.Email),
+		Mobile:  strings.TrimSpace(payload.Mobile),
+	}
+	if user.UnionId == "" && user.OpenId == "" {
 		return DingTalkOAuthUserInfo{}, &DingTalkAPIError{Stage: "oauth_userinfo", HTTPStatus: resp.StatusCode, Summary: "oauth_userinfo_missing_identity"}
 	}
-	return payload, nil
+	return user, nil
 }
 
 func (c *DingTalkClient) GetContactUserByUnionId(ctx context.Context, appAccessToken string, unionId string) (DingTalkContactUserInfo, error) {

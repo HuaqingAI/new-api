@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "Последняя ошибка отправки",
     "Yesterday": "Вчера",
     "enterprise.usage.more_models": "+ещё {{count}} моделей",
-    "enterprise.usage.multi_dept_disclaimer": "Показатели разных отделов нельзя складывать между собой."
+    "enterprise.usage.multi_dept_disclaimer": "Показатели разных отделов нельзя складывать между собой.",
+    "Bind DingTalk identity": "Привязать идентификатор DingTalk",
+    "Bind candidate": "Привязать кандидата",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Привязать этот идентификатор DingTalk к пользователю-кандидату #{{id}} и отметить конфликт как решенный.",
+    "DingTalk sync conflict resolved": "Конфликт синхронизации DingTalk решен"
   }
 }

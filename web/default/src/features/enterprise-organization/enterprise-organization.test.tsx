@@ -30,6 +30,8 @@ import type {
   QuotaAllocationItem,
 } from './types'
 
+i18n.changeLanguage('en')
+
 const rootRoute = createRootRoute()
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,

@@ -198,6 +198,61 @@ func ListDingTalkSyncConflicts(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
+func ResolveDingTalkSyncConflictWithCandidate(c *gin.Context) {
+	conflictId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || conflictId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidId)
+		return
+	}
+
+	var req dtoenterprise.DingTalkSyncResolveConflictRequest
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
+	tenantId := valueOrZero(req.TenantId)
+	if req.TenantId == nil {
+		tenantId = parseTenantIdQuery(c)
+	}
+
+	var result entservice.DingTalkSyncConflictItem
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, err = entservice.NewDingTalkSyncService(tx, nil).ResolveConflictByCandidate(c.Request.Context(), entservice.DingTalkSyncConflictResolveInput{
+			TenantId:                tenantId,
+			ConflictId:              conflictId,
+			ExpectedCandidateUserId: req.CandidateUserId,
+			ActorId:                 c.GetInt("id"),
+		})
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    result.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionDingTalkConflictBindCandidate,
+			ObjectType:  entservice.AdminObjectDingTalkSyncConflict,
+			ObjectId:    strconv.Itoa(result.Id),
+			DiffSummary: "Resolved DingTalk sync conflict by binding candidate user",
+			Payload: map[string]any{
+				"conflict_id":       result.Id,
+				"tenant_id":         result.TenantId,
+				"external_user_id":  result.ExternalUserId,
+				"candidate_user_id": result.CandidateUserId,
+				"conflict_type":     result.ConflictType,
+				"status":            result.Status,
+			},
+		})
+	})
+	if err != nil {
+		writeDingTalkConfigError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func parseTenantIdQuery(c *gin.Context) int {
 	raw := c.Query("tenant_id")
 	if raw == "" {
@@ -226,6 +281,20 @@ func writeDingTalkConfigError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncNotEnabled)
 	case errors.Is(err, entservice.ErrDingTalkSyncTaskNotFound):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncTaskNotFound)
+	case errors.Is(err, entservice.ErrDingTalkSyncConflictNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncConflictNotFound)
+	case errors.Is(err, entservice.ErrDingTalkSyncConflictNotPending):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncConflictNotPending)
+	case errors.Is(err, entservice.ErrDingTalkSyncConflictNoCandidate):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncConflictNoCandidate)
+	case errors.Is(err, entservice.ErrDingTalkOAuthBindingConflict):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthBindingConflict)
+	case errors.Is(err, entservice.ErrDingTalkOAuthIdentityMissing):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthInvalidIdentity)
+	case errors.Is(err, entservice.ErrDingTalkOAuthUserDisabled):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthUserDisabled)
+	case errors.Is(err, entservice.ErrUserNotFound):
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}

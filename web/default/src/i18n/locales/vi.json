@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "Lỗi gửi gần nhất",
     "Yesterday": "Hôm qua",
     "enterprise.usage.more_models": "+{{count}} mô hình khác",
-    "enterprise.usage.multi_dept_disclaimer": "Không thể cộng trực tiếp số liệu giữa các phòng ban."
+    "enterprise.usage.multi_dept_disclaimer": "Không thể cộng trực tiếp số liệu giữa các phòng ban.",
+    "Bind DingTalk identity": "Liên kết danh tính DingTalk",
+    "Bind candidate": "Liên kết người dùng ứng viên",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Liên kết danh tính DingTalk này với người dùng ứng viên #{{id}} và đánh dấu xung đột đã giải quyết.",
+    "DingTalk sync conflict resolved": "Xung đột đồng bộ DingTalk đã được giải quyết"
   }
 }

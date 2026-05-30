@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "Dernière erreur d'envoi",
     "Yesterday": "Hier",
     "enterprise.usage.more_models": "+{{count}} modèles supplémentaires",
-    "enterprise.usage.multi_dept_disclaimer": "Les totaux des départements ne peuvent pas être additionnés entre départements."
+    "enterprise.usage.multi_dept_disclaimer": "Les totaux des départements ne peuvent pas être additionnés entre départements.",
+    "Bind DingTalk identity": "Lier l'identité DingTalk",
+    "Bind candidate": "Lier le candidat",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Lier cette identité DingTalk à l'utilisateur candidat #{{id}} et marquer le conflit comme résolu.",
+    "DingTalk sync conflict resolved": "Conflit de synchronisation DingTalk résolu"
   }
 }

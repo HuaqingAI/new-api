@@ -4706,6 +4706,10 @@
     "Last Delivery Error": "最近发送错误",
     "Yesterday": "昨天",
     "enterprise.usage.more_models": "+{{count}} 个更多模型",
-    "enterprise.usage.multi_dept_disclaimer": "部门间数值不可加和。"
+    "enterprise.usage.multi_dept_disclaimer": "部门间数值不可加和。",
+    "Bind DingTalk identity": "绑定钉钉身份",
+    "Bind candidate": "绑定候选用户",
+    "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "将此钉钉身份绑定到候选用户 #{{id}}，并将冲突标记为已解决。",
+    "DingTalk sync conflict resolved": "钉钉同步冲突已解决"
   }
 }

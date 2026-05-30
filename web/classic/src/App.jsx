@@ -46,6 +46,7 @@ import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
 import EnterpriseDepartment from './pages/Enterprise/Department';
+import EnterpriseAlerts from './pages/Enterprise/Alerts';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -177,6 +178,14 @@ function App() {
           element={
             <AdminRoute>
               <EnterpriseDepartment />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/enterprise-alerts'
+          element={
+            <AdminRoute>
+              <EnterpriseAlerts />
             </AdminRoute>
           }
         />

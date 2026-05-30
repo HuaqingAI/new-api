@@ -28,6 +28,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.DELETE("/departments/:id/admins/:user_id", middleware.EnterpriseAdmin(), controllerenterprise.RevokeDepartmentAdmin)
 		enterpriseRoute.GET("/admin-actions", middleware.EnterpriseAdmin(), controllerenterprise.ListAdminActions)
 		enterpriseRoute.GET("/admin-actions/:id", middleware.EnterpriseAdmin(), controllerenterprise.GetAdminAction)
+		enterpriseRoute.GET("/alerts/events", middleware.EnterpriseAdmin(), controllerenterprise.ListAlertEvents)
 		enterpriseRoute.GET("/usage/department-summary", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageSummary)
 		enterpriseRoute.GET("/usage/export", middleware.EnterpriseAdmin(), controllerenterprise.ExportDepartmentUsageCSV)
 		enterpriseRoute.GET("/usage/department-detail", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageDetail)

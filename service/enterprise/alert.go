@@ -45,6 +45,40 @@ type alertEventRow struct {
 	Status         int
 }
 
+type AlertEventQuery struct {
+	TenantId     int
+	DepartmentId *int
+	UserId       *int
+	Username     string
+	ModelName    string
+	RiskType     string
+	From         *int64
+	To           *int64
+	Page         int
+	PageSize     int
+}
+
+type AlertEventItem struct {
+	Id                 int
+	TenantId           int
+	UserId             int
+	Username           string
+	RequestId          string
+	ModelName          string
+	RiskType           string
+	ActionResult       string
+	CreatedAt          int64
+	DepartmentSnapshot []entmodel.AlertEventDepartmentSnapshot
+	Summary            string
+}
+
+type AlertEventListResult struct {
+	Items    []AlertEventItem
+	Total    int
+	Page     int
+	PageSize int
+}
+
 func NewAlertService(db *gorm.DB) *AlertService {
 	if db == nil {
 		db = model.DB
@@ -106,6 +140,77 @@ func (s *AlertService) RecordRiskEvent(c *gin.Context, input RecordRiskEventInpu
 	return nil
 }
 
+func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListResult, error) {
+	if s == nil || s.db == nil {
+		return AlertEventListResult{Items: []AlertEventItem{}}, nil
+	}
+	if query.TenantId < 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.DepartmentId != nil && *query.DepartmentId <= 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.UserId != nil && *query.UserId <= 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.From != nil && *query.From <= 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.To != nil && *query.To <= 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.From != nil && query.To != nil && *query.From > *query.To {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+
+	page, pageSize := normalizeAlertEventPage(query.Page, query.PageSize)
+	db := s.db.Model(&entmodel.AlertEvent{}).Where("tenant_id = ?", query.TenantId)
+	db = applyAlertEventFilters(db, query)
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return AlertEventListResult{Items: []AlertEventItem{}}, err
+	}
+
+	var events []entmodel.AlertEvent
+	err := db.Order("created_at DESC").
+		Order("id DESC").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Find(&events).Error
+	if err != nil {
+		return AlertEventListResult{Items: []AlertEventItem{}}, err
+	}
+
+	items := make([]AlertEventItem, 0, len(events))
+	for _, event := range events {
+		snapshot, err := event.ParsedDepartmentSnapshot()
+		if err != nil {
+			return AlertEventListResult{}, err
+		}
+		items = append(items, AlertEventItem{
+			Id:                 event.Id,
+			TenantId:           event.TenantId,
+			UserId:             event.UserId,
+			Username:           event.Username,
+			RequestId:          event.RequestId,
+			ModelName:          event.ModelName,
+			RiskType:           event.RiskType,
+			ActionResult:       event.ActionResult,
+			CreatedAt:          event.CreatedAt,
+			DepartmentSnapshot: snapshot,
+			Summary:            event.Summary,
+		})
+	}
+
+	return AlertEventListResult{
+		Items:    items,
+		Total:    int(total),
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
 func (s *AlertService) loadDepartmentSnapshot(tenantId int, userId int) ([]entmodel.AlertEventDepartmentSnapshot, error) {
 	if userId <= 0 {
 		return []entmodel.AlertEventDepartmentSnapshot{}, nil
@@ -160,6 +265,52 @@ func sanitizeRiskSummary(riskType string, summary string, hits []string) string 
 		summary = summary[:maxAlertSummaryLength]
 	}
 	return summary
+}
+
+func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
+	if query.DepartmentId != nil {
+		tokenPattern := fmt.Sprintf("%%|%d|%%", *query.DepartmentId)
+		snapshotPattern := fmt.Sprintf("%%\"department_id\":%d%%", *query.DepartmentId)
+		legacySnapshotPattern := fmt.Sprintf("%%\"department_id\": %d%%", *query.DepartmentId)
+		db = db.Where(
+			"(department_tokens LIKE ?) OR ((department_tokens = '' OR department_tokens IS NULL) AND (department_snapshot LIKE ? OR department_snapshot LIKE ?))",
+			tokenPattern,
+			snapshotPattern,
+			legacySnapshotPattern,
+		)
+	}
+	if query.UserId != nil {
+		db = db.Where("user_id = ?", *query.UserId)
+	}
+	if username := strings.TrimSpace(query.Username); username != "" {
+		db = db.Where("username = ?", username)
+	}
+	if modelName := strings.TrimSpace(query.ModelName); modelName != "" {
+		db = db.Where("model_name = ?", modelName)
+	}
+	if riskType := strings.TrimSpace(query.RiskType); riskType != "" {
+		db = db.Where("risk_type = ?", riskType)
+	}
+	if query.From != nil {
+		db = db.Where("created_at >= ?", *query.From)
+	}
+	if query.To != nil {
+		db = db.Where("created_at <= ?", *query.To)
+	}
+	return db
+}
+
+func normalizeAlertEventPage(page int, pageSize int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize
 }
 
 func normalizeAlertRiskType(riskType string) string {

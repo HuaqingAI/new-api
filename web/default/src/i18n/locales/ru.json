@@ -4710,6 +4710,16 @@
     "Bind DingTalk identity": "Привязать идентификатор DingTalk",
     "Bind candidate": "Привязать кандидата",
     "Bind this DingTalk identity to candidate user #{{id}} and mark the conflict resolved.": "Привязать этот идентификатор DingTalk к пользователю-кандидату #{{id}} и отметить конфликт как решенный.",
-    "DingTalk sync conflict resolved": "Конфликт синхронизации DingTalk решен"
+    "DingTalk sync conflict resolved": "Конфликт синхронизации DingTalk решен",
+    "Enterprise Alerts": "Корпоративные оповещения о рисках",
+    "Risk Type": "Тип риска",
+    "Action Result": "Результат действия",
+    "Page Size": "Размер страницы",
+    "From Timestamp": "Начальная метка времени",
+    "To Timestamp": "Конечная метка времени",
+    "No alert events found": "События риска не найдены",
+    "Filter enterprise risk events by department snapshot, actor, model, risk type, and time window.": "Фильтруйте корпоративные события риска по снимку отдела, пользователю, модели, типу риска и временному окну.",
+    "Only traceable summary fields are shown. Sensitive raw prompts are never returned here.": "Здесь показаны только поля сводки, нужные для трассировки. Чувствительные исходные промпты не возвращаются.",
+    "Adjust the filter set to widen the query window or inspect another department snapshot.": "Измените фильтры, чтобы расширить окно запроса или проверить другой снимок отдела."
   }
 }

@@ -1,8 +1,12 @@
 package enterprise
 
 import (
+	"errors"
 	"fmt"
+	"net/mail"
+	neturl "net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,6 +81,67 @@ type AlertEventListResult struct {
 	Total    int
 	Page     int
 	PageSize int
+}
+
+type AlertRuleChannelInput struct {
+	Type          string
+	Enabled       *bool
+	Receivers     []string
+	WebhookURL    string
+	WebhookSecret *string
+	RobotWebhook  string
+	RobotSecret   *string
+}
+
+type AlertRuleInput struct {
+	Id                  int
+	TenantId            int
+	Name                string
+	Enabled             *bool
+	RiskTypes           []string
+	DepartmentIds       []int
+	ChannelConfigs      []AlertRuleChannelInput
+	DedupeWindowSeconds *int
+	ActorId             int
+}
+
+type AlertRuleChannelItem struct {
+	Type                     string
+	Enabled                  bool
+	Receivers                []string
+	WebhookURL               string
+	WebhookSecretConfigured  bool
+	WebhookSecretMasked      string
+	DingTalkRobotURL         string
+	DingTalkSecretConfigured bool
+	DingTalkSecretMasked     string
+}
+
+type AlertRuleItem struct {
+	Id                  int
+	TenantId            int
+	Name                string
+	Enabled             bool
+	RiskTypes           []string
+	DepartmentIds       []int
+	ChannelConfigs      []AlertRuleChannelItem
+	DedupeWindowSeconds int
+	CreatedBy           int
+	UpdatedBy           int
+	CreatedAt           int64
+	UpdatedAt           int64
+}
+
+type AlertRuleListResult struct {
+	Items []AlertRuleItem
+	Total int
+}
+
+type AlertRuleMutationResult struct {
+	Item         AlertRuleItem
+	PreviousItem *AlertRuleItem
+	AuditSummary string
+	AuditPayload map[string]any
 }
 
 func NewAlertService(db *gorm.DB) *AlertService {
@@ -211,6 +276,182 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 	}, nil
 }
 
+func (s *AlertService) ListAlertRules(tenantId int) (AlertRuleListResult, error) {
+	if s == nil || s.db == nil {
+		return AlertRuleListResult{Items: []AlertRuleItem{}}, nil
+	}
+	if tenantId < 0 {
+		return AlertRuleListResult{}, ErrAlertRuleInvalidInput
+	}
+
+	var rules []entmodel.AlertRule
+	if err := s.db.Where("tenant_id = ?", tenantId).
+		Order("updated_at DESC, id DESC").
+		Find(&rules).Error; err != nil {
+		return AlertRuleListResult{}, err
+	}
+
+	items := make([]AlertRuleItem, 0, len(rules))
+	for _, rule := range rules {
+		item, err := mapAlertRuleItem(rule)
+		if err != nil {
+			return AlertRuleListResult{}, err
+		}
+		items = append(items, item)
+	}
+	if items == nil {
+		items = []AlertRuleItem{}
+	}
+	return AlertRuleListResult{Items: items, Total: len(items)}, nil
+}
+
+func (s *AlertService) GetAlertRule(tenantId int, ruleId int) (AlertRuleItem, error) {
+	if s == nil || s.db == nil {
+		return AlertRuleItem{}, ErrAlertRuleNotFound
+	}
+	if tenantId < 0 || ruleId <= 0 {
+		return AlertRuleItem{}, ErrAlertRuleInvalidInput
+	}
+
+	rule, err := s.getAlertRuleModel(tenantId, ruleId)
+	if err != nil {
+		return AlertRuleItem{}, err
+	}
+	return mapAlertRuleItem(rule)
+}
+
+func (s *AlertService) SaveAlertRule(input AlertRuleInput) (AlertRuleMutationResult, error) {
+	if s == nil || s.db == nil {
+		return AlertRuleMutationResult{}, ErrAlertRuleInvalidInput
+	}
+	if input.TenantId < 0 || input.ActorId <= 0 {
+		return AlertRuleMutationResult{}, ErrAlertRuleInvalidInput
+	}
+
+	var existing *entmodel.AlertRule
+	var previousItem *AlertRuleItem
+	if input.Id > 0 {
+		rule, err := s.getAlertRuleModel(input.TenantId, input.Id)
+		if err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		existing = &rule
+		item, err := mapAlertRuleItem(rule)
+		if err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		previousItem = &item
+	}
+
+	normalized, err := normalizeAlertRuleInput(input, existing)
+	if err != nil {
+		return AlertRuleMutationResult{}, err
+	}
+
+	var rule entmodel.AlertRule
+	if existing == nil {
+		rule = entmodel.AlertRule{
+			TenantId:            input.TenantId,
+			Name:                normalized.Name,
+			Enabled:             normalized.Enabled,
+			DedupeWindowSeconds: normalized.DedupeWindowSeconds,
+			CreatedBy:           input.ActorId,
+			UpdatedBy:           input.ActorId,
+		}
+		if err := rule.SetRiskTypes(normalized.RiskTypes); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := rule.SetDepartmentIds(normalized.DepartmentIds); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := rule.SetChannelConfigs(normalized.StoredChannels); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := s.db.Create(&rule).Error; err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+	} else {
+		rule = *existing
+		rule.Name = normalized.Name
+		rule.Enabled = normalized.Enabled
+		rule.DedupeWindowSeconds = normalized.DedupeWindowSeconds
+		rule.UpdatedBy = input.ActorId
+		if err := rule.SetRiskTypes(normalized.RiskTypes); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := rule.SetDepartmentIds(normalized.DepartmentIds); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := rule.SetChannelConfigs(normalized.StoredChannels); err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := s.db.Model(existing).Updates(map[string]any{
+			"name":                  rule.Name,
+			"enabled":               rule.Enabled,
+			"risk_types":            rule.RiskTypes,
+			"department_ids":        rule.DepartmentIds,
+			"channel_configs":       rule.ChannelConfigs,
+			"dedupe_window_seconds": rule.DedupeWindowSeconds,
+			"updated_by":            rule.UpdatedBy,
+			"updated_at":            s.now().Unix(),
+		}).Error; err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+		if err := s.db.Where("id = ? AND tenant_id = ?", existing.Id, input.TenantId).First(&rule).Error; err != nil {
+			return AlertRuleMutationResult{}, err
+		}
+	}
+
+	item, err := mapAlertRuleItem(rule)
+	if err != nil {
+		return AlertRuleMutationResult{}, err
+	}
+	return AlertRuleMutationResult{
+		Item:         item,
+		PreviousItem: previousItem,
+		AuditSummary: buildAlertRuleDiffSummary(previousItem, item, false),
+		AuditPayload: buildAlertRuleAuditPayload(item),
+	}, nil
+}
+
+func (s *AlertService) DeleteAlertRule(tenantId int, ruleId int, actorId int) (AlertRuleMutationResult, error) {
+	if s == nil || s.db == nil {
+		return AlertRuleMutationResult{}, ErrAlertRuleInvalidInput
+	}
+	if tenantId < 0 || ruleId <= 0 || actorId <= 0 {
+		return AlertRuleMutationResult{}, ErrAlertRuleInvalidInput
+	}
+
+	rule, err := s.getAlertRuleModel(tenantId, ruleId)
+	if err != nil {
+		return AlertRuleMutationResult{}, err
+	}
+	item, err := mapAlertRuleItem(rule)
+	if err != nil {
+		return AlertRuleMutationResult{}, err
+	}
+	if err := s.db.Delete(&rule).Error; err != nil {
+		return AlertRuleMutationResult{}, err
+	}
+	return AlertRuleMutationResult{
+		Item:         item,
+		PreviousItem: &item,
+		AuditSummary: buildAlertRuleDiffSummary(&item, item, true),
+		AuditPayload: buildAlertRuleAuditPayload(item),
+	}, nil
+}
+
+func (s *AlertService) getAlertRuleModel(tenantId int, ruleId int) (entmodel.AlertRule, error) {
+	var rule entmodel.AlertRule
+	if err := s.db.Where("tenant_id = ? AND id = ?", tenantId, ruleId).First(&rule).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return entmodel.AlertRule{}, ErrAlertRuleNotFound
+		}
+		return entmodel.AlertRule{}, err
+	}
+	return rule, nil
+}
+
 func (s *AlertService) loadDepartmentSnapshot(tenantId int, userId int) ([]entmodel.AlertEventDepartmentSnapshot, error) {
 	if userId <= 0 {
 		return []entmodel.AlertEventDepartmentSnapshot{}, nil
@@ -337,4 +578,408 @@ func countNonEmptyHits(hits []string) int {
 		}
 	}
 	return count
+}
+
+type normalizedAlertRuleInput struct {
+	Name                string
+	Enabled             bool
+	RiskTypes           []string
+	DepartmentIds       []int
+	DedupeWindowSeconds int
+	StoredChannels      []entmodel.AlertRuleChannelConfig
+}
+
+func normalizeAlertRuleInput(input AlertRuleInput, existing *entmodel.AlertRule) (normalizedAlertRuleInput, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return normalizedAlertRuleInput{}, ErrAlertRuleInvalidInput
+	}
+
+	riskTypes := uniqueNonEmptyStrings(input.RiskTypes)
+	if len(riskTypes) == 0 {
+		return normalizedAlertRuleInput{}, ErrAlertRuleInvalidInput
+	}
+
+	departmentIds, err := uniquePositiveInts(input.DepartmentIds)
+	if err != nil {
+		return normalizedAlertRuleInput{}, ErrAlertRuleInvalidInput
+	}
+
+	enabled := true
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+
+	dedupeWindowSeconds := 0
+	if input.DedupeWindowSeconds != nil {
+		dedupeWindowSeconds = *input.DedupeWindowSeconds
+		if dedupeWindowSeconds < 0 {
+			return normalizedAlertRuleInput{}, ErrAlertRuleInvalidInput
+		}
+	}
+
+	existingConfigs := make(map[string]entmodel.AlertRuleChannelConfig)
+	if existing != nil {
+		parsed, err := existing.ParsedChannelConfigs()
+		if err != nil {
+			return normalizedAlertRuleInput{}, err
+		}
+		for _, item := range parsed {
+			existingConfigs[item.Type] = item
+		}
+	}
+
+	storedChannels, err := normalizeAlertRuleChannels(input.ChannelConfigs, existingConfigs)
+	if err != nil {
+		return normalizedAlertRuleInput{}, err
+	}
+
+	return normalizedAlertRuleInput{
+		Name:                name,
+		Enabled:             enabled,
+		RiskTypes:           riskTypes,
+		DepartmentIds:       departmentIds,
+		DedupeWindowSeconds: dedupeWindowSeconds,
+		StoredChannels:      storedChannels,
+	}, nil
+}
+
+func normalizeAlertRuleChannels(inputs []AlertRuleChannelInput, existing map[string]entmodel.AlertRuleChannelConfig) ([]entmodel.AlertRuleChannelConfig, error) {
+	byType := make(map[string]AlertRuleChannelInput, len(inputs))
+	for _, item := range inputs {
+		channelType := normalizeAlertRuleChannelType(item.Type)
+		if channelType == "" {
+			return nil, ErrAlertRuleInvalidInput
+		}
+		item.Type = channelType
+		byType[channelType] = item
+	}
+
+	if len(byType) == 0 {
+		if existingEmail, ok := existing[entmodel.AlertRuleChannelEmail]; ok {
+			byType[entmodel.AlertRuleChannelEmail] = AlertRuleChannelInput{
+				Type:      entmodel.AlertRuleChannelEmail,
+				Enabled:   boolPtr(existingEmail.Enabled),
+				Receivers: append([]string{}, existingEmail.Receivers...),
+			}
+		}
+	}
+
+	emailInput, ok := byType[entmodel.AlertRuleChannelEmail]
+	if !ok {
+		return nil, ErrAlertRuleChannelRequired
+	}
+	emailEnabled := emailInput.Enabled == nil || *emailInput.Enabled
+	receivers, err := normalizeAlertRuleReceivers(emailInput.Receivers)
+	if err != nil {
+		return nil, err
+	}
+	if !emailEnabled || len(receivers) == 0 {
+		return nil, ErrAlertRuleChannelRequired
+	}
+
+	channels := []entmodel.AlertRuleChannelConfig{
+		{
+			Type:      entmodel.AlertRuleChannelEmail,
+			Enabled:   true,
+			Receivers: receivers,
+		},
+	}
+
+	if webhookInput, ok := byType[entmodel.AlertRuleChannelWebhook]; ok {
+		config, err := mergeWebhookChannelConfig(webhookInput, existing[entmodel.AlertRuleChannelWebhook], false)
+		if err != nil {
+			return nil, err
+		}
+		channels = append(channels, config)
+	} else if existingConfig, ok := existing[entmodel.AlertRuleChannelWebhook]; ok {
+		channels = append(channels, existingConfig)
+	}
+
+	if robotInput, ok := byType[entmodel.AlertRuleChannelDingTalkRobot]; ok {
+		config, err := mergeWebhookChannelConfig(robotInput, existing[entmodel.AlertRuleChannelDingTalkRobot], true)
+		if err != nil {
+			return nil, err
+		}
+		channels = append(channels, config)
+	} else if existingConfig, ok := existing[entmodel.AlertRuleChannelDingTalkRobot]; ok {
+		channels = append(channels, existingConfig)
+	}
+
+	return channels, nil
+}
+
+func boolPtr(value bool) *bool {
+	return &value
+}
+
+func mergeWebhookChannelConfig(input AlertRuleChannelInput, existing entmodel.AlertRuleChannelConfig, dingTalk bool) (entmodel.AlertRuleChannelConfig, error) {
+	enabled := input.Enabled != nil && *input.Enabled
+	if input.Enabled == nil {
+		enabled = existing.Enabled
+	}
+
+	if dingTalk {
+		webhookURL := strings.TrimSpace(input.RobotWebhook)
+		if webhookURL == "" {
+			webhookURL = existing.RobotWebhook
+		}
+		if enabled && webhookURL == "" {
+			return entmodel.AlertRuleChannelConfig{}, ErrAlertRuleInvalidWebhookURL
+		}
+		if webhookURL != "" && !isSupportedAlertWebhookURL(webhookURL) {
+			return entmodel.AlertRuleChannelConfig{}, ErrAlertRuleInvalidWebhookURL
+		}
+		secret := existing.RobotSecret
+		if input.RobotSecret != nil {
+			secret = strings.TrimSpace(*input.RobotSecret)
+		}
+		return entmodel.AlertRuleChannelConfig{
+			Type:         entmodel.AlertRuleChannelDingTalkRobot,
+			Enabled:      enabled,
+			RobotWebhook: webhookURL,
+			RobotSecret:  secret,
+		}, nil
+	}
+
+	webhookURL := strings.TrimSpace(input.WebhookURL)
+	if webhookURL == "" {
+		webhookURL = existing.WebhookURL
+	}
+	if enabled && webhookURL == "" {
+		return entmodel.AlertRuleChannelConfig{}, ErrAlertRuleInvalidWebhookURL
+	}
+	if webhookURL != "" && !isSupportedAlertWebhookURL(webhookURL) {
+		return entmodel.AlertRuleChannelConfig{}, ErrAlertRuleInvalidWebhookURL
+	}
+	secret := existing.WebhookSecret
+	if input.WebhookSecret != nil {
+		secret = strings.TrimSpace(*input.WebhookSecret)
+	}
+	return entmodel.AlertRuleChannelConfig{
+		Type:          entmodel.AlertRuleChannelWebhook,
+		Enabled:       enabled,
+		WebhookURL:    webhookURL,
+		WebhookSecret: secret,
+	}, nil
+}
+
+func normalizeAlertRuleReceivers(receivers []string) ([]string, error) {
+	if receivers == nil {
+		receivers = []string{}
+	}
+	normalized := make([]string, 0, len(receivers))
+	seen := make(map[string]struct{}, len(receivers))
+	for _, item := range receivers {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		addr, err := mail.ParseAddress(value)
+		if err != nil || addr.Address == "" {
+			return nil, ErrAlertRuleInvalidEmail
+		}
+		key := strings.ToLower(addr.Address)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, addr.Address)
+	}
+	return normalized, nil
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func uniquePositiveInts(values []int) ([]int, error) {
+	seen := make(map[int]struct{}, len(values))
+	out := make([]int, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			return nil, ErrAlertRuleInvalidInput
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Ints(out)
+	return out, nil
+}
+
+func normalizeAlertRuleChannelType(value string) string {
+	switch strings.TrimSpace(value) {
+	case entmodel.AlertRuleChannelEmail:
+		return entmodel.AlertRuleChannelEmail
+	case entmodel.AlertRuleChannelWebhook:
+		return entmodel.AlertRuleChannelWebhook
+	case entmodel.AlertRuleChannelDingTalkRobot:
+		return entmodel.AlertRuleChannelDingTalkRobot
+	default:
+		return ""
+	}
+}
+
+func isSupportedAlertWebhookURL(raw string) bool {
+	parsed, err := neturl.Parse(raw)
+	if err != nil || parsed == nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return parsed.Host != ""
+}
+
+func mapAlertRuleItem(rule entmodel.AlertRule) (AlertRuleItem, error) {
+	riskTypes, err := rule.ParsedRiskTypes()
+	if err != nil {
+		return AlertRuleItem{}, err
+	}
+	departmentIds, err := rule.ParsedDepartmentIds()
+	if err != nil {
+		return AlertRuleItem{}, err
+	}
+	configs, err := rule.ParsedChannelConfigs()
+	if err != nil {
+		return AlertRuleItem{}, err
+	}
+	items := make([]AlertRuleChannelItem, 0, len(configs))
+	for _, config := range configs {
+		items = append(items, mapAlertRuleChannelItem(config))
+	}
+	if items == nil {
+		items = []AlertRuleChannelItem{}
+	}
+	return AlertRuleItem{
+		Id:                  rule.Id,
+		TenantId:            rule.TenantId,
+		Name:                rule.Name,
+		Enabled:             rule.Enabled,
+		RiskTypes:           riskTypes,
+		DepartmentIds:       departmentIds,
+		ChannelConfigs:      items,
+		DedupeWindowSeconds: rule.DedupeWindowSeconds,
+		CreatedBy:           rule.CreatedBy,
+		UpdatedBy:           rule.UpdatedBy,
+		CreatedAt:           rule.CreatedAt,
+		UpdatedAt:           rule.UpdatedAt,
+	}, nil
+}
+
+func mapAlertRuleChannelItem(config entmodel.AlertRuleChannelConfig) AlertRuleChannelItem {
+	item := AlertRuleChannelItem{
+		Type:      config.Type,
+		Enabled:   config.Enabled,
+		Receivers: append([]string{}, config.Receivers...),
+	}
+	switch config.Type {
+	case entmodel.AlertRuleChannelWebhook:
+		item.WebhookURL = redactAlertWebhookURL(config.WebhookURL)
+		item.WebhookSecretConfigured = strings.TrimSpace(config.WebhookSecret) != ""
+		item.WebhookSecretMasked = maskAlertSecret(config.WebhookSecret)
+	case entmodel.AlertRuleChannelDingTalkRobot:
+		item.DingTalkRobotURL = redactAlertWebhookURL(config.RobotWebhook)
+		item.DingTalkSecretConfigured = strings.TrimSpace(config.RobotSecret) != ""
+		item.DingTalkSecretMasked = maskAlertSecret(config.RobotSecret)
+	}
+	if item.Receivers == nil {
+		item.Receivers = []string{}
+	}
+	return item
+}
+
+func buildAlertRuleAuditPayload(item AlertRuleItem) map[string]any {
+	channels := make([]map[string]any, 0, len(item.ChannelConfigs))
+	for _, channel := range item.ChannelConfigs {
+		entry := map[string]any{
+			"type":    channel.Type,
+			"enabled": channel.Enabled,
+		}
+		if channel.Type == entmodel.AlertRuleChannelEmail {
+			entry["receivers"] = append([]string{}, channel.Receivers...)
+		}
+		if channel.Type == entmodel.AlertRuleChannelWebhook {
+			entry["webhook_url"] = channel.WebhookURL
+			entry["webhook_secret_configured"] = channel.WebhookSecretConfigured
+		}
+		if channel.Type == entmodel.AlertRuleChannelDingTalkRobot {
+			entry["robot_webhook"] = channel.DingTalkRobotURL
+			entry["robot_secret_configured"] = channel.DingTalkSecretConfigured
+		}
+		channels = append(channels, entry)
+	}
+	return map[string]any{
+		"rule_id":               item.Id,
+		"tenant_id":             item.TenantId,
+		"name":                  item.Name,
+		"enabled":               item.Enabled,
+		"risk_types":            append([]string{}, item.RiskTypes...),
+		"department_ids":        append([]int{}, item.DepartmentIds...),
+		"channel_configs":       channels,
+		"dedupe_window_seconds": item.DedupeWindowSeconds,
+		"created_by":            item.CreatedBy,
+		"updated_by":            item.UpdatedBy,
+	}
+}
+
+func buildAlertRuleDiffSummary(previous *AlertRuleItem, current AlertRuleItem, deleted bool) string {
+	if deleted {
+		return fmt.Sprintf("Deleted alert rule #%d (%s)", current.Id, current.Name)
+	}
+	if previous == nil {
+		return fmt.Sprintf("Created alert rule #%d (%s)", current.Id, current.Name)
+	}
+	return fmt.Sprintf(
+		"Updated alert rule #%d (%s): enabled=%t risk_types=%d departments=%d channels=%d",
+		current.Id,
+		current.Name,
+		current.Enabled,
+		len(current.RiskTypes),
+		len(current.DepartmentIds),
+		len(current.ChannelConfigs),
+	)
+}
+
+func redactAlertWebhookURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := neturl.Parse(raw)
+	if err != nil || parsed == nil {
+		return ""
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
+}
+
+func maskAlertSecret(secret string) string {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return ""
+	}
+	if len(secret) <= 4 {
+		return "****"
+	}
+	return strings.Repeat("*", len(secret)-4) + secret[len(secret)-4:]
 }

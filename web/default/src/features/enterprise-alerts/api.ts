@@ -18,15 +18,23 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AlertRuleResponse,
+  AlertRulesResponse,
+  AlertRuleUpsertRequest,
   AlertEventsResponse,
   ApiResponse,
   EnterpriseAlertsSearch,
 } from './types'
 
 export const enterpriseAlertsQueryKey = ['enterprise', 'alerts', 'events'] as const
+export const enterpriseAlertRulesQueryKey = ['enterprise', 'alerts', 'rules'] as const
 
 export function alertEventsListQueryKey(search: EnterpriseAlertsSearch) {
   return [...enterpriseAlertsQueryKey, search] as const
+}
+
+export function alertRulesListQueryKey(tenantId?: number) {
+  return [...enterpriseAlertRulesQueryKey, tenantId ?? 'default'] as const
 }
 
 export async function getAlertEvents(
@@ -46,6 +54,36 @@ export async function getAlertEvents(
       ...(search.to === undefined ? {} : { to: search.to }),
       ...(search.page === undefined ? {} : { page: search.page }),
       ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
+    },
+  })
+  return res.data
+}
+
+export async function getAlertRules(
+  tenantId?: number
+): Promise<ApiResponse<AlertRulesResponse>> {
+  const res = await api.get('/api/enterprise/alerts/rules', {
+    params: {
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function saveAlertRule(
+  payload: AlertRuleUpsertRequest
+): Promise<ApiResponse<AlertRuleResponse>> {
+  const res = await api.put('/api/enterprise/alerts/rules', payload)
+  return res.data
+}
+
+export async function deleteAlertRule(
+  id: number,
+  tenantId?: number
+): Promise<ApiResponse<AlertRuleResponse>> {
+  const res = await api.delete(`/api/enterprise/alerts/rules/${id}`, {
+    params: {
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
     },
   })
   return res.data

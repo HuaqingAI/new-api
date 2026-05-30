@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { describe, test } from 'node:test';
 import { formatClassicAlertDepartments } from './alertHelpers.js';
 
@@ -13,5 +14,11 @@ describe('Enterprise alerts classic helpers', () => {
     );
 
     assert.equal(formatClassicAlertDepartments([]), '未归属');
+  });
+
+  test('alerts page exposes rule management entry', () => {
+    const source = fs.readFileSync(new URL('./Alerts.js', import.meta.url), 'utf8');
+    assert.match(source, /告警规则列表/);
+    assert.match(source, /saveAlertRule/);
   });
 });

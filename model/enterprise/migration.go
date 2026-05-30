@@ -14,6 +14,7 @@ func Migrate(db *gorm.DB) error {
 		&DepartmentRole{},
 		&AdminAction{},
 		&AlertEvent{},
+		&AlertRule{},
 		&UsageSnapshot{},
 		&UsageReportJob{},
 		&DingTalkConfig{},

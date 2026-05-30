@@ -16,16 +16,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
-import { AlertTriangle, Search } from 'lucide-react'
+import {
+  AlertTriangle,
+  BellRing,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -59,6 +72,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -67,9 +81,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { SectionPageLayout } from '@/components/layout'
-import { alertEventsListQueryKey, getAlertEvents } from './api'
-import type { AlertEventItem, EnterpriseAlertsSearch } from './types'
+import {
+  alertEventsListQueryKey,
+  alertRulesListQueryKey,
+  deleteAlertRule,
+  getAlertEvents,
+  getAlertRules,
+  saveAlertRule,
+} from './api'
+import type {
+  AlertEventItem,
+  AlertRuleItem,
+  AlertRuleUpsertRequest,
+  EnterpriseAlertsSearch,
+} from './types'
 
 export const enterpriseAlertsSearchSchema = z.object({
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
@@ -83,6 +111,41 @@ export const enterpriseAlertsSearchSchema = z.object({
   page: z.coerce.number().int().positive().optional().catch(1),
   page_size: z.coerce.number().int().positive().optional().catch(20),
 })
+
+const filterSchema = z.object({
+  tenant_id: z.string(),
+  department_id: z.string(),
+  user_id: z.string(),
+  username: z.string(),
+  model_name: z.string(),
+  risk_type: z.string(),
+  from: z.string(),
+  to: z.string(),
+  page_size: z.string(),
+})
+
+type AlertFilterFormValues = z.infer<typeof filterSchema>
+
+type RuleEditorState = {
+  id?: number
+  name: string
+  enabled: boolean
+  riskTypes: string
+  departmentIds: string
+  dedupeWindowSeconds: string
+  emailEnabled: boolean
+  emailReceivers: string
+  webhookEnabled: boolean
+  webhookUrl: string
+  webhookSecret: string
+  webhookSecretConfigured: boolean
+  webhookSecretMasked: string
+  dingtalkEnabled: boolean
+  dingtalkRobotUrl: string
+  dingtalkRobotSecret: string
+  dingtalkSecretConfigured: boolean
+  dingtalkSecretMasked: string
+}
 
 export function mapAlertFilterFormToSearch(values: AlertFilterFormValues) {
   return {
@@ -109,19 +172,57 @@ export function formatDepartmentSnapshot(
     .join(', ')
 }
 
-const filterSchema = z.object({
-  tenant_id: z.string(),
-  department_id: z.string(),
-  user_id: z.string(),
-  username: z.string(),
-  model_name: z.string(),
-  risk_type: z.string(),
-  from: z.string(),
-  to: z.string(),
-  page_size: z.string(),
-})
+export function buildAlertRulePayload(
+  draft: RuleEditorState,
+  tenantId?: number
+): AlertRuleUpsertRequest {
+  const payload: AlertRuleUpsertRequest = {
+    ...(draft.id === undefined ? {} : { id: draft.id }),
+    ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    name: draft.name.trim(),
+    enabled: draft.enabled,
+    risk_types: parseLineSeparatedList(draft.riskTypes),
+    department_ids: parseNumberList(draft.departmentIds),
+    dedupe_window_seconds:
+      parseOptionalNumber(draft.dedupeWindowSeconds) ?? 0,
+    channel_configs: [
+      {
+        type: 'email',
+        enabled: draft.emailEnabled,
+        receivers: parseLineSeparatedList(draft.emailReceivers),
+      },
+      {
+        type: 'webhook',
+        enabled: draft.webhookEnabled,
+        webhook_url: emptyToUndefined(draft.webhookUrl),
+        ...(draft.webhookSecret.trim()
+          ? { webhook_secret: draft.webhookSecret.trim() }
+          : {}),
+      },
+      {
+        type: 'dingtalk_robot',
+        enabled: draft.dingtalkEnabled,
+        dingtalk_robot_url: emptyToUndefined(draft.dingtalkRobotUrl),
+        ...(draft.dingtalkRobotSecret.trim()
+          ? { dingtalk_robot_secret: draft.dingtalkRobotSecret.trim() }
+          : {}),
+      },
+    ],
+  }
+  return payload
+}
 
-type AlertFilterFormValues = z.infer<typeof filterSchema>
+export function describeAlertRuleSecretStatus(
+  configured: boolean,
+  masked: string,
+  configuredLabel: string,
+  missingLabel: string
+) {
+  if (!configured) {
+    return missingLabel
+  }
+  return masked ? `${configuredLabel} (${masked})` : configuredLabel
+}
 
 function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormValues {
   return {
@@ -137,12 +238,67 @@ function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormVa
   }
 }
 
+function createEmptyRuleDraft(): RuleEditorState {
+  return {
+    name: '',
+    enabled: true,
+    riskTypes: 'abuse\nsensitive_words',
+    departmentIds: '',
+    dedupeWindowSeconds: '300',
+    emailEnabled: true,
+    emailReceivers: '',
+    webhookEnabled: false,
+    webhookUrl: '',
+    webhookSecret: '',
+    webhookSecretConfigured: false,
+    webhookSecretMasked: '',
+    dingtalkEnabled: false,
+    dingtalkRobotUrl: '',
+    dingtalkRobotSecret: '',
+    dingtalkSecretConfigured: false,
+    dingtalkSecretMasked: '',
+  }
+}
+
+function mapRuleToDraft(rule: AlertRuleItem): RuleEditorState {
+  const email = rule.channel_configs.find((item) => item.type === 'email')
+  const webhook = rule.channel_configs.find((item) => item.type === 'webhook')
+  const dingtalk = rule.channel_configs.find(
+    (item) => item.type === 'dingtalk_robot'
+  )
+
+  return {
+    id: rule.id,
+    name: rule.name,
+    enabled: rule.enabled,
+    riskTypes: rule.risk_types.join('\n'),
+    departmentIds: rule.department_ids.join(', '),
+    dedupeWindowSeconds: String(rule.dedupe_window_seconds ?? 0),
+    emailEnabled: email?.enabled ?? true,
+    emailReceivers: (email?.receivers ?? []).join('\n'),
+    webhookEnabled: webhook?.enabled ?? false,
+    webhookUrl: webhook?.webhook_url ?? '',
+    webhookSecret: '',
+    webhookSecretConfigured: webhook?.webhook_secret_configured ?? false,
+    webhookSecretMasked: webhook?.webhook_secret_masked ?? '',
+    dingtalkEnabled: dingtalk?.enabled ?? false,
+    dingtalkRobotUrl: dingtalk?.dingtalk_robot_url ?? '',
+    dingtalkRobotSecret: '',
+    dingtalkSecretConfigured:
+      dingtalk?.dingtalk_robot_secret_configured ?? false,
+    dingtalkSecretMasked: dingtalk?.dingtalk_robot_secret_masked ?? '',
+  }
+}
+
 export function EnterpriseAlertsPage() {
   const { t } = useTranslation()
   const search = useSearch({
     from: '/_authenticated/enterprise-alerts/',
   }) as EnterpriseAlertsSearch
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<'events' | 'rules'>('events')
+  const [draft, setDraft] = useState<RuleEditorState>(createEmptyRuleDraft())
 
   const form = useForm<AlertFilterFormValues>({
     resolver: zodResolver(filterSchema),
@@ -169,6 +325,63 @@ export function EnterpriseAlertsPage() {
     },
   })
 
+  const alertRulesQuery = useQuery({
+    queryKey: alertRulesListQueryKey(normalizedSearch.tenant_id),
+    queryFn: async () => {
+      const response = await getAlertRules(normalizedSearch.tenant_id)
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data
+    },
+  })
+
+  useEffect(() => {
+    if (!alertRulesQuery.data?.items.length) {
+      return
+    }
+    const currentRuleExists =
+      draft.id !== undefined &&
+      alertRulesQuery.data.items.some((item) => item.id === draft.id)
+    if (draft.id === undefined || !currentRuleExists) {
+      setDraft(mapRuleToDraft(alertRulesQuery.data.items[0]))
+    }
+  }, [alertRulesQuery.data, draft.id])
+
+  const saveRuleMutation = useMutation({
+    mutationFn: async (payload: AlertRuleUpsertRequest) => {
+      const response = await saveAlertRule(payload)
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data.item
+    },
+    onSuccess: async (item) => {
+      setDraft(mapRuleToDraft(item))
+      await queryClient.invalidateQueries({
+        queryKey: alertRulesListQueryKey(normalizedSearch.tenant_id),
+      })
+      toast.success(t('Alert rule saved'))
+    },
+  })
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await deleteAlertRule(id, normalizedSearch.tenant_id)
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data.item
+    },
+    onSuccess: async () => {
+      setDraft(createEmptyRuleDraft())
+      await queryClient.invalidateQueries({
+        queryKey: alertRulesListQueryKey(normalizedSearch.tenant_id),
+      })
+      toast.success(t('Alert rule deleted'))
+    },
+  })
+
   const totalPages = Math.max(
     1,
     Math.ceil((alertsQuery.data?.total ?? 0) / (alertsQuery.data?.page_size ?? 20))
@@ -191,266 +404,675 @@ export function EnterpriseAlertsPage() {
     })
   }
 
+  const submitRule = async () => {
+    await saveRuleMutation.mutateAsync(
+      buildAlertRulePayload(draft, normalizedSearch.tenant_id)
+    )
+  }
+
+  const deleteCurrentRule = async () => {
+    if (draft.id === undefined) {
+      return
+    }
+    await deleteRuleMutation.mutateAsync(draft.id)
+  }
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Enterprise Alerts')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-6'>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('Search')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'Filter enterprise risk events by department snapshot, actor, model, risk type, and time window.'
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form
-                  className='grid gap-4 md:grid-cols-3'
-                  onSubmit={form.handleSubmit(onSubmit)}
-                >
-                  <FormField
-                    control={form.control}
-                    name='department_id'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Department')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='11' />
-                        </FormControl>
-                      </FormItem>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as 'events' | 'rules')}
+            className='space-y-6'
+          >
+            <TabsList className='grid w-full grid-cols-2 md:w-[320px]'>
+              <TabsTrigger value='events'>{t('Risk Events')}</TabsTrigger>
+              <TabsTrigger value='rules'>{t('Alert Rules')}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value='events' className='space-y-6'>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Search')}</CardTitle>
+                  <CardDescription>
+                    {t(
+                      'Filter enterprise risk events by department snapshot, actor, model, risk type, and time window.'
                     )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='user_id'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('User')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='1001' />
-                        </FormControl>
-                      </FormItem>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...form}>
+                    <form
+                      className='grid gap-4 md:grid-cols-3'
+                      onSubmit={form.handleSubmit(onSubmit)}
+                    >
+                      <FormField
+                        control={form.control}
+                        name='department_id'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Department')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='11' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='user_id'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('User')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='1001' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='username'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Username')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='alice' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='model_name'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Model')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='gpt-4o-mini' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='risk_type'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Risk Type')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='sensitive_words' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='page_size'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Page Size')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='20' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='from'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('From Timestamp')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='1717117200' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='to'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('To Timestamp')}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder='1717203600' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <div className='flex items-end'>
+                        <Button className='w-full' type='submit'>
+                          <Search className='mr-2 size-4' />
+                          {t('Search')}
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+
+              {alertsQuery.error ? (
+                <Alert variant='destructive'>
+                  <AlertTriangle className='size-4' />
+                  <AlertTitle>{t('Request failed')}</AlertTitle>
+                  <AlertDescription>
+                    {alertsQuery.error instanceof Error
+                      ? alertsQuery.error.message
+                      : t('Request failed')}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Enterprise Alerts')}</CardTitle>
+                  <CardDescription>
+                    {t(
+                      'Only traceable summary fields are shown. Sensitive raw prompts are never returned here.'
                     )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='username'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Username')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='alice' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='model_name'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Model')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='gpt-4o-mini' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='risk_type'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Risk Type')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='sensitive_words' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='page_size'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Page Size')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='20' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='from'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('From Timestamp')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='1717117200' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='to'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('To Timestamp')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder='1717203600' />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <div className='flex items-end'>
-                    <Button className='w-full' type='submit'>
-                      <Search className='mr-2 size-4' />
-                      {t('Search')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className='space-y-4'>
+                  {alertsQuery.isLoading ? (
+                    <div className='space-y-3'>
+                      <Skeleton className='h-12 w-full' />
+                      <Skeleton className='h-12 w-full' />
+                      <Skeleton className='h-12 w-full' />
+                    </div>
+                  ) : alertsQuery.data?.items.length ? (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('Created At')}</TableHead>
+                            <TableHead>{t('Department')}</TableHead>
+                            <TableHead>{t('User')}</TableHead>
+                            <TableHead>{t('Request ID')}</TableHead>
+                            <TableHead>{t('Model')}</TableHead>
+                            <TableHead>{t('Risk Type')}</TableHead>
+                            <TableHead>{t('Action Result')}</TableHead>
+                            <TableHead>{t('Summary')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {alertsQuery.data.items.map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell>
+                                {formatTimestamp(item.created_at)}
+                              </TableCell>
+                              <TableCell>
+                                {formatDepartmentSnapshot(item, t('Unassigned'))}
+                              </TableCell>
+                              <TableCell>{item.username}</TableCell>
+                              <TableCell>{item.request_id}</TableCell>
+                              <TableCell>{item.model_name}</TableCell>
+                              <TableCell>{item.risk_type}</TableCell>
+                              <TableCell>{item.action_result}</TableCell>
+                              <TableCell>{item.summary}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+
+                      <Pagination>
+                        <PaginationContent>
+                          <PaginationItem>
+                            <PaginationPrevious
+                              href='#'
+                              onClick={(event) => {
+                                event.preventDefault()
+                                if (normalizedSearch.page && normalizedSearch.page > 1) {
+                                  changePage(normalizedSearch.page - 1)
+                                }
+                              }}
+                            />
+                          </PaginationItem>
+                          {Array.from({ length: totalPages }).map((_, index) => {
+                            const page = index + 1
+                            return (
+                              <PaginationItem key={page}>
+                                <PaginationLink
+                                  href='#'
+                                  isActive={page === (normalizedSearch.page ?? 1)}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    changePage(page)
+                                  }}
+                                >
+                                  {page}
+                                </PaginationLink>
+                              </PaginationItem>
+                            )
+                          })}
+                          <PaginationItem>
+                            <PaginationNext
+                              href='#'
+                              onClick={(event) => {
+                                event.preventDefault()
+                                if ((normalizedSearch.page ?? 1) < totalPages) {
+                                  changePage((normalizedSearch.page ?? 1) + 1)
+                                }
+                              }}
+                            />
+                          </PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </>
+                  ) : (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia>
+                          <AlertTriangle className='size-6' />
+                        </EmptyMedia>
+                        <EmptyTitle>{t('No risk events found')}</EmptyTitle>
+                        <EmptyDescription>
+                          {t('Adjust the filters and search again.')}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent />
+                    </Empty>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value='rules' className='space-y-6'>
+              {alertRulesQuery.error ? (
+                <Alert variant='destructive'>
+                  <AlertTriangle className='size-4' />
+                  <AlertTitle>{t('Request failed')}</AlertTitle>
+                  <AlertDescription>
+                    {alertRulesQuery.error instanceof Error
+                      ? alertRulesQuery.error.message
+                      : t('Request failed')}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className='grid gap-6 xl:grid-cols-[1.1fr_1.3fr]'>
+                <Card>
+                  <CardHeader className='flex flex-row items-center justify-between gap-4'>
+                    <div>
+                      <CardTitle>{t('Alert Rules')}</CardTitle>
+                      <CardDescription>
+                        {t(
+                          'Configure department-aware risk notifications. Email is required for the V1 alert loop.'
+                        )}
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant='outline'
+                      onClick={() => setDraft(createEmptyRuleDraft())}
+                    >
+                      <Plus className='mr-2 size-4' />
+                      {t('New Rule')}
                     </Button>
-                  </div>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+                  </CardHeader>
+                  <CardContent className='space-y-3'>
+                    {alertRulesQuery.isLoading ? (
+                      <div className='space-y-3'>
+                        <Skeleton className='h-18 w-full' />
+                        <Skeleton className='h-18 w-full' />
+                      </div>
+                    ) : alertRulesQuery.data?.items.length ? (
+                      alertRulesQuery.data.items.map((rule) => (
+                        <button
+                          key={rule.id}
+                          type='button'
+                          className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                            draft.id === rule.id
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:bg-muted/40'
+                          }`}
+                          onClick={() => setDraft(mapRuleToDraft(rule))}
+                        >
+                          <div className='flex items-start justify-between gap-3'>
+                            <div className='space-y-2'>
+                              <div className='flex items-center gap-2'>
+                                <span className='font-medium'>{rule.name}</span>
+                                <Badge
+                                  variant={rule.enabled ? 'default' : 'outline'}
+                                >
+                                  {rule.enabled ? t('Enabled') : t('Disabled')}
+                                </Badge>
+                              </div>
+                              <p className='text-muted-foreground text-sm'>
+                                {rule.risk_types.join(', ') || t('No risk types')}
+                              </p>
+                              <p className='text-muted-foreground text-sm'>
+                                {rule.department_ids.length
+                                  ? t('Departments: {{value}}', {
+                                      value: rule.department_ids.join(', '),
+                                    })
+                                  : t('All departments')}
+                              </p>
+                            </div>
+                            <BellRing className='text-muted-foreground size-4' />
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia>
+                            <BellRing className='size-6' />
+                          </EmptyMedia>
+                          <EmptyTitle>{t('No alert rules yet')}</EmptyTitle>
+                          <EmptyDescription>
+                            {t(
+                              'Create the first rule to notify owners when risky content is detected.'
+                            )}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                        <EmptyContent />
+                      </Empty>
+                    )}
+                  </CardContent>
+                </Card>
 
-          {alertsQuery.error ? (
-            <Alert variant='destructive'>
-              <AlertTriangle className='size-4' />
-              <AlertTitle>{t('Request failed')}</AlertTitle>
-              <AlertDescription>
-                {alertsQuery.error instanceof Error
-                  ? alertsQuery.error.message
-                  : t('Request failed')}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('Enterprise Alerts')}</CardTitle>
-              <CardDescription>
-                {t('Only traceable summary fields are shown. Sensitive raw prompts are never returned here.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='space-y-4'>
-              {alertsQuery.isLoading ? (
-                <div className='space-y-3'>
-                  <Skeleton className='h-12 w-full' />
-                  <Skeleton className='h-12 w-full' />
-                  <Skeleton className='h-12 w-full' />
-                </div>
-              ) : alertsQuery.data?.items.length ? (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('Created At')}</TableHead>
-                        <TableHead>{t('Department')}</TableHead>
-                        <TableHead>{t('User')}</TableHead>
-                        <TableHead>{t('Request ID')}</TableHead>
-                        <TableHead>{t('Model')}</TableHead>
-                        <TableHead>{t('Risk Type')}</TableHead>
-                        <TableHead>{t('Action Result')}</TableHead>
-                        <TableHead>{t('Summary')}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {alertsQuery.data.items.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>{formatTimestamp(item.created_at)}</TableCell>
-                          <TableCell>
-                            {formatDepartmentSnapshot(item, t('Unassigned'))}
-                          </TableCell>
-                          <TableCell>
-                            {item.username} (#{item.user_id})
-                          </TableCell>
-                          <TableCell>{item.request_id}</TableCell>
-                          <TableCell>{item.model_name}</TableCell>
-                          <TableCell>{item.risk_type}</TableCell>
-                          <TableCell>{item.action_result}</TableCell>
-                          <TableCell>{item.summary}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          href='#'
-                          onClick={(event) => {
-                            event.preventDefault()
-                            if ((alertsQuery.data?.page ?? 1) > 1) {
-                              changePage((alertsQuery.data?.page ?? 1) - 1)
-                            }
-                          }}
-                          text={t('Previous')}
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationLink href='#' isActive>
-                          {alertsQuery.data?.page ?? 1}
-                        </PaginationLink>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          href='#'
-                          onClick={(event) => {
-                            event.preventDefault()
-                            if ((alertsQuery.data?.page ?? 1) < totalPages) {
-                              changePage((alertsQuery.data?.page ?? 1) + 1)
-                            }
-                          }}
-                          text={t('Next')}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </>
-              ) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant='icon'>
-                      <AlertTriangle className='size-4' />
-                    </EmptyMedia>
-                    <EmptyTitle>{t('No alert events found')}</EmptyTitle>
-                    <EmptyDescription>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      {draft.id === undefined ? t('Create Rule') : t('Edit Rule')}
+                    </CardTitle>
+                    <CardDescription>
                       {t(
-                        'Adjust the filter set to widen the query window or inspect another department snapshot.'
+                        'Optional channels can stay disabled. They must not block email-based alert recording.'
                       )}
-                    </EmptyDescription>
-                  </EmptyHeader>
-                  <EmptyContent />
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className='space-y-5'>
+                    <div className='grid gap-4 md:grid-cols-2'>
+                      <div className='space-y-2'>
+                        <FormLabel>{t('Rule Name')}</FormLabel>
+                        <Input
+                          value={draft.name}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder={t('Critical content abuse')}
+                        />
+                      </div>
+                      <div className='space-y-2'>
+                        <FormLabel>{t('Deduplication Window (seconds)')}</FormLabel>
+                        <Input
+                          value={draft.dedupeWindowSeconds}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              dedupeWindowSeconds: event.target.value,
+                            }))
+                          }
+                          placeholder='300'
+                        />
+                      </div>
+                    </div>
+
+                    <div className='flex flex-wrap gap-6 rounded-xl border p-4'>
+                      <label className='flex items-center gap-3'>
+                        <Switch
+                          checked={draft.enabled}
+                          onCheckedChange={(checked) =>
+                            setDraft((prev) => ({ ...prev, enabled: checked }))
+                          }
+                        />
+                        <span className='text-sm font-medium'>{t('Rule Enabled')}</span>
+                      </label>
+                      <label className='flex items-center gap-3'>
+                        <Switch
+                          checked={draft.emailEnabled}
+                          onCheckedChange={(checked) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              emailEnabled: checked,
+                            }))
+                          }
+                        />
+                        <span className='text-sm font-medium'>
+                          {t('Email Channel Enabled')}
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className='grid gap-4 lg:grid-cols-2'>
+                      <div className='space-y-2'>
+                        <FormLabel>{t('Risk Types')}</FormLabel>
+                        <Textarea
+                          value={draft.riskTypes}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              riskTypes: event.target.value,
+                            }))
+                          }
+                          placeholder={t('One risk type per line')}
+                        />
+                      </div>
+                      <div className='space-y-2'>
+                        <FormLabel>{t('Department IDs')}</FormLabel>
+                        <Textarea
+                          value={draft.departmentIds}
+                          onChange={(event) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              departmentIds: event.target.value,
+                            }))
+                          }
+                          placeholder={t('Leave empty to target all departments')}
+                        />
+                      </div>
+                    </div>
+
+                    <div className='space-y-2'>
+                      <FormLabel>{t('Email Receivers')}</FormLabel>
+                      <Textarea
+                        value={draft.emailReceivers}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            emailReceivers: event.target.value,
+                          }))
+                        }
+                        placeholder={t('One email receiver per line')}
+                      />
+                    </div>
+
+                    <div className='grid gap-4 lg:grid-cols-2'>
+                      <Card className='border-dashed'>
+                        <CardHeader className='pb-3'>
+                          <div className='flex items-center justify-between gap-3'>
+                            <CardTitle className='text-base'>
+                              {t('Webhook Channel')}
+                            </CardTitle>
+                            <Switch
+                              checked={draft.webhookEnabled}
+                              onCheckedChange={(checked) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  webhookEnabled: checked,
+                                }))
+                              }
+                            />
+                          </div>
+                          <CardDescription>
+                            {t(
+                              'Webhook is optional. Secrets are stored but never echoed back in plain text.'
+                            )}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className='space-y-3'>
+                          <div className='space-y-2'>
+                            <FormLabel>{t('Webhook URL')}</FormLabel>
+                            <Input
+                              value={draft.webhookUrl}
+                              onChange={(event) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  webhookUrl: event.target.value,
+                                }))
+                              }
+                              placeholder='https://hooks.example.com/alerts'
+                            />
+                          </div>
+                          <div className='space-y-2'>
+                            <FormLabel>{t('Webhook Secret')}</FormLabel>
+                            <Input
+                              type='password'
+                              value={draft.webhookSecret}
+                              onChange={(event) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  webhookSecret: event.target.value,
+                                }))
+                              }
+                              placeholder={t('Enter a new secret to replace the stored one')}
+                            />
+                          </div>
+                          <p className='text-muted-foreground text-sm'>
+                            {describeAlertRuleSecretStatus(
+                              draft.webhookSecretConfigured,
+                              draft.webhookSecretMasked,
+                              t('Secret already configured'),
+                              t('No secret configured')
+                            )}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      <Card className='border-dashed'>
+                        <CardHeader className='pb-3'>
+                          <div className='flex items-center justify-between gap-3'>
+                            <CardTitle className='text-base'>
+                              {t('DingTalk Robot Channel')}
+                            </CardTitle>
+                            <Switch
+                              checked={draft.dingtalkEnabled}
+                              onCheckedChange={(checked) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  dingtalkEnabled: checked,
+                                }))
+                              }
+                            />
+                          </div>
+                          <CardDescription>
+                            {t(
+                              'DingTalk robot delivery is optional and should not block risk event persistence.'
+                            )}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className='space-y-3'>
+                          <div className='space-y-2'>
+                            <FormLabel>{t('DingTalk Robot URL')}</FormLabel>
+                            <Input
+                              value={draft.dingtalkRobotUrl}
+                              onChange={(event) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  dingtalkRobotUrl: event.target.value,
+                                }))
+                              }
+                              placeholder='https://oapi.dingtalk.com/robot/send'
+                            />
+                          </div>
+                          <div className='space-y-2'>
+                            <FormLabel>{t('DingTalk Robot Secret')}</FormLabel>
+                            <Input
+                              type='password'
+                              value={draft.dingtalkRobotSecret}
+                              onChange={(event) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  dingtalkRobotSecret: event.target.value,
+                                }))
+                              }
+                              placeholder={t('Enter a new secret to replace the stored one')}
+                            />
+                          </div>
+                          <p className='text-muted-foreground text-sm'>
+                            {describeAlertRuleSecretStatus(
+                              draft.dingtalkSecretConfigured,
+                              draft.dingtalkSecretMasked,
+                              t('Secret already configured'),
+                              t('No secret configured')
+                            )}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className='flex flex-wrap items-center gap-3'>
+                      <Button
+                        onClick={() => void submitRule()}
+                        disabled={saveRuleMutation.isPending}
+                      >
+                        <Save className='mr-2 size-4' />
+                        {saveRuleMutation.isPending
+                          ? t('Saving...')
+                          : t('Save Rule')}
+                      </Button>
+                      <Button
+                        variant='outline'
+                        onClick={() => setDraft(createEmptyRuleDraft())}
+                      >
+                        {t('Reset Draft')}
+                      </Button>
+                      {draft.id !== undefined ? (
+                        <Button
+                          variant='destructive'
+                          onClick={() => void deleteCurrentRule()}
+                          disabled={deleteRuleMutation.isPending}
+                        >
+                          <Trash2 className='mr-2 size-4' />
+                          {deleteRuleMutation.isPending
+                            ? t('Deleting...')
+                            : t('Delete Rule')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
 }
 
-function parseOptionalNumber(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return undefined
-  const parsed = Number(trimmed)
-  if (!Number.isInteger(parsed) || parsed <= 0) return undefined
-  return parsed
+function parseLineSeparatedList(value: string) {
+  return value
+    .split(/[\n,]/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
-function numberToString(value?: number) {
-  if (value === undefined) return ''
-  return String(value)
+function parseNumberList(value: string) {
+  return value
+    .split(/[\n,]/g)
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0)
+}
+
+function parseOptionalNumber(value?: string) {
+  if (!value) return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
 }
 
 function emptyToUndefined(value?: string) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
+}
+
+function numberToString(value?: number) {
+  return value === undefined ? '' : String(value)
 }

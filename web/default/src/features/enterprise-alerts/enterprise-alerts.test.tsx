@@ -27,10 +27,17 @@ import {
   buildAlertRulePayload,
   describeAlertRuleSecretStatus,
   enterpriseAlertsSearchSchema,
+  formatDeliveryStatus,
+  formatDeliveryTraceSummary,
   formatDepartmentSnapshot,
   mapAlertFilterFormToSearch,
 } from './index'
-import { alertRulesListQueryKey, enterpriseAlertRulesQueryKey } from './api'
+import {
+  alertDeliveriesListQueryKey,
+  alertRulesListQueryKey,
+  enterpriseAlertDeliveriesQueryKey,
+  enterpriseAlertRulesQueryKey,
+} from './api'
 
 describe('Enterprise alerts feature', () => {
   test('maps form filters into API search params', () => {
@@ -114,6 +121,51 @@ describe('Enterprise alerts feature', () => {
       'rules',
       7,
     ])
+    assert.deepEqual(enterpriseAlertDeliveriesQueryKey, [
+      'enterprise',
+      'alerts',
+      'deliveries',
+    ])
+    assert.deepEqual(alertDeliveriesListQueryKey({ tenant_id: 7, page: 1 }), [
+      'enterprise',
+      'alerts',
+      'deliveries',
+      { tenant_id: 7, page: 1 },
+    ])
+  })
+
+  test('formats delivery status and trace summary for read-only delivery views', () => {
+    const t = (value: string) => value
+    assert.equal(formatDeliveryStatus('final_failed', t), 'Final failed')
+    assert.equal(
+      formatDeliveryTraceSummary(
+        {
+          trace: {
+            event_id: 1,
+            request_id: 'req-1',
+            tenant_id: 7,
+            username: 'alice',
+            model_name: 'gpt-4o-mini',
+            risk_type: 'abuse',
+            action_result: 'blocked',
+            event_created_at: 1717117200,
+            department_snapshot: [],
+            department_summary: 'Engineering (#11)',
+            event_summary: 'policy only',
+            rule_id: 1,
+            rule_name: 'Critical abuse',
+            detail_route: '/enterprise-alerts?event_id=1',
+            detail_api_path: '/api/enterprise/alerts/events?tenant_id=7',
+          },
+        },
+        'No trace details yet'
+      ),
+      'Engineering (#11) · req-1 · /enterprise-alerts?event_id=1'
+    )
+    assert.equal(
+      formatDeliveryTraceSummary({ trace: undefined }, 'No trace details yet'),
+      'No trace details yet'
+    )
   })
 
   test('builds sanitized rule payloads while preserving optional false values', () => {
@@ -302,11 +354,17 @@ describe('Enterprise alerts feature', () => {
 
   test('enterprise alerts page source keeps V1 workflow guidance and secret-safe messaging', () => {
     const source = fs.readFileSync(
-      `${process.cwd()}/src/features/enterprise-alerts/index.tsx`,
+      new URL('./index.tsx', import.meta.url),
       'utf8'
     )
 
     for (const expected of [
+      'Deliveries',
+      'Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.',
+      'No deliveries yet',
+      'Alert deliveries will appear here after the background dispatcher runs.',
+      'No trace details yet',
+      'No error',
       'Alert Rules',
       'Configure department-aware risk notifications. Email is required for the V1 alert loop.',
       'Optional channels can stay disabled. They must not block email-based alert recording.',
@@ -323,6 +381,9 @@ describe('Enterprise alerts feature', () => {
 
     assert.match(source, /describeAlertRuleSecretStatus\(/)
     assert.match(source, /buildAlertRulePayload\(draft, normalizedSearch\.tenant_id\)/)
+    assert.match(source, /formatDeliveryTraceSummary\(/)
+    assert.doesNotMatch(source, /plain-secret/i)
+    assert.doesNotMatch(source, /token=secret/i)
   })
 })
 

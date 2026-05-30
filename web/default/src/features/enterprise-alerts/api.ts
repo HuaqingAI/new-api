@@ -18,15 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AlertDeliveriesResponse,
   AlertRuleResponse,
   AlertRulesResponse,
   AlertRuleUpsertRequest,
   AlertEventsResponse,
   ApiResponse,
+  EnterpriseAlertDeliveriesSearch,
   EnterpriseAlertsSearch,
 } from './types'
 
 export const enterpriseAlertsQueryKey = ['enterprise', 'alerts', 'events'] as const
+export const enterpriseAlertDeliveriesQueryKey = ['enterprise', 'alerts', 'deliveries'] as const
 export const enterpriseAlertRulesQueryKey = ['enterprise', 'alerts', 'rules'] as const
 
 export function alertEventsListQueryKey(search: EnterpriseAlertsSearch) {
@@ -35,6 +38,12 @@ export function alertEventsListQueryKey(search: EnterpriseAlertsSearch) {
 
 export function alertRulesListQueryKey(tenantId?: number) {
   return [...enterpriseAlertRulesQueryKey, tenantId ?? 'default'] as const
+}
+
+export function alertDeliveriesListQueryKey(
+  search: EnterpriseAlertDeliveriesSearch
+) {
+  return [...enterpriseAlertDeliveriesQueryKey, search] as const
 }
 
 export async function getAlertEvents(
@@ -65,6 +74,23 @@ export async function getAlertRules(
   const res = await api.get('/api/enterprise/alerts/rules', {
     params: {
       ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function getAlertDeliveries(
+  search: EnterpriseAlertDeliveriesSearch
+): Promise<ApiResponse<AlertDeliveriesResponse>> {
+  const res = await api.get('/api/enterprise/alerts/deliveries', {
+    params: {
+      ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.rule_id === undefined ? {} : { rule_id: search.rule_id }),
+      ...(search.event_id === undefined ? {} : { event_id: search.event_id }),
+      ...(search.channel_type ? { channel_type: search.channel_type } : {}),
+      ...(search.status ? { status: search.status } : {}),
+      ...(search.page === undefined ? {} : { page: search.page }),
+      ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
     },
   })
   return res.data

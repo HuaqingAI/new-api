@@ -29,6 +29,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.GET("/admin-actions", middleware.EnterpriseAdmin(), controllerenterprise.ListAdminActions)
 		enterpriseRoute.GET("/admin-actions/:id", middleware.EnterpriseAdmin(), controllerenterprise.GetAdminAction)
 		enterpriseRoute.GET("/alerts/events", middleware.EnterpriseAdmin(), controllerenterprise.ListAlertEvents)
+		enterpriseRoute.GET("/alerts/deliveries", middleware.EnterpriseAdmin(), controllerenterprise.ListAlertDeliveries)
 		enterpriseRoute.GET("/alerts/rules", middleware.EnterpriseAdmin(), controllerenterprise.ListAlertRules)
 		enterpriseRoute.GET("/alerts/rules/:id", middleware.EnterpriseAdmin(), controllerenterprise.GetAlertRule)
 		enterpriseRoute.PUT("/alerts/rules", middleware.EnterpriseAdmin(), controllerenterprise.SaveAlertRule)

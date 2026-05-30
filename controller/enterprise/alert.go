@@ -8,6 +8,7 @@ import (
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -75,6 +76,88 @@ func ListAlertEvents(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, dtoenterprise.AlertEventsResponse{
+		Items:    items,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	})
+}
+
+func ListAlertDeliveries(c *gin.Context) {
+	var query dtoenterprise.AlertDeliveriesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	tenantId, ok := requestTenantId(c, query.TenantId)
+	if !ok {
+		return
+	}
+
+	result, err := entservice.NewAlertService(model.DB).ListAlertDeliveries(entservice.AlertDeliveryQuery{
+		TenantId:    tenantId,
+		RuleId:      query.RuleId,
+		EventId:     query.EventId,
+		ChannelType: readOptionalString(query.ChannelType),
+		Status:      readOptionalString(query.Status),
+		Page:        valueOrZero(query.Page),
+		PageSize:    valueOrZero(query.PageSize),
+	})
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	items := make([]dtoenterprise.AlertDeliveryItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		var trace *dtoenterprise.AlertDeliveryTraceItem
+		if item.Trace != nil {
+			trace = &dtoenterprise.AlertDeliveryTraceItem{
+				EventId:            item.Trace.EventId,
+				RequestId:          item.Trace.RequestId,
+				TenantId:           item.Trace.TenantId,
+				Username:           item.Trace.Username,
+				ModelName:          item.Trace.ModelName,
+				RiskType:           item.Trace.RiskType,
+				ActionResult:       item.Trace.ActionResult,
+				EventCreatedAt:     item.Trace.EventCreatedAt,
+				DepartmentSnapshot: mapAlertEventDepartmentSnapshotItems(item.Trace.DepartmentSnapshot),
+				DepartmentSummary:  item.Trace.DepartmentSummary,
+				EventSummary:       item.Trace.EventSummary,
+				RuleId:             item.Trace.RuleId,
+				RuleName:           item.Trace.RuleName,
+				DetailRoute:        item.Trace.DetailRoute,
+				DetailAPIPath:      item.Trace.DetailAPIPath,
+			}
+		}
+		items = append(items, dtoenterprise.AlertDeliveryItem{
+			Id:             item.Id,
+			TenantId:       item.TenantId,
+			EventId:        item.EventId,
+			RuleId:         item.RuleId,
+			ChannelType:    item.ChannelType,
+			Status:         item.Status,
+			AttemptCount:   item.AttemptCount,
+			MaxAttempts:    item.MaxAttempts,
+			NextRetryAt:    item.NextRetryAt,
+			LastAttemptAt:  item.LastAttemptAt,
+			SentAt:         item.SentAt,
+			FinalFailedAt:  item.FinalFailedAt,
+			ErrorReason:    item.ErrorReason,
+			DedupeKey:      item.DedupeKey,
+			TriggerSource:  item.TriggerSource,
+			ManualParentId: item.ManualParentId,
+			CreatedAt:      item.CreatedAt,
+			UpdatedAt:      item.UpdatedAt,
+			Trace:          trace,
+		})
+	}
+	if items == nil {
+		items = []dtoenterprise.AlertDeliveryItem{}
+	}
+
+	common.ApiSuccess(c, dtoenterprise.AlertDeliveriesResponse{
 		Items:    items,
 		Total:    result.Total,
 		Page:     result.Page,
@@ -236,6 +319,8 @@ func writeAlertEventError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrInvalidAlertEventQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrInvalidAlertDeliveryQuery):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrAlertRuleInvalidInput), errors.Is(err, entservice.ErrAlertRuleChannelRequired):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrAlertRuleInvalidEmail):
@@ -247,6 +332,22 @@ func writeAlertEventError(c *gin.Context, err error) {
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func mapAlertEventDepartmentSnapshotItems(items []entmodel.AlertEventDepartmentSnapshot) []dtoenterprise.AlertEventDepartmentSnapshot {
+	out := make([]dtoenterprise.AlertEventDepartmentSnapshot, 0, len(items))
+	for _, department := range items {
+		out = append(out, dtoenterprise.AlertEventDepartmentSnapshot{
+			DepartmentId:   department.DepartmentId,
+			DepartmentName: department.DepartmentName,
+			ExternalSource: department.ExternalSource,
+			Status:         department.Status,
+		})
+	}
+	if out == nil {
+		out = []dtoenterprise.AlertEventDepartmentSnapshot{}
+	}
+	return out
 }
 
 func mapAlertRuleChannelInputs(items []dtoenterprise.AlertRuleChannelConfigInput) []entservice.AlertRuleChannelInput {

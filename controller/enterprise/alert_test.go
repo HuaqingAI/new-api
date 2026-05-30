@@ -61,6 +61,61 @@ func TestAlertEventsAPIReturnsEmptyItemsArray(t *testing.T) {
 	require.JSONEq(t, `{"items":[],"total":0,"page":1,"page_size":20}`, string(response.Data))
 }
 
+func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	delivery := entmodel.AlertDelivery{
+		TenantId:      0,
+		EventId:       1,
+		RuleId:        2,
+		ChannelType:   entmodel.AlertRuleChannelEmail,
+		Status:        entmodel.AlertDeliveryStatusFinalFailed,
+		AttemptCount:  4,
+		MaxAttempts:   4,
+		FinalFailedAt: 1717117201,
+		ErrorReason:   "smtp timeout",
+		DedupeKey:     "0:1:2:email:1717117200",
+		NextRetryAt:   1717117200,
+		CreatedAt:     1717117200,
+		UpdatedAt:     1717117201,
+	}
+	require.NoError(t, delivery.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:            1,
+		RequestId:          "req-1",
+		TenantId:           0,
+		Username:           "alice",
+		ModelName:          "gpt-4o-mini",
+		RiskType:           "abuse",
+		ActionResult:       "blocked",
+		EventCreatedAt:     1717117200,
+		DepartmentSnapshot: []entmodel.AlertEventDepartmentSnapshot{{DepartmentId: 1, DepartmentName: "Engineering"}},
+		DepartmentSummary:  "Engineering (#1)",
+		EventSummary:       "policy only",
+		RuleId:             2,
+		RuleName:           "Critical",
+		DetailRoute:        "/enterprise-alerts?event_id=1",
+		DetailAPIPath:      "/api/enterprise/alerts/events?tenant_id=0",
+	}))
+	require.NoError(t, db.Create(&delivery).Error)
+
+	invalid := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/deliveries?rule_id=bad", nil)
+	invalidResponse := decodeEnterpriseAPIResponse(t, invalid)
+	require.False(t, invalidResponse.Success)
+	require.Equal(t, "common.invalid_params", invalidResponse.Message)
+
+	ok := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/deliveries?status=final_failed&page=1&page_size=20", nil)
+	okResponse := decodeEnterpriseAPIResponse(t, ok)
+	require.True(t, okResponse.Success, okResponse.Message)
+	require.NotContains(t, ok.Body.String(), "secret")
+
+	payload := decodeEnterpriseData[dtoenterprise.AlertDeliveriesResponse](t, okResponse)
+	require.Equal(t, 1, payload.Total)
+	require.Len(t, payload.Items, 1)
+	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, payload.Items[0].Status)
+	require.NotNil(t, payload.Items[0].Trace)
+	require.Equal(t, "req-1", payload.Items[0].Trace.RequestId)
+}
+
 func TestAlertRulesAPIValidatesPersistsAndSanitizesSecrets(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 

@@ -1666,7 +1666,7 @@
     "extras": "mục bổ sung",
     "Fail Reason": "Lý do thất bại",
     "Fail Reason Details": "Chi tiết lý do thất bại",
-    "Failed": "Thất bại",
+    "Failed": "That bai",
     "Failed to {{action}} user": "Không thể {{action}} người dùng",
     "Failed to adjust quota": "Không thể điều chỉnh hạn mức",
     "Failed to apply overwrite.": "Không thể áp dụng ghi đè.",
@@ -1887,7 +1887,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Buộc phản hồi JSON hợp lệ về cú pháp",
@@ -4754,6 +4754,17 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Deliveries": "Ket qua gui",
+    "Attempts": "So lan thu",
+    "Trace Details": "Thong tin truy vet",
+    "Final failed": "That bai cuoi cung",
+    "Sent": "Da gui",
+    "Resent": "Da gui lai",
+    "No trace details yet": "Chua co thong tin truy vet",
+    "No error": "Khong co loi",
+    "No deliveries yet": "Chua co ket qua gui",
+    "Alert deliveries will appear here after the background dispatcher runs.": "Ket qua gui canh bao se xuat hien tai day sau khi tac vu nen chay.",
+    "Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.": "Xem ket qua gui thong bao, lich thu lai va goi y truy vet ma khong lo secret hay prompt goc."
   }
 }

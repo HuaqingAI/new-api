@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	enterpriseWalletTaskTickInterval = 1 * time.Minute
+	enterpriseMaintenanceTaskTickInterval    = 1 * time.Minute
+	enterpriseAlertDispatchTaskTickInterval  = 30 * time.Second
 )
 
 var enterpriseSchedulerOnce sync.Once
@@ -25,13 +26,24 @@ func StartEnterpriseTasks() {
 		}
 		gopool.Go(func() {
 			ctx := context.Background()
-			logger.LogInfo(ctx, fmt.Sprintf("enterprise wallet tasks started: tick=%s", enterpriseWalletTaskTickInterval))
-			ticker := time.NewTicker(enterpriseWalletTaskTickInterval)
+			logger.LogInfo(ctx, fmt.Sprintf("enterprise maintenance tasks started: tick=%s", enterpriseMaintenanceTaskTickInterval))
+			ticker := time.NewTicker(enterpriseMaintenanceTaskTickInterval)
 			defer ticker.Stop()
 
-			runEnterpriseTasksOnce(ctx)
+			runEnterpriseMaintenanceTasksOnce(ctx)
 			for range ticker.C {
-				runEnterpriseTasksOnce(ctx)
+				runEnterpriseMaintenanceTasksOnce(ctx)
+			}
+		})
+		gopool.Go(func() {
+			ctx := context.Background()
+			logger.LogInfo(ctx, fmt.Sprintf("enterprise alert dispatch tasks started: tick=%s", enterpriseAlertDispatchTaskTickInterval))
+			ticker := time.NewTicker(enterpriseAlertDispatchTaskTickInterval)
+			defer ticker.Stop()
+
+			runEnterpriseAlertDispatchTaskOnce(ctx)
+			for range ticker.C {
+				runEnterpriseAlertDispatchTaskOnce(ctx)
 			}
 		})
 	})
@@ -41,7 +53,7 @@ func StartEnterpriseWalletTasks() {
 	StartEnterpriseTasks()
 }
 
-func runEnterpriseTasksOnce(ctx context.Context) {
+func runEnterpriseMaintenanceTasksOnce(ctx context.Context) {
 	if _, err := ExpireBalanceAllocations(nil, 200, common.GetTimestamp()); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("enterprise balance expiry task failed: %v", err))
 	}
@@ -55,5 +67,19 @@ func runEnterpriseTasksOnce(ctx context.Context) {
 		logger.LogWarn(ctx, fmt.Sprintf("enterprise usage report task failed: %v", err))
 	} else if result.Processed > 0 || result.Failed > 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("enterprise usage report task finished: processed=%d failed=%d", result.Processed, result.Failed))
+	}
+}
+
+func runEnterpriseAlertDispatchTaskOnce(ctx context.Context) {
+	if result, err := RunAlertDispatchTaskOnce(ctx); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("enterprise alert dispatch task failed: %v", err))
+	} else if result.Processed > 0 || result.FinalFailed > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf(
+			"enterprise alert dispatch task finished: processed=%d sent=%d retried=%d final_failed=%d",
+			result.Processed,
+			result.Sent,
+			result.Retried,
+			result.FinalFailed,
+		))
 	}
 }

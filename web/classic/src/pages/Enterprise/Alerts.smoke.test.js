@@ -20,5 +20,7 @@ describe('Enterprise alerts classic helpers', () => {
     const source = fs.readFileSync(new URL('./Alerts.js', import.meta.url), 'utf8');
     assert.match(source, /告警规则列表/);
     assert.match(source, /saveAlertRule/);
+    assert.match(source, /投递结果/);
+    assert.match(source, /getAlertDeliveries/);
   });
 });

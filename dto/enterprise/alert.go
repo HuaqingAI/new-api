@@ -41,6 +41,63 @@ type AlertEventsResponse struct {
 	PageSize int              `json:"page_size"`
 }
 
+type AlertDeliveriesQuery struct {
+	TenantId    *int    `form:"tenant_id,omitempty"`
+	RuleId      *int    `form:"rule_id,omitempty"`
+	EventId     *int    `form:"event_id,omitempty"`
+	ChannelType *string `form:"channel_type,omitempty"`
+	Status      *string `form:"status,omitempty"`
+	Page        *int    `form:"page,omitempty"`
+	PageSize    *int    `form:"page_size,omitempty"`
+}
+
+type AlertDeliveryTraceItem struct {
+	EventId            int                            `json:"event_id"`
+	RequestId          string                         `json:"request_id"`
+	TenantId           int                            `json:"tenant_id"`
+	Username           string                         `json:"username"`
+	ModelName          string                         `json:"model_name"`
+	RiskType           string                         `json:"risk_type"`
+	ActionResult       string                         `json:"action_result"`
+	EventCreatedAt     int64                          `json:"event_created_at"`
+	DepartmentSnapshot []AlertEventDepartmentSnapshot `json:"department_snapshot"`
+	DepartmentSummary  string                         `json:"department_summary"`
+	EventSummary       string                         `json:"event_summary"`
+	RuleId             int                            `json:"rule_id"`
+	RuleName           string                         `json:"rule_name"`
+	DetailRoute        string                         `json:"detail_route"`
+	DetailAPIPath      string                         `json:"detail_api_path"`
+}
+
+type AlertDeliveryItem struct {
+	Id             int                     `json:"id"`
+	TenantId       int                     `json:"tenant_id"`
+	EventId        int                     `json:"event_id"`
+	RuleId         int                     `json:"rule_id"`
+	ChannelType    string                  `json:"channel_type"`
+	Status         string                  `json:"status"`
+	AttemptCount   int                     `json:"attempt_count"`
+	MaxAttempts    int                     `json:"max_attempts"`
+	NextRetryAt    int64                   `json:"next_retry_at"`
+	LastAttemptAt  int64                   `json:"last_attempt_at"`
+	SentAt         int64                   `json:"sent_at"`
+	FinalFailedAt  int64                   `json:"final_failed_at"`
+	ErrorReason    string                  `json:"error_reason"`
+	DedupeKey      string                  `json:"dedupe_key"`
+	TriggerSource  string                  `json:"trigger_source"`
+	ManualParentId *int                    `json:"manual_parent_id,omitempty"`
+	CreatedAt      int64                   `json:"created_at"`
+	UpdatedAt      int64                   `json:"updated_at"`
+	Trace          *AlertDeliveryTraceItem `json:"trace,omitempty"`
+}
+
+type AlertDeliveriesResponse struct {
+	Items    []AlertDeliveryItem `json:"items"`
+	Total    int                 `json:"total"`
+	Page     int                 `json:"page"`
+	PageSize int                 `json:"page_size"`
+}
+
 type AlertRuleChannelConfigInput struct {
 	Type                string   `json:"type"`
 	Enabled             *bool    `json:"enabled,omitempty"`
@@ -64,18 +121,18 @@ type AlertRuleChannelConfigItem struct {
 }
 
 type AlertRuleItem struct {
-	Id                  int                      `json:"id"`
-	TenantId            int                      `json:"tenant_id"`
-	Name                string                   `json:"name"`
-	Enabled             bool                     `json:"enabled"`
-	RiskTypes           []string                 `json:"risk_types"`
-	DepartmentIds       []int                    `json:"department_ids"`
+	Id                  int                          `json:"id"`
+	TenantId            int                          `json:"tenant_id"`
+	Name                string                       `json:"name"`
+	Enabled             bool                         `json:"enabled"`
+	RiskTypes           []string                     `json:"risk_types"`
+	DepartmentIds       []int                        `json:"department_ids"`
 	ChannelConfigs      []AlertRuleChannelConfigItem `json:"channel_configs"`
-	DedupeWindowSeconds int                      `json:"dedupe_window_seconds"`
-	CreatedBy           int                      `json:"created_by"`
-	UpdatedBy           int                      `json:"updated_by"`
-	CreatedAt           int64                    `json:"created_at"`
-	UpdatedAt           int64                    `json:"updated_at"`
+	DedupeWindowSeconds int                          `json:"dedupe_window_seconds"`
+	CreatedBy           int                          `json:"created_by"`
+	UpdatedBy           int                          `json:"updated_by"`
+	CreatedAt           int64                        `json:"created_at"`
+	UpdatedAt           int64                        `json:"updated_at"`
 }
 
 type AlertRulesQuery struct {
@@ -83,14 +140,14 @@ type AlertRulesQuery struct {
 }
 
 type AlertRuleUpsertRequest struct {
-	Id                  *int                     `json:"id,omitempty"`
-	TenantId            *int                     `json:"tenant_id,omitempty"`
-	Name                *string                  `json:"name,omitempty"`
-	Enabled             *bool                    `json:"enabled,omitempty"`
-	RiskTypes           []string                 `json:"risk_types"`
-	DepartmentIds       []int                    `json:"department_ids"`
+	Id                  *int                          `json:"id,omitempty"`
+	TenantId            *int                          `json:"tenant_id,omitempty"`
+	Name                *string                       `json:"name,omitempty"`
+	Enabled             *bool                         `json:"enabled,omitempty"`
+	RiskTypes           []string                      `json:"risk_types"`
+	DepartmentIds       []int                         `json:"department_ids"`
 	ChannelConfigs      []AlertRuleChannelConfigInput `json:"channel_configs"`
-	DedupeWindowSeconds *int                     `json:"dedupe_window_seconds,omitempty"`
+	DedupeWindowSeconds *int                          `json:"dedupe_window_seconds,omitempty"`
 }
 
 type AlertRulesResponse struct {

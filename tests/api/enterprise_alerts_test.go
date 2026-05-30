@@ -98,6 +98,92 @@ func TestEnterpriseAlertsAPIHonorsTenantScopeAndEmptyResult(t *testing.T) {
 	require.Empty(t, response.Items[0].DepartmentSnapshot)
 }
 
+func TestEnterpriseAlertDeliveriesAPIRequiresEnterpriseAdminAndSanitizesTracePayload(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	delivery := modelenterprise.AlertDelivery{
+		TenantId:     7,
+		EventId:      77,
+		RuleId:       5,
+		ChannelType:  modelenterprise.AlertRuleChannelWebhook,
+		Status:       modelenterprise.AlertDeliveryStatusFinalFailed,
+		AttemptCount: 4,
+		MaxAttempts:  4,
+		ErrorReason:  "webhook request failed",
+		DedupeKey:    "7:77:5:webhook:1717117200",
+		CreatedAt:    1717117200,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, delivery.SetTracePayload(&modelenterprise.AlertDeliveryTracePayload{
+		EventId:           77,
+		RequestId:         "req-delivery-1",
+		TenantId:          7,
+		Username:          "tenant-user",
+		ModelName:         "claude-sonnet-4",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Unassigned",
+		EventSummary:      "review requested",
+		RuleId:            5,
+		RuleName:          "Tenant 7 abuse",
+		DetailRoute:       "/enterprise-alerts?event_id=77",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, fixture.db.Create(&delivery).Error)
+
+	deliveryTwo := modelenterprise.AlertDelivery{
+		TenantId:     7,
+		EventId:      88,
+		RuleId:       6,
+		ChannelType:  modelenterprise.AlertRuleChannelEmail,
+		Status:       modelenterprise.AlertDeliveryStatusSent,
+		AttemptCount: 1,
+		MaxAttempts:  4,
+		SentAt:       1717117800,
+		DedupeKey:    "7:88:6:email:1717117500",
+		CreatedAt:    1717117500,
+		UpdatedAt:    1717117800,
+	}
+	require.NoError(t, deliveryTwo.SetTracePayload(&modelenterprise.AlertDeliveryTracePayload{
+		EventId:           88,
+		RequestId:         "req-delivery-2",
+		TenantId:          7,
+		Username:          "tenant-user",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117500,
+		DepartmentSummary: "Engineering (#1)",
+		EventSummary:      "emailed",
+		RuleId:            6,
+		RuleName:          "Tenant 7 email",
+		DetailRoute:       "/enterprise-alerts?event_id=88",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, fixture.db.Create(&deliveryTwo).Error)
+
+	commonUser := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/deliveries?page=1&page_size=20", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	admin := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/deliveries?tenant_id=7&status=final_failed&page=1&page_size=20", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	adminPayload := decodeAdminActionsAPIResponse(t, admin)
+	require.True(t, adminPayload.Success, adminPayload.Message)
+	require.NotContains(t, string(adminPayload.Data), "secret")
+
+	var response dtoenterprise.AlertDeliveriesResponse
+	require.NoError(t, common.Unmarshal(adminPayload.Data, &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, 1, response.Total)
+	require.Equal(t, 1, response.Page)
+	require.Equal(t, 20, response.PageSize)
+	require.Equal(t, "req-delivery-1", response.Items[0].Trace.RequestId)
+	require.Equal(t, "webhook", response.Items[0].ChannelType)
+	require.Equal(t, "webhook request failed", response.Items[0].ErrorReason)
+}
+
 func TestEnterpriseAlertRulesAPIRequiresEnterpriseAdminAndSanitizesSecrets(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 

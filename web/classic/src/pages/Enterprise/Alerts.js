@@ -29,7 +29,7 @@ import {
   Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
-import { getAlertEvents, getAlertRules, saveAlertRule } from '../../services/enterprise';
+import { getAlertDeliveries, getAlertEvents, getAlertRules, saveAlertRule } from '../../services/enterprise';
 import { showError, showSuccess } from '../../helpers';
 import { formatClassicAlertDepartments } from './alertHelpers';
 
@@ -92,6 +92,7 @@ export default function EnterpriseAlerts() {
   const [savingRule, setSavingRule] = useState(false);
   const [events, setEvents] = useState([]);
   const [rules, setRules] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
   const [draft, setDraft] = useState(createEmptyRuleDraft());
   const [pagination, setPagination] = useState({ total: 0, page: 1, page_size: 20 });
   const [ruleFormApi, setRuleFormApi] = useState(null);
@@ -142,6 +143,19 @@ export default function EnterpriseAlerts() {
     }
   }
 
+  async function loadDeliveries() {
+    try {
+      const res = await getAlertDeliveries({ page: 1, page_size: 20 });
+      if (!res.success) {
+        showError(res.message);
+        return;
+      }
+      setDeliveries(res.data?.items || []);
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
   async function handleSaveRule() {
     setSavingRule(true);
     try {
@@ -169,6 +183,7 @@ export default function EnterpriseAlerts() {
   useEffect(() => {
     void loadEvents();
     void loadRules();
+    void loadDeliveries();
   }, []);
 
   return (
@@ -292,6 +307,34 @@ export default function EnterpriseAlerts() {
               </Form>
             </Card>
           </Space>
+        </Tabs.TabPane>
+
+        <Tabs.TabPane tab={t('投递结果')} itemKey='deliveries'>
+          <Card title={t('投递结果')} style={{ width: '100%' }}>
+            {deliveries.length === 0 ? (
+              <Empty title={t('暂无投递结果')} description={t('后台任务运行后会在这里显示状态与追溯信息')} />
+            ) : (
+              <Table
+                pagination={false}
+                dataSource={deliveries}
+                rowKey='id'
+                columns={[
+                  { title: t('创建时间'), dataIndex: 'created_at' },
+                  { title: t('状态'), dataIndex: 'status' },
+                  { title: t('通道'), dataIndex: 'channel_type' },
+                  {
+                    title: t('追溯信息'),
+                    dataIndex: 'trace',
+                    render: (value) =>
+                      value
+                        ? [value.department_summary, value.request_id, value.detail_route].filter(Boolean).join(' · ')
+                        : t('暂无追溯信息'),
+                  },
+                  { title: t('错误原因'), dataIndex: 'error_reason' },
+                ]}
+              />
+            )}
+          </Card>
         </Tabs.TabPane>
       </Tabs>
     </div>

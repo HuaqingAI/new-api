@@ -7,6 +7,7 @@ import (
 	neturl "net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -142,6 +143,69 @@ type AlertRuleMutationResult struct {
 	PreviousItem *AlertRuleItem
 	AuditSummary string
 	AuditPayload map[string]any
+}
+
+type AlertDeliveryQuery struct {
+	TenantId    int
+	RuleId      *int
+	EventId     *int
+	ChannelType string
+	Status      string
+	Page        int
+	PageSize    int
+}
+
+type AlertDeliveryTraceItem struct {
+	EventId            int
+	RequestId          string
+	TenantId           int
+	Username           string
+	ModelName          string
+	RiskType           string
+	ActionResult       string
+	EventCreatedAt     int64
+	DepartmentSnapshot []entmodel.AlertEventDepartmentSnapshot
+	DepartmentSummary  string
+	EventSummary       string
+	RuleId             int
+	RuleName           string
+	DetailRoute        string
+	DetailAPIPath      string
+}
+
+type AlertDeliveryItem struct {
+	Id             int
+	TenantId       int
+	EventId        int
+	RuleId         int
+	ChannelType    string
+	Status         string
+	AttemptCount   int
+	MaxAttempts    int
+	NextRetryAt    int64
+	LastAttemptAt  int64
+	SentAt         int64
+	FinalFailedAt  int64
+	ErrorReason    string
+	DedupeKey      string
+	TriggerSource  string
+	ManualParentId *int
+	CreatedAt      int64
+	UpdatedAt      int64
+	Trace          *AlertDeliveryTraceItem
+}
+
+type AlertDeliveryListResult struct {
+	Items    []AlertDeliveryItem
+	Total    int
+	Page     int
+	PageSize int
+}
+
+type alertMatchedRule struct {
+	Rule     entmodel.AlertRule
+	Item     AlertRuleItem
+	Channels []entmodel.AlertRuleChannelConfig
 }
 
 func NewAlertService(db *gorm.DB) *AlertService {
@@ -439,6 +503,207 @@ func (s *AlertService) DeleteAlertRule(tenantId int, ruleId int, actorId int) (A
 		AuditSummary: buildAlertRuleDiffSummary(&item, item, true),
 		AuditPayload: buildAlertRuleAuditPayload(item),
 	}, nil
+}
+
+func (s *AlertService) ListAlertDeliveries(query AlertDeliveryQuery) (AlertDeliveryListResult, error) {
+	if s == nil || s.db == nil {
+		return AlertDeliveryListResult{Items: []AlertDeliveryItem{}}, nil
+	}
+	if query.TenantId < 0 {
+		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+	}
+	if query.RuleId != nil && *query.RuleId <= 0 {
+		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+	}
+	if query.EventId != nil && *query.EventId <= 0 {
+		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+	}
+	page, pageSize := normalizeAlertEventPage(query.Page, query.PageSize)
+
+	db := s.db.Model(&entmodel.AlertDelivery{}).Where("tenant_id = ?", query.TenantId)
+	if query.RuleId != nil {
+		db = db.Where("rule_id = ?", *query.RuleId)
+	}
+	if query.EventId != nil {
+		db = db.Where("event_id = ?", *query.EventId)
+	}
+	if channelType := normalizeAlertRuleChannelType(query.ChannelType); channelType != "" {
+		db = db.Where("channel_type = ?", channelType)
+	} else if strings.TrimSpace(query.ChannelType) != "" {
+		return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+	}
+	if status := strings.TrimSpace(query.Status); status != "" {
+		switch status {
+		case entmodel.AlertDeliveryStatusPending,
+			entmodel.AlertDeliveryStatusSent,
+			entmodel.AlertDeliveryStatusFailed,
+			entmodel.AlertDeliveryStatusFinalFailed,
+			entmodel.AlertDeliveryStatusResent:
+			db = db.Where("status = ?", status)
+		default:
+			return AlertDeliveryListResult{}, ErrInvalidAlertDeliveryQuery
+		}
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return AlertDeliveryListResult{}, err
+	}
+
+	var deliveries []entmodel.AlertDelivery
+	if err := db.Order("created_at DESC, id DESC").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Find(&deliveries).Error; err != nil {
+		return AlertDeliveryListResult{}, err
+	}
+
+	items := make([]AlertDeliveryItem, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		item, err := mapAlertDeliveryItem(delivery)
+		if err != nil {
+			return AlertDeliveryListResult{}, err
+		}
+		items = append(items, item)
+	}
+	if items == nil {
+		items = []AlertDeliveryItem{}
+	}
+	return AlertDeliveryListResult{
+		Items:    items,
+		Total:    int(total),
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+func (s *AlertService) EnqueueAlertDeliveriesForPendingEvents(now time.Time, lookbackWindow time.Duration, batchSize int) (int, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	minCreatedAt := int64(0)
+	if lookbackWindow > 0 {
+		minCreatedAt = now.Add(-lookbackWindow).Unix()
+	}
+
+	db := s.db.Model(&entmodel.AlertEvent{})
+	if minCreatedAt > 0 {
+		db = db.Where("created_at >= ?", minCreatedAt)
+	}
+
+	var events []entmodel.AlertEvent
+	if err := db.Order("created_at ASC, id ASC").Limit(batchSize).Find(&events).Error; err != nil {
+		return 0, err
+	}
+
+	created := 0
+	for _, event := range events {
+		count, err := s.enqueueDeliveriesForEvent(event, now)
+		if err != nil {
+			return created, err
+		}
+		created += count
+	}
+	return created, nil
+}
+
+func (s *AlertService) enqueueDeliveriesForEvent(event entmodel.AlertEvent, now time.Time) (int, error) {
+	matchedRules, err := s.MatchAlertRules(event)
+	if err != nil {
+		return 0, err
+	}
+	if len(matchedRules) == 0 {
+		return 0, nil
+	}
+
+	snapshot, err := event.ParsedDepartmentSnapshot()
+	if err != nil {
+		return 0, err
+	}
+	created := 0
+	for _, matched := range matchedRules {
+		bucketSize := matched.Rule.DedupeWindowSeconds
+		if bucketSize <= 0 {
+			bucketSize = 300
+		}
+		for _, channel := range matched.Channels {
+			if !channel.Enabled {
+				continue
+			}
+			delivery, createdThis, err := buildAlertDeliveryFromMatch(event, snapshot, matched, channel, now.Unix(), bucketSize)
+			if err != nil {
+				return created, err
+			}
+			if createdThis {
+				if err := s.createAlertDeliveryIfAbsent(delivery); err != nil {
+					if isAlertDeliveryDuplicateError(err) {
+						continue
+					}
+					return created, err
+				}
+				created++
+			}
+		}
+	}
+	return created, nil
+}
+
+func (s *AlertService) MatchAlertRules(event entmodel.AlertEvent) ([]alertMatchedRule, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	snapshot, err := event.ParsedDepartmentSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	departmentSet := make(map[int]struct{}, len(snapshot))
+	for _, department := range snapshot {
+		if department.DepartmentId > 0 {
+			departmentSet[department.DepartmentId] = struct{}{}
+		}
+	}
+
+	var rules []entmodel.AlertRule
+	if err := s.db.Where("tenant_id = ? AND enabled = ?", event.TenantId, true).
+		Order("updated_at DESC, id DESC").
+		Find(&rules).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]alertMatchedRule, 0, len(rules))
+	for _, rule := range rules {
+		riskTypes, err := rule.ParsedRiskTypes()
+		if err != nil {
+			return nil, err
+		}
+		if !containsExactString(riskTypes, event.RiskType) {
+			continue
+		}
+		departmentIds, err := rule.ParsedDepartmentIds()
+		if err != nil {
+			return nil, err
+		}
+		if len(departmentIds) > 0 && !ruleMatchesAnyDepartment(departmentIds, departmentSet) {
+			continue
+		}
+		item, err := mapAlertRuleItem(rule)
+		if err != nil {
+			return nil, err
+		}
+		channels, err := rule.ParsedChannelConfigs()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, alertMatchedRule{
+			Rule:     rule,
+			Item:     item,
+			Channels: channels,
+		})
+	}
+	return result, nil
 }
 
 func (s *AlertService) getAlertRuleModel(tenantId int, ruleId int) (entmodel.AlertRule, error) {
@@ -884,6 +1149,57 @@ func mapAlertRuleItem(rule entmodel.AlertRule) (AlertRuleItem, error) {
 	}, nil
 }
 
+func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, error) {
+	tracePayload, err := delivery.ParsedTracePayload()
+	if err != nil {
+		return AlertDeliveryItem{}, err
+	}
+	var trace *AlertDeliveryTraceItem
+	if tracePayload != nil {
+		trace = &AlertDeliveryTraceItem{
+			EventId:            tracePayload.EventId,
+			RequestId:          tracePayload.RequestId,
+			TenantId:           tracePayload.TenantId,
+			Username:           tracePayload.Username,
+			ModelName:          tracePayload.ModelName,
+			RiskType:           tracePayload.RiskType,
+			ActionResult:       tracePayload.ActionResult,
+			EventCreatedAt:     tracePayload.EventCreatedAt,
+			DepartmentSnapshot: append([]entmodel.AlertEventDepartmentSnapshot{}, tracePayload.DepartmentSnapshot...),
+			DepartmentSummary:  tracePayload.DepartmentSummary,
+			EventSummary:       tracePayload.EventSummary,
+			RuleId:             tracePayload.RuleId,
+			RuleName:           tracePayload.RuleName,
+			DetailRoute:        tracePayload.DetailRoute,
+			DetailAPIPath:      tracePayload.DetailAPIPath,
+		}
+		if trace.DepartmentSnapshot == nil {
+			trace.DepartmentSnapshot = []entmodel.AlertEventDepartmentSnapshot{}
+		}
+	}
+	return AlertDeliveryItem{
+		Id:             delivery.Id,
+		TenantId:       delivery.TenantId,
+		EventId:        delivery.EventId,
+		RuleId:         delivery.RuleId,
+		ChannelType:    delivery.ChannelType,
+		Status:         delivery.Status,
+		AttemptCount:   delivery.AttemptCount,
+		MaxAttempts:    delivery.MaxAttempts,
+		NextRetryAt:    delivery.NextRetryAt,
+		LastAttemptAt:  delivery.LastAttemptAt,
+		SentAt:         delivery.SentAt,
+		FinalFailedAt:  delivery.FinalFailedAt,
+		ErrorReason:    delivery.ErrorReason,
+		DedupeKey:      delivery.DedupeKey,
+		TriggerSource:  delivery.TriggerSource,
+		ManualParentId: delivery.ManualParentId,
+		CreatedAt:      delivery.CreatedAt,
+		UpdatedAt:      delivery.UpdatedAt,
+		Trace:          trace,
+	}, nil
+}
+
 func mapAlertRuleChannelItem(config entmodel.AlertRuleChannelConfig) AlertRuleChannelItem {
 	item := AlertRuleChannelItem{
 		Type:      config.Type,
@@ -982,4 +1298,109 @@ func maskAlertSecret(secret string) string {
 		return "****"
 	}
 	return strings.Repeat("*", len(secret)-4) + secret[len(secret)-4:]
+}
+
+func containsExactString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleMatchesAnyDepartment(ruleDepartmentIds []int, eventDepartments map[int]struct{}) bool {
+	for _, departmentId := range ruleDepartmentIds {
+		if _, ok := eventDepartments[departmentId]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func buildAlertDeliveryFromMatch(
+	event entmodel.AlertEvent,
+	snapshot []entmodel.AlertEventDepartmentSnapshot,
+	matched alertMatchedRule,
+	channel entmodel.AlertRuleChannelConfig,
+	now int64,
+	bucketSeconds int,
+) (entmodel.AlertDelivery, bool, error) {
+	bucketStart := now
+	if bucketSeconds > 0 {
+		bucketStart = (event.CreatedAt / int64(bucketSeconds)) * int64(bucketSeconds)
+	}
+	tracePayload := &entmodel.AlertDeliveryTracePayload{
+		EventId:            event.Id,
+		RequestId:          event.RequestId,
+		TenantId:           event.TenantId,
+		Username:           event.Username,
+		ModelName:          event.ModelName,
+		RiskType:           event.RiskType,
+		ActionResult:       event.ActionResult,
+		EventCreatedAt:     event.CreatedAt,
+		DepartmentSnapshot: append([]entmodel.AlertEventDepartmentSnapshot{}, snapshot...),
+		DepartmentSummary:  summarizeAlertDepartments(snapshot),
+		EventSummary:       event.Summary,
+		RuleId:             matched.Rule.Id,
+		RuleName:           matched.Rule.Name,
+		DetailRoute:        fmt.Sprintf("/enterprise-alerts?event_id=%d", event.Id),
+		DetailAPIPath:      fmt.Sprintf("/api/enterprise/alerts/events?tenant_id=%d&page=1&page_size=20", event.TenantId),
+	}
+
+	delivery := entmodel.AlertDelivery{
+		TenantId:      event.TenantId,
+		EventId:       event.Id,
+		RuleId:        matched.Rule.Id,
+		ChannelType:   channel.Type,
+		Status:        entmodel.AlertDeliveryStatusPending,
+		AttemptCount:  0,
+		MaxAttempts:   entmodel.AlertDeliveryDefaultMaxAttempts,
+		NextRetryAt:   now,
+		DedupeKey:     buildAlertDeliveryDedupeKey(event.TenantId, event.Id, matched.Rule.Id, channel.Type, bucketStart),
+		TriggerSource: entmodel.AlertDeliveryTriggerRuleMatch,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := delivery.SetTracePayload(tracePayload); err != nil {
+		return entmodel.AlertDelivery{}, false, err
+	}
+	return delivery, true, nil
+}
+
+func buildAlertDeliveryDedupeKey(tenantId int, eventId int, ruleId int, channelType string, bucketStart int64) string {
+	return strings.Join([]string{
+		strconv.Itoa(tenantId),
+		strconv.Itoa(eventId),
+		strconv.Itoa(ruleId),
+		channelType,
+		strconv.FormatInt(bucketStart, 10),
+	}, ":")
+}
+
+func summarizeAlertDepartments(snapshot []entmodel.AlertEventDepartmentSnapshot) string {
+	if len(snapshot) == 0 {
+		return "Unassigned"
+	}
+	parts := make([]string, 0, len(snapshot))
+	for _, department := range snapshot {
+		if department.DepartmentId > 0 {
+			parts = append(parts, fmt.Sprintf("%s (#%d)", department.DepartmentName, department.DepartmentId))
+			continue
+		}
+		parts = append(parts, department.DepartmentName)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (s *AlertService) createAlertDeliveryIfAbsent(delivery entmodel.AlertDelivery) error {
+	return s.db.Create(&delivery).Error
+}
+
+func isAlertDeliveryDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique")
 }

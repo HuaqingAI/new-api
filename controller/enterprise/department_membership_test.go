@@ -66,6 +66,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.GET("/api/enterprise/usage/reports", GetDepartmentUsageReportConfig)
 	router.PUT("/api/enterprise/usage/reports", SaveDepartmentUsageReportConfig)
 	router.GET("/api/enterprise/alerts/events", ListAlertEvents)
+	router.GET("/api/enterprise/alerts/deliveries", ListAlertDeliveries)
 	router.GET("/api/enterprise/alerts/rules", ListAlertRules)
 	router.GET("/api/enterprise/alerts/rules/:id", GetAlertRule)
 	router.PUT("/api/enterprise/alerts/rules", SaveAlertRule)

@@ -86,16 +86,20 @@ import { Textarea } from '@/components/ui/textarea'
 import { SectionPageLayout } from '@/components/layout'
 import {
   alertEventsListQueryKey,
+  alertDeliveriesListQueryKey,
   alertRulesListQueryKey,
   deleteAlertRule,
+  getAlertDeliveries,
   getAlertEvents,
   getAlertRules,
   saveAlertRule,
 } from './api'
 import type {
+  AlertDeliveryItem,
   AlertEventItem,
   AlertRuleItem,
   AlertRuleUpsertRequest,
+  EnterpriseAlertDeliveriesSearch,
   EnterpriseAlertsSearch,
 } from './types'
 
@@ -172,6 +176,36 @@ export function formatDepartmentSnapshot(
     .join(', ')
 }
 
+export function formatDeliveryStatus(
+  status: string,
+  t: (value: string) => string
+) {
+  switch (status) {
+    case 'pending':
+      return t('Pending')
+    case 'sent':
+      return t('Sent')
+    case 'failed':
+      return t('Failed')
+    case 'final_failed':
+      return t('Final failed')
+    case 'resent':
+      return t('Resent')
+    default:
+      return status
+  }
+}
+
+export function formatDeliveryTraceSummary(
+  item: Pick<AlertDeliveryItem, 'trace'>,
+  fallbackLabel: string
+) {
+  if (!item.trace) return fallbackLabel
+  return [item.trace.department_summary, item.trace.request_id, item.trace.detail_route]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export function buildAlertRulePayload(
   draft: RuleEditorState,
   tenantId?: number
@@ -238,6 +272,16 @@ function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormVa
   }
 }
 
+function deliveriesSearchFromAlerts(
+  search: EnterpriseAlertsSearch
+): EnterpriseAlertDeliveriesSearch {
+  return {
+    tenant_id: search.tenant_id,
+    page: search.page ?? 1,
+    page_size: search.page_size ?? 20,
+  }
+}
+
 function createEmptyRuleDraft(): RuleEditorState {
   return {
     name: '',
@@ -297,7 +341,7 @@ export function EnterpriseAlertsPage() {
   }) as EnterpriseAlertsSearch
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'events' | 'rules'>('events')
+  const [activeTab, setActiveTab] = useState<'events' | 'deliveries' | 'rules'>('events')
   const [draft, setDraft] = useState<RuleEditorState>(createEmptyRuleDraft())
 
   const form = useForm<AlertFilterFormValues>({
@@ -312,6 +356,10 @@ export function EnterpriseAlertsPage() {
       page_size: search.page_size ?? 20,
     }),
     [search]
+  )
+  const normalizedDeliveriesSearch = useMemo(
+    () => deliveriesSearchFromAlerts(normalizedSearch),
+    [normalizedSearch]
   )
 
   const alertsQuery = useQuery({
@@ -329,6 +377,17 @@ export function EnterpriseAlertsPage() {
     queryKey: alertRulesListQueryKey(normalizedSearch.tenant_id),
     queryFn: async () => {
       const response = await getAlertRules(normalizedSearch.tenant_id)
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data
+    },
+  })
+
+  const deliveriesQuery = useQuery({
+    queryKey: alertDeliveriesListQueryKey(normalizedDeliveriesSearch),
+    queryFn: async () => {
+      const response = await getAlertDeliveries(normalizedDeliveriesSearch)
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
       }
@@ -424,11 +483,14 @@ export function EnterpriseAlertsPage() {
         <div className='space-y-6'>
           <Tabs
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as 'events' | 'rules')}
+            onValueChange={(value) =>
+              setActiveTab(value as 'events' | 'deliveries' | 'rules')
+            }
             className='space-y-6'
           >
-            <TabsList className='grid w-full grid-cols-2 md:w-[320px]'>
+            <TabsList className='grid w-full grid-cols-3 md:w-[480px]'>
               <TabsTrigger value='events'>{t('Risk Events')}</TabsTrigger>
+              <TabsTrigger value='deliveries'>{t('Deliveries')}</TabsTrigger>
               <TabsTrigger value='rules'>{t('Alert Rules')}</TabsTrigger>
             </TabsList>
 
@@ -671,6 +733,96 @@ export function EnterpriseAlertsPage() {
                         <EmptyTitle>{t('No risk events found')}</EmptyTitle>
                         <EmptyDescription>
                           {t('Adjust the filters and search again.')}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent />
+                    </Empty>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value='deliveries' className='space-y-6'>
+              {deliveriesQuery.error ? (
+                <Alert variant='destructive'>
+                  <AlertTriangle className='size-4' />
+                  <AlertTitle>{t('Request failed')}</AlertTitle>
+                  <AlertDescription>
+                    {deliveriesQuery.error instanceof Error
+                      ? deliveriesQuery.error.message
+                      : t('Request failed')}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('Deliveries')}</CardTitle>
+                  <CardDescription>
+                    {t(
+                      'Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.'
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className='space-y-4'>
+                  {deliveriesQuery.isLoading ? (
+                    <div className='space-y-3'>
+                      <Skeleton className='h-12 w-full' />
+                      <Skeleton className='h-12 w-full' />
+                    </div>
+                  ) : deliveriesQuery.data?.items.length ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('Created At')}</TableHead>
+                          <TableHead>{t('Status')}</TableHead>
+                          <TableHead>{t('Channel')}</TableHead>
+                          <TableHead>{t('Attempts')}</TableHead>
+                          <TableHead>{t('Trace Details')}</TableHead>
+                          <TableHead>{t('Error Reason')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deliveriesQuery.data.items.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>{formatTimestamp(item.created_at)}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  item.status === 'final_failed'
+                                    ? 'destructive'
+                                    : 'outline'
+                                }
+                              >
+                                {formatDeliveryStatus(item.status, t)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{item.channel_type}</TableCell>
+                            <TableCell>
+                              {item.attempt_count}/{item.max_attempts}
+                            </TableCell>
+                            <TableCell>
+                              {formatDeliveryTraceSummary(
+                                item,
+                                t('No trace details yet')
+                              )}
+                            </TableCell>
+                            <TableCell>{item.error_reason || t('No error')}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia>
+                          <BellRing className='size-6' />
+                        </EmptyMedia>
+                        <EmptyTitle>{t('No deliveries yet')}</EmptyTitle>
+                        <EmptyDescription>
+                          {t(
+                            'Alert deliveries will appear here after the background dispatcher runs.'
+                          )}
                         </EmptyDescription>
                       </EmptyHeader>
                       <EmptyContent />

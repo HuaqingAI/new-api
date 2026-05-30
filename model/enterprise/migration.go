@@ -6,6 +6,9 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureAlertEventDepartmentTokensColumn(db); err != nil {
 		return err
 	}
+	if err := ensureAlertDeliveryColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
@@ -15,6 +18,7 @@ func Migrate(db *gorm.DB) error {
 		&AdminAction{},
 		&AlertEvent{},
 		&AlertRule{},
+		&AlertDelivery{},
 		&UsageSnapshot{},
 		&UsageReportJob{},
 		&DingTalkConfig{},
@@ -67,4 +71,39 @@ func backfillAlertEventDepartmentTokens(db *gorm.DB) error {
 			}
 			return nil
 		}).Error
+}
+
+func ensureAlertDeliveryColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&AlertDelivery{}) {
+		return nil
+	}
+	columns := []string{
+		"tenant_id",
+		"event_id",
+		"rule_id",
+		"channel_type",
+		"status",
+		"attempt_count",
+		"max_attempts",
+		"next_retry_at",
+		"last_attempt_at",
+		"sent_at",
+		"final_failed_at",
+		"error_reason",
+		"dedupe_key",
+		"trace_payload",
+		"trigger_source",
+		"manual_parent_id",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&AlertDelivery{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&AlertDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
 }

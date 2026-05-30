@@ -3850,6 +3850,13 @@
     "默认折叠侧边栏": "Default collapse sidebar",
     "默认测试模型": "Default Test Model",
     "默认用户消息": "Default User Message",
-    "默认补全倍率": "Default completion ratio"
+    "默认补全倍率": "Default completion ratio",
+    "投递结果": "Deliveries",
+    "暂无投递结果": "No deliveries yet",
+    "后台任务运行后会在这里显示状态与追溯信息": "Status and trace hints appear here after the background task runs",
+    "通道": "Channel",
+    "追溯信息": "Trace Details",
+    "错误原因": "Error Reason",
+    "暂无追溯信息": "No trace details yet"
   }
 }

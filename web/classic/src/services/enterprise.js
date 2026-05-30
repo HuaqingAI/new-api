@@ -45,6 +45,13 @@ export async function getAlertRules(params = {}) {
   return res.data;
 }
 
+export async function getAlertDeliveries(params = {}) {
+  const res = await API.get('/api/enterprise/alerts/deliveries', {
+    params,
+  });
+  return res.data;
+}
+
 export async function saveAlertRule(data) {
   const res = await API.put('/api/enterprise/alerts/rules', data);
   return res.data;

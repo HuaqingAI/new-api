@@ -5128,6 +5128,123 @@
         ]
       }
     },
+    "/api/enterprise/alerts/deliveries": {
+      "get": {
+        "summary": "查询企业告警投递结果列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "channel_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "email",
+                "webhook",
+                "dingtalk_robot"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "sent",
+                "failed",
+                "final_failed",
+                "resent"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertDeliveriesResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/enterprise/alerts/rules": {
       "get": {
         "summary": "查询企业告警规则列表",
@@ -6583,6 +6700,160 @@
           },
           "summary": {
             "type": "string"
+          }
+        }
+      },
+      "AlertDeliveryTraceItem": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "integer"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "risk_type": {
+            "type": "string"
+          },
+          "action_result": {
+            "type": "string"
+          },
+          "event_created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "department_snapshot": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertEventDepartmentSnapshot"
+            }
+          },
+          "department_summary": {
+            "type": "string"
+          },
+          "event_summary": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "integer"
+          },
+          "rule_name": {
+            "type": "string"
+          },
+          "detail_route": {
+            "type": "string"
+          },
+          "detail_api_path": {
+            "type": "string"
+          }
+        }
+      },
+      "AlertDeliveryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "event_id": {
+            "type": "integer"
+          },
+          "rule_id": {
+            "type": "integer"
+          },
+          "channel_type": {
+            "type": "string",
+            "enum": [
+              "email",
+              "webhook",
+              "dingtalk_robot"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "failed",
+              "final_failed",
+              "resent"
+            ]
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "max_attempts": {
+            "type": "integer"
+          },
+          "next_retry_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_attempt_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sent_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "final_failed_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "error_reason": {
+            "type": "string"
+          },
+          "dedupe_key": {
+            "type": "string"
+          },
+          "trigger_source": {
+            "type": "string"
+          },
+          "manual_parent_id": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/AlertDeliveryTraceItem"
+          }
+        }
+      },
+      "AlertDeliveriesResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertDeliveryItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
           }
         }
       },

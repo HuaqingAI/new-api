@@ -56,11 +56,13 @@ var (
 	ErrUsageReportInvalidEmail                           = errors.New("enterprise usage report email invalid")
 	ErrUsageReportNotConfigured                          = errors.New("enterprise usage report not configured")
 	ErrInvalidAlertEventQuery                            = errors.New("enterprise alert event query invalid")
+	ErrInvalidAlertDeliveryQuery                         = errors.New("enterprise alert delivery query invalid")
 	ErrAlertRuleNotFound                                 = errors.New("enterprise alert rule not found")
 	ErrAlertRuleInvalidInput                             = errors.New("enterprise alert rule input invalid")
 	ErrAlertRuleInvalidEmail                             = errors.New("enterprise alert rule email invalid")
 	ErrAlertRuleInvalidWebhookURL                        = errors.New("enterprise alert rule webhook url invalid")
 	ErrAlertRuleChannelRequired                          = errors.New("enterprise alert rule channel required")
+	ErrAlertDeliveryNotFound                             = errors.New("enterprise alert delivery not found")
 )
 
 type QuotaAllocationBudgetError struct {

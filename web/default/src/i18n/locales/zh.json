@@ -1887,7 +1887,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -4754,6 +4754,17 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Deliveries": "投递结果",
+    "Attempts": "尝试次数",
+    "Trace Details": "追溯信息",
+    "Final failed": "最终失败",
+    "Sent": "已发送",
+    "Resent": "已重发",
+    "No trace details yet": "暂无追溯信息",
+    "No error": "无错误",
+    "No deliveries yet": "暂无投递结果",
+    "Alert deliveries will appear here after the background dispatcher runs.": "后台任务运行后会在这里显示告警投递结果。",
+    "Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.": "查看通知投递结果、重试时间和追溯线索，且不会暴露 secret 或原始提示词。"
   }
 }

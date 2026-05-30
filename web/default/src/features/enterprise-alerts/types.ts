@@ -50,6 +50,60 @@ export type AlertEventsResponse = {
   page_size: number
 }
 
+export type AlertDeliveryStatus =
+  | 'pending'
+  | 'sent'
+  | 'failed'
+  | 'final_failed'
+  | 'resent'
+
+export type AlertDeliveryTraceItem = {
+  event_id: number
+  request_id: string
+  tenant_id: number
+  username: string
+  model_name: string
+  risk_type: string
+  action_result: string
+  event_created_at: number
+  department_snapshot: AlertEventDepartmentSnapshot[]
+  department_summary: string
+  event_summary: string
+  rule_id: number
+  rule_name: string
+  detail_route: string
+  detail_api_path: string
+}
+
+export type AlertDeliveryItem = {
+  id: number
+  tenant_id: number
+  event_id: number
+  rule_id: number
+  channel_type: AlertRuleChannelType
+  status: AlertDeliveryStatus
+  attempt_count: number
+  max_attempts: number
+  next_retry_at: number
+  last_attempt_at: number
+  sent_at: number
+  final_failed_at: number
+  error_reason: string
+  dedupe_key: string
+  trigger_source: string
+  manual_parent_id?: number
+  created_at: number
+  updated_at: number
+  trace?: AlertDeliveryTraceItem
+}
+
+export type AlertDeliveriesResponse = {
+  items: AlertDeliveryItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type AlertRuleChannelType = 'email' | 'webhook' | 'dingtalk_robot'
 
 export type AlertRuleChannelConfigInput = {
@@ -118,6 +172,16 @@ export type EnterpriseAlertsSearch = {
   risk_type?: string
   from?: number
   to?: number
+  page?: number
+  page_size?: number
+}
+
+export type EnterpriseAlertDeliveriesSearch = {
+  tenant_id?: number
+  rule_id?: number
+  event_id?: number
+  channel_type?: AlertRuleChannelType
+  status?: AlertDeliveryStatus
   page?: number
   page_size?: number
 }

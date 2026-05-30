@@ -29,7 +29,7 @@ import {
   Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
-import { getAlertDeliveries, getAlertEvents, getAlertRules, saveAlertRule } from '../../services/enterprise';
+import { getAlertDeliveries, getAlertEvents, getAlertRules, resendAlertDelivery, saveAlertRule } from '../../services/enterprise';
 import { showError, showSuccess } from '../../helpers';
 import { formatClassicAlertDepartments } from './alertHelpers';
 
@@ -93,6 +93,7 @@ export default function EnterpriseAlerts() {
   const [events, setEvents] = useState([]);
   const [rules, setRules] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
+  const [resendingDeliveryId, setResendingDeliveryId] = useState(null);
   const [draft, setDraft] = useState(createEmptyRuleDraft());
   const [pagination, setPagination] = useState({ total: 0, page: 1, page_size: 20 });
   const [ruleFormApi, setRuleFormApi] = useState(null);
@@ -145,7 +146,7 @@ export default function EnterpriseAlerts() {
 
   async function loadDeliveries() {
     try {
-      const res = await getAlertDeliveries({ page: 1, page_size: 20 });
+      const res = await getAlertDeliveries({ page: 1, page_size: 20, status: 'final_failed' });
       if (!res.success) {
         showError(res.message);
         return;
@@ -153,6 +154,23 @@ export default function EnterpriseAlerts() {
       setDeliveries(res.data?.items || []);
     } catch (error) {
       showError(error.message);
+    }
+  }
+
+  async function handleResendDelivery(record) {
+    setResendingDeliveryId(record.id);
+    try {
+      const res = await resendAlertDelivery(record.id);
+      if (!res.success) {
+        showError(res.message);
+        return;
+      }
+      showSuccess(t(res.data?.created ? '已创建重发投递' : '已有未完成的人工重发'));
+      await loadDeliveries();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setResendingDeliveryId(null);
     }
   }
 
@@ -323,6 +341,16 @@ export default function EnterpriseAlerts() {
                   { title: t('状态'), dataIndex: 'status' },
                   { title: t('通道'), dataIndex: 'channel_type' },
                   {
+                    title: t('触发来源'),
+                    dataIndex: 'trigger_source',
+                    render: (value) => (value === 'manual_resend' ? t('人工重发') : t('规则命中')),
+                  },
+                  {
+                    title: t('父投递'),
+                    dataIndex: 'manual_parent_id',
+                    render: (value) => (value ? `#${value}` : '-'),
+                  },
+                  {
                     title: t('追溯信息'),
                     dataIndex: 'trace',
                     render: (value) =>
@@ -331,6 +359,20 @@ export default function EnterpriseAlerts() {
                         : t('暂无追溯信息'),
                   },
                   { title: t('错误原因'), dataIndex: 'error_reason' },
+                  {
+                    title: t('操作'),
+                    dataIndex: 'id',
+                    render: (_, record) =>
+                      record.status === 'final_failed' ? (
+                        <Button
+                          size='small'
+                          loading={resendingDeliveryId === record.id}
+                          onClick={() => handleResendDelivery(record)}
+                        >
+                          {t('重发')}
+                        </Button>
+                      ) : null,
+                  },
                 ]}
               />
             )}

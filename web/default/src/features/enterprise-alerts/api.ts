@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type {
   AlertDeliveriesResponse,
+  AlertDeliveryResendResponse,
   AlertRuleResponse,
   AlertRulesResponse,
   AlertRuleUpsertRequest,
@@ -87,10 +88,28 @@ export async function getAlertDeliveries(
       ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
       ...(search.rule_id === undefined ? {} : { rule_id: search.rule_id }),
       ...(search.event_id === undefined ? {} : { event_id: search.event_id }),
+      ...(search.manual_parent_id === undefined
+        ? {}
+        : { manual_parent_id: search.manual_parent_id }),
       ...(search.channel_type ? { channel_type: search.channel_type } : {}),
       ...(search.status ? { status: search.status } : {}),
+      ...(search.trigger_source
+        ? { trigger_source: search.trigger_source }
+        : {}),
       ...(search.page === undefined ? {} : { page: search.page }),
       ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
+    },
+  })
+  return res.data
+}
+
+export async function resendAlertDelivery(
+  id: number,
+  tenantId?: number
+): Promise<ApiResponse<AlertDeliveryResendResponse>> {
+  const res = await api.post(`/api/enterprise/alerts/deliveries/${id}/resend`, null, {
+    params: {
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
     },
   })
   return res.data

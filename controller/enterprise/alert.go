@@ -96,13 +96,15 @@ func ListAlertDeliveries(c *gin.Context) {
 	}
 
 	result, err := entservice.NewAlertService(model.DB).ListAlertDeliveries(entservice.AlertDeliveryQuery{
-		TenantId:    tenantId,
-		RuleId:      query.RuleId,
-		EventId:     query.EventId,
-		ChannelType: readOptionalString(query.ChannelType),
-		Status:      readOptionalString(query.Status),
-		Page:        valueOrZero(query.Page),
-		PageSize:    valueOrZero(query.PageSize),
+		TenantId:       tenantId,
+		RuleId:         query.RuleId,
+		EventId:        query.EventId,
+		ManualParentId: query.ManualParentId,
+		ChannelType:    readOptionalString(query.ChannelType),
+		Status:         readOptionalString(query.Status),
+		TriggerSource:  readOptionalString(query.TriggerSource),
+		Page:           valueOrZero(query.Page),
+		PageSize:       valueOrZero(query.PageSize),
 	})
 	if err != nil {
 		writeAlertEventError(c, err)
@@ -148,6 +150,7 @@ func ListAlertDeliveries(c *gin.Context) {
 			DedupeKey:      item.DedupeKey,
 			TriggerSource:  item.TriggerSource,
 			ManualParentId: item.ManualParentId,
+			TraceSummary:   item.TraceSummary,
 			CreatedAt:      item.CreatedAt,
 			UpdatedAt:      item.UpdatedAt,
 			Trace:          trace,
@@ -162,6 +165,50 @@ func ListAlertDeliveries(c *gin.Context) {
 		Total:    result.Total,
 		Page:     result.Page,
 		PageSize: result.PageSize,
+	})
+}
+
+func ResendAlertDelivery(c *gin.Context) {
+	deliveryId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+	var query dtoenterprise.AlertDeliveryResendQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, query.TenantId)
+	if !ok {
+		return
+	}
+
+	var result entservice.AlertDeliveryResendResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		service := entservice.NewAlertService(tx)
+		var err error
+		result, err = service.ResendAlertDelivery(tenantId, deliveryId, c.GetInt("id"))
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    tenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionAlertDeliveryResend,
+			ObjectType:  entservice.AdminObjectAlertDelivery,
+			ObjectId:    strconv.Itoa(result.Item.Id),
+			DiffSummary: result.AuditSummary,
+			Payload:     result.AuditPayload,
+		})
+	})
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.AlertDeliveryResendResponse{
+		Item:    mapAlertDeliveryDTOItem(result.Item),
+		Created: result.Created,
 	})
 }
 
@@ -329,6 +376,10 @@ func writeAlertEventError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertRuleInvalidWebhook)
 	case errors.Is(err, entservice.ErrAlertRuleNotFound):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertRuleNotFound)
+	case errors.Is(err, entservice.ErrAlertDeliveryNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertDeliveryNotFound)
+	case errors.Is(err, entservice.ErrAlertDeliveryResendNotAllowed):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseAlertDeliveryResendNotAllowed)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
@@ -395,6 +446,51 @@ func mapAlertRuleItem(item entservice.AlertRuleItem) dtoenterprise.AlertRuleItem
 		})
 	}
 	return dto
+}
+
+func mapAlertDeliveryDTOItem(item entservice.AlertDeliveryItem) dtoenterprise.AlertDeliveryItem {
+	var trace *dtoenterprise.AlertDeliveryTraceItem
+	if item.Trace != nil {
+		trace = &dtoenterprise.AlertDeliveryTraceItem{
+			EventId:            item.Trace.EventId,
+			RequestId:          item.Trace.RequestId,
+			TenantId:           item.Trace.TenantId,
+			Username:           item.Trace.Username,
+			ModelName:          item.Trace.ModelName,
+			RiskType:           item.Trace.RiskType,
+			ActionResult:       item.Trace.ActionResult,
+			EventCreatedAt:     item.Trace.EventCreatedAt,
+			DepartmentSnapshot: mapAlertEventDepartmentSnapshotItems(item.Trace.DepartmentSnapshot),
+			DepartmentSummary:  item.Trace.DepartmentSummary,
+			EventSummary:       item.Trace.EventSummary,
+			RuleId:             item.Trace.RuleId,
+			RuleName:           item.Trace.RuleName,
+			DetailRoute:        item.Trace.DetailRoute,
+			DetailAPIPath:      item.Trace.DetailAPIPath,
+		}
+	}
+	return dtoenterprise.AlertDeliveryItem{
+		Id:             item.Id,
+		TenantId:       item.TenantId,
+		EventId:        item.EventId,
+		RuleId:         item.RuleId,
+		ChannelType:    item.ChannelType,
+		Status:         item.Status,
+		AttemptCount:   item.AttemptCount,
+		MaxAttempts:    item.MaxAttempts,
+		NextRetryAt:    item.NextRetryAt,
+		LastAttemptAt:  item.LastAttemptAt,
+		SentAt:         item.SentAt,
+		FinalFailedAt:  item.FinalFailedAt,
+		ErrorReason:    item.ErrorReason,
+		DedupeKey:      item.DedupeKey,
+		TriggerSource:  item.TriggerSource,
+		ManualParentId: item.ManualParentId,
+		TraceSummary:   item.TraceSummary,
+		CreatedAt:      item.CreatedAt,
+		UpdatedAt:      item.UpdatedAt,
+		Trace:          trace,
+	}
 }
 
 func optionalString(value string) *string {

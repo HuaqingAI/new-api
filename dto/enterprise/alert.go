@@ -42,13 +42,15 @@ type AlertEventsResponse struct {
 }
 
 type AlertDeliveriesQuery struct {
-	TenantId    *int    `form:"tenant_id,omitempty"`
-	RuleId      *int    `form:"rule_id,omitempty"`
-	EventId     *int    `form:"event_id,omitempty"`
-	ChannelType *string `form:"channel_type,omitempty"`
-	Status      *string `form:"status,omitempty"`
-	Page        *int    `form:"page,omitempty"`
-	PageSize    *int    `form:"page_size,omitempty"`
+	TenantId       *int    `form:"tenant_id,omitempty"`
+	RuleId         *int    `form:"rule_id,omitempty"`
+	EventId        *int    `form:"event_id,omitempty"`
+	ManualParentId *int    `form:"manual_parent_id,omitempty"`
+	ChannelType    *string `form:"channel_type,omitempty"`
+	Status         *string `form:"status,omitempty"`
+	TriggerSource  *string `form:"trigger_source,omitempty"`
+	Page           *int    `form:"page,omitempty"`
+	PageSize       *int    `form:"page_size,omitempty"`
 }
 
 type AlertDeliveryTraceItem struct {
@@ -86,6 +88,7 @@ type AlertDeliveryItem struct {
 	DedupeKey      string                  `json:"dedupe_key"`
 	TriggerSource  string                  `json:"trigger_source"`
 	ManualParentId *int                    `json:"manual_parent_id,omitempty"`
+	TraceSummary   string                  `json:"trace_summary"`
 	CreatedAt      int64                   `json:"created_at"`
 	UpdatedAt      int64                   `json:"updated_at"`
 	Trace          *AlertDeliveryTraceItem `json:"trace,omitempty"`
@@ -96,6 +99,15 @@ type AlertDeliveriesResponse struct {
 	Total    int                 `json:"total"`
 	Page     int                 `json:"page"`
 	PageSize int                 `json:"page_size"`
+}
+
+type AlertDeliveryResendQuery struct {
+	TenantId *int `form:"tenant_id,omitempty"`
+}
+
+type AlertDeliveryResendResponse struct {
+	Item    AlertDeliveryItem `json:"item"`
+	Created bool              `json:"created"`
 }
 
 type AlertRuleChannelConfigInput struct {

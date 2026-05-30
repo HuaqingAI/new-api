@@ -87,15 +87,18 @@ import { SectionPageLayout } from '@/components/layout'
 import {
   alertEventsListQueryKey,
   alertDeliveriesListQueryKey,
+  enterpriseAlertDeliveriesQueryKey,
   alertRulesListQueryKey,
   deleteAlertRule,
   getAlertDeliveries,
   getAlertEvents,
   getAlertRules,
+  resendAlertDelivery,
   saveAlertRule,
 } from './api'
 import type {
   AlertDeliveryItem,
+  AlertDeliveryStatus,
   AlertEventItem,
   AlertRuleItem,
   AlertRuleUpsertRequest,
@@ -129,6 +132,12 @@ const filterSchema = z.object({
 })
 
 type AlertFilterFormValues = z.infer<typeof filterSchema>
+
+type DeliveryFilterState = {
+  status: '' | AlertDeliveryStatus
+  channel_type: '' | 'email' | 'webhook' | 'dingtalk_robot'
+  trigger_source: '' | 'rule_match' | 'manual_resend'
+}
 
 type RuleEditorState = {
   id?: number
@@ -206,6 +215,30 @@ export function formatDeliveryTraceSummary(
     .join(' · ')
 }
 
+export function formatTriggerSource(
+  triggerSource: string,
+  t: (value: string) => string
+) {
+  switch (triggerSource) {
+    case 'manual_resend':
+      return t('Manual resend')
+    case 'rule_match':
+      return t('Rule match')
+    default:
+      return triggerSource || t('Unknown')
+  }
+}
+
+export function buildDeliveryFiltersAfterResend(
+  filters: DeliveryFilterState
+): DeliveryFilterState {
+  return {
+    ...filters,
+    status: '',
+    trigger_source: '',
+  }
+}
+
 export function buildAlertRulePayload(
   draft: RuleEditorState,
   tenantId?: number
@@ -273,10 +306,14 @@ function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormVa
 }
 
 function deliveriesSearchFromAlerts(
-  search: EnterpriseAlertsSearch
+  search: EnterpriseAlertsSearch,
+  filters: DeliveryFilterState
 ): EnterpriseAlertDeliveriesSearch {
   return {
     tenant_id: search.tenant_id,
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.channel_type ? { channel_type: filters.channel_type } : {}),
+    ...(filters.trigger_source ? { trigger_source: filters.trigger_source } : {}),
     page: search.page ?? 1,
     page_size: search.page_size ?? 20,
   }
@@ -343,6 +380,11 @@ export function EnterpriseAlertsPage() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'events' | 'deliveries' | 'rules'>('events')
   const [draft, setDraft] = useState<RuleEditorState>(createEmptyRuleDraft())
+  const [deliveryFilters, setDeliveryFilters] = useState<DeliveryFilterState>({
+    status: 'final_failed',
+    channel_type: '',
+    trigger_source: '',
+  })
 
   const form = useForm<AlertFilterFormValues>({
     resolver: zodResolver(filterSchema),
@@ -358,8 +400,8 @@ export function EnterpriseAlertsPage() {
     [search]
   )
   const normalizedDeliveriesSearch = useMemo(
-    () => deliveriesSearchFromAlerts(normalizedSearch),
-    [normalizedSearch]
+    () => deliveriesSearchFromAlerts(normalizedSearch, deliveryFilters),
+    [normalizedSearch, deliveryFilters]
   )
 
   const alertsQuery = useQuery({
@@ -438,6 +480,35 @@ export function EnterpriseAlertsPage() {
         queryKey: alertRulesListQueryKey(normalizedSearch.tenant_id),
       })
       toast.success(t('Alert rule deleted'))
+    },
+  })
+
+  const resendDeliveryMutation = useMutation({
+    mutationFn: async (delivery: AlertDeliveryItem) => {
+      const response = await resendAlertDelivery(
+        delivery.id,
+        normalizedSearch.tenant_id
+      )
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data
+    },
+    onSuccess: async (data) => {
+      setDeliveryFilters((prev) => buildDeliveryFiltersAfterResend(prev))
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseAlertDeliveriesQueryKey,
+      })
+      toast.success(
+        data.created
+          ? t('Resend created')
+          : t('Existing manual resend is still pending')
+      )
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : t('Request failed')
+      )
     },
   })
 
@@ -765,6 +836,78 @@ export function EnterpriseAlertsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className='space-y-4'>
+                  <div className='grid gap-4 md:grid-cols-4'>
+                    <div className='space-y-2'>
+                      <FormLabel>{t('Status')}</FormLabel>
+                      <select
+                        className='border-input bg-background rounded-md border px-3 py-2 text-sm'
+                        value={deliveryFilters.status}
+                        onChange={(event) =>
+                          setDeliveryFilters((prev) => ({
+                            ...prev,
+                            status: event.target.value as DeliveryFilterState['status'],
+                          }))
+                        }
+                      >
+                        <option value=''>{t('All statuses')}</option>
+                        <option value='final_failed'>{t('Final failed')}</option>
+                        <option value='pending'>{t('Pending')}</option>
+                        <option value='failed'>{t('Failed')}</option>
+                        <option value='resent'>{t('Resent')}</option>
+                        <option value='sent'>{t('Sent')}</option>
+                      </select>
+                    </div>
+                    <div className='space-y-2'>
+                      <FormLabel>{t('Channel')}</FormLabel>
+                      <select
+                        className='border-input bg-background rounded-md border px-3 py-2 text-sm'
+                        value={deliveryFilters.channel_type}
+                        onChange={(event) =>
+                          setDeliveryFilters((prev) => ({
+                            ...prev,
+                            channel_type: event.target.value as DeliveryFilterState['channel_type'],
+                          }))
+                        }
+                      >
+                        <option value=''>{t('All channels')}</option>
+                        <option value='email'>{t('Email')}</option>
+                        <option value='webhook'>{t('Webhook')}</option>
+                        <option value='dingtalk_robot'>{t('DingTalk robot')}</option>
+                      </select>
+                    </div>
+                    <div className='space-y-2'>
+                      <FormLabel>{t('Retry source')}</FormLabel>
+                      <select
+                        className='border-input bg-background rounded-md border px-3 py-2 text-sm'
+                        value={deliveryFilters.trigger_source}
+                        onChange={(event) =>
+                          setDeliveryFilters((prev) => ({
+                            ...prev,
+                            trigger_source: event.target.value as DeliveryFilterState['trigger_source'],
+                          }))
+                        }
+                      >
+                        <option value=''>{t('All sources')}</option>
+                        <option value='rule_match'>{t('Rule match')}</option>
+                        <option value='manual_resend'>{t('Manual resend')}</option>
+                      </select>
+                    </div>
+                    <div className='flex items-end'>
+                      <Button
+                        className='w-full'
+                        variant='outline'
+                        onClick={() =>
+                          setDeliveryFilters({
+                            status: 'final_failed',
+                            channel_type: '',
+                            trigger_source: '',
+                          })
+                        }
+                      >
+                        {t('Show final failed only')}
+                      </Button>
+                    </div>
+                  </div>
                   {deliveriesQuery.isLoading ? (
                     <div className='space-y-3'>
                       <Skeleton className='h-12 w-full' />
@@ -778,8 +921,13 @@ export function EnterpriseAlertsPage() {
                           <TableHead>{t('Status')}</TableHead>
                           <TableHead>{t('Channel')}</TableHead>
                           <TableHead>{t('Attempts')}</TableHead>
+                          <TableHead>{t('Retry source')}</TableHead>
+                          <TableHead>{t('Parent delivery')}</TableHead>
+                          <TableHead>{t('Last Attempt')}</TableHead>
+                          <TableHead>{t('Final failed at')}</TableHead>
                           <TableHead>{t('Trace Details')}</TableHead>
                           <TableHead>{t('Error Reason')}</TableHead>
+                          <TableHead>{t('Actions')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -802,16 +950,71 @@ export function EnterpriseAlertsPage() {
                               {item.attempt_count}/{item.max_attempts}
                             </TableCell>
                             <TableCell>
+                              {formatTriggerSource(item.trigger_source, t)}
+                            </TableCell>
+                            <TableCell>
+                              {item.manual_parent_id
+                                ? `#${item.manual_parent_id}`
+                                : t('None')}
+                            </TableCell>
+                            <TableCell>
+                              {item.last_attempt_at > 0
+                                ? formatTimestamp(item.last_attempt_at)
+                                : t('Never')}
+                            </TableCell>
+                            <TableCell>
+                              {item.final_failed_at > 0
+                                ? formatTimestamp(item.final_failed_at)
+                                : t('Not final failed')}
+                            </TableCell>
+                            <TableCell>
                               {formatDeliveryTraceSummary(
                                 item,
                                 t('No trace details yet')
                               )}
                             </TableCell>
                             <TableCell>{item.error_reason || t('No error')}</TableCell>
+                            <TableCell>
+                              {item.status === 'final_failed' ? (
+                                <Button
+                                  size='sm'
+                                  variant='outline'
+                                  disabled={resendDeliveryMutation.isPending}
+                                  onClick={() =>
+                                    void resendDeliveryMutation.mutateAsync(item)
+                                  }
+                                >
+                                  {t('Resend')}
+                                </Button>
+                              ) : item.trigger_source === 'manual_resend' ? (
+                                <span className='text-muted-foreground text-sm'>
+                                  {t('Manual resend')}
+                                </span>
+                              ) : (
+                                <span className='text-muted-foreground text-sm'>
+                                  {t('No action')}
+                                </span>
+                              )}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                  ) : deliveryFilters.status === 'final_failed' ? (
+                    <Empty>
+                      <EmptyHeader>
+                        <EmptyMedia>
+                          <BellRing className='size-6' />
+                        </EmptyMedia>
+                        <EmptyTitle>{t('No final failed deliveries')}</EmptyTitle>
+                        <EmptyDescription>
+                          {t(
+                            'Switch filters to review the full history or wait for the dispatcher to produce new results.'
+                          )}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent />
+                    </Empty>
                   ) : (
                     <Empty>
                       <EmptyHeader>

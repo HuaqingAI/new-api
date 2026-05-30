@@ -114,6 +114,85 @@ func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
 	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, payload.Items[0].Status)
 	require.NotNil(t, payload.Items[0].Trace)
 	require.Equal(t, "req-1", payload.Items[0].Trace.RequestId)
+	require.Equal(t, "Engineering (#1) · req-1 · /enterprise-alerts?event_id=1", payload.Items[0].TraceSummary)
+}
+
+func TestAlertDeliveryResendAPICreatesManualDeliveryAndWritesAudit(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	parent := entmodel.AlertDelivery{
+		TenantId:      0,
+		EventId:       1,
+		RuleId:        2,
+		ChannelType:   entmodel.AlertRuleChannelEmail,
+		Status:        entmodel.AlertDeliveryStatusFinalFailed,
+		AttemptCount:  4,
+		MaxAttempts:   4,
+		FinalFailedAt: 1717117201,
+		ErrorReason:   "smtp timeout",
+		DedupeKey:     "0:1:2:email:1717117200",
+		NextRetryAt:   1717117200,
+		CreatedAt:     1717117200,
+		UpdatedAt:     1717117201,
+	}
+	require.NoError(t, parent.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:           1,
+		RequestId:         "req-1",
+		TenantId:          0,
+		Username:          "alice",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Engineering (#1)",
+		EventSummary:      "policy only",
+		RuleId:            2,
+		RuleName:          "Critical",
+		DetailRoute:       "/enterprise-alerts?event_id=1",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=0",
+	}))
+	require.NoError(t, db.Create(&parent).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/alerts/deliveries/1/resend", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	payload := decodeEnterpriseData[dtoenterprise.AlertDeliveryResendResponse](t, response)
+	require.True(t, payload.Created)
+	require.Equal(t, entmodel.AlertDeliveryStatusPending, payload.Item.Status)
+	require.Equal(t, entmodel.AlertDeliveryTriggerManual, payload.Item.TriggerSource)
+	require.NotNil(t, payload.Item.ManualParentId)
+	require.Equal(t, 1, *payload.Item.ManualParentId)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Equal(t, entservice.AdminActionAlertDeliveryResend, actions[0].ActionType)
+	require.Equal(t, entservice.AdminObjectAlertDelivery, actions[0].ObjectType)
+}
+
+func TestAlertDeliveryResendAPIRejectsNonFinalFailedStatus(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	delivery := entmodel.AlertDelivery{
+		TenantId:     0,
+		EventId:      1,
+		RuleId:       2,
+		ChannelType:  entmodel.AlertRuleChannelEmail,
+		Status:       entmodel.AlertDeliveryStatusSent,
+		AttemptCount: 1,
+		MaxAttempts:  4,
+		DedupeKey:    "0:1:2:email:1717117200",
+		CreatedAt:    1717117200,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, delivery.SetTracePayload(&entmodel.AlertDeliveryTracePayload{EventId: 1, RuleId: 2}))
+	require.NoError(t, db.Create(&delivery).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/alerts/deliveries/1/resend", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.alert.delivery_resend_not_allowed", response.Message)
 }
 
 func TestAlertRulesAPIValidatesPersistsAndSanitizesSecrets(t *testing.T) {

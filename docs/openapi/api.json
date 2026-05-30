@@ -5162,6 +5162,14 @@
             }
           },
           {
+            "name": "manual_parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
             "name": "channel_type",
             "in": "query",
             "required": false,
@@ -5186,6 +5194,18 @@
                 "failed",
                 "final_failed",
                 "resent"
+              ]
+            }
+          },
+          {
+            "name": "trigger_source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rule_match",
+                "manual_resend"
               ]
             }
           },
@@ -5223,6 +5243,71 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/AlertDeliveriesResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/alerts/deliveries/{id}/resend": {
+      "post": {
+        "summary": "人工重发最终失败的企业告警投递",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AlertDeliveryResendResponse"
                     }
                   },
                   "required": [
@@ -6824,6 +6909,9 @@
           "manual_parent_id": {
             "type": "integer"
           },
+          "trace_summary": {
+            "type": "string"
+          },
           "created_at": {
             "type": "integer",
             "format": "int64"
@@ -6854,6 +6942,17 @@
           },
           "page_size": {
             "type": "integer"
+          }
+        }
+      },
+      "AlertDeliveryResendResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/AlertDeliveryItem"
+          },
+          "created": {
+            "type": "boolean"
           }
         }
       },

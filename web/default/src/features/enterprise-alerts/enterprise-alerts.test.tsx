@@ -24,10 +24,12 @@ import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterpri
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import {
+  buildDeliveryFiltersAfterResend,
   buildAlertRulePayload,
   describeAlertRuleSecretStatus,
   enterpriseAlertsSearchSchema,
   formatDeliveryStatus,
+  formatTriggerSource,
   formatDeliveryTraceSummary,
   formatDepartmentSnapshot,
   mapAlertFilterFormToSearch,
@@ -137,6 +139,7 @@ describe('Enterprise alerts feature', () => {
   test('formats delivery status and trace summary for read-only delivery views', () => {
     const t = (value: string) => value
     assert.equal(formatDeliveryStatus('final_failed', t), 'Final failed')
+    assert.equal(formatTriggerSource('manual_resend', t), 'Manual resend')
     assert.equal(
       formatDeliveryTraceSummary(
         {
@@ -165,6 +168,43 @@ describe('Enterprise alerts feature', () => {
     assert.equal(
       formatDeliveryTraceSummary({ trace: undefined }, 'No trace details yet'),
       'No trace details yet'
+    )
+  })
+
+  test('deliveries query key preserves resend filters', () => {
+    assert.deepEqual(
+      alertDeliveriesListQueryKey({
+        tenant_id: 7,
+        status: 'final_failed',
+        trigger_source: 'manual_resend',
+        page: 1,
+      }),
+      [
+        'enterprise',
+        'alerts',
+        'deliveries',
+        {
+          tenant_id: 7,
+          status: 'final_failed',
+          trigger_source: 'manual_resend',
+          page: 1,
+        },
+      ]
+    )
+  })
+
+  test('resend clears blocking status filters so old and new deliveries can be reviewed together', () => {
+    assert.deepEqual(
+      buildDeliveryFiltersAfterResend({
+        status: 'final_failed',
+        channel_type: 'webhook',
+        trigger_source: 'manual_resend',
+      }),
+      {
+        status: '',
+        channel_type: 'webhook',
+        trigger_source: '',
+      }
     )
   })
 
@@ -361,7 +401,14 @@ describe('Enterprise alerts feature', () => {
     for (const expected of [
       'Deliveries',
       'Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.',
+      'Show final failed only',
+      'Retry source',
+      'Parent delivery',
+      'Resend created',
+      'Existing manual resend is still pending',
+      'Manual resend',
       'No deliveries yet',
+      'No final failed deliveries',
       'Alert deliveries will appear here after the background dispatcher runs.',
       'No trace details yet',
       'No error',

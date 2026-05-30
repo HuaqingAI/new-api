@@ -182,6 +182,101 @@ func TestEnterpriseAlertDeliveriesAPIRequiresEnterpriseAdminAndSanitizesTracePay
 	require.Equal(t, "req-delivery-1", response.Items[0].Trace.RequestId)
 	require.Equal(t, "webhook", response.Items[0].ChannelType)
 	require.Equal(t, "webhook request failed", response.Items[0].ErrorReason)
+	require.Equal(t, "Unassigned · req-delivery-1 · /enterprise-alerts?event_id=77", response.Items[0].TraceSummary)
+}
+
+func TestEnterpriseAlertDeliveryResendAPIRequiresEnterpriseAdminAndCreatesManualDelivery(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	parent := modelenterprise.AlertDelivery{
+		TenantId:      7,
+		EventId:       77,
+		RuleId:        5,
+		ChannelType:   modelenterprise.AlertRuleChannelWebhook,
+		Status:        modelenterprise.AlertDeliveryStatusFinalFailed,
+		AttemptCount:  4,
+		MaxAttempts:   4,
+		FinalFailedAt: 1717117200,
+		ErrorReason:   "webhook request failed",
+		DedupeKey:     "7:77:5:webhook:1717117200",
+		CreatedAt:     1717117200,
+		UpdatedAt:     1717117201,
+	}
+	require.NoError(t, parent.SetTracePayload(&modelenterprise.AlertDeliveryTracePayload{
+		EventId:           77,
+		RequestId:         "req-delivery-1",
+		TenantId:          7,
+		Username:          "tenant-user",
+		ModelName:         "claude-sonnet-4",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117200,
+		DepartmentSummary: "Unassigned",
+		EventSummary:      "review requested",
+		RuleId:            5,
+		RuleName:          "Tenant 7 abuse",
+		DetailRoute:       "/enterprise-alerts?event_id=77",
+		DetailAPIPath:     "/api/enterprise/alerts/events?tenant_id=7",
+	}))
+	require.NoError(t, fixture.db.Create(&parent).Error)
+
+	commonUser := fixture.performEnterpriseRequest(t, http.MethodPost, "/api/enterprise/alerts/deliveries/1/resend?tenant_id=7", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	resend := fixture.performEnterpriseRequest(t, http.MethodPost, "/api/enterprise/alerts/deliveries/1/resend?tenant_id=7", adminCookies)
+	resendPayload := decodeAdminActionsAPIResponse(t, resend)
+	require.True(t, resendPayload.Success, resendPayload.Message)
+
+	var resendResponse dtoenterprise.AlertDeliveryResendResponse
+	require.NoError(t, common.Unmarshal(resendPayload.Data, &resendResponse))
+	require.True(t, resendResponse.Created)
+	require.Equal(t, modelenterprise.AlertDeliveryTriggerManual, resendResponse.Item.TriggerSource)
+	require.NotNil(t, resendResponse.Item.ManualParentId)
+	require.Equal(t, 1, *resendResponse.Item.ManualParentId)
+
+	list := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/deliveries?tenant_id=7&event_id=77&page=1&page_size=20", adminCookies)
+	listPayload := decodeAdminActionsAPIResponse(t, list)
+	require.True(t, listPayload.Success, listPayload.Message)
+
+	var listResponse dtoenterprise.AlertDeliveriesResponse
+	require.NoError(t, common.Unmarshal(listPayload.Data, &listResponse))
+	require.Len(t, listResponse.Items, 2)
+	require.Equal(t, modelenterprise.AlertDeliveryStatusPending, listResponse.Items[0].Status)
+	require.Equal(t, modelenterprise.AlertDeliveryStatusFinalFailed, listResponse.Items[1].Status)
+
+	var actions []modelenterprise.AdminAction
+	require.NoError(t, fixture.db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Equal(t, "enterprise.alert.delivery.resend", actions[0].ActionType)
+	require.NotContains(t, actions[0].Payload, "secret")
+}
+
+func TestEnterpriseAlertDeliveryResendAPIRejectsNonFinalFailedStatus(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+
+	delivery := modelenterprise.AlertDelivery{
+		TenantId:     7,
+		EventId:      77,
+		RuleId:       5,
+		ChannelType:  modelenterprise.AlertRuleChannelWebhook,
+		Status:       modelenterprise.AlertDeliveryStatusSent,
+		AttemptCount: 1,
+		MaxAttempts:  4,
+		DedupeKey:    "7:77:5:webhook:1717117200",
+		CreatedAt:    1717117200,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, delivery.SetTracePayload(&modelenterprise.AlertDeliveryTracePayload{EventId: 77, RuleId: 5}))
+	require.NoError(t, fixture.db.Create(&delivery).Error)
+
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	resend := fixture.performEnterpriseRequest(t, http.MethodPost, "/api/enterprise/alerts/deliveries/1/resend?tenant_id=7", adminCookies)
+	resendPayload := decodeAdminActionsAPIResponse(t, resend)
+	require.False(t, resendPayload.Success)
+	require.Equal(t, "enterprise.alert.delivery_resend_not_allowed", resendPayload.Message)
 }
 
 func TestEnterpriseAlertRulesAPIRequiresEnterpriseAdminAndSanitizesSecrets(t *testing.T) {

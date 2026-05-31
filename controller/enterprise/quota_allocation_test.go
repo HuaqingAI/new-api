@@ -25,11 +25,12 @@ func TestQuotaAllocationAPIWorkflow(t *testing.T) {
 		Remaining:    1000,
 	}).Error)
 	require.NoError(t, db.Create(&model.User{
-		Id:       2001,
-		Username: "quota-member-one",
-		Password: "pwd",
-		Group:    "default",
-		AffCode:  "quota-member-one-aff",
+		Id:          2001,
+		Username:    "quota-member-one",
+		DisplayName: "Quota Member One",
+		Password:    "pwd",
+		Group:       "default",
+		AffCode:     "quota-member-one-aff",
 	}).Error)
 	require.NoError(t, db.Create(&entmodel.UserDepartment{
 		TenantId:     0,
@@ -51,6 +52,8 @@ func TestQuotaAllocationAPIWorkflow(t *testing.T) {
 	listResponse := decodeEnterpriseAPIResponse(t, list)
 	require.True(t, listResponse.Success, listResponse.Message)
 	require.Contains(t, string(listResponse.Data), `"wallet_id":`)
+	require.Contains(t, string(listResponse.Data), `"target_username":"quota-member-one"`)
+	require.Contains(t, string(listResponse.Data), `"target_display_name":"Quota Member One"`)
 }
 
 func TestQuotaAllocationAPIRejectsUserOutsideDepartment(t *testing.T) {

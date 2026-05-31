@@ -53,6 +53,8 @@ type QuotaAllocationItem struct {
 	DepartmentBudgetId     int    `json:"department_budget_id"`
 	DepartmentId           int    `json:"department_id"`
 	TargetUserId           int    `json:"target_user_id"`
+	TargetUsername         string `json:"target_username"`
+	TargetDisplayName      string `json:"target_display_name"`
 	WalletId               int    `json:"wallet_id"`
 	ActorId                int    `json:"actor_id"`
 	CommittedQuota         int64  `json:"committed_quota"`
@@ -444,8 +446,20 @@ func (s *QuotaAllocationService) ListByBudget(tenantId int, departmentBudgetId i
 	if departmentBudgetId <= 0 {
 		return []QuotaAllocationItem{}, ErrQuotaAllocationInvalidInput
 	}
-	var rows []entmodel.QuotaAllocation
-	query := s.db.Where("department_budget_id = ?", departmentBudgetId)
+	type quotaAllocationListRow struct {
+		entmodel.QuotaAllocation
+		TargetUsername    string
+		TargetDisplayName string
+	}
+	var rows []quotaAllocationListRow
+	query := s.db.Model(&entmodel.QuotaAllocation{}).
+		Select(
+			"enterprise_quota_allocations.*",
+			"users.username AS target_username",
+			"users.display_name AS target_display_name",
+		).
+		Joins("LEFT JOIN users ON users.id = enterprise_quota_allocations.target_user_id").
+		Where("department_budget_id = ?", departmentBudgetId)
 	if tenantId > 0 {
 		query = query.Where("tenant_id = ?", tenantId)
 	}
@@ -454,7 +468,10 @@ func (s *QuotaAllocationService) ListByBudget(tenantId int, departmentBudgetId i
 	}
 	items := make([]QuotaAllocationItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, mapQuotaAllocationItem(row))
+		item := mapQuotaAllocationItem(row.QuotaAllocation)
+		item.TargetUsername = row.TargetUsername
+		item.TargetDisplayName = row.TargetDisplayName
+		items = append(items, item)
 	}
 	return items, nil
 }

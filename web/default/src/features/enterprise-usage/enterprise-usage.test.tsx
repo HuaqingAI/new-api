@@ -16,19 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useForm } from 'react-hook-form'
 import { isRedirect } from '@tanstack/react-router'
 import i18n from '@/i18n/config'
 import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { describe, test } from 'node:test'
-import { useForm } from 'react-hook-form'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
 import { ROLE } from '@/lib/roles'
+import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
 import { buildSearchParams } from '@/features/usage-logs/lib/filter'
 import {
   departmentDetailQueryKey,
@@ -54,10 +55,10 @@ import {
 } from './index'
 import type {
   DepartmentUsageDetailResponse,
+  DepartmentUsageLogUserOption,
   DepartmentUsageReportJobItem,
   DepartmentUsageSummaryItem,
 } from './types'
-import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
 
 describe('Enterprise usage overview dashboard', () => {
   test('resolves default and preset-backed time windows into exact query params', () => {
@@ -71,7 +72,10 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(today.rangeLabel, '2026-05-29 ~ 2026-05-29')
 
     const yesterday = resolveEnterpriseUsageRange({ preset: 'yesterday' }, now)
-    assert.equal(yesterday.from, current.subtract(1, 'day').startOf('day').unix())
+    assert.equal(
+      yesterday.from,
+      current.subtract(1, 'day').startOf('day').unix()
+    )
     assert.equal(yesterday.to, current.startOf('day').unix())
     assert.equal(yesterday.rangeLabel, '2026-05-28 ~ 2026-05-28')
 
@@ -939,6 +943,7 @@ describe('Enterprise usage overview dashboard', () => {
             end_timestamp: 1748563199,
             username: '',
             username_options: undefined as never,
+            user_options: undefined as never,
           },
         },
       })
@@ -948,12 +953,13 @@ describe('Enterprise usage overview dashboard', () => {
     assert.deepEqual(normalized.model_distribution, [])
     assert.deepEqual(normalized.trend, [])
     assert.deepEqual(normalized.recent_logs_entry.filters.username_options, [])
+    assert.deepEqual(normalized.recent_logs_entry.filters.user_options, [])
 
     const byRequests = sortDepartmentUserRanking(
       detailUsageItem().user_ranking,
       'requests'
     )
-    assert.equal(byRequests[0]?.username, 'alice')
+    assert.equal(byRequests[0]?.username, 'alice_ops')
 
     const byTokens = sortDepartmentUserRanking(
       [
@@ -970,7 +976,7 @@ describe('Enterprise usage overview dashboard', () => {
       ],
       'tokens'
     )
-    assert.equal(byTokens[0]?.username, 'alice')
+    assert.equal(byTokens[0]?.username, 'alice_ops')
 
     const quotaOrder = sortDepartmentUserRanking(
       [
@@ -1086,7 +1092,8 @@ describe('Enterprise usage overview dashboard', () => {
       'Analysis Notes',
       'Save Report Configuration',
       'Inspect top users, model mix, time trend, and recent logs.',
-      'alice',
+      'Alice Zhang',
+      'alice_ops · User ID #1',
       'bob',
       'claude-sonnet-4',
     ]) {
@@ -1111,7 +1118,9 @@ describe('Enterprise usage overview dashboard', () => {
       })
       return (
         <EnterpriseUsageContent
-          items={[departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })]}
+          items={[
+            departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' }),
+          ]}
           selectedDepartmentId={1}
           detail={detailUsageItem()}
           detailLoading={false}
@@ -1208,7 +1217,7 @@ describe('Enterprise usage overview dashboard', () => {
       departmentName: 'Engineering',
       startTime: 1748476800000,
       endTime: 1748563200000,
-      username: 'alice',
+      username: 'alice_ops',
     })
 
     assert.deepEqual(resolveRecentLogsSearch(entry), {
@@ -1216,7 +1225,7 @@ describe('Enterprise usage overview dashboard', () => {
       departmentName: 'Engineering',
       startTime: 1748476800000,
       endTime: 1748563200000,
-      username: 'alice',
+      username: 'alice_ops',
     })
   })
 })
@@ -1256,7 +1265,8 @@ function detailUsageItem(
     user_ranking: [
       {
         user_id: 1,
-        username: 'alice',
+        username: 'alice_ops',
+        display_name: 'Alice Zhang',
         request_count: 4,
         prompt_tokens: 400,
         completion_tokens: 160,
@@ -1266,6 +1276,7 @@ function detailUsageItem(
       {
         user_id: 2,
         username: 'bob',
+        display_name: '',
         request_count: 2,
         prompt_tokens: 200,
         completion_tokens: 80,
@@ -1320,7 +1331,19 @@ function detailUsageItem(
         start_timestamp: 1748476800,
         end_timestamp: 1748563199,
         username: '',
-        username_options: ['alice', 'bob'],
+        username_options: ['alice_ops', 'bob'],
+        user_options: [
+          {
+            user_id: 1,
+            username: 'alice_ops',
+            display_name: 'Alice Zhang',
+          },
+          {
+            user_id: 2,
+            username: 'bob',
+            display_name: '',
+          },
+        ] satisfies DepartmentUsageLogUserOption[],
       },
     },
     ...overrides,
@@ -1358,7 +1381,8 @@ function escapeRegExp(value: string) {
 }
 
 function departmentTreeNode(
-  overrides: Partial<DepartmentTreeNode> & Pick<DepartmentTreeNode, 'id' | 'name'>
+  overrides: Partial<DepartmentTreeNode> &
+    Pick<DepartmentTreeNode, 'id' | 'name'>
 ): DepartmentTreeNode {
   return {
     id: overrides.id,

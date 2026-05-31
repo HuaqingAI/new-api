@@ -18,13 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { isRedirect } from '@tanstack/react-router'
 import i18n from '@/i18n/config'
+import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterprise-alerts/index'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterprise-alerts/index'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import {
+  alertOverviewQueryKey,
+  alertDeliveriesListQueryKey,
+  alertRulesListQueryKey,
+  enterpriseAlertDeliveriesQueryKey,
+  enterpriseAlertRulesQueryKey,
+} from './api'
 import {
   buildAlertEventEntrySearch,
   buildDeliveryFiltersAfterResend,
@@ -41,13 +48,6 @@ import {
   mapAlertFilterFormToSearch,
   overviewSearchFromAlerts,
 } from './index'
-import {
-  alertOverviewQueryKey,
-  alertDeliveriesListQueryKey,
-  alertRulesListQueryKey,
-  enterpriseAlertDeliveriesQueryKey,
-  enterpriseAlertRulesQueryKey,
-} from './api'
 
 describe('Enterprise alerts feature', () => {
   test('maps form filters into API search params', () => {
@@ -212,7 +212,9 @@ describe('Enterprise alerts feature', () => {
             event_id: 1,
             request_id: 'req-1',
             tenant_id: 7,
-            username: 'alice',
+            user_id: 101,
+            username: 'alice_ops',
+            display_name: 'Alice Zhang',
             model_name: 'gpt-4o-mini',
             risk_type: 'abuse',
             action_result: 'blocked',
@@ -226,9 +228,10 @@ describe('Enterprise alerts feature', () => {
             detail_api_path: '/api/enterprise/alerts/events?tenant_id=7',
           },
         },
-        'No trace details yet'
+        'No trace details yet',
+        t
       ),
-      'Engineering (#11) · req-1 · /enterprise-alerts?event_id=1'
+      'Alice Zhang · alice_ops · User ID #101 · Engineering (#11) · req-1 · /enterprise-alerts?event_id=1'
     )
     assert.equal(
       formatDeliveryTraceSummary({ trace: undefined }, 'No trace details yet'),
@@ -365,7 +368,8 @@ describe('Enterprise alerts feature', () => {
           webhookSecretConfigured: true,
           webhookSecretMasked: '******cret',
           dingtalkEnabled: true,
-          dingtalkRobotUrl: 'https://oapi.dingtalk.com/robot/send?access_token=token',
+          dingtalkRobotUrl:
+            'https://oapi.dingtalk.com/robot/send?access_token=token',
           dingtalkRobotSecret: 'robot-secret',
           dingtalkSecretConfigured: false,
           dingtalkSecretMasked: '',
@@ -394,7 +398,8 @@ describe('Enterprise alerts feature', () => {
           {
             type: 'dingtalk_robot',
             enabled: true,
-            dingtalk_robot_url: 'https://oapi.dingtalk.com/robot/send?access_token=token',
+            dingtalk_robot_url:
+              'https://oapi.dingtalk.com/robot/send?access_token=token',
             dingtalk_robot_secret: 'robot-secret',
           },
         ],
@@ -425,54 +430,50 @@ describe('Enterprise alerts feature', () => {
 
   test('build payload keeps zero dedupe values and drops negative ones', () => {
     assert.equal(
-      buildAlertRulePayload(
-        {
-          id: undefined,
-          name: 'Zero dedupe',
-          enabled: true,
-          riskTypes: 'abuse',
-          departmentIds: '',
-          dedupeWindowSeconds: '0',
-          emailEnabled: true,
-          emailReceivers: 'ops@example.com',
-          webhookEnabled: false,
-          webhookUrl: '',
-          webhookSecret: '',
-          webhookSecretConfigured: false,
-          webhookSecretMasked: '',
-          dingtalkEnabled: false,
-          dingtalkRobotUrl: '',
-          dingtalkRobotSecret: '',
-          dingtalkSecretConfigured: false,
-          dingtalkSecretMasked: '',
-        }
-      ).dedupe_window_seconds,
+      buildAlertRulePayload({
+        id: undefined,
+        name: 'Zero dedupe',
+        enabled: true,
+        riskTypes: 'abuse',
+        departmentIds: '',
+        dedupeWindowSeconds: '0',
+        emailEnabled: true,
+        emailReceivers: 'ops@example.com',
+        webhookEnabled: false,
+        webhookUrl: '',
+        webhookSecret: '',
+        webhookSecretConfigured: false,
+        webhookSecretMasked: '',
+        dingtalkEnabled: false,
+        dingtalkRobotUrl: '',
+        dingtalkRobotSecret: '',
+        dingtalkSecretConfigured: false,
+        dingtalkSecretMasked: '',
+      }).dedupe_window_seconds,
       0
     )
 
     assert.equal(
-      buildAlertRulePayload(
-        {
-          id: undefined,
-          name: 'Negative dedupe',
-          enabled: true,
-          riskTypes: 'abuse',
-          departmentIds: '',
-          dedupeWindowSeconds: '-5',
-          emailEnabled: true,
-          emailReceivers: 'ops@example.com',
-          webhookEnabled: false,
-          webhookUrl: '',
-          webhookSecret: '',
-          webhookSecretConfigured: false,
-          webhookSecretMasked: '',
-          dingtalkEnabled: false,
-          dingtalkRobotUrl: '',
-          dingtalkRobotSecret: '',
-          dingtalkSecretConfigured: false,
-          dingtalkSecretMasked: '',
-        }
-      ).dedupe_window_seconds,
+      buildAlertRulePayload({
+        id: undefined,
+        name: 'Negative dedupe',
+        enabled: true,
+        riskTypes: 'abuse',
+        departmentIds: '',
+        dedupeWindowSeconds: '-5',
+        emailEnabled: true,
+        emailReceivers: 'ops@example.com',
+        webhookEnabled: false,
+        webhookUrl: '',
+        webhookSecret: '',
+        webhookSecretConfigured: false,
+        webhookSecretMasked: '',
+        dingtalkEnabled: false,
+        dingtalkRobotUrl: '',
+        dingtalkRobotSecret: '',
+        dingtalkSecretConfigured: false,
+        dingtalkSecretMasked: '',
+      }).dedupe_window_seconds,
       0
     )
   })
@@ -670,8 +671,10 @@ describe('Enterprise alerts feature', () => {
               total_request_count: 0,
               risk_rate: 0,
               event_entry: {
-                detail_route: '/enterprise-alerts?tab=events&unassigned_only=true',
-                detail_api_path: '/api/enterprise/alerts/events?unassigned_only=true',
+                detail_route:
+                  '/enterprise-alerts?tab=events&unassigned_only=true',
+                detail_api_path:
+                  '/api/enterprise/alerts/events?unassigned_only=true',
                 department_name: 'Unassigned',
                 from: 0,
                 to: 0,
@@ -777,7 +780,10 @@ describe('Enterprise alerts feature', () => {
       'Secret already configured',
       'No secret configured',
     ]) {
-      assert.match(EnterpriseAlertsPage.toString(), new RegExp(escapeRegExp(expected)))
+      assert.match(
+        EnterpriseAlertsPage.toString(),
+        new RegExp(escapeRegExp(expected))
+      )
     }
     assert.doesNotMatch(source, /plain-secret/i)
     assert.doesNotMatch(source, /token=secret/i)

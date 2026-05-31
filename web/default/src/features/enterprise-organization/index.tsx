@@ -115,6 +115,10 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from './lib/user-display'
 import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
@@ -1107,10 +1111,21 @@ function DepartmentMembersTable({
             <TableCell>
               <div className='flex min-w-[160px] flex-col gap-1'>
                 <span className='font-medium'>
-                  {item.username || `#${item.user_id}`}
+                  {formatEnterpriseUserPrimary({
+                    displayName: item.display_name,
+                    username: item.username,
+                    userId: item.user_id,
+                  })}
                 </span>
                 <span className='text-muted-foreground text-xs'>
-                  {item.display_name || `${t('User ID')} #${item.user_id}`}
+                  {formatEnterpriseUserSecondary(
+                    {
+                      displayName: item.display_name,
+                      username: item.username,
+                      userId: item.user_id,
+                    },
+                    t
+                  )}
                 </span>
               </div>
             </TableCell>
@@ -1288,11 +1303,11 @@ export function DepartmentMemberContextCard({
             <div className='grid gap-3 md:grid-cols-3'>
               <DepartmentMetaStat
                 label={t('Current Member')}
-                value={
-                  selectedMember.display_name ||
-                  selectedMember.username ||
-                  `#${selectedMember.user_id}`
-                }
+                value={formatEnterpriseUserPrimary({
+                  displayName: selectedMember.display_name,
+                  username: selectedMember.username,
+                  userId: selectedMember.user_id,
+                })}
               />
               <DepartmentMetaStat
                 label={t('Current department member')}
@@ -1950,9 +1965,11 @@ function DepartmentBudgetPanel({
                 </div>
                 <div className='mt-1 text-sm font-medium'>
                   {selectedMember
-                    ? selectedMember.display_name ||
-                      selectedMember.username ||
-                      `#${selectedMember.user_id}`
+                    ? formatEnterpriseUserPrimary({
+                        displayName: selectedMember.display_name,
+                        username: selectedMember.username,
+                        userId: selectedMember.user_id,
+                      })
                     : t('No member selected')}
                 </div>
                 <div className='text-muted-foreground mt-1 text-xs'>
@@ -2091,7 +2108,27 @@ export function QuotaAllocationTable({
       <TableBody>
         {items.map((item) => (
           <TableRow key={item.id}>
-            <TableCell>{item.target_user_id}</TableCell>
+            <TableCell>
+              <div className='flex min-w-[180px] flex-col gap-1'>
+                <span className='font-medium'>
+                  {formatEnterpriseUserPrimary({
+                    displayName: item.target_display_name,
+                    username: item.target_username,
+                    userId: item.target_user_id,
+                  })}
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {formatEnterpriseUserSecondary(
+                    {
+                      displayName: item.target_display_name,
+                      username: item.target_username,
+                      userId: item.target_user_id,
+                    },
+                    t
+                  )}
+                </span>
+              </div>
+            </TableCell>
             <TableCell>{item.committed_quota}</TableCell>
             <TableCell>{item.wallet_id}</TableCell>
             <TableCell>
@@ -2349,12 +2386,21 @@ export function DepartmentBudgetDetailTable({
             <TableCell>
               <div className='flex min-w-[180px] flex-col gap-1'>
                 <span className='font-medium'>
-                  {wallet.target_display_name ||
-                    wallet.target_username ||
-                    `#${wallet.target_user_id}`}
+                  {formatEnterpriseUserPrimary({
+                    displayName: wallet.target_display_name,
+                    username: wallet.target_username,
+                    userId: wallet.target_user_id,
+                  })}
                 </span>
                 <span className='text-muted-foreground text-xs'>
-                  {t('User ID')} #{wallet.target_user_id}
+                  {formatEnterpriseUserSecondary(
+                    {
+                      displayName: wallet.target_display_name,
+                      username: wallet.target_username,
+                      userId: wallet.target_user_id,
+                    },
+                    t
+                  )}
                 </span>
               </div>
             </TableCell>

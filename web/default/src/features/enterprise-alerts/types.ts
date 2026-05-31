@@ -34,6 +34,7 @@ export type AlertEventItem = {
   tenant_id: number
   user_id: number
   username: string
+  display_name: string
   username_snapshot: string
   request_id: string
   model_name: string
@@ -109,7 +110,9 @@ export type AlertDeliveryTraceItem = {
   event_id: number
   request_id: string
   tenant_id: number
+  user_id: number
   username: string
+  display_name: string
   model_name: string
   risk_type: string
   action_result: string

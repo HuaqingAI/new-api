@@ -17,11 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import z from 'zod'
 import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import z from 'zod'
-import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   AlertTriangle,
   BarChart3,
@@ -47,10 +47,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import dayjs from '@/lib/dayjs'
 import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
-import {
-  formatEnterpriseUserPrimary,
-  formatEnterpriseUserSecondary,
-} from '@/features/enterprise-organization/lib/user-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +70,14 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -85,14 +89,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
 import { SectionPageLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
@@ -104,6 +100,10 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from '@/features/enterprise-organization/lib/tree-utils'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from '@/features/enterprise-organization/lib/user-display'
 import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
 import {
   departmentUsageReportQueryKey,
@@ -116,6 +116,7 @@ import { useDepartmentUsageSummary } from './hooks/use-department-usage-summary'
 import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageLogEntryLink,
+  DepartmentUsageLogUserOption,
   DepartmentUsageReportJobItem,
   DepartmentUsageSummarySort,
   DepartmentUsageSummaryItem,
@@ -154,7 +155,9 @@ const reportConfigSchema = (t: (key: string) => string) =>
           .split(/[\n,;]+/)
           .map((item) => item.trim())
           .filter(Boolean)
-        return receivers.every((item) => z.string().email().safeParse(item).success)
+        return receivers.every(
+          (item) => z.string().email().safeParse(item).success
+        )
       }, t('Each receiver must be a valid email address')),
     frequency: z.enum(['daily', 'weekly', 'monthly']),
     range_type: z.enum(['today', 'last7d', 'last30d']),
@@ -374,7 +377,9 @@ export function EnterpriseUsageOverview() {
     () => normalizeEnterpriseUsageSearch({ departments, search }),
     [departments, search]
   )
-  const [expandedDepartmentIds, setExpandedDepartmentIds] = useState<number[]>([])
+  const [expandedDepartmentIds, setExpandedDepartmentIds] = useState<number[]>(
+    []
+  )
   const resolvedRange = useMemo(
     () => resolveEnterpriseUsageRange(search),
     [search]
@@ -463,7 +468,9 @@ export function EnterpriseUsageOverview() {
   )
 
   useEffect(() => {
-    const reportScope = String(search.tenant_id ?? reportQuery.data?.tenant_id ?? 0)
+    const reportScope = String(
+      search.tenant_id ?? reportQuery.data?.tenant_id ?? 0
+    )
     const scopeChanged = lastReportScopeRef.current !== reportScope
     lastReportScopeRef.current = reportScope
     if (!reportQuery.data) {
@@ -487,7 +494,12 @@ export function EnterpriseUsageOverview() {
     ) {
       reportForm.reset(reportConfigToFormValues(reportQuery.data))
     }
-  }, [reportForm, reportForm.formState.isDirty, reportQuery.data, search.tenant_id])
+  }, [
+    reportForm,
+    reportForm.formState.isDirty,
+    reportQuery.data,
+    search.tenant_id,
+  ])
 
   const reportMutation = useMutation({
     mutationFn: async (values: ReportConfigFormValues) => {
@@ -636,7 +648,8 @@ export function EnterpriseUsageOverview() {
 
   const isAdmin = (auth.user?.role ?? 0) >= ROLE.ADMIN
   const currentDepartment = useMemo(
-    () => findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    () =>
+      findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
     [departments, resolvedSelection.selectedDepartmentId]
   )
   const handleRefresh = () => {
@@ -658,7 +671,9 @@ export function EnterpriseUsageOverview() {
             size='sm'
             onClick={handleRefresh}
             disabled={
-              usageQuery.isFetching || detailQuery.isFetching || reportQuery.isFetching
+              usageQuery.isFetching ||
+              detailQuery.isFetching ||
+              reportQuery.isFetching
             }
           >
             <RefreshCw className='size-4' />
@@ -902,7 +917,11 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                 <AlertTitle>{t('Unable to load department tree')}</AlertTitle>
                 <AlertDescription>{t(props.treeErrorMessage)}</AlertDescription>
                 <div className='pt-2'>
-                  <Button variant='outline' size='sm' onClick={props.onRetryTree}>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={props.onRetryTree}
+                  >
                     {t('Retry')}
                   </Button>
                 </div>
@@ -915,7 +934,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   </EmptyMedia>
                   <EmptyTitle>{t('No departments yet')}</EmptyTitle>
                   <EmptyDescription>
-                    {t('Department analysis becomes available after the organization tree is synced.')}
+                    {t(
+                      'Department analysis becomes available after the organization tree is synced.'
+                    )}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -925,7 +946,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                 expandedIds={props.expandedDepartmentIds}
                 selectedDepartmentId={treeSelection.normalizedDepartmentId}
                 onToggleExpand={props.onToggleDepartmentExpand}
-                onSelectDepartment={props.onSelectDepartment as (departmentId: number) => void}
+                onSelectDepartment={
+                  props.onSelectDepartment as (departmentId: number) => void
+                }
               />
             )}
           </CardContent>
@@ -1019,7 +1042,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
               ) : props.errorMessage ? (
                 <Alert variant='destructive' className='gap-2'>
                   <AlertTriangle className='size-4' />
-                  <AlertTitle>{t('Unable to load department usage')}</AlertTitle>
+                  <AlertTitle>
+                    {t('Unable to load department usage')}
+                  </AlertTitle>
                   <AlertDescription>{t(props.errorMessage)}</AlertDescription>
                   <div className='pt-2'>
                     <Button variant='outline' size='sm' onClick={props.onRetry}>
@@ -1037,7 +1062,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                       {t('No department usage data for this time range')}
                     </EmptyTitle>
                     <EmptyDescription>
-                      {t('Usage snapshots are empty for the selected time window.')}
+                      {t(
+                        'Usage snapshots are empty for the selected time window.'
+                      )}
                     </EmptyDescription>
                   </EmptyHeader>
                   <EmptyContent>
@@ -1052,7 +1079,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                     <Card>
                       <CardHeader>
                         <CardTitle>{t('Current department context')}</CardTitle>
-                        <CardDescription>{currentDepartmentLabel}</CardDescription>
+                        <CardDescription>
+                          {currentDepartmentLabel}
+                        </CardDescription>
                       </CardHeader>
                       <CardContent className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
                         <ReportStat
@@ -1073,7 +1102,9 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                         />
                         <ReportStat
                           label={t('Quota')}
-                          value={formatQuota(analysisSummaryItems[0]?.quota ?? 0)}
+                          value={formatQuota(
+                            analysisSummaryItems[0]?.quota ?? 0
+                          )}
                         />
                       </CardContent>
                     </Card>
@@ -1169,7 +1200,8 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                             <TableRow
                               key={`${item.dept_id ?? 'unassigned'}-${index}`}
                               className={
-                                item.dept_id === treeSelection.normalizedDepartmentId
+                                item.dept_id ===
+                                treeSelection.normalizedDepartmentId
                                   ? 'bg-muted/40'
                                   : undefined
                               }
@@ -1177,13 +1209,19 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                               <TableCell className='font-medium'>
                                 {item.dept_name || t('Unassigned')}
                               </TableCell>
-                              <TableCell>{formatNumber(item.request_count)}</TableCell>
-                              <TableCell>{formatNumber(item.prompt_tokens)}</TableCell>
+                              <TableCell>
+                                {formatNumber(item.request_count)}
+                              </TableCell>
+                              <TableCell>
+                                {formatNumber(item.prompt_tokens)}
+                              </TableCell>
                               <TableCell>
                                 {formatNumber(item.completion_tokens)}
                               </TableCell>
                               <TableCell>{formatQuota(item.quota)}</TableCell>
-                              <TableCell>{formatNumber(item.user_count)}</TableCell>
+                              <TableCell>
+                                {formatNumber(item.user_count)}
+                              </TableCell>
                               <TableCell className='max-w-[340px] text-sm whitespace-normal'>
                                 {formatModelDistributionSummary(
                                   item.model_distribution,
@@ -1267,7 +1305,9 @@ function DepartmentUsageReportCard(props: {
         ) : props.errorMessage ? (
           <Alert variant='destructive'>
             <AlertTriangle className='size-4' />
-            <AlertTitle>{t('Unable to load usage report configuration')}</AlertTitle>
+            <AlertTitle>
+              {t('Unable to load usage report configuration')}
+            </AlertTitle>
             <AlertDescription>{t(props.errorMessage)}</AlertDescription>
           </Alert>
         ) : (
@@ -1308,7 +1348,9 @@ function DepartmentUsageReportCard(props: {
                           <select
                             className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
                             value={field.value}
-                            onChange={(event) => field.onChange(event.target.value)}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
                           >
                             <option value='daily'>{t('Daily')}</option>
                             <option value='weekly'>{t('Weekly')}</option>
@@ -1329,7 +1371,9 @@ function DepartmentUsageReportCard(props: {
                           <select
                             className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
                             value={field.value}
-                            onChange={(event) => field.onChange(event.target.value)}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
                           >
                             <option value='today'>{t('Today')}</option>
                             <option value='last7d'>{t('Last 7 Days')}</option>
@@ -1349,7 +1393,9 @@ function DepartmentUsageReportCard(props: {
                       <div>
                         <FormLabel>{t('Enable Scheduled Reports')}</FormLabel>
                         <p className='text-muted-foreground text-sm'>
-                          {t('Send recurring usage summaries to configured receivers.')}
+                          {t(
+                            'Send recurring usage summaries to configured receivers.'
+                          )}
                         </p>
                       </div>
                       <FormControl>
@@ -1568,20 +1614,24 @@ function DepartmentUsageDetailPanel(props: {
                 />
                 <div className='text-muted-foreground flex flex-wrap gap-2 text-xs'>
                   <span>{t('Recent Logs User Filter')}:</span>
-                  {props.detail.recent_logs_entry.filters.username_options.map(
-                    (username) => (
-                      <span
-                        key={username}
-                        className={
-                          username === props.selectedLogUser
-                            ? 'bg-primary/10 text-primary rounded-full px-2 py-1'
-                            : 'bg-muted rounded-full px-2 py-1'
-                        }
-                      >
-                        {username}
-                      </span>
-                    )
-                  )}
+                  {resolveRecentLogsUserOptions(
+                    props.detail.recent_logs_entry
+                  ).map((user) => (
+                    <span
+                      key={user.username}
+                      className={
+                        user.username === props.selectedLogUser
+                          ? 'bg-primary/10 text-primary rounded-full px-2 py-1'
+                          : 'bg-muted rounded-full px-2 py-1'
+                      }
+                    >
+                      {formatEnterpriseUserPrimary({
+                        displayName: user.display_name,
+                        username: user.username,
+                        userId: user.user_id,
+                      })}
+                    </span>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -1723,6 +1773,7 @@ function DepartmentUserRankingTable(props: {
                   <div className='flex min-w-[180px] flex-col gap-1'>
                     <span className='font-medium'>
                       {formatEnterpriseUserPrimary({
+                        displayName: item.display_name,
                         username: item.username,
                         userId: item.user_id,
                       })}
@@ -1730,6 +1781,7 @@ function DepartmentUserRankingTable(props: {
                     <span className='text-muted-foreground text-xs'>
                       {formatEnterpriseUserSecondary(
                         {
+                          displayName: item.display_name,
                           username: item.username,
                           userId: item.user_id,
                         },
@@ -1992,7 +2044,10 @@ export function normalizeDepartmentUsageDetail(
   return {
     ...detail,
     dept_name: detail.dept_name || '',
-    user_ranking: detail.user_ranking ?? [],
+    user_ranking: (detail.user_ranking ?? []).map((item) => ({
+      ...item,
+      display_name: item.display_name ?? '',
+    })),
     model_distribution: detail.model_distribution ?? [],
     trend: detail.trend ?? [],
     recent_logs_entry: {
@@ -2003,6 +2058,12 @@ export function normalizeDepartmentUsageDetail(
         username: detail.recent_logs_entry.filters.username ?? '',
         username_options:
           detail.recent_logs_entry.filters.username_options ?? [],
+        user_options: (detail.recent_logs_entry.filters.user_options ?? []).map(
+          (item) => ({
+            ...item,
+            display_name: item.display_name ?? '',
+          })
+        ),
       },
     },
   }
@@ -2044,6 +2105,22 @@ export function resolveRecentLogsSearch(
     endTime: (entry.filters.end_timestamp + 1) * 1000,
     username: selectedUsername || undefined,
   }
+}
+
+function resolveRecentLogsUserOptions(entry: DepartmentUsageLogEntryLink) {
+  const unique = new Map<string, DepartmentUsageLogUserOption>()
+  for (const item of entry.filters.user_options ?? []) {
+    if (!item.username) continue
+    unique.set(item.username, item)
+  }
+  if (unique.size > 0) {
+    return Array.from(unique.values())
+  }
+  return (entry.filters.username_options ?? []).map((username, index) => ({
+    user_id: index + 1,
+    username,
+    display_name: '',
+  }))
 }
 
 function getCustomRangeState(fromDate: string, toDate: string) {

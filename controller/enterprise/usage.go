@@ -144,6 +144,7 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 		userRanking = append(userRanking, dtoenterprise.DepartmentUsageUserRankItem{
 			UserId:           item.UserId,
 			Username:         item.Username,
+			DisplayName:      item.DisplayName,
 			RequestCount:     item.RequestCount,
 			PromptTokens:     item.PromptTokens,
 			CompletionTokens: item.CompletionTokens,
@@ -177,6 +178,15 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 		})
 	}
 
+	userOptions := make([]dtoenterprise.DepartmentUsageLogUserOption, 0, len(result.RecentLogsLink.UserOptions))
+	for _, item := range result.RecentLogsLink.UserOptions {
+		userOptions = append(userOptions, dtoenterprise.DepartmentUsageLogUserOption{
+			UserId:      item.UserId,
+			Username:    item.Username,
+			DisplayName: item.DisplayName,
+		})
+	}
+
 	common.ApiSuccess(c, dtoenterprise.DepartmentUsageDetailResponse{
 		DeptId:            result.DeptId,
 		DeptName:          result.DeptName,
@@ -200,6 +210,7 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 				StartTimestamp:  result.RecentLogsLink.StartTimestamp,
 				EndTimestamp:    result.RecentLogsLink.EndTimestamp,
 				UsernameOptions: append([]string{}, result.RecentLogsLink.Usernames...),
+				UserOptions:     userOptions,
 			},
 		},
 	})

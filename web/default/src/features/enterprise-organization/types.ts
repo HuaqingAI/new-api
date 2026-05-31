@@ -180,6 +180,8 @@ export type QuotaAllocationItem = {
   department_budget_id: number
   department_id: number
   target_user_id: number
+  target_username: string
+  target_display_name: string
   wallet_id: number
   actor_id: number
   committed_quota: number

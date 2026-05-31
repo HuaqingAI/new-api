@@ -27,6 +27,7 @@ type AlertEventItem struct {
 	TenantId           int                            `json:"tenant_id"`
 	UserId             int                            `json:"user_id"`
 	Username           string                         `json:"username"`
+	DisplayName        string                         `json:"display_name"`
 	UsernameSnapshot   string                         `json:"username_snapshot"`
 	RequestId          string                         `json:"request_id"`
 	ModelName          string                         `json:"model_name"`
@@ -115,7 +116,9 @@ type AlertDeliveryTraceItem struct {
 	EventId            int                            `json:"event_id"`
 	RequestId          string                         `json:"request_id"`
 	TenantId           int                            `json:"tenant_id"`
+	UserId             int                            `json:"user_id"`
 	Username           string                         `json:"username"`
+	DisplayName        string                         `json:"display_name"`
 	ModelName          string                         `json:"model_name"`
 	RiskType           string                         `json:"risk_type"`
 	ActionResult       string                         `json:"action_result"`

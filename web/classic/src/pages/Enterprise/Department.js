@@ -19,9 +19,25 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Empty, Form, Space, Table, Tag, Typography } from '@douyinfe/semi-ui';
-import { getDepartmentMembers, getUserDepartments } from '../../services/enterprise';
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from '@douyinfe/semi-ui';
+import {
+  getDepartmentMembers,
+  getUserDepartments,
+} from '../../services/enterprise';
 import { showError } from '../../helpers';
+import {
+  formatClassicEnterpriseUserPrimary,
+  formatClassicEnterpriseUserSecondary,
+} from './alertHelpers';
 
 const statusMap = {
   1: { color: 'green', key: '启用' },
@@ -79,13 +95,20 @@ export default function EnterpriseDepartment() {
       <Space vertical align='start' style={{ width: '100%' }}>
         <Card title={t('用户所属部门')}>
           <Form layout='horizontal' onSubmit={loadUserDepartments}>
-            <Form.Input field='user_id' label={t('用户 ID')} style={{ width: 220 }} />
+            <Form.Input
+              field='user_id'
+              label={t('用户 ID')}
+              style={{ width: 220 }}
+            />
             <Button htmlType='submit' loading={loading}>
               {t('查询')}
             </Button>
           </Form>
           {isUnassigned ? (
-            <Empty title={t('未归属')} description={t('该用户没有部门成员关系')} />
+            <Empty
+              title={t('未归属')}
+              description={t('该用户没有部门成员关系')}
+            />
           ) : (
             <Table
               pagination={false}
@@ -106,7 +129,11 @@ export default function EnterpriseDepartment() {
 
         <Card title={t('部门成员')}>
           <Form layout='horizontal' onSubmit={loadDepartmentMembers}>
-            <Form.Input field='department_id' label={t('部门 ID')} style={{ width: 220 }} />
+            <Form.Input
+              field='department_id'
+              label={t('部门 ID')}
+              style={{ width: 220 }}
+            />
             <Button htmlType='submit' loading={loading}>
               {t('查询')}
             </Button>
@@ -115,7 +142,18 @@ export default function EnterpriseDepartment() {
             pagination={false}
             dataSource={departmentMembers}
             columns={[
-              { title: t('用户'), dataIndex: 'username' },
+              {
+                title: t('用户'),
+                dataIndex: 'username',
+                render: (_, record) => (
+                  <div>
+                    <div>{formatClassicEnterpriseUserPrimary(record)}</div>
+                    <Typography.Text type='tertiary' size='small'>
+                      {formatClassicEnterpriseUserSecondary(record, t)}
+                    </Typography.Text>
+                  </div>
+                ),
+              },
               { title: t('用户 ID'), dataIndex: 'user_id' },
               {
                 title: t('状态'),

@@ -152,7 +152,69 @@ GPT-5 Codex
 - 已明确 6.5 需要同时覆盖 Default 组织、预算、用量、风险页面，以及 Classic 必要入口的最小语义一致。
 - 已把最关键的实现风险写入 guardrails：历史 `username_snapshot` 与日志筛选契约必须保留，不能因为统一展示而把 display name 当成底层查询值。
 - 已指出当前真正缺口在用量/风险 DTO 与 `service/enterprise/user_lookup.go` 共享 lookup 能力，而不是只改前端文案顺序。
+- 已在 Senior Developer Review (AI) 中补齐 usage / alert / quota allocation 的显示字段透传、Default/Classic 展示一致性与 targeted regression tests，并确认故事保持 `done` 状态。
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/6-5-unify-enterprise-user-display-rules.md`
+- `controller/enterprise/alert.go`
+- `controller/enterprise/alert_test.go`
+- `controller/enterprise/quota_allocation.go`
+- `controller/enterprise/quota_allocation_test.go`
+- `controller/enterprise/usage.go`
+- `controller/enterprise/usage_test.go`
+- `dto/enterprise/alert.go`
+- `dto/enterprise/quota_allocation.go`
+- `dto/enterprise/usage.go`
+- `model/enterprise/alert_delivery.go`
+- `service/enterprise/alert.go`
+- `service/enterprise/quota_allocation.go`
+- `service/enterprise/usage_aggregation.go`
+- `service/enterprise/user_lookup.go`
+- `web/classic/src/pages/Enterprise/Alerts.js`
+- `web/classic/src/pages/Enterprise/Alerts.smoke.test.js`
+- `web/classic/src/pages/Enterprise/Department.js`
+- `web/classic/src/pages/Enterprise/alertHelpers.js`
+- `web/default/src/features/enterprise-alerts/enterprise-alerts.test.tsx`
+- `web/default/src/features/enterprise-alerts/index.tsx`
+- `web/default/src/features/enterprise-alerts/types.ts`
+- `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx`
+- `web/default/src/features/enterprise-organization/index.tsx`
+- `web/default/src/features/enterprise-organization/lib/user-display.ts`
+- `web/default/src/features/enterprise-organization/types.ts`
+- `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx`
+- `web/default/src/features/enterprise-usage/index.tsx`
+- `web/default/src/features/enterprise-usage/types.ts`
+
+## Change Log
+
+- 2026-05-31 18:00:07 +0800: 完成 Story 6.5 初版实现，新增企业用户展示 helper，并在用量页、风险页与相关后端读侧 lookup 中引入可读名称优先展示能力。
+- 2026-05-31 21:26:56 +0800: Senior Developer Review (AI) 自动修复 DTO / controller / type 断链、Default 组织页与 quota allocation 的旧展示语义、Classic 必要入口遗漏，以及 delivery trace / recent logs 的用户展示缺口，并补齐 targeted regression tests。
+
+## Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex  
+Date: 2026-05-31 21:26:56 +0800  
+Outcome: Approved after automatic fixes.
+
+### Findings and Fixes
+
+- [HIGH] `service/enterprise/usage_aggregation.go` 已生成 `DisplayName` 与 recent-log `UserOptions`，但 `controller/enterprise/usage.go`、`dto/enterprise/usage.go` 与 Default 前端 types 没有把这些字段透传到页面，导致用户排行和最近日志入口实际上仍只能按旧 `username` 语义展示。已补齐 DTO / controller / type 链路，并新增回归断言。
+- [HIGH] `web/default/src/features/enterprise-usage/index.tsx` 与 `web/default/src/features/enterprise-alerts/index.tsx` 虽然引入了共享展示 helper，但调用时没有传入 `display_name`，所以 UI 实际上还是 username-first，未满足 AC1 / AC2。已统一改为传入 `display_name`，同时保持 recent logs 继续只用 `username` 作为查询值。
+- [HIGH] `web/default/src/features/enterprise-organization/index.tsx` 仍保留成员列表 username-first、quota allocation 仅显示 `target_user_id`、wallet 明细未复用统一 helper 等旧语义，导致组织 / 预算主线没有和 6.5 规则对齐。已统一到共享 helper，并补齐 allocation 目标用户展示。
+- [HIGH] `web/classic/src/pages/Enterprise/Department.js` 与 `web/classic/src/pages/Enterprise/Alerts.js` 仍只渲染原始 `username`，不满足 AC3 对 Classic “最小可用一致性”的要求。已新增 Classic helper 并在两个入口切到可读名优先展示。
+- [MEDIUM] `model/enterprise/alert_delivery.go` 与 `service/enterprise/alert.go` 准备了 delivery trace 的 `user_id` / `display_name`，但 service / controller / dto 映射链遗漏这些字段，投递 trace 无法展示统一用户标签。已补齐映射与验证。
+- [MEDIUM] Story 的 `File List` 只记录了故事文档本身，无法反映真实实现与 review 修复范围。已更新为完整文件清单。
+- [MEDIUM] 故事缺少覆盖用量显示优先级、recent logs 筛选分离、风险投递 trace、Classic 最小一致性的 targeted regression tests。已在 `controller/enterprise/*_test.go`、Default feature tests 与 Classic smoke test 中补齐。
+
+### Validation
+
+- Passed: `go test ./controller/enterprise -run 'TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays|TestAlertEventsAPIValidatesQueryAndReturnsPaginationEnvelope|TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope|TestQuotaAllocationAPIWorkflow' -count=1`
+- Passed: `cd web/default && bun test ./src/features/enterprise-usage/enterprise-usage.test.tsx ./src/features/enterprise-alerts/enterprise-alerts.test.tsx ./src/features/enterprise-organization/enterprise-organization.test.tsx`
+- Passed: `cd web/classic && bun test ./src/pages/Enterprise/Alerts.smoke.test.js`
+
+### Review Notes
+
+- 已确认 recent logs 跳转继续使用 `username` 作为查询值，新增的 `display_name` / `user_options` 仅用于 UI 展示，没有破坏日志筛选契约。
+- 已确认 `username_snapshot` 仍保留为风险事件历史辅助信息，没有被统一展示逻辑覆盖或回写。
+- 本次 review 未修改 `relay/**`、`pkg/billingexpr/**` 或历史日志持久化模型，范围仍限制在企业治理相关读侧 DTO / service / UI。

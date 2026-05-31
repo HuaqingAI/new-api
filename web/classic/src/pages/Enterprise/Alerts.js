@@ -29,9 +29,20 @@ import {
   Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
-import { getAlertDeliveries, getAlertEvents, getAlertRules, getDepartmentRiskSummary, resendAlertDelivery, saveAlertRule } from '../../services/enterprise';
+import {
+  getAlertDeliveries,
+  getAlertEvents,
+  getAlertRules,
+  getDepartmentRiskSummary,
+  resendAlertDelivery,
+  saveAlertRule,
+} from '../../services/enterprise';
 import { showError, showSuccess } from '../../helpers';
-import { formatClassicAlertDepartments } from './alertHelpers';
+import {
+  formatClassicAlertDepartments,
+  formatClassicEnterpriseUserPrimary,
+  formatClassicEnterpriseUserSecondary,
+} from './alertHelpers';
 
 function createEmptyRuleDraft() {
   return {
@@ -45,7 +56,9 @@ function createEmptyRuleDraft() {
 }
 
 function mapRuleToDraft(rule) {
-  const email = (rule.channel_configs || []).find((item) => item.type === 'email');
+  const email = (rule.channel_configs || []).find(
+    (item) => item.type === 'email',
+  );
   return {
     id: rule.id,
     name: rule.name || '',
@@ -85,14 +98,23 @@ function buildRulePayload(draft) {
 export default function EnterpriseAlerts() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [riskSummary, setRiskSummary] = useState({ top_departments: [], unassigned: null, formula: null, disclaimer_key: 'enterprise.usage.multi_dept_disclaimer' });
+  const [riskSummary, setRiskSummary] = useState({
+    top_departments: [],
+    unassigned: null,
+    formula: null,
+    disclaimer_key: 'enterprise.usage.multi_dept_disclaimer',
+  });
   const [savingRule, setSavingRule] = useState(false);
   const [events, setEvents] = useState([]);
   const [rules, setRules] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [resendingDeliveryId, setResendingDeliveryId] = useState(null);
   const [draft, setDraft] = useState(createEmptyRuleDraft());
-  const [pagination, setPagination] = useState({ total: 0, page: 1, page_size: 20 });
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    page_size: 20,
+  });
   const [ruleFormApi, setRuleFormApi] = useState(null);
 
   async function loadEvents(values = {}) {
@@ -163,7 +185,8 @@ export default function EnterpriseAlerts() {
         top_departments: res.data?.top_departments || [],
         unassigned: res.data?.unassigned || null,
         formula: res.data?.formula || null,
-        disclaimer_key: res.data?.disclaimer_key || 'enterprise.usage.multi_dept_disclaimer',
+        disclaimer_key:
+          res.data?.disclaimer_key || 'enterprise.usage.multi_dept_disclaimer',
       });
     } catch (error) {
       showError(error.message);
@@ -172,7 +195,11 @@ export default function EnterpriseAlerts() {
 
   async function loadDeliveries(params = { status: 'final_failed' }) {
     try {
-      const res = await getAlertDeliveries({ page: 1, page_size: 20, ...params });
+      const res = await getAlertDeliveries({
+        page: 1,
+        page_size: 20,
+        ...params,
+      });
       if (!res.success) {
         showError(res.message);
         return;
@@ -191,7 +218,9 @@ export default function EnterpriseAlerts() {
         showError(res.message);
         return;
       }
-      showSuccess(t(res.data?.created ? '已创建重发投递' : '已有未完成的人工重发'));
+      showSuccess(
+        t(res.data?.created ? '已创建重发投递' : '已有未完成的人工重发'),
+      );
       await loadDeliveries({ event_id: record.event_id });
     } catch (error) {
       showError(error.message);
@@ -234,21 +263,35 @@ export default function EnterpriseAlerts() {
   return (
     <div className='dashboard-container'>
       <Typography.Title heading={4}>{t('企业风险事件')}</Typography.Title>
-      <Card title={t('部门风险概览')} style={{ width: '100%', marginBottom: 16 }}>
+      <Card
+        title={t('部门风险概览')}
+        style={{ width: '100%', marginBottom: 16 }}
+      >
         <Space vertical align='start' style={{ width: '100%' }}>
           <Typography.Text type='secondary'>
-            {t(riskSummary.disclaimer_key || 'enterprise.usage.multi_dept_disclaimer')}
+            {t(
+              riskSummary.disclaimer_key ||
+                'enterprise.usage.multi_dept_disclaimer',
+            )}
           </Typography.Text>
           <Typography.Text>
-            {t(riskSummary.formula?.expression || 'Risk rate = risky requests / total requests')}
+            {t(
+              riskSummary.formula?.expression ||
+                'Risk rate = risky requests / total requests',
+            )}
           </Typography.Text>
           {(riskSummary.top_departments || []).length === 0 ? (
-            <Empty title={t('暂无风险概览')} description={t('请先生成部门用量快照和风险事件数据')} />
+            <Empty
+              title={t('暂无风险概览')}
+              description={t('请先生成部门用量快照和风险事件数据')}
+            />
           ) : (
             <Table
               pagination={false}
               dataSource={riskSummary.top_departments}
-              rowKey={(record) => `${record.dept_id || 'unassigned'}-${record.window_start}`}
+              rowKey={(record) =>
+                `${record.dept_id || 'unassigned'}-${record.window_start}`
+              }
               columns={[
                 { title: t('部门'), dataIndex: 'dept_name' },
                 { title: t('风险次数'), dataIndex: 'risk_event_count' },
@@ -283,7 +326,8 @@ export default function EnterpriseAlerts() {
             />
           )}
           <Typography.Text type='secondary'>
-            {t('未归属')}: {riskSummary.unassigned?.risk_event_count || 0} / {riskSummary.unassigned?.total_request_count || 0}
+            {t('未归属')}: {riskSummary.unassigned?.risk_event_count || 0} /{' '}
+            {riskSummary.unassigned?.total_request_count || 0}
           </Typography.Text>
         </Space>
       </Card>
@@ -292,12 +336,37 @@ export default function EnterpriseAlerts() {
           <Space vertical align='start' style={{ width: '100%' }}>
             <Card title={t('查询')}>
               <Form layout='horizontal' onSubmit={loadEvents}>
-                <Form.Input field='department_id' label={t('部门 ID')} style={{ width: 220 }} />
-                <Form.Input field='user_id' label={t('用户 ID')} style={{ width: 220 }} />
-                <Form.Input field='username' label={t('用户')} style={{ width: 220 }} />
-                <Form.Input field='model_name' label={t('模型')} style={{ width: 220 }} />
-                <Form.Input field='risk_type' label={t('风险类型')} style={{ width: 220 }} />
-                <Form.Input field='page_size' label={t('每页条数')} style={{ width: 220 }} initValue='20' />
+                <Form.Input
+                  field='department_id'
+                  label={t('部门 ID')}
+                  style={{ width: 220 }}
+                />
+                <Form.Input
+                  field='user_id'
+                  label={t('用户 ID')}
+                  style={{ width: 220 }}
+                />
+                <Form.Input
+                  field='username'
+                  label={t('用户')}
+                  style={{ width: 220 }}
+                />
+                <Form.Input
+                  field='model_name'
+                  label={t('模型')}
+                  style={{ width: 220 }}
+                />
+                <Form.Input
+                  field='risk_type'
+                  label={t('风险类型')}
+                  style={{ width: 220 }}
+                />
+                <Form.Input
+                  field='page_size'
+                  label={t('每页条数')}
+                  style={{ width: 220 }}
+                  initValue='20'
+                />
                 <Button htmlType='submit' loading={loading}>
                   {t('查询')}
                 </Button>
@@ -306,7 +375,10 @@ export default function EnterpriseAlerts() {
 
             <Card title={t('企业风险事件列表')} style={{ width: '100%' }}>
               {events.length === 0 ? (
-                <Empty title={t('暂无风险事件')} description={t('请调整筛选条件后重试')} />
+                <Empty
+                  title={t('暂无风险事件')}
+                  description={t('请调整筛选条件后重试')}
+                />
               ) : (
                 <Table
                   pagination={false}
@@ -318,7 +390,26 @@ export default function EnterpriseAlerts() {
                       dataIndex: 'department_snapshot',
                       render: formatClassicAlertDepartments,
                     },
-                    { title: t('用户'), dataIndex: 'username' },
+                    {
+                      title: t('用户'),
+                      dataIndex: 'username',
+                      render: (_, record) => (
+                        <div>
+                          <div>
+                            {formatClassicEnterpriseUserPrimary(record)}
+                          </div>
+                          <Typography.Text type='tertiary' size='small'>
+                            {formatClassicEnterpriseUserSecondary(record, t)}
+                          </Typography.Text>
+                          {record.username_snapshot &&
+                          record.username_snapshot !== record.username ? (
+                            <Typography.Text type='tertiary' size='small'>
+                              {t('历史用户名快照')}: {record.username_snapshot}
+                            </Typography.Text>
+                          ) : null}
+                        </div>
+                      ),
+                    },
                     { title: t('请求 ID'), dataIndex: 'request_id' },
                     { title: t('模型'), dataIndex: 'model_name' },
                     { title: t('风险类型'), dataIndex: 'risk_type' },
@@ -328,7 +419,10 @@ export default function EnterpriseAlerts() {
                 />
               )}
               <div style={{ marginTop: 12, color: 'var(--semi-color-text-2)' }}>
-                {t('第 {{page}} 页，共 {{total}} 条', { page: pagination.page, total: pagination.total })}
+                {t('第 {{page}} 页，共 {{total}} 条', {
+                  page: pagination.page,
+                  total: pagination.total,
+                })}
               </div>
             </Card>
           </Space>
@@ -338,7 +432,10 @@ export default function EnterpriseAlerts() {
           <Space vertical align='start' style={{ width: '100%' }}>
             <Card title={t('告警规则列表')} style={{ width: '100%' }}>
               {rules.length === 0 ? (
-                <Empty title={t('暂无告警规则')} description={t('请先创建邮件告警规则')} />
+                <Empty
+                  title={t('暂无告警规则')}
+                  description={t('请先创建邮件告警规则')}
+                />
               ) : (
                 <Table
                   pagination={false}
@@ -363,19 +460,26 @@ export default function EnterpriseAlerts() {
                       title: t('部门范围'),
                       dataIndex: 'department_ids',
                       render: (value) =>
-                        value && value.length ? value.join(', ') : t('全部部门'),
+                        value && value.length
+                          ? value.join(', ')
+                          : t('全部部门'),
                     },
                   ]}
                 />
               )}
             </Card>
 
-            <Card title={draft.id ? t('编辑告警规则') : t('创建告警规则')} style={{ width: '100%' }}>
+            <Card
+              title={draft.id ? t('编辑告警规则') : t('创建告警规则')}
+              style={{ width: '100%' }}
+            >
               <Form
                 layout='vertical'
                 initValues={draft}
                 getFormApi={(api) => setRuleFormApi(api)}
-                onValueChange={(values) => setDraft((prev) => ({ ...prev, ...values }))}
+                onValueChange={(values) =>
+                  setDraft((prev) => ({ ...prev, ...values }))
+                }
               >
                 <Form.Input field='name' label={t('规则名称')} />
                 <Form.Switch field='enabled' label={t('启用规则')} />
@@ -387,7 +491,9 @@ export default function EnterpriseAlerts() {
                 <Form.TextArea
                   field='department_ids'
                   label={t('部门范围')}
-                  placeholder={t('留空表示全部部门，多个部门 ID 用逗号或换行分隔')}
+                  placeholder={t(
+                    '留空表示全部部门，多个部门 ID 用逗号或换行分隔',
+                  )}
                 />
                 <Form.TextArea
                   field='email_receivers'
@@ -395,7 +501,11 @@ export default function EnterpriseAlerts() {
                   placeholder={t('每行一个邮箱地址')}
                 />
                 <Space>
-                  <Button theme='solid' loading={savingRule} onClick={handleSaveRule}>
+                  <Button
+                    theme='solid'
+                    loading={savingRule}
+                    onClick={handleSaveRule}
+                  >
                     {t('保存规则')}
                   </Button>
                   <Button onClick={() => applyDraft(createEmptyRuleDraft())}>
@@ -410,7 +520,10 @@ export default function EnterpriseAlerts() {
         <Tabs.TabPane tab={t('投递结果')} itemKey='deliveries'>
           <Card title={t('投递结果')} style={{ width: '100%' }}>
             {deliveries.length === 0 ? (
-              <Empty title={t('暂无投递结果')} description={t('后台任务运行后会在这里显示状态与追溯信息')} />
+              <Empty
+                title={t('暂无投递结果')}
+                description={t('后台任务运行后会在这里显示状态与追溯信息')}
+              />
             ) : (
               <Table
                 pagination={false}
@@ -423,7 +536,8 @@ export default function EnterpriseAlerts() {
                   {
                     title: t('触发来源'),
                     dataIndex: 'trigger_source',
-                    render: (value) => (value === 'manual_resend' ? t('人工重发') : t('规则命中')),
+                    render: (value) =>
+                      value === 'manual_resend' ? t('人工重发') : t('规则命中'),
                   },
                   {
                     title: t('父投递'),
@@ -435,7 +549,13 @@ export default function EnterpriseAlerts() {
                     dataIndex: 'trace',
                     render: (value) =>
                       value
-                        ? [value.department_summary, value.request_id, value.detail_route].filter(Boolean).join(' · ')
+                        ? [
+                            value.department_summary,
+                            value.request_id,
+                            value.detail_route,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')
                         : t('暂无追溯信息'),
                   },
                   { title: t('错误原因'), dataIndex: 'error_reason' },

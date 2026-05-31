@@ -29,6 +29,8 @@ enterprise.organization.department_budget_not_found: "Department budget pool doe
 enterprise.organization.membership_not_found: "Department membership does not exist"
 enterprise.organization.membership_already_exists: "Department membership already exists"
 enterprise.organization.duplicate_department: "Duplicate department ID"
+enterprise.organization.username_invalid: "Username must use 3-20 lowercase letters, numbers, or single underscores"
+enterprise.organization.username_exists: "Username already exists"
 enterprise.organization.admin_action_not_found: "Enterprise admin action does not exist"
 enterprise.organization.department_role_not_found: "Department administrator role does not exist"
 enterprise.organization.department_budget_invalid_type: "Invalid department budget type"

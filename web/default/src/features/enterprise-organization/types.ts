@@ -81,6 +81,11 @@ export type DepartmentMemberItem = {
   updated_at: number
 }
 
+export type RenameDepartmentMemberPayload = {
+  tenant_id?: number
+  new_username: string
+}
+
 export type UserDepartmentsResponse = {
   items: UserDepartmentItem[]
   total: number

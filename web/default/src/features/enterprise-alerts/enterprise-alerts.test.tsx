@@ -66,6 +66,7 @@ describe('Enterprise alerts feature', () => {
       {
         tab: 'events',
         tenant_id: 7,
+        event_id: undefined,
         department_id: 11,
         unassigned_only: undefined,
         user_id: 99,
@@ -289,6 +290,7 @@ describe('Enterprise alerts feature', () => {
       {
         tab: 'events',
         tenant_id: 7,
+        event_id: undefined,
         page: 1,
         page_size: 50,
         department_id: 11,
@@ -319,6 +321,7 @@ describe('Enterprise alerts feature', () => {
       {
         tab: 'events',
         tenant_id: 7,
+        event_id: undefined,
         department_id: undefined,
         page: 1,
         page_size: undefined,

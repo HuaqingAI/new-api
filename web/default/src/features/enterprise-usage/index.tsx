@@ -24,7 +24,6 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
-  ArrowLeft,
   BarChart3,
   BellRing,
   Coins,
@@ -48,6 +47,10 @@ import { useAuthStore } from '@/stores/auth-store'
 import dayjs from '@/lib/dayjs'
 import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from '@/features/enterprise-organization/lib/user-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -93,6 +96,15 @@ import {
 import { SectionPageLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
+import { DepartmentTree } from '@/features/enterprise-organization/components/DepartmentTree'
+import { useDepartmentTree } from '@/features/enterprise-organization/hooks/use-department-tree'
+import {
+  findDepartmentNode,
+  resolveDepartmentSelection,
+  syncExpandedDepartmentIds,
+  toggleExpandedDepartmentId,
+} from '@/features/enterprise-organization/lib/tree-utils'
+import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
 import {
   departmentUsageReportQueryKey,
   exportDepartmentUsageCSV,
@@ -212,6 +224,32 @@ export function resolveDepartmentUsageExportParams(
   }
 }
 
+export function normalizeEnterpriseUsageSearch(params: {
+  departments: DepartmentTreeNode[]
+  search: EnterpriseUsageSearch
+}) {
+  if (params.departments.length === 0) {
+    return {
+      ...params.search,
+      dept_id: undefined,
+      log_user: undefined,
+    }
+  }
+
+  const resolved = resolveDepartmentSelection(
+    params.departments,
+    params.search.dept_id
+  )
+  const normalizedDepartmentId = resolved.normalizedDepartmentId ?? undefined
+  const shouldResetChildState = params.search.dept_id !== normalizedDepartmentId
+
+  return {
+    ...params.search,
+    dept_id: normalizedDepartmentId,
+    log_user: shouldResetChildState ? undefined : params.search.log_user,
+  }
+}
+
 export function resolveEnterpriseUsageRange(
   search: EnterpriseUsageSearch,
   now: Date = new Date()
@@ -322,6 +360,21 @@ export function EnterpriseUsageOverview() {
   }) as EnterpriseUsageSearch
   const navigate = useNavigate()
   const { auth } = useAuthStore()
+  const {
+    data: departments = [],
+    isLoading: treeLoading,
+    error: treeError,
+    refetch: refetchTree,
+  } = useDepartmentTree()
+  const resolvedSelection = useMemo(
+    () => resolveDepartmentSelection(departments, search.dept_id),
+    [departments, search.dept_id]
+  )
+  const normalizedSearch = useMemo(
+    () => normalizeEnterpriseUsageSearch({ departments, search }),
+    [departments, search]
+  )
+  const [expandedDepartmentIds, setExpandedDepartmentIds] = useState<number[]>([])
   const resolvedRange = useMemo(
     () => resolveEnterpriseUsageRange(search),
     [search]
@@ -336,6 +389,40 @@ export function EnterpriseUsageOverview() {
     setCustomToDate(resolvedRange.customToDate)
   }, [resolvedRange.customFromDate, resolvedRange.customToDate])
 
+  useEffect(() => {
+    setExpandedDepartmentIds((current) =>
+      syncExpandedDepartmentIds(
+        current,
+        departments,
+        resolvedSelection.requiredExpandedIds
+      )
+    )
+  }, [departments, resolvedSelection.requiredExpandedIds])
+
+  useEffect(() => {
+    if (
+      search.dept_id === normalizedSearch.dept_id &&
+      search.log_user === normalizedSearch.log_user
+    ) {
+      return
+    }
+    navigate({
+      to: '/enterprise-usage',
+      search: (prev) => ({
+        ...prev,
+        dept_id: normalizedSearch.dept_id,
+        log_user: normalizedSearch.log_user,
+      }),
+      replace: true,
+    })
+  }, [
+    navigate,
+    normalizedSearch.dept_id,
+    normalizedSearch.log_user,
+    search.dept_id,
+    search.log_user,
+  ])
+
   const usageQuery = useDepartmentUsageSummary({
     from: resolvedRange.from,
     to: resolvedRange.to,
@@ -344,7 +431,7 @@ export function EnterpriseUsageOverview() {
     summaryOrder: search.summary_order,
   })
   const detailQuery = useDepartmentUsageDetail({
-    deptId: search.dept_id,
+    deptId: normalizedSearch.dept_id,
     from: resolvedRange.from,
     to: resolvedRange.to,
     tenantId: search.tenant_id,
@@ -492,17 +579,6 @@ export function EnterpriseUsageOverview() {
     })
   }
 
-  const handleBackToOverview = () => {
-    navigate({
-      to: '/enterprise-usage',
-      search: (prev) => ({
-        ...prev,
-        dept_id: undefined,
-        log_user: undefined,
-      }),
-    })
-  }
-
   const handleSortChange = (sort: DepartmentUsageUserRankSort) => {
     navigate({
       to: '/enterprise-usage',
@@ -559,6 +635,16 @@ export function EnterpriseUsageOverview() {
   }
 
   const isAdmin = (auth.user?.role ?? 0) >= ROLE.ADMIN
+  const currentDepartment = useMemo(
+    () => findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    [departments, resolvedSelection.selectedDepartmentId]
+  )
+  const handleRefresh = () => {
+    void refetchTree()
+    void usageQuery.refetch()
+    void detailQuery.refetch()
+    void reportQuery.refetch()
+  }
 
   return (
     <PageTransition className='flex min-h-0 flex-1 flex-col'>
@@ -570,8 +656,10 @@ export function EnterpriseUsageOverview() {
           <Button
             variant='outline'
             size='sm'
-            onClick={() => usageQuery.refetch()}
-            disabled={usageQuery.isFetching}
+            onClick={handleRefresh}
+            disabled={
+              usageQuery.isFetching || detailQuery.isFetching || reportQuery.isFetching
+            }
           >
             <RefreshCw className='size-4' />
             {t('Refresh')}
@@ -590,6 +678,12 @@ export function EnterpriseUsageOverview() {
             </Alert>
           ) : (
             <EnterpriseUsageContent
+              departments={departments}
+              treeLoading={treeLoading}
+              treeErrorMessage={
+                treeError instanceof Error ? treeError.message : null
+              }
+              expandedDepartmentIds={expandedDepartmentIds}
               items={usageQuery.data ?? []}
               isLoading={usageQuery.isLoading}
               errorMessage={
@@ -598,7 +692,8 @@ export function EnterpriseUsageOverview() {
                   : null
               }
               rangeLabel={resolvedRange.rangeLabel}
-              selectedDepartmentId={search.dept_id}
+              selectedDepartmentId={normalizedSearch.dept_id}
+              currentDepartmentName={currentDepartment?.name ?? null}
               detail={detailQuery.data ?? null}
               detailLoading={detailQuery.isLoading}
               detailErrorMessage={
@@ -621,8 +716,13 @@ export function EnterpriseUsageOverview() {
                 resolvedRange.isCustom ? 'custom' : resolvedRange.preset
               }
               onRetry={() => usageQuery.refetch()}
+              onRetryTree={() => refetchTree()}
+              onToggleDepartmentExpand={(departmentId) =>
+                setExpandedDepartmentIds((current) =>
+                  toggleExpandedDepartmentId(current, departmentId)
+                )
+              }
               onSelectDepartment={handleSelectDepartment}
-              onBackToOverview={handleBackToOverview}
               onRetryDetail={() => detailQuery.refetch()}
               rankSort={search.sort ?? 'quota'}
               onSortChange={handleSortChange}
@@ -656,8 +756,13 @@ export function EnterpriseUsageOverview() {
 }
 
 type EnterpriseUsageContentProps = {
+  departments?: DepartmentTreeNode[]
+  treeLoading?: boolean
+  treeErrorMessage?: string | null
+  expandedDepartmentIds?: number[]
   items: DepartmentUsageSummaryItem[]
   selectedDepartmentId?: number
+  currentDepartmentName?: string | null
   detail: DepartmentUsageDetailResponse | null
   detailLoading: boolean
   detailErrorMessage: string | null
@@ -674,8 +779,10 @@ type EnterpriseUsageContentProps = {
   onPresetChange: (preset: EnterpriseUsagePreset) => void
   selectedPreset: EnterpriseUsagePreset
   onRetry: () => void
+  onRetryTree?: () => void
+  onToggleDepartmentExpand?: (departmentId: number) => void
   onSelectDepartment: (deptId: number | null) => void
-  onBackToOverview: () => void
+  onBackToOverview?: () => void
   onRetryDetail: () => void
   rankSort: DepartmentUsageUserRankSort
   onSortChange: (sort: DepartmentUsageUserRankSort) => void
@@ -697,8 +804,74 @@ type EnterpriseUsageContentProps = {
   onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
 }
 
+function buildUsageDepartmentTreeNodes(items: DepartmentUsageSummaryItem[]) {
+  return items
+    .filter((item) => item.dept_id != null)
+    .map((item) => ({
+      id: item.dept_id as number,
+      tenant_id: 0,
+      name: item.dept_name || String(item.dept_id),
+      parent_id: null,
+      status: 1,
+      source_type: 1,
+      external_id: '',
+      sync_status: 1,
+      sync_error: '',
+      name_history: [],
+      created_at: 0,
+      updated_at: 0,
+      deleted_at: 0,
+      children: [],
+    }))
+}
+
+function detailToSummaryItem(
+  detail: DepartmentUsageDetailResponse
+): DepartmentUsageSummaryItem {
+  return {
+    dept_id: detail.dept_id,
+    dept_name: detail.dept_name,
+    window_start: detail.window_start,
+    window_end: detail.window_end,
+    request_count: detail.request_count,
+    prompt_tokens: detail.prompt_tokens,
+    completion_tokens: detail.completion_tokens,
+    quota: detail.quota,
+    user_count: detail.user_count,
+    model_distribution: detail.model_distribution,
+  }
+}
+
 export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
   const { t } = useTranslation()
+  const treeNodes = useMemo(
+    () =>
+      props.departments && props.departments.length > 0
+        ? props.departments
+        : buildUsageDepartmentTreeNodes(props.items),
+    [props.departments, props.items]
+  )
+  const treeSelection = useMemo(
+    () => resolveDepartmentSelection(treeNodes, props.selectedDepartmentId),
+    [treeNodes, props.selectedDepartmentId]
+  )
+  const selectedSummaryItem = useMemo(
+    () =>
+      props.items.find(
+        (item) => item.dept_id === treeSelection.normalizedDepartmentId
+      ) ?? null,
+    [props.items, treeSelection.normalizedDepartmentId]
+  )
+  const analysisSummaryItems = props.detail
+    ? [detailToSummaryItem(props.detail)]
+    : selectedSummaryItem
+      ? [selectedSummaryItem]
+      : props.items
+  const currentDepartmentLabel =
+    props.currentDepartmentName ||
+    props.detail?.dept_name ||
+    selectedSummaryItem?.dept_name ||
+    t('No department selected')
 
   return (
     <div className='space-y-4'>
@@ -710,234 +883,352 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
         </AlertDescription>
       </Alert>
 
-      <Card>
-        <CardHeader className='gap-3'>
-          <div className='flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between'>
-            <div className='space-y-1'>
-              <CardTitle>{t('Enterprise Usage Overview')}</CardTitle>
-              <CardDescription>{props.rangeLabel}</CardDescription>
-            </div>
-            <div className='flex flex-wrap gap-2'>
-              {(
-                [
-                  ['today', t('Today')],
-                  ['yesterday', t('Yesterday')],
-                  ['last7d', t('Last 7 Days')],
-                  ['last30d', t('Last 30 Days')],
-                  ['custom', t('Custom')],
-                ] as const
-              ).map(([preset, label]) => (
-                <Button
-                  key={preset}
-                  type='button'
-                  size='sm'
-                  variant={
-                    props.selectedPreset === preset ? 'default' : 'outline'
+      <div className='grid gap-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]'>
+        <Card className='overflow-hidden'>
+          <CardHeader>
+            <CardTitle>{t('Department Tree')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Select a department from the tree to drive the analysis workspace on the right.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='px-0 pb-0'>
+            {props.treeLoading ? (
+              <EnterpriseUsageTreeSkeleton />
+            ) : props.treeErrorMessage ? (
+              <Alert variant='destructive' className='mx-6 mb-6 gap-2'>
+                <AlertTriangle className='size-4' />
+                <AlertTitle>{t('Unable to load department tree')}</AlertTitle>
+                <AlertDescription>{t(props.treeErrorMessage)}</AlertDescription>
+                <div className='pt-2'>
+                  <Button variant='outline' size='sm' onClick={props.onRetryTree}>
+                    {t('Retry')}
+                  </Button>
+                </div>
+              </Alert>
+            ) : treeNodes.length === 0 ? (
+              <Empty className='px-6 pb-6'>
+                <EmptyHeader>
+                  <EmptyMedia variant='icon'>
+                    <BarChart3 className='size-5' />
+                  </EmptyMedia>
+                  <EmptyTitle>{t('No departments yet')}</EmptyTitle>
+                  <EmptyDescription>
+                    {t('Department analysis becomes available after the organization tree is synced.')}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <DepartmentTree
+                nodes={treeNodes}
+                expandedIds={props.expandedDepartmentIds}
+                selectedDepartmentId={treeSelection.normalizedDepartmentId}
+                onToggleExpand={props.onToggleDepartmentExpand}
+                onSelectDepartment={props.onSelectDepartment as (departmentId: number) => void}
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        <div className='space-y-4'>
+          <Card>
+            <CardHeader className='gap-3'>
+              <div className='flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between'>
+                <div className='space-y-1'>
+                  <CardTitle>{t('Current Department Analysis')}</CardTitle>
+                  <CardDescription>{props.rangeLabel}</CardDescription>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  {(
+                    [
+                      ['today', t('Today')],
+                      ['yesterday', t('Yesterday')],
+                      ['last7d', t('Last 7 Days')],
+                      ['last30d', t('Last 30 Days')],
+                      ['custom', t('Custom')],
+                    ] as const
+                  ).map(([preset, label]) => (
+                    <Button
+                      key={preset}
+                      type='button'
+                      size='sm'
+                      variant={
+                        props.selectedPreset === preset ? 'default' : 'outline'
+                      }
+                      onClick={() => props.onPresetChange(preset)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    onClick={props.onExport}
+                    disabled={props.exportLoading}
+                  >
+                    <Download className='size-4' />
+                    {t('Export CSV')}
+                  </Button>
+                </div>
+              </div>
+
+              <div className='grid gap-2 lg:grid-cols-[1fr_1fr_auto]'>
+                <Input
+                  type='date'
+                  value={props.customRange.from}
+                  onChange={(e) =>
+                    props.onCustomRangeChange({
+                      from: e.target.value,
+                      to: props.customRange.to,
+                    })
                   }
-                  onClick={() => props.onPresetChange(preset)}
-                >
-                  {label}
-                </Button>
-              ))}
-              <Button
-                type='button'
-                size='sm'
-                variant='outline'
-                onClick={props.onExport}
-                disabled={props.exportLoading}
-              >
-                <Download className='size-4' />
-                {t('Export CSV')}
-              </Button>
-            </div>
-          </div>
-
-          <div className='grid gap-2 lg:grid-cols-[1fr_1fr_auto]'>
-            <Input
-              type='date'
-              value={props.customRange.from}
-              onChange={(e) =>
-                props.onCustomRangeChange({
-                  from: e.target.value,
-                  to: props.customRange.to,
-                })
-              }
-            />
-            <Input
-              type='date'
-              value={props.customRange.to}
-              onChange={(e) =>
-                props.onCustomRangeChange({
-                  from: props.customRange.from,
-                  to: e.target.value,
-                })
-              }
-            />
-            <Button
-              type='button'
-              onClick={props.onApplyCustomRange}
-              disabled={!props.customRange.isValid}
-            >
-              {t('Apply')}
-            </Button>
-          </div>
-          {!props.customRange.isValid ? (
-            <Alert variant='destructive'>
-              <AlertDescription>
-                {t(
-                  'Start time must be earlier than end time for a custom range'
-                )}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          <div className='flex flex-wrap gap-2'>
-            {(
-              [
-                ['requests', 'desc', t('Sort by Requests')],
-                ['quota', 'desc', t('Sort by Quota')],
-                ['users', 'desc', t('Sort by Users')],
-                ['dept_name', 'asc', t('Sort by Department')],
-              ] as const
-            ).map(([field, order, label]) => (
-              <Button
-                key={`${field}-${order}`}
-                type='button'
-                size='sm'
-                variant={
-                  props.summarySort === field && props.summaryOrder === order
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() => props.onSummarySortChange(field, order)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {props.isLoading ? (
-            <EnterpriseUsageSkeleton />
-          ) : props.errorMessage ? (
-            <Alert variant='destructive' className='gap-2'>
-              <AlertTriangle className='size-4' />
-              <AlertTitle>{t('Unable to load department usage')}</AlertTitle>
-              <AlertDescription>{t(props.errorMessage)}</AlertDescription>
-              <div className='pt-2'>
-                <Button variant='outline' size='sm' onClick={props.onRetry}>
-                  {t('Retry')}
-                </Button>
-              </div>
-            </Alert>
-          ) : props.items.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant='icon'>
-                  <BarChart3 className='size-5' />
-                </EmptyMedia>
-                <EmptyTitle>
-                  {t('No department usage data for this time range')}
-                </EmptyTitle>
-                <EmptyDescription>
-                  {t('Usage snapshots are empty for the selected time window.')}
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <Button variant='outline' size='sm' onClick={props.onRetry}>
-                  {t('Retry')}
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : (
-            <div className='space-y-4'>
-              <EnterpriseUsageSummaryCards items={props.items} />
-              <div className='overflow-x-auto'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('Department')}</TableHead>
-                      <TableHead>{t('Requests')}</TableHead>
-                      <TableHead>{t('Prompt Tokens')}</TableHead>
-                      <TableHead>{t('Completion Tokens')}</TableHead>
-                      <TableHead>{t('Quota')}</TableHead>
-                      <TableHead>{t('Users')}</TableHead>
-                      <TableHead>{t('Model Distribution')}</TableHead>
-                      <TableHead>{t('Actions')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {props.items.map((item, index) => (
-                      <TableRow
-                        key={`${item.dept_id ?? 'unassigned'}-${index}`}
-                      >
-                        <TableCell className='font-medium'>
-                          {item.dept_name || t('Unassigned')}
-                        </TableCell>
-                        <TableCell>
-                          {formatNumber(item.request_count)}
-                        </TableCell>
-                        <TableCell>
-                          {formatNumber(item.prompt_tokens)}
-                        </TableCell>
-                        <TableCell>
-                          {formatNumber(item.completion_tokens)}
-                        </TableCell>
-                        <TableCell>{formatQuota(item.quota)}</TableCell>
-                        <TableCell>{formatNumber(item.user_count)}</TableCell>
-                        <TableCell className='max-w-[340px] text-sm whitespace-normal'>
-                          {formatModelDistributionSummary(
-                            item.model_distribution,
-                            t
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type='button'
-                            size='sm'
-                            variant={
-                              props.selectedDepartmentId === item.dept_id
-                                ? 'default'
-                                : 'outline'
-                            }
-                            disabled={item.dept_id == null}
-                            onClick={() =>
-                              props.onSelectDepartment(item.dept_id)
-                            }
-                          >
-                            {t('View Details')}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {props.selectedDepartmentId ? (
-                <DepartmentUsageDetailPanel
-                  detail={props.detail}
-                  isLoading={props.detailLoading}
-                  errorMessage={props.detailErrorMessage}
-                  rankSort={props.rankSort}
-                  onSortChange={props.onSortChange}
-                  onBack={props.onBackToOverview}
-                  onRetry={props.onRetryDetail}
-                  selectedLogUser={props.selectedLogUser}
-                  onOpenRecentLogs={props.onOpenRecentLogs}
                 />
+                <Input
+                  type='date'
+                  value={props.customRange.to}
+                  onChange={(e) =>
+                    props.onCustomRangeChange({
+                      from: props.customRange.from,
+                      to: e.target.value,
+                    })
+                  }
+                />
+                <Button
+                  type='button'
+                  onClick={props.onApplyCustomRange}
+                  disabled={!props.customRange.isValid}
+                >
+                  {t('Apply')}
+                </Button>
+              </div>
+              {!props.customRange.isValid ? (
+                <Alert variant='destructive'>
+                  <AlertDescription>
+                    {t(
+                      'Start time must be earlier than end time for a custom range'
+                    )}
+                  </AlertDescription>
+                </Alert>
               ) : null}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent>
+              {props.isLoading ? (
+                <EnterpriseUsageSkeleton />
+              ) : props.errorMessage ? (
+                <Alert variant='destructive' className='gap-2'>
+                  <AlertTriangle className='size-4' />
+                  <AlertTitle>{t('Unable to load department usage')}</AlertTitle>
+                  <AlertDescription>{t(props.errorMessage)}</AlertDescription>
+                  <div className='pt-2'>
+                    <Button variant='outline' size='sm' onClick={props.onRetry}>
+                      {t('Retry')}
+                    </Button>
+                  </div>
+                </Alert>
+              ) : props.items.length === 0 ? (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant='icon'>
+                      <BarChart3 className='size-5' />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      {t('No department usage data for this time range')}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {t('Usage snapshots are empty for the selected time window.')}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button variant='outline' size='sm' onClick={props.onRetry}>
+                      {t('Retry')}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              ) : (
+                <div className='space-y-4'>
+                  <div className='grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]'>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{t('Current department context')}</CardTitle>
+                        <CardDescription>{currentDepartmentLabel}</CardDescription>
+                      </CardHeader>
+                      <CardContent className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
+                        <ReportStat
+                          label={t('Department')}
+                          value={currentDepartmentLabel}
+                        />
+                        <ReportStat
+                          label={t('Requests')}
+                          value={formatNumber(
+                            analysisSummaryItems[0]?.request_count ?? 0
+                          )}
+                        />
+                        <ReportStat
+                          label={t('Users')}
+                          value={formatNumber(
+                            analysisSummaryItems[0]?.user_count ?? 0
+                          )}
+                        />
+                        <ReportStat
+                          label={t('Quota')}
+                          value={formatQuota(analysisSummaryItems[0]?.quota ?? 0)}
+                        />
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{t('Analysis Notes')}</CardTitle>
+                        <CardDescription>
+                          {t(
+                            'Usage analysis stays pinned to the current department while report settings keep their original scope.'
+                          )}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className='space-y-3 text-sm'>
+                        <p>{t('enterprise.usage.multi_dept_disclaimer')}</p>
+                        <p>
+                          {t(
+                            'Scheduled reports remain tenant-scoped unless explicitly stated otherwise in the configuration card below.'
+                          )}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-      <DepartmentUsageReportCard
-        report={props.report ?? null}
-        isLoading={props.reportLoading ?? false}
-        errorMessage={props.reportErrorMessage ?? null}
-        form={props.reportForm}
-        onSave={props.onSaveReport}
-        saving={props.reportSaving ?? false}
-      />
+                  <EnterpriseUsageSummaryCards items={analysisSummaryItems} />
+
+                  <DepartmentUsageDetailPanel
+                    detail={props.detail}
+                    isLoading={props.detailLoading}
+                    errorMessage={props.detailErrorMessage}
+                    rankSort={props.rankSort}
+                    onSortChange={props.onSortChange}
+                    onRetry={props.onRetryDetail}
+                    selectedLogUser={props.selectedLogUser}
+                    onOpenRecentLogs={props.onOpenRecentLogs}
+                  />
+
+                  <Card>
+                    <CardHeader className='gap-3'>
+                      <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                        <div>
+                          <CardTitle>{t('Peer Department Snapshot')}</CardTitle>
+                          <CardDescription>
+                            {t(
+                              'This supporting list keeps existing department overview semantics without replacing tree-driven navigation.'
+                            )}
+                          </CardDescription>
+                        </div>
+                        <div className='flex flex-wrap gap-2'>
+                          {(
+                            [
+                              ['requests', 'desc', t('Sort by Requests')],
+                              ['quota', 'desc', t('Sort by Quota')],
+                              ['users', 'desc', t('Sort by Users')],
+                              ['dept_name', 'asc', t('Sort by Department')],
+                            ] as const
+                          ).map(([field, order, label]) => (
+                            <Button
+                              key={`${field}-${order}`}
+                              type='button'
+                              size='sm'
+                              variant={
+                                props.summarySort === field &&
+                                props.summaryOrder === order
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              onClick={() =>
+                                props.onSummarySortChange(field, order)
+                              }
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className='overflow-x-auto'>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('Department')}</TableHead>
+                            <TableHead>{t('Requests')}</TableHead>
+                            <TableHead>{t('Prompt Tokens')}</TableHead>
+                            <TableHead>{t('Completion Tokens')}</TableHead>
+                            <TableHead>{t('Quota')}</TableHead>
+                            <TableHead>{t('Users')}</TableHead>
+                            <TableHead>{t('Model Distribution')}</TableHead>
+                            <TableHead>{t('Actions')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {props.items.map((item, index) => (
+                            <TableRow
+                              key={`${item.dept_id ?? 'unassigned'}-${index}`}
+                              className={
+                                item.dept_id === treeSelection.normalizedDepartmentId
+                                  ? 'bg-muted/40'
+                                  : undefined
+                              }
+                            >
+                              <TableCell className='font-medium'>
+                                {item.dept_name || t('Unassigned')}
+                              </TableCell>
+                              <TableCell>{formatNumber(item.request_count)}</TableCell>
+                              <TableCell>{formatNumber(item.prompt_tokens)}</TableCell>
+                              <TableCell>
+                                {formatNumber(item.completion_tokens)}
+                              </TableCell>
+                              <TableCell>{formatQuota(item.quota)}</TableCell>
+                              <TableCell>{formatNumber(item.user_count)}</TableCell>
+                              <TableCell className='max-w-[340px] text-sm whitespace-normal'>
+                                {formatModelDistributionSummary(
+                                  item.model_distribution,
+                                  t
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  type='button'
+                                  size='sm'
+                                  variant={
+                                    item.dept_id ===
+                                    treeSelection.normalizedDepartmentId
+                                      ? 'default'
+                                      : 'outline'
+                                  }
+                                  disabled={item.dept_id == null}
+                                  onClick={() =>
+                                    props.onSelectDepartment(item.dept_id)
+                                  }
+                                >
+                                  {t('Use as Current Context')}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+
+                  <DepartmentUsageReportCard
+                    report={props.report ?? null}
+                    isLoading={props.reportLoading ?? false}
+                    errorMessage={props.reportErrorMessage ?? null}
+                    form={props.reportForm}
+                    onSave={props.onSaveReport}
+                    saving={props.reportSaving ?? false}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1139,7 +1430,6 @@ function DepartmentUsageDetailPanel(props: {
   errorMessage: string | null
   rankSort: DepartmentUsageUserRankSort
   onSortChange: (sort: DepartmentUsageUserRankSort) => void
-  onBack: () => void
   onRetry: () => void
   selectedLogUser?: string
   onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
@@ -1151,25 +1441,15 @@ function DepartmentUsageDetailPanel(props: {
       <CardHeader className='gap-3'>
         <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
           <div className='space-y-1'>
-            <Button
-              type='button'
-              variant='ghost'
-              size='sm'
-              className='-ml-3 w-fit'
-              onClick={props.onBack}
-            >
-              <ArrowLeft className='size-4' />
-              {t('Back to overview')}
-            </Button>
-            <CardTitle>
-              {props.detail?.dept_name || t('Department Usage Details')}
-            </CardTitle>
+            <CardTitle>{t('Current Department Analysis')}</CardTitle>
             <CardDescription>
               {props.detail?.dept_name
                 ? t(
                     'Inspect top users, model mix, time trend, and recent logs.'
                   )
-                : t('Select a department to inspect drill-down usage details.')}
+                : t(
+                    'Select a department from the tree to keep analysis pinned to the current context.'
+                  )}
             </CardDescription>
           </div>
           {props.detail ? (
@@ -1207,30 +1487,16 @@ function DepartmentUsageDetailPanel(props: {
               <EmptyMedia variant='icon'>
                 <LineChart className='size-5' />
               </EmptyMedia>
-              <EmptyTitle>{t('Department Usage Details')}</EmptyTitle>
+              <EmptyTitle>{t('Current Department Analysis')}</EmptyTitle>
               <EmptyDescription>
-                {t('Select a department to inspect drill-down usage details.')}
+                {t(
+                  'Select a department from the tree to keep analysis pinned to the current context.'
+                )}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
           <div className='space-y-4'>
-            <EnterpriseUsageSummaryCards
-              items={[
-                {
-                  dept_id: props.detail.dept_id,
-                  dept_name: props.detail.dept_name,
-                  window_start: props.detail.window_start,
-                  window_end: props.detail.window_end,
-                  request_count: props.detail.request_count,
-                  prompt_tokens: props.detail.prompt_tokens,
-                  completion_tokens: props.detail.completion_tokens,
-                  quota: props.detail.quota,
-                  user_count: props.detail.user_count,
-                  model_distribution: props.detail.model_distribution,
-                },
-              ]}
-            />
             <div className='grid gap-4 xl:grid-cols-[1.1fr_0.9fr]'>
               <Card>
                 <CardHeader>
@@ -1453,8 +1719,24 @@ function DepartmentUserRankingTable(props: {
           ) : (
             props.items.map((item) => (
               <TableRow key={item.user_id}>
-                <TableCell className='font-medium'>
-                  {item.username || item.user_id}
+                <TableCell>
+                  <div className='flex min-w-[180px] flex-col gap-1'>
+                    <span className='font-medium'>
+                      {formatEnterpriseUserPrimary({
+                        username: item.username,
+                        userId: item.user_id,
+                      })}
+                    </span>
+                    <span className='text-muted-foreground text-xs'>
+                      {formatEnterpriseUserSecondary(
+                        {
+                          username: item.username,
+                          userId: item.user_id,
+                        },
+                        t
+                      )}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>{formatNumber(item.request_count)}</TableCell>
                 <TableCell>{formatNumber(item.token_count)}</TableCell>
@@ -1481,6 +1763,17 @@ function EnterpriseUsageSkeleton() {
       <Skeleton className='h-10 w-full' />
       <Skeleton className='h-10 w-full' />
       <Skeleton className='h-10 w-full' />
+    </div>
+  )
+}
+
+function EnterpriseUsageTreeSkeleton() {
+  return (
+    <div className='space-y-2 px-6 pb-6'>
+      <Skeleton className='h-10 w-full' />
+      <Skeleton className='h-10 w-full' />
+      <Skeleton className='h-10 w-full' />
+      <Skeleton className='h-10 w-4/5' />
     </div>
   )
 }

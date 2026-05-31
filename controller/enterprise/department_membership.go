@@ -246,6 +246,64 @@ func RestoreDepartmentMember(c *gin.Context) {
 	common.ApiSuccess(c, mapDepartmentMemberItem(item))
 }
 
+func RenameDepartmentMember(c *gin.Context) {
+	departmentId, ok := parsePathInt(c, "id")
+	if !ok {
+		return
+	}
+	userId, ok := parsePathInt(c, "user_id")
+	if !ok {
+		return
+	}
+
+	var req dtoenterprise.RenameDepartmentMemberRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	input := entservice.RenameDepartmentMemberInput{
+		TenantId:    tenantId,
+		ActorId:     c.GetInt("id"),
+		NewUsername: req.NewUsername,
+		ChangedAt:   int64Value(req.ChangedAt),
+	}
+	var (
+		item             entservice.DepartmentMemberItem
+		previousUsername string
+	)
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		item, previousUsername, err = entservice.NewDepartmentMembershipService(tx).RenameDepartmentMember(departmentId, userId, input)
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    tenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionMembershipRename,
+			ObjectType:  entservice.AdminObjectDepartmentMember,
+			ObjectId:    entservice.MembershipObjectId(departmentId, userId),
+			DiffSummary: "Renamed department member username",
+			Payload: map[string]any{
+				"user_id":           userId,
+				"department_id":     departmentId,
+				"previous_username": previousUsername,
+				"new_username":      item.Username,
+			},
+		})
+	}); err != nil {
+		writeMembershipError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, mapDepartmentMemberItem(item))
+}
+
 func departmentMembershipService() *entservice.DepartmentMembershipService {
 	return entservice.NewDepartmentMembershipService(model.DB)
 }
@@ -342,6 +400,10 @@ func writeMembershipError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseMembershipAlreadyExists)
 	case errors.Is(err, entservice.ErrDuplicateDepartment):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDuplicateDepartment)
+	case errors.Is(err, entservice.ErrEnterpriseUsernameInvalid):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseUsernameInvalid)
+	case errors.Is(err, entservice.ErrEnterpriseUsernameExists):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseUsernameExists)
 	case errors.Is(err, entservice.ErrInvalidMembershipInput):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	default:

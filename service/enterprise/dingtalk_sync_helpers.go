@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"gorm.io/gorm"
 )
@@ -88,33 +87,19 @@ func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenant
 }
 
 func (s *DingTalkSyncService) availableSyncUsername(dingTalkUser DingTalkDepartmentUserInfo) string {
-	base := normalizeDingTalkUsername(firstNonEmpty(dingTalkUser.UserId, dingTalkUser.UnionId, dingTalkUser.Mobile))
-	if base == "" {
-		base = "dingtalk"
-	}
-	prefix := "dt_" + base
-	if len(prefix) > model.UserNameMaxLength {
-		prefix = prefix[:model.UserNameMaxLength]
-	}
-	if exists, err := model.CheckUserExistOrDeleted(prefix, ""); err == nil && !exists {
-		return prefix
-	}
-	for i := 0; i < 20; i++ {
-		suffix := strconv.Itoa(model.GetMaxUserId() + 1 + i)
-		baseLen := model.UserNameMaxLength - len(suffix) - 1
-		if baseLen < 2 {
-			baseLen = 2
-		}
-		candidate := prefix
-		if len(candidate) > baseLen {
-			candidate = candidate[:baseLen]
-		}
-		username := candidate + "_" + suffix
-		if exists, err := model.CheckUserExistOrDeleted(username, ""); err == nil && !exists {
-			return username
-		}
-	}
-	return fmt.Sprintf("dt_%d", time.Now().UnixNano()%100000000)
+	base := firstReadableEnterpriseUsername(
+		dingTalkUser.Name,
+		dingTalkUser.Email,
+		dingTalkUser.Mobile,
+		dingTalkUser.UserId,
+		dingTalkUser.UnionId,
+	)
+	return resolveAvailableEnterpriseUsername(
+		base,
+		dingTalkUser.UserId,
+		dingTalkUser.UnionId,
+		dingTalkUser.Mobile,
+	)
 }
 
 func (s *DingTalkSyncService) finishTask(ctx context.Context, taskId int) error {

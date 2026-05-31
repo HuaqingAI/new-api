@@ -27,18 +27,18 @@ func ListAlertEvents(c *gin.Context) {
 	}
 
 	result, err := entservice.NewAlertService(model.DB).ListAlertEvents(entservice.AlertEventQuery{
-		TenantId:     tenantId,
-		EventId:      query.EventId,
-		DepartmentId: query.DepartmentId,
+		TenantId:       tenantId,
+		EventId:        query.EventId,
+		DepartmentId:   query.DepartmentId,
 		UnassignedOnly: query.UnassignedOnly,
-		UserId:       query.UserId,
-		Username:     readOptionalString(query.Username),
-		ModelName:    readOptionalString(query.ModelName),
-		RiskType:     readOptionalString(query.RiskType),
-		From:         query.From,
-		To:           query.To,
-		Page:         valueOrZero(query.Page),
-		PageSize:     valueOrZero(query.PageSize),
+		UserId:         query.UserId,
+		Username:       readOptionalString(query.Username),
+		ModelName:      readOptionalString(query.ModelName),
+		RiskType:       readOptionalString(query.RiskType),
+		From:           query.From,
+		To:             query.To,
+		Page:           valueOrZero(query.Page),
+		PageSize:       valueOrZero(query.PageSize),
 	})
 	if err != nil {
 		writeAlertEventError(c, err)
@@ -64,6 +64,7 @@ func ListAlertEvents(c *gin.Context) {
 			TenantId:           item.TenantId,
 			UserId:             item.UserId,
 			Username:           item.Username,
+			UsernameSnapshot:   item.UsernameSnapshot,
 			RequestId:          item.RequestId,
 			ModelName:          item.ModelName,
 			RiskType:           item.RiskType,

@@ -22,6 +22,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.POST("/quota-allocations", middleware.EnterpriseDepartmentAdmin("department_id"), controllerenterprise.CreateQuotaAllocation)
 		enterpriseRoute.POST("/quota-allocations/:id/revoke", middleware.EnterpriseDepartmentAdmin("department_id"), controllerenterprise.RevokeQuotaAllocation)
 		enterpriseRoute.POST("/departments/:id/members", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.AddDepartmentMember)
+		enterpriseRoute.PUT("/departments/:id/members/:user_id/username", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.RenameDepartmentMember)
 		enterpriseRoute.DELETE("/departments/:id/members/:user_id", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.DeactivateDepartmentMember)
 		enterpriseRoute.POST("/departments/:id/members/:user_id/restore", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.RestoreDepartmentMember)
 		enterpriseRoute.POST("/departments/:id/admins", middleware.EnterpriseAdmin(), controllerenterprise.GrantDepartmentAdmin)

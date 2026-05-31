@@ -16,12 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Building2,
   CalendarClock,
@@ -29,7 +29,6 @@ import {
   CreditCard,
   RefreshCw,
   RotateCcw,
-  Search,
   Settings,
   ShieldX,
   UserPlus,
@@ -81,7 +80,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import {
@@ -89,23 +88,33 @@ import {
   createQuotaAllocation,
   deactivateDepartmentMember,
   createDepartmentBudget,
+  departmentBudgetDetailQueryScopeKey,
   departmentBudgetDetailQueryKey,
+  departmentBudgetListQueryScopeKey,
   departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
-  enterpriseOrganizationQueryKey,
+  departmentMembersQueryKey,
+  getDepartmentBudget,
   getDepartmentBudgetDetail,
   getDepartmentBudgets,
-  getDepartmentBudget,
   getDepartmentMembers,
   getQuotaAllocations,
   getUserDepartments,
   quotaAllocationQueryKey,
-  revokeQuotaAllocation,
-  replaceUserDepartments,
+  quotaAllocationQueryScopeKey,
+  renameDepartmentMember,
   restoreDepartmentMember,
+  revokeQuotaAllocation,
+  userDepartmentsQueryKey,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
 import { useDepartmentTree } from './hooks/use-department-tree'
+import {
+  findDepartmentNode,
+  resolveDepartmentSelection,
+  syncExpandedDepartmentIds,
+  toggleExpandedDepartmentId,
+} from './lib/tree-utils'
 import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
@@ -113,25 +122,132 @@ import type {
   DepartmentBudgetSortField,
   DepartmentBudgetWalletDetail,
   DepartmentMemberItem,
+  DepartmentTreeNode,
   EnterpriseBudgetErrorData,
   MembershipStatus,
   QuotaAllocationItem,
   UserDepartmentItem,
 } from './types'
 
+const enterpriseOrganizationRoute = '/_authenticated/enterprise-organization/'
+
+export const enterpriseOrganizationSearchSchema = z.object({
+  dept_id: z.coerce.number().int().positive().optional().catch(undefined),
+  budget_id: z.coerce.number().int().positive().optional().catch(undefined),
+})
+
+export type EnterpriseOrganizationSearch = z.infer<
+  typeof enterpriseOrganizationSearchSchema
+>
+
+export function normalizeMemberSelection(params: {
+  members: DepartmentMemberItem[]
+  selectedUserId: number | null | undefined
+}) {
+  if (
+    params.selectedUserId != null &&
+    params.members.some((item) => item.user_id === params.selectedUserId)
+  ) {
+    return params.selectedUserId
+  }
+  return null
+}
+
+export function normalizeEnterpriseOrganizationSearch(params: {
+  departments: DepartmentTreeNode[]
+  search: EnterpriseOrganizationSearch
+}) {
+  if (params.departments.length === 0) {
+    return {
+      ...params.search,
+      dept_id: undefined,
+      budget_id: undefined,
+    }
+  }
+
+  const resolved = resolveDepartmentSelection(
+    params.departments,
+    params.search.dept_id
+  )
+  const normalizedDepartmentId = resolved.normalizedDepartmentId ?? undefined
+  const shouldResetBudget = params.search.dept_id !== normalizedDepartmentId
+
+  return {
+    ...params.search,
+    dept_id: normalizedDepartmentId,
+    budget_id: shouldResetBudget ? undefined : params.search.budget_id,
+  }
+}
+
+export function resolveDepartmentMemberSelection(
+  members: DepartmentMemberItem[],
+  selectedMemberUserId: number | null | undefined
+) {
+  if (
+    selectedMemberUserId != null &&
+    members.some((item) => item.user_id === selectedMemberUserId)
+  ) {
+    return selectedMemberUserId
+  }
+  return null
+}
+
+export function createRenameUsernameSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    new_username: z
+      .string()
+      .trim()
+      .min(3, t('Username must be 3-20 characters'))
+      .max(20, t('Username must be 3-20 characters'))
+      .regex(
+        /^[a-z0-9]+(?:_[a-z0-9]+)*$/,
+        t(
+          'Username can only use lowercase letters, numbers, and single underscores'
+        )
+      ),
+  })
+}
+
+export function syncAllocationFormDraft(params: {
+  current: {
+    tenant_id: number
+    department_id: number
+    department_budget_id: number
+    target_user_id: number
+    committed_quota: number
+    reason: string
+  }
+  departmentId: number
+  selectedBudgetId: number | null
+  selectedMemberUserId: number | null
+  resetMode: 'department-change' | 'budget-change' | 'member-change'
+}) {
+  if (params.resetMode === 'department-change') {
+    return {
+      tenant_id: params.current.tenant_id,
+      department_id: params.departmentId,
+      department_budget_id: 0,
+      target_user_id: 0,
+      committed_quota: 0,
+      reason: '',
+    }
+  }
+
+  return {
+    tenant_id: params.current.tenant_id,
+    department_id: params.departmentId,
+    department_budget_id: params.selectedBudgetId ?? 0,
+    target_user_id: params.selectedMemberUserId ?? 0,
+    committed_quota: 0,
+    reason: '',
+  }
+}
+
 function parsePositiveInt(value: string) {
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) return null
   return parsed
-}
-
-function parseDepartmentIds(value: string) {
-  if (!value.trim()) return []
-  const ids = value
-    .split(',')
-    .map((part) => Number(part.trim()))
-    .filter((id) => Number.isInteger(id) && id > 0)
-  return Array.from(new Set(ids))
 }
 
 export function createBudgetSchema(t: (key: string) => string) {
@@ -213,6 +329,41 @@ export function __testRenderApiMessage(
   return translator('Request failed')
 }
 
+export function __testRenderUsernameMutationMessage(
+  result: { message?: string } | null | undefined,
+  translator: (key: string) => string
+) {
+  if (!result?.message) return translator('Request failed')
+  return translator(result.message)
+}
+
+export function resolveEnterpriseOrganizationSelection(
+  nodes: DepartmentTreeNode[],
+  departmentId: number | null | undefined
+) {
+  return resolveDepartmentSelection(nodes, departmentId)
+}
+
+export function resolveBudgetSelection(
+  availableBudgetIds: number[],
+  selectedBudgetId: number | null | undefined,
+  fallbackBudgetId: number | null | undefined
+) {
+  if (
+    selectedBudgetId != null &&
+    availableBudgetIds.includes(selectedBudgetId)
+  ) {
+    return selectedBudgetId
+  }
+  if (
+    fallbackBudgetId != null &&
+    availableBudgetIds.includes(fallbackBudgetId)
+  ) {
+    return fallbackBudgetId
+  }
+  return availableBudgetIds[0] ?? null
+}
+
 function statusVariant(status: MembershipStatus) {
   if (status === 1) return 'success'
   if (status === 2 || status === 3) return 'neutral'
@@ -271,14 +422,127 @@ function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
   )
 }
 
+function departmentStatusLabel(status: number, t: (key: string) => string) {
+  if (status === 1) return t('Enabled')
+  if (status === 2) return t('Disabled')
+  if (status === 3) return t('Deleted upstream')
+  return '-'
+}
+
+function departmentStatusVariant(status: number) {
+  if (status === 1) return 'success' as const
+  if (status === 2) return 'warning' as const
+  if (status === 3) return 'danger' as const
+  return 'neutral' as const
+}
+
+function departmentSourceLabel(sourceType: number, t: (key: string) => string) {
+  return sourceType === 2 ? t('DingTalk') : t('Manual')
+}
+
+function departmentSyncLabel(syncStatus: number, t: (key: string) => string) {
+  if (syncStatus === 1) return t('Synced')
+  if (syncStatus === 2) return t('Sync warning')
+  if (syncStatus === 3) return t('Sync failed')
+  return t('Not synced')
+}
+
+function departmentSyncVariant(syncStatus: number) {
+  if (syncStatus === 1) return 'success' as const
+  if (syncStatus === 2) return 'warning' as const
+  if (syncStatus === 3) return 'danger' as const
+  return 'neutral' as const
+}
+
 export function EnterpriseOrganization() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const search = useSearch({
+    from: enterpriseOrganizationRoute,
+  }) as EnterpriseOrganizationSearch
   const {
     data: departments = [],
     isLoading,
     isFetching,
     refetch,
   } = useDepartmentTree()
+  const resolvedSelection = useMemo(
+    () => resolveDepartmentSelection(departments, search.dept_id),
+    [departments, search.dept_id]
+  )
+  const normalizedSearch = useMemo(
+    () => normalizeEnterpriseOrganizationSearch({ departments, search }),
+    [departments, search]
+  )
+  const [expandedIds, setExpandedIds] = useState<number[]>([])
+
+  useEffect(() => {
+    setExpandedIds((current) =>
+      syncExpandedDepartmentIds(
+        current,
+        departments,
+        resolvedSelection.requiredExpandedIds
+      )
+    )
+  }, [departments, resolvedSelection.requiredExpandedIds])
+
+  useEffect(() => {
+    if (
+      search.dept_id === normalizedSearch.dept_id &&
+      search.budget_id === normalizedSearch.budget_id
+    ) {
+      return
+    }
+    navigate({
+      to: '/enterprise-organization',
+      search: (prev) => ({
+        ...prev,
+        dept_id: normalizedSearch.dept_id,
+        budget_id: normalizedSearch.budget_id,
+      }),
+      replace: true,
+    })
+  }, [
+    navigate,
+    normalizedSearch.budget_id,
+    normalizedSearch.dept_id,
+    search.budget_id,
+    search.dept_id,
+  ])
+
+  const currentDepartment = useMemo(
+    () =>
+      findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    [departments, resolvedSelection.selectedDepartmentId]
+  )
+  const parentDepartment = useMemo(() => {
+    if (!currentDepartment?.parent_id) return null
+    return findDepartmentNode(departments, currentDepartment.parent_id)
+  }, [currentDepartment, departments])
+
+  const handleSelectDepartment = (departmentId: number) => {
+    navigate({
+      to: '/enterprise-organization',
+      search: (prev) => ({
+        ...prev,
+        dept_id: departmentId,
+        budget_id: undefined,
+      }),
+    })
+  }
+
+  const handleSelectedBudgetChange = (budgetId: number | null) => {
+    const nextBudgetId = budgetId ?? undefined
+    if (search.budget_id === nextBudgetId) return
+    navigate({
+      to: '/enterprise-organization',
+      search: (prev) => ({
+        ...prev,
+        budget_id: nextBudgetId,
+      }),
+      replace: true,
+    })
+  }
 
   return (
     <SectionPageLayout>
@@ -297,37 +561,137 @@ export function EnterpriseOrganization() {
         </Button>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <Tabs defaultValue='tree' className='flex flex-col gap-4'>
-          <TabsList>
-            <TabsTrigger value='tree'>{t('Department Tree')}</TabsTrigger>
-            <TabsTrigger value='users'>{t('User Departments')}</TabsTrigger>
-            <TabsTrigger value='members'>{t('Department Members')}</TabsTrigger>
-            <TabsTrigger value='budgets'>{t('Department Budget')}</TabsTrigger>
-          </TabsList>
-          <TabsContent value='tree' className='m-0'>
-            <EnterpriseOrganizationContent
-              isLoading={isLoading}
-              departments={departments}
+        {isLoading || departments.length === 0 ? (
+          <EnterpriseOrganizationContent
+            isLoading={isLoading}
+            departments={departments}
+          />
+        ) : (
+          <div className='grid gap-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]'>
+            <Card className='overflow-hidden'>
+              <CardHeader>
+                <CardTitle>{t('Department Tree')}</CardTitle>
+                <CardDescription>
+                  {t(
+                    'Select a department from the tree to drive the governance workspace on the right.'
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='px-0 pb-0'>
+                <EnterpriseOrganizationContent
+                  isLoading={false}
+                  departments={departments}
+                  expandedIds={expandedIds}
+                  selectedDepartmentId={currentDepartment?.id ?? null}
+                  onToggleExpand={(departmentId) =>
+                    setExpandedIds((current) =>
+                      toggleExpandedDepartmentId(current, departmentId)
+                    )
+                  }
+                  onSelectDepartment={handleSelectDepartment}
+                />
+              </CardContent>
+            </Card>
+            <EnterpriseOrganizationWorkspace
+              currentDepartment={currentDepartment}
+              parentDepartment={parentDepartment}
+              selectedBudgetId={search.budget_id ?? null}
+              onSelectedBudgetIdChange={handleSelectedBudgetChange}
             />
-          </TabsContent>
-          <TabsContent value='users' className='m-0'>
-            <UserDepartmentsPanel />
-          </TabsContent>
-          <TabsContent value='members' className='m-0'>
-            <DepartmentMembersPanel />
-          </TabsContent>
-          <TabsContent value='budgets' className='m-0'>
-            <DepartmentBudgetPanel />
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
       </SectionPageLayout.Content>
     </SectionPageLayout>
+  )
+}
+
+export function EnterpriseOrganizationWorkspace(props: {
+  currentDepartment: DepartmentTreeNode | null
+  parentDepartment: DepartmentTreeNode | null
+  selectedBudgetId: number | null
+  onSelectedBudgetIdChange: (budgetId: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const [departmentMembers, setDepartmentMembers] = useState<
+    DepartmentMemberItem[]
+  >([])
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState<
+    number | null
+  >(null)
+
+  useEffect(() => {
+    if (!props.currentDepartment) {
+      setDepartmentMembers([])
+      setSelectedMemberUserId(null)
+    }
+  }, [props.currentDepartment])
+
+  useEffect(() => {
+    setSelectedMemberUserId((current) =>
+      resolveDepartmentMemberSelection(departmentMembers, current)
+    )
+  }, [departmentMembers])
+
+  const selectedMember = useMemo(
+    () =>
+      departmentMembers.find((item) => item.user_id === selectedMemberUserId) ??
+      null,
+    [departmentMembers, selectedMemberUserId]
+  )
+  const selectedMemberMembershipsQuery = useQuery({
+    queryKey: userDepartmentsQueryKey(selectedMember?.user_id ?? null),
+    queryFn: async () => {
+      if (!selectedMember?.user_id) return []
+      const result = await getUserDepartments(selectedMember.user_id)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+    enabled: Boolean(selectedMember?.user_id),
+  })
+
+  if (!props.currentDepartment) {
+    return <EnterpriseOrganizationEmptyState />
+  }
+
+  return (
+    <div className='space-y-4'>
+      <DepartmentSummaryCard
+        department={props.currentDepartment}
+        parentDepartment={props.parentDepartment}
+      />
+      <DepartmentMembersPanel
+        departmentId={props.currentDepartment.id}
+        departmentName={props.currentDepartment.name}
+        selectedMemberUserId={selectedMemberUserId}
+        onSelectedMemberChange={setSelectedMemberUserId}
+        onMembersChange={setDepartmentMembers}
+      />
+      <DepartmentMemberContextCard
+        currentDepartment={props.currentDepartment}
+        selectedMember={selectedMember}
+        memberships={selectedMemberMembershipsQuery.data ?? []}
+        loading={selectedMemberMembershipsQuery.isLoading}
+        onMemberRenamed={setSelectedMemberUserId}
+      />
+      <DepartmentBudgetPanel
+        departmentId={props.currentDepartment.id}
+        departmentName={props.currentDepartment.name}
+        selectedBudgetId={props.selectedBudgetId}
+        onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
+        selectedMember={selectedMember}
+      />
+    </div>
   )
 }
 
 export function EnterpriseOrganizationContent(props: {
   isLoading: boolean
   departments: ReturnType<typeof useDepartmentTree>['data']
+  expandedIds?: number[]
+  selectedDepartmentId?: number | null
+  onToggleExpand?: (departmentId: number) => void
+  onSelectDepartment?: (departmentId: number) => void
 }) {
   if (props.isLoading) {
     return <DepartmentTreeSkeleton />
@@ -335,7 +699,15 @@ export function EnterpriseOrganizationContent(props: {
   if (!props.departments || props.departments.length === 0) {
     return <EnterpriseOrganizationEmptyState />
   }
-  return <DepartmentTree nodes={props.departments} />
+  return (
+    <DepartmentTree
+      nodes={props.departments}
+      expandedIds={props.expandedIds}
+      selectedDepartmentId={props.selectedDepartmentId}
+      onToggleExpand={props.onToggleExpand}
+      onSelectDepartment={props.onSelectDepartment}
+    />
+  )
 }
 
 function DepartmentTreeSkeleton() {
@@ -380,89 +752,119 @@ function EnterpriseOrganizationEmptyState() {
   )
 }
 
-function UserDepartmentsPanel() {
+export function DepartmentSummaryCard({
+  department,
+  parentDepartment,
+}: {
+  department: DepartmentTreeNode
+  parentDepartment: DepartmentTreeNode | null
+}) {
   const { t } = useTranslation()
-  const queryClient = useQueryClient()
-  const [userIdText, setUserIdText] = useState('')
-  const [departmentIdsText, setDepartmentIdsText] = useState('')
-  const userId = useMemo(() => parsePositiveInt(userIdText), [userIdText])
-  const departmentIds = useMemo(
-    () => parseDepartmentIds(departmentIdsText),
-    [departmentIdsText]
-  )
-
-  const invalidateOrganization = () =>
-    queryClient.invalidateQueries({ queryKey: enterpriseOrganizationQueryKey })
-
-  const userDepartmentsQuery = useQuery({
-    queryKey: [
-      ...enterpriseOrganizationQueryKey,
-      'users',
-      userId,
-      'departments',
-    ],
-    queryFn: async () => {
-      if (!userId) return null
-      const result = await getUserDepartments(userId)
-      if (!result.success)
-        throw new Error(result.message || t('Request failed'))
-      return result.data ?? { items: [], total: 0, is_unassigned: true }
-    },
-    enabled: Boolean(userId),
-  })
-
-  const replaceMutation = useMutation({
-    mutationFn: () => {
-      if (!userId) throw new Error('missing user id')
-      return replaceUserDepartments(userId, {
-        department_ids: departmentIds,
-        deactivate_stale: true,
-      })
-    },
-    onSuccess: (result) => {
-      if (!result.success) {
-        toast.error(result.message || t('Request failed'))
-        return
-      }
-      invalidateOrganization()
-    },
-  })
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('User Departments')}</CardTitle>
+        <CardTitle>{t('Current Department Workspace')}</CardTitle>
         <CardDescription>
-          {t('Shows every department membership for a user.')}
+          {t(
+            'Everything below is scoped to the current department so you can manage members, budgets, and wallet allocations without leaving this page.'
+          )}
         </CardDescription>
       </CardHeader>
-      <CardContent className='flex flex-col gap-4'>
-        <div className='flex flex-col gap-2 sm:flex-row'>
-          <Input
-            inputMode='numeric'
-            value={userIdText}
-            onChange={(event) => setUserIdText(event.target.value)}
-            placeholder={t('User ID')}
-          />
-          <Input
-            value={departmentIdsText}
-            onChange={(event) => setDepartmentIdsText(event.target.value)}
-            placeholder={t('Department IDs, comma separated')}
-          />
-          <Button
-            onClick={() => replaceMutation.mutate()}
-            disabled={!userId || replaceMutation.isPending}
-          >
-            <Search data-icon='inline-start' />
-            {t('Replace Departments')}
-          </Button>
+      <CardContent className='space-y-4'>
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div className='space-y-1'>
+            <div className='text-xl font-semibold'>{department.name}</div>
+            <div className='text-muted-foreground text-sm'>
+              {t('Department ID')} #{department.id}
+            </div>
+          </div>
+          <div className='flex flex-wrap gap-2'>
+            <StatusBadge
+              label={departmentStatusLabel(department.status, t)}
+              variant={departmentStatusVariant(department.status)}
+              copyable={false}
+            />
+            <StatusBadge
+              label={departmentSyncLabel(department.sync_status, t)}
+              variant={departmentSyncVariant(department.sync_status)}
+              copyable={false}
+            />
+            <Badge variant='outline'>
+              {departmentSourceLabel(department.source_type, t)}
+            </Badge>
+          </div>
         </div>
-        <UserDepartmentsTable
-          items={userDepartmentsQuery.data?.items ?? []}
-          hasResult={Boolean(userDepartmentsQuery.data)}
-        />
+        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+          <DepartmentMetaStat
+            label={t('Parent Department')}
+            value={
+              parentDepartment
+                ? `${parentDepartment.name} (#${parentDepartment.id})`
+                : t('Root department')
+            }
+          />
+          <DepartmentMetaStat
+            label={t('External ID')}
+            value={department.external_id || t('Local only')}
+          />
+          <DepartmentMetaStat
+            label={t('Source')}
+            value={departmentSourceLabel(department.source_type, t)}
+          />
+          <DepartmentMetaStat
+            label={t('Sync State')}
+            value={departmentSyncLabel(department.sync_status, t)}
+          />
+          <DepartmentMetaStat
+            label={t('Created At')}
+            value={
+              department.created_at
+                ? formatTimestamp(department.created_at)
+                : '-'
+            }
+          />
+          <DepartmentMetaStat
+            label={t('Updated At')}
+            value={
+              department.updated_at
+                ? formatTimestamp(department.updated_at)
+                : '-'
+            }
+          />
+        </div>
+        <div className='rounded-lg border p-3'>
+          <div className='text-muted-foreground text-xs'>
+            {t('Historical Names')}
+          </div>
+          <div className='mt-2 text-sm'>
+            {department.name_history.length > 0
+              ? department.name_history.map((entry) => entry.name).join(', ')
+              : t('No historical names recorded')}
+          </div>
+          {department.sync_error ? (
+            <div className='text-muted-foreground mt-2 text-xs'>
+              {department.sync_error}
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
+  )
+}
+
+function DepartmentMetaStat({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className='rounded-lg border p-3'>
+      <div className='text-muted-foreground text-xs'>{label}</div>
+      <div className='mt-1 text-sm font-medium'>{value}</div>
+    </div>
   )
 }
 
@@ -534,49 +936,53 @@ function UserDepartmentsTable({
   )
 }
 
-function DepartmentMembersPanel() {
+function DepartmentMembersPanel({
+  departmentId,
+  departmentName,
+  selectedMemberUserId,
+  onSelectedMemberChange,
+  onMembersChange,
+}: {
+  departmentId: number
+  departmentName: string
+  selectedMemberUserId: number | null
+  onSelectedMemberChange: (userId: number | null) => void
+  onMembersChange: (items: DepartmentMemberItem[]) => void
+}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [departmentIdText, setDepartmentIdText] = useState('')
   const [memberUserIdText, setMemberUserIdText] = useState('')
-  const departmentId = useMemo(
-    () => parsePositiveInt(departmentIdText),
-    [departmentIdText]
-  )
-
-  const invalidateOrganization = () =>
-    queryClient.invalidateQueries({ queryKey: enterpriseOrganizationQueryKey })
 
   const departmentMembersQuery = useQuery({
-    queryKey: [
-      ...enterpriseOrganizationQueryKey,
-      'departments',
-      departmentId,
-      'members',
-    ],
+    queryKey: departmentMembersQueryKey(departmentId),
     queryFn: async () => {
-      if (!departmentId) return null
       const result = await getDepartmentMembers(departmentId)
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data ?? { items: [], total: 0 }
     },
-    enabled: Boolean(departmentId),
   })
+
+  useEffect(() => {
+    onMembersChange(departmentMembersQuery.data?.items ?? [])
+  }, [departmentMembersQuery.data?.items, onMembersChange])
 
   const addMemberMutation = useMutation({
     mutationFn: () => {
       const memberUserId = parsePositiveInt(memberUserIdText)
-      if (!departmentId || !memberUserId) throw new Error('missing ids')
+      if (!memberUserId) throw new Error('missing ids')
       return addDepartmentMember(departmentId, { user_id: memberUserId })
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
       setMemberUserIdText('')
-      invalidateOrganization()
+      await queryClient.invalidateQueries({
+        queryKey: departmentMembersQueryKey(departmentId),
+      })
+      toast.success(t('Department member added'))
     },
   })
 
@@ -585,17 +991,16 @@ function DepartmentMembersPanel() {
       <CardHeader>
         <CardTitle>{t('Department Members')}</CardTitle>
         <CardDescription>
-          {t('Shows all users attached to the selected department.')}
+          {t(
+            'Manage the member list for {{department}} without re-entering a department identifier.',
+            {
+              department: departmentName,
+            }
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className='flex flex-col gap-4'>
         <div className='flex flex-col gap-2 sm:flex-row'>
-          <Input
-            inputMode='numeric'
-            value={departmentIdText}
-            onChange={(event) => setDepartmentIdText(event.target.value)}
-            placeholder={t('Department ID')}
-          />
           <Input
             inputMode='numeric'
             value={memberUserIdText}
@@ -605,9 +1010,7 @@ function DepartmentMembersPanel() {
           <Button
             onClick={() => addMemberMutation.mutate()}
             disabled={
-              !departmentId ||
-              !parsePositiveInt(memberUserIdText) ||
-              addMemberMutation.isPending
+              !parsePositiveInt(memberUserIdText) || addMemberMutation.isPending
             }
           >
             <UserPlus data-icon='inline-start' />
@@ -617,6 +1020,8 @@ function DepartmentMembersPanel() {
         <DepartmentMembersTable
           departmentId={departmentId}
           items={departmentMembersQuery.data?.items ?? []}
+          selectedMemberUserId={selectedMemberUserId}
+          onSelectMember={onSelectedMemberChange}
         />
       </CardContent>
     </Card>
@@ -626,39 +1031,41 @@ function DepartmentMembersPanel() {
 function DepartmentMembersTable({
   items,
   departmentId,
+  selectedMemberUserId,
+  onSelectMember,
 }: {
   items: DepartmentMemberItem[]
-  departmentId: number | null
+  departmentId: number
+  selectedMemberUserId: number | null
+  onSelectMember: (userId: number | null) => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const invalidateOrganization = () =>
-    queryClient.invalidateQueries({ queryKey: enterpriseOrganizationQueryKey })
 
   const deactivateMutation = useMutation({
-    mutationFn: (userId: number) => {
-      if (!departmentId) throw new Error('missing department id')
-      return deactivateDepartmentMember(departmentId, userId)
-    },
-    onSuccess: (result) => {
+    mutationFn: (userId: number) =>
+      deactivateDepartmentMember(departmentId, userId),
+    onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
-      invalidateOrganization()
+      await queryClient.invalidateQueries({
+        queryKey: departmentMembersQueryKey(departmentId),
+      })
     },
   })
   const restoreMutation = useMutation({
-    mutationFn: (userId: number) => {
-      if (!departmentId) throw new Error('missing department id')
-      return restoreDepartmentMember(departmentId, userId)
-    },
-    onSuccess: (result) => {
+    mutationFn: (userId: number) =>
+      restoreDepartmentMember(departmentId, userId),
+    onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
-      invalidateOrganization()
+      await queryClient.invalidateQueries({
+        queryKey: departmentMembersQueryKey(departmentId),
+      })
     },
   })
 
@@ -685,12 +1092,18 @@ function DepartmentMembersTable({
           <TableHead>{t('User')}</TableHead>
           <TableHead>{t('Membership Status')}</TableHead>
           <TableHead>{t('External Source')}</TableHead>
+          <TableHead>{t('Current Member')}</TableHead>
           <TableHead className='text-right'>{t('Actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((item) => (
-          <TableRow key={item.id}>
+          <TableRow
+            key={item.id}
+            className={
+              selectedMemberUserId === item.user_id ? 'bg-muted/50' : undefined
+            }
+          >
             <TableCell>
               <div className='flex min-w-[160px] flex-col gap-1'>
                 <span className='font-medium'>
@@ -708,6 +1121,21 @@ function DepartmentMembersTable({
               <Badge variant='secondary'>
                 {item.external_source || 'manual'}
               </Badge>
+            </TableCell>
+            <TableCell>
+              <Button
+                variant={
+                  selectedMemberUserId === item.user_id
+                    ? 'secondary'
+                    : 'outline'
+                }
+                size='sm'
+                onClick={() => onSelectMember(item.user_id)}
+              >
+                {selectedMemberUserId === item.user_id
+                  ? t('Current department member')
+                  : t('Use in workspace')}
+              </Button>
             </TableCell>
             <TableCell className='text-right'>
               {item.status === 1 ? (
@@ -738,7 +1166,217 @@ function DepartmentMembersTable({
   )
 }
 
-function DepartmentBudgetPanel() {
+export function DepartmentMemberContextCard({
+  currentDepartment,
+  selectedMember,
+  memberships,
+  loading,
+  onMemberRenamed,
+}: {
+  currentDepartment: DepartmentTreeNode
+  selectedMember: DepartmentMemberItem | null
+  memberships: UserDepartmentItem[]
+  loading: boolean
+  onMemberRenamed?: (userId: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const renderUsernameMessage = (
+    result: { message?: string } | null | undefined
+  ) => __testRenderUsernameMutationMessage(result, t)
+  const renameSchema = createRenameUsernameSchema(t)
+  type RenameFormValues = z.infer<typeof renameSchema>
+  const form = useForm<RenameFormValues>({
+    resolver: zodResolver(
+      renameSchema
+    ) as unknown as Resolver<RenameFormValues>,
+    defaultValues: {
+      tenant_id: currentDepartment.tenant_id ?? 0,
+      new_username: selectedMember?.username ?? '',
+    },
+  })
+
+  useEffect(() => {
+    form.reset({
+      tenant_id: currentDepartment.tenant_id ?? 0,
+      new_username: selectedMember?.username ?? '',
+    })
+  }, [currentDepartment.tenant_id, form, selectedMember?.username])
+
+  const renameMutation = useMutation({
+    mutationFn: async (values: RenameFormValues) => {
+      if (!selectedMember) throw new Error(t('Select a department member'))
+      return renameDepartmentMember(
+        currentDepartment.id,
+        selectedMember.user_id,
+        {
+          tenant_id: values.tenant_id || undefined,
+          new_username: values.new_username.trim(),
+        }
+      )
+    },
+    onSuccess: async (result) => {
+      if (!selectedMember) return
+      if (!result.success) {
+        toast.error(renderUsernameMessage(result))
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: departmentMembersQueryKey(currentDepartment.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: userDepartmentsQueryKey(selectedMember.user_id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetQueryKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetListQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetDetailQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: quotaAllocationQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+      ])
+      onMemberRenamed?.(selectedMember.user_id)
+      toast.success(t('Username updated'))
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Current Member Governance')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Use the current department member context to inspect memberships and drive wallet allocation without typing a user identifier.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {!selectedMember ? (
+          <Empty className='min-h-[220px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Users className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('Select a department member')}</EmptyTitle>
+              <EmptyDescription>
+                {t(
+                  'Choose a member from the current department list to inspect memberships and create wallet allocations without typing a user identifier.'
+                )}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <div className='grid gap-3 md:grid-cols-3'>
+              <DepartmentMetaStat
+                label={t('Current Member')}
+                value={
+                  selectedMember.display_name ||
+                  selectedMember.username ||
+                  `#${selectedMember.user_id}`
+                }
+              />
+              <DepartmentMetaStat
+                label={t('Current department member')}
+                value={t('Selected from {{department}}', {
+                  department: currentDepartment.name,
+                })}
+              />
+              <DepartmentMetaStat
+                label={t('Membership Status')}
+                value={statusLabel(selectedMember.status, t)}
+              />
+            </div>
+            <div className='rounded-lg border p-4'>
+              <div className='mb-3'>
+                <div className='text-sm font-medium'>
+                  {t('Rename Username')}
+                </div>
+                <div className='text-muted-foreground text-xs'>
+                  {t(
+                    'Keep history logs and risk events on their original username snapshots. Current governance views switch to the updated username after refresh.'
+                  )}
+                </div>
+              </div>
+              <Form {...form}>
+                <form
+                  className='grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]'
+                  onSubmit={form.handleSubmit((values) =>
+                    renameMutation.mutate(values)
+                  )}
+                >
+                  <FormField
+                    control={form.control}
+                    name='new_username'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Readable Username')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder={t(
+                              'Use lowercase letters, numbers, or underscores'
+                            )}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className='flex items-end'>
+                    <Button
+                      type='submit'
+                      disabled={!selectedMember || renameMutation.isPending}
+                    >
+                      {t('Update Username')}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </div>
+            {loading ? (
+              <Skeleton className='h-32 w-full' />
+            ) : (
+              <UserDepartmentsTable items={memberships} hasResult />
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DepartmentBudgetPanel({
+  departmentId,
+  departmentName,
+  selectedBudgetId,
+  onSelectedBudgetIdChange,
+  selectedMember,
+}: {
+  departmentId: number
+  departmentName: string
+  selectedBudgetId: number | null
+  onSelectedBudgetIdChange: (budgetId: number | null) => void
+  selectedMember: DepartmentMemberItem | null
+}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const renderApiMessage = (result: ApiResponse<unknown> | null | undefined) =>
@@ -754,7 +1392,7 @@ function DepartmentBudgetPanel() {
     ) as unknown as Resolver<BudgetFormValues>,
     defaultValues: {
       tenant_id: 0,
-      department_id: 1,
+      department_id: departmentId,
       type: 'balance',
       total_quota: 0,
       cycle_quota: 0,
@@ -770,7 +1408,7 @@ function DepartmentBudgetPanel() {
     ) as unknown as Resolver<AllocationFormValues>,
     defaultValues: {
       tenant_id: 0,
-      department_id: 1,
+      department_id: departmentId,
       department_budget_id: 0,
       target_user_id: 0,
       committed_quota: 0,
@@ -778,42 +1416,37 @@ function DepartmentBudgetPanel() {
     },
   })
   const tenantId = form.watch('tenant_id')
-  const departmentId = form.watch('department_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null)
+  const normalizedTenantId = tenantId || 0
+  const previousDepartmentIdRef = useRef(departmentId)
+  const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
+  const previousSelectedMemberIdRef = useRef<number | null>(
+    selectedMember?.user_id ?? null
+  )
 
   const budgetQuery = useQuery({
-    queryKey: [...departmentBudgetQueryKey, tenantId, departmentId],
+    queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
-      if (!departmentId) return null
       const result = await getDepartmentBudget(departmentId, tenantId)
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data?.item ?? null
     },
-    enabled: Boolean(departmentId),
   })
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
 
   const budgetListQuery = useQuery({
-    queryKey: [
-      ...departmentBudgetListQueryKey,
-      tenantId,
+    queryKey: departmentBudgetListQueryKey(
       departmentId,
+      normalizedTenantId,
       sortBy,
-      sortOrder,
-    ],
+      sortOrder
+    ),
     queryFn: async () => {
-      if (!departmentId) {
-        return {
-          items: [],
-          thresholds: { warning: 80, critical: 95 },
-        }
-      }
       const result = await getDepartmentBudgets(departmentId, {
         tenant_id: tenantId || undefined,
         sort_by: sortBy,
@@ -828,24 +1461,22 @@ function DepartmentBudgetPanel() {
         }
       )
     },
-    enabled: Boolean(departmentId),
   })
 
-  const effectiveBudgetId =
-    selectedBudgetId ??
-    budgetListQuery.data?.items[0]?.id ??
-    currentBudgetId ??
-    null
+  const effectiveBudgetId = resolveBudgetSelection(
+    budgetListQuery.data?.items.map((item) => item.id) ?? [],
+    selectedBudgetId,
+    currentBudgetId || null
+  )
 
   const budgetDetailQuery = useQuery({
-    queryKey: [
-      ...departmentBudgetDetailQueryKey,
-      tenantId,
+    queryKey: departmentBudgetDetailQueryKey(
       departmentId,
-      effectiveBudgetId,
-    ],
+      normalizedTenantId,
+      effectiveBudgetId
+    ),
     queryFn: async (): Promise<DepartmentBudgetDetailResponse> => {
-      if (!departmentId || !effectiveBudgetId) {
+      if (!effectiveBudgetId) {
         return {
           budget: null,
           wallets: [],
@@ -873,18 +1504,17 @@ function DepartmentBudgetPanel() {
         }
       )
     },
-    enabled: Boolean(departmentId && effectiveBudgetId),
+    enabled: Boolean(effectiveBudgetId),
   })
 
   const allocationListQuery = useQuery({
-    queryKey: [
-      ...quotaAllocationQueryKey,
-      tenantId,
+    queryKey: quotaAllocationQueryKey(
       departmentId,
-      effectiveBudgetId,
-    ],
+      normalizedTenantId,
+      effectiveBudgetId
+    ),
     queryFn: async () => {
-      if (!effectiveBudgetId || !departmentId) return []
+      if (!effectiveBudgetId) return []
       const result = await getQuotaAllocations(
         effectiveBudgetId,
         tenantId,
@@ -894,7 +1524,7 @@ function DepartmentBudgetPanel() {
         throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
     },
-    enabled: Boolean(effectiveBudgetId && departmentId),
+    enabled: Boolean(effectiveBudgetId),
   })
 
   const createMutation = useMutation({
@@ -921,7 +1551,7 @@ function DepartmentBudgetPanel() {
                   : undefined,
               expires_at: parseDateTimeToUnix(values.expires_at),
             }
-      return createDepartmentBudget(values.department_id, payload)
+      return createDepartmentBudget(departmentId, payload)
     },
     onSuccess: async (result) => {
       if (!result.success) {
@@ -929,20 +1559,22 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetQueryKey,
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetListQueryKey,
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetDetailQueryKey,
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
-      await queryClient.invalidateQueries({
-        queryKey: enterpriseOrganizationQueryKey,
-      })
-      const budgetId = result.data?.item?.id ?? 0
-      setSelectedBudgetId(budgetId || null)
-      allocationForm.setValue('department_budget_id', budgetId)
+      const budgetId = result.data?.item?.id ?? null
+      onSelectedBudgetIdChange(budgetId)
       toast.success(t('Department budget saved'))
     },
   })
@@ -951,7 +1583,7 @@ function DepartmentBudgetPanel() {
     mutationFn: async (values: AllocationFormValues) =>
       createQuotaAllocation({
         tenant_id: Number(values.tenant_id),
-        department_id: Number(values.department_id),
+        department_id: departmentId,
         department_budget_id: Number(values.department_budget_id),
         target_user_id: Number(values.target_user_id),
         committed_quota: Number(values.committed_quota),
@@ -963,15 +1595,26 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetQueryKey,
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetListQueryKey,
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetDetailQueryKey,
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
-      await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
       toast.success(t('Wallet allocation created'))
     },
   })
@@ -988,18 +1631,35 @@ function DepartmentBudgetPanel() {
         return
       }
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetQueryKey,
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetListQueryKey,
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
       await queryClient.invalidateQueries({
-        queryKey: departmentBudgetDetailQueryKey,
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
-      await queryClient.invalidateQueries({ queryKey: quotaAllocationQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
       toast.success(t('Wallet allocation revoked'))
     },
   })
+
+  useEffect(() => {
+    if (form.getValues('department_id') !== departmentId) {
+      form.setValue('department_id', departmentId)
+    }
+  }, [allocationForm, departmentId, form])
 
   useEffect(() => {
     if (allocationForm.getValues('tenant_id') !== tenantId) {
@@ -1008,111 +1668,86 @@ function DepartmentBudgetPanel() {
   }, [allocationForm, tenantId])
 
   useEffect(() => {
-    if (allocationForm.getValues('department_id') !== departmentId) {
-      allocationForm.setValue('department_id', departmentId)
-    }
-  }, [allocationForm, departmentId])
+    if (previousDepartmentIdRef.current === departmentId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: selectedMember?.user_id ?? null,
+        resetMode: 'department-change',
+      })
+    )
+    previousDepartmentIdRef.current = departmentId
+    previousBudgetIdRef.current = effectiveBudgetId
+    previousSelectedMemberIdRef.current = selectedMember?.user_id ?? null
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
 
   useEffect(() => {
-    const nextBudgetId = effectiveBudgetId ?? 0
-    if (allocationForm.getValues('department_budget_id') !== nextBudgetId) {
-      allocationForm.setValue('department_budget_id', nextBudgetId)
+    const normalizedBudgetId = effectiveBudgetId ?? null
+    if (selectedBudgetId !== normalizedBudgetId) {
+      onSelectedBudgetIdChange(normalizedBudgetId)
     }
-  }, [allocationForm, effectiveBudgetId])
+  }, [effectiveBudgetId, onSelectedBudgetIdChange, selectedBudgetId])
 
   useEffect(() => {
-    if (
-      selectedBudgetId !== null &&
-      budgetListQuery.data?.items?.some(
-        (item) => item.id === selectedBudgetId
-      ) === false
-    ) {
-      setSelectedBudgetId(null)
-    }
-  }, [budgetListQuery.data?.items, selectedBudgetId])
+    if (previousBudgetIdRef.current === effectiveBudgetId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: selectedMember?.user_id ?? null,
+        resetMode: 'budget-change',
+      })
+    )
+    previousBudgetIdRef.current = effectiveBudgetId
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
+
+  useEffect(() => {
+    const nextSelectedMemberId = selectedMember?.user_id ?? null
+    if (previousSelectedMemberIdRef.current === nextSelectedMemberId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: nextSelectedMemberId,
+        resetMode: 'member-change',
+      })
+    )
+    previousSelectedMemberIdRef.current = nextSelectedMemberId
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
 
   return (
-    <div className='grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('Department Budget')}</CardTitle>
-          <CardDescription>
-            {t(
-              'Create a balance or subscription budget pool for the selected department.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form
-              className='flex flex-col gap-4'
-              onSubmit={form.handleSubmit((values) =>
-                createMutation.mutate(values)
+    <div className='space-y-4'>
+      <div className='grid gap-4 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('Department Budget')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Create a balance or subscription budget pool for {{department}} without leaving the current department context.',
+                {
+                  department: departmentName,
+                }
               )}
-            >
-              <FormField
-                control={form.control}
-                name='tenant_id'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Tenant ID')}</FormLabel>
-                    <FormControl>
-                      <Input inputMode='numeric' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form
+                className='flex flex-col gap-4'
+                onSubmit={form.handleSubmit((values) =>
+                  createMutation.mutate(values)
                 )}
-              />
-              <FormField
-                control={form.control}
-                name='department_id'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Department ID')}</FormLabel>
-                    <FormControl>
-                      <Input inputMode='numeric' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='type'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Budget Type')}</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(value) =>
-                        field.onChange(value as 'balance' | 'subscription')
-                      }
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value='balance'>
-                          {t('Balance Budget')}
-                        </SelectItem>
-                        <SelectItem value='subscription'>
-                          {t('Subscription Budget')}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {budgetType === 'balance' ? (
+              >
                 <FormField
                   control={form.control}
-                  name='total_quota'
+                  name='tenant_id'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Total Quota')}</FormLabel>
+                      <FormLabel>{t('Tenant ID')}</FormLabel>
                       <FormControl>
                         <Input inputMode='numeric' {...field} />
                       </FormControl>
@@ -1120,14 +1755,43 @@ function DepartmentBudgetPanel() {
                     </FormItem>
                   )}
                 />
-              ) : (
-                <>
+                <FormField
+                  control={form.control}
+                  name='type'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Budget Type')}</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) =>
+                          field.onChange(value as 'balance' | 'subscription')
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value='balance'>
+                            {t('Balance Budget')}
+                          </SelectItem>
+                          <SelectItem value='subscription'>
+                            {t('Subscription Budget')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {budgetType === 'balance' ? (
                   <FormField
                     control={form.control}
-                    name='cycle_quota'
+                    name='total_quota'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Cycle Quota')}</FormLabel>
+                        <FormLabel>{t('Total Quota')}</FormLabel>
                         <FormControl>
                           <Input inputMode='numeric' {...field} />
                         </FormControl>
@@ -1135,62 +1799,14 @@ function DepartmentBudgetPanel() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name='cycle_type'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Cycle Type')}</FormLabel>
-                        <Select
-                          value={field.value}
-                          onValueChange={field.onChange}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value='daily'>{t('Daily')}</SelectItem>
-                            <SelectItem value='weekly'>
-                              {t('Weekly')}
-                            </SelectItem>
-                            <SelectItem value='monthly'>
-                              {t('Monthly')}
-                            </SelectItem>
-                            <SelectItem value='custom'>
-                              {t('Custom (seconds)')}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name='cycle_started_at'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Cycle Start Time')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder='2026-05-29T12:00'
-                            type='datetime-local'
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {cycleType === 'custom' ? (
+                ) : (
+                  <>
                     <FormField
                       control={form.control}
-                      name='custom_seconds'
+                      name='cycle_quota'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                          <FormLabel>{t('Cycle Quota')}</FormLabel>
                           <FormControl>
                             <Input inputMode='numeric' {...field} />
                           </FormControl>
@@ -1198,31 +1814,95 @@ function DepartmentBudgetPanel() {
                         </FormItem>
                       )}
                     />
-                  ) : null}
-                </>
-              )}
-              <FormField
-                control={form.control}
-                name='expires_at'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Expires At (optional)')}</FormLabel>
-                    <FormControl>
-                      <Input type='datetime-local' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                    <FormField
+                      control={form.control}
+                      name='cycle_type'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Cycle Type')}</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value='daily'>
+                                {t('Daily')}
+                              </SelectItem>
+                              <SelectItem value='weekly'>
+                                {t('Weekly')}
+                              </SelectItem>
+                              <SelectItem value='monthly'>
+                                {t('Monthly')}
+                              </SelectItem>
+                              <SelectItem value='custom'>
+                                {t('Custom (seconds)')}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name='cycle_started_at'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Cycle Start Time')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='2026-05-29T12:00'
+                              type='datetime-local'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {cycleType === 'custom' ? (
+                      <FormField
+                        control={form.control}
+                        name='custom_seconds'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                            <FormControl>
+                              <Input inputMode='numeric' {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : null}
+                  </>
                 )}
-              />
-              <Button type='submit' disabled={createMutation.isPending}>
-                <Coins data-icon='inline-start' />
-                {t('Create Budget Pool')}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-      <div className='space-y-4'>
+                <FormField
+                  control={form.control}
+                  name='expires_at'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Expires At (optional)')}</FormLabel>
+                      <FormControl>
+                        <Input type='datetime-local' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type='submit' disabled={createMutation.isPending}>
+                  <Coins data-icon='inline-start' />
+                  {t('Create Budget Pool')}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
         <DepartmentBudgetOverviewCard
           item={budgetQuery.data ?? null}
           selectedBudget={budgetDetailQuery.data?.budget ?? null}
@@ -1231,105 +1911,132 @@ function DepartmentBudgetPanel() {
             budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 }
           }
         />
-        <DepartmentBudgetListCard
-          items={budgetListQuery.data?.items ?? []}
-          loading={budgetListQuery.isLoading}
-          selectedBudgetId={effectiveBudgetId}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onSelectBudget={(budgetId) => setSelectedBudgetId(budgetId)}
-          onSortByChange={setSortBy}
-          onSortOrderChange={setSortOrder}
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('Budget Wallet Detail')}</CardTitle>
-            <CardDescription>
-              {t(
-                'Track the selected budget pool, its derived wallets, and the source allocation chain in one place.'
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <DepartmentBudgetDetailTable
-              budget={budgetDetailQuery.data?.budget ?? null}
-              wallets={budgetDetailQuery.data?.wallets ?? []}
-              loading={budgetDetailQuery.isLoading}
-            />
-            <Form {...allocationForm}>
-              <form
-                className='grid gap-4 md:grid-cols-2'
-                onSubmit={allocationForm.handleSubmit((values) =>
-                  allocationMutation.mutate(values)
-                )}
-              >
-                <FormField
-                  control={allocationForm.control}
-                  name='target_user_id'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Target User ID')}</FormLabel>
-                      <FormControl>
-                        <Input inputMode='numeric' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={allocationForm.control}
-                  name='committed_quota'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Allocation Quota')}</FormLabel>
-                      <FormControl>
-                        <Input inputMode='numeric' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={allocationForm.control}
-                  name='reason'
-                  render={({ field }) => (
-                    <FormItem className='md:col-span-2'>
-                      <FormLabel>{t('Reason')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value ?? ''}
-                          placeholder={t('Optional allocation note')}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className='flex justify-end md:col-span-2'>
-                  <Button
-                    type='submit'
-                    disabled={
-                      !effectiveBudgetId || allocationMutation.isPending
-                    }
-                  >
-                    <CreditCard data-icon='inline-start' />
-                    {t('Create wallet allocation')}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-            <QuotaAllocationTable
-              items={allocationListQuery.data ?? []}
-              loading={allocationListQuery.isLoading}
-              onRevoke={(allocationId) => revokeMutation.mutate(allocationId)}
-              revokePendingId={
-                revokeMutation.isPending ? revokeMutation.variables : null
-              }
-            />
-          </CardContent>
-        </Card>
       </div>
+      <DepartmentBudgetListCard
+        items={budgetListQuery.data?.items ?? []}
+        loading={budgetListQuery.isLoading}
+        selectedBudgetId={effectiveBudgetId}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSelectBudget={onSelectedBudgetIdChange}
+        onSortByChange={setSortBy}
+        onSortOrderChange={setSortOrder}
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Keep budget detail, derived wallets, and current member allocation in one current-department workflow.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <DepartmentBudgetDetailTable
+            budget={budgetDetailQuery.data?.budget ?? null}
+            wallets={budgetDetailQuery.data?.wallets ?? []}
+            loading={budgetDetailQuery.isLoading}
+          />
+          <Form {...allocationForm}>
+            <form
+              className='grid gap-4 md:grid-cols-2'
+              onSubmit={allocationForm.handleSubmit((values) =>
+                allocationMutation.mutate(values)
+              )}
+            >
+              <div className='rounded-lg border p-3 md:col-span-2'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Current Member')}
+                </div>
+                <div className='mt-1 text-sm font-medium'>
+                  {selectedMember
+                    ? selectedMember.display_name ||
+                      selectedMember.username ||
+                      `#${selectedMember.user_id}`
+                    : t('No member selected')}
+                </div>
+                <div className='text-muted-foreground mt-1 text-xs'>
+                  {selectedMember
+                    ? t('Selected from {{department}}', {
+                        department: departmentName,
+                      })
+                    : t(
+                        'Select a member from the current department list before creating a wallet allocation.'
+                      )}
+                </div>
+              </div>
+              <FormField
+                control={allocationForm.control}
+                name='committed_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Allocation Quota')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={allocationForm.control}
+                name='reason'
+                render={({ field }) => (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Reason')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Optional allocation note')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {!effectiveBudgetId ? (
+                <div className='md:col-span-2'>
+                  <Empty className='min-h-[140px] border'>
+                    <EmptyHeader>
+                      <EmptyMedia variant='icon'>
+                        <CreditCard className='size-4' />
+                      </EmptyMedia>
+                      <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
+                      <EmptyDescription>
+                        {t(
+                          'Choose a budget pool in the current department before creating a member wallet allocation.'
+                        )}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                </div>
+              ) : null}
+              <div className='flex justify-end md:col-span-2'>
+                <Button
+                  type='submit'
+                  disabled={
+                    !effectiveBudgetId ||
+                    !selectedMember ||
+                    allocationMutation.isPending
+                  }
+                >
+                  <CreditCard data-icon='inline-start' />
+                  {t('Create wallet allocation')}
+                </Button>
+              </div>
+            </form>
+          </Form>
+          <QuotaAllocationTable
+            items={allocationListQuery.data ?? []}
+            loading={allocationListQuery.isLoading}
+            onRevoke={(allocationId) => revokeMutation.mutate(allocationId)}
+            revokePendingId={
+              revokeMutation.isPending ? revokeMutation.variables : null
+            }
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -1437,7 +2144,7 @@ export function DepartmentBudgetListCard({
   selectedBudgetId: number | null
   sortBy: DepartmentBudgetSortField
   sortOrder: 'asc' | 'desc'
-  onSelectBudget: (budgetId: number) => void
+  onSelectBudget: (budgetId: number | null) => void
   onSortByChange: (field: DepartmentBudgetSortField) => void
   onSortOrderChange: (order: 'asc' | 'desc') => void
 }) {

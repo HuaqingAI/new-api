@@ -34,6 +34,7 @@ export type AlertEventItem = {
   tenant_id: number
   user_id: number
   username: string
+  username_snapshot: string
   request_id: string
   model_name: string
   risk_type: string

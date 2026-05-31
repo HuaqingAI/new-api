@@ -16,10 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { AlertTriangle, GitBranch, History, Link2, Minus } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  History,
+  Link2,
+  Minus,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DEPARTMENT_SOURCE_TYPE,
   DEPARTMENT_STATUS,
@@ -29,10 +37,21 @@ import type { DepartmentTreeNode } from '../types'
 
 interface DepartmentTreeProps {
   nodes: DepartmentTreeNode[]
+  expandedIds?: number[]
+  selectedDepartmentId?: number | null
+  onToggleExpand?: (departmentId: number) => void
+  onSelectDepartment?: (departmentId: number) => void
 }
 
-export function DepartmentTree({ nodes }: DepartmentTreeProps) {
+export function DepartmentTree({
+  nodes,
+  expandedIds = [],
+  selectedDepartmentId = null,
+  onToggleExpand,
+  onSelectDepartment,
+}: DepartmentTreeProps) {
   const { t } = useTranslation()
+  const expandedIdSet = new Set(expandedIds)
 
   return (
     <div className='overflow-x-auto rounded-lg border'>
@@ -45,7 +64,15 @@ export function DepartmentTree({ nodes }: DepartmentTreeProps) {
       </div>
       <div className='min-w-[760px] divide-y'>
         {nodes.map((node) => (
-          <DepartmentTreeRow key={node.id} node={node} level={0} />
+          <DepartmentTreeRow
+            key={node.id}
+            node={node}
+            level={0}
+            expandedIds={expandedIdSet}
+            selectedDepartmentId={selectedDepartmentId}
+            onToggleExpand={onToggleExpand}
+            onSelectDepartment={onSelectDepartment}
+          />
         ))}
       </div>
     </div>
@@ -55,28 +82,65 @@ export function DepartmentTree({ nodes }: DepartmentTreeProps) {
 function DepartmentTreeRow({
   node,
   level,
+  expandedIds,
+  selectedDepartmentId,
+  onToggleExpand,
+  onSelectDepartment,
 }: {
   node: DepartmentTreeNode
   level: number
+  expandedIds: Set<number>
+  selectedDepartmentId: number | null
+  onToggleExpand?: (departmentId: number) => void
+  onSelectDepartment?: (departmentId: number) => void
 }) {
   const { t } = useTranslation()
   const hasChildren = node.children.length > 0
+  const isExpanded = hasChildren ? expandedIds.has(node.id) : false
+  const isSelected = selectedDepartmentId === node.id
 
   return (
     <>
-      <div className='grid grid-cols-[minmax(260px,1.5fr)_120px_130px_160px_120px] gap-3 px-4 py-3 text-sm'>
+      <div
+        className={cn(
+          'grid grid-cols-[minmax(260px,1.5fr)_120px_130px_160px_120px] gap-3 px-4 py-3 text-sm',
+          isSelected ? 'bg-muted/50' : undefined
+        )}
+      >
         <div className='flex min-w-0 items-center gap-2'>
           <div
             className='flex shrink-0 items-center'
             style={{ width: `${level * 22 + 18}px` }}
           >
             {hasChildren ? (
-              <GitBranch className='text-muted-foreground size-4' />
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-7'
+                onClick={() => onToggleExpand?.(node.id)}
+                aria-label={
+                  isExpanded ? t('Collapse department') : t('Expand department')
+                }
+              >
+                {isExpanded ? (
+                  <ChevronDown className='text-muted-foreground size-4' />
+                ) : (
+                  <ChevronRight className='text-muted-foreground size-4' />
+                )}
+              </Button>
             ) : (
               <Minus className='text-muted-foreground/60 size-4' />
             )}
           </div>
-          <div className='min-w-0'>
+          <button
+            type='button'
+            className={cn(
+              'min-w-0 text-left',
+              onSelectDepartment ? 'cursor-pointer' : undefined
+            )}
+            onClick={() => onSelectDepartment?.(node.id)}
+          >
             <div className='truncate font-medium'>{node.name}</div>
             <div className='text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 text-xs'>
               <span>{t('ID {{id}}', { id: node.id })}</span>
@@ -94,7 +158,7 @@ function DepartmentTreeRow({
                 </span>
               ) : null}
             </div>
-          </div>
+          </button>
         </div>
         <div className='flex items-center'>
           <DepartmentStatusBadge status={node.status} />
@@ -112,9 +176,19 @@ function DepartmentTreeRow({
           <SyncStatusBadge node={node} />
         </div>
       </div>
-      {node.children.map((child) => (
-        <DepartmentTreeRow key={child.id} node={child} level={level + 1} />
-      ))}
+      {isExpanded
+        ? node.children.map((child) => (
+            <DepartmentTreeRow
+              key={child.id}
+              node={child}
+              level={level + 1}
+              expandedIds={expandedIds}
+              selectedDepartmentId={selectedDepartmentId}
+              onToggleExpand={onToggleExpand}
+              onSelectDepartment={onSelectDepartment}
+            />
+          ))
+        : null}
     </>
   )
 }

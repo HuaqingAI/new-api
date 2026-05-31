@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterContextProvider,
   createMemoryHistory,
@@ -12,7 +13,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
   __testRenderApiMessage,
+  __testRenderUsernameMutationMessage,
+  DepartmentMemberContextCard,
+  DepartmentSummaryCard,
+  enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
+  EnterpriseOrganizationWorkspace,
   DepartmentBudgetDetailTable,
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
@@ -20,11 +26,24 @@ import {
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
+  createRenameUsernameSchema,
+  normalizeEnterpriseOrganizationSearch,
+  resolveDepartmentMemberSelection,
+  resolveBudgetSelection,
+  syncAllocationFormDraft,
 } from './index'
+import {
+  getAncestorDepartmentIds,
+  getDefaultExpandedDepartmentIds,
+  resolveDepartmentSelection,
+  syncExpandedDepartmentIds,
+  toggleExpandedDepartmentId,
+} from './lib/tree-utils'
 import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
+  DepartmentMemberItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
   QuotaAllocationItem,
@@ -54,40 +73,43 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders a three-level department tree with status, source, external id, and sync state', () => {
-    const html = renderEnterpriseOrganizationContent([
-      departmentNode({
-        id: 1,
-        name: 'Headquarters',
-        status: 1,
-        source_type: 1,
-        external_id: '',
-        sync_status: 1,
-        children: [
-          departmentNode({
-            id: 2,
-            parent_id: 1,
-            name: 'Engineering',
-            status: 2,
-            source_type: 2,
-            external_id: 'dingtalk-engineering',
-            sync_status: 2,
-            name_history: [{ name: 'R&D', changed_at: 1700000000 }],
-            children: [
-              departmentNode({
-                id: 3,
-                parent_id: 2,
-                name: 'Platform',
-                status: 3,
-                source_type: 2,
-                external_id: 'dingtalk-platform',
-                sync_status: 3,
-                sync_error: 'Deleted upstream during sync',
-              }),
-            ],
-          }),
-        ],
-      }),
-    ])
+    const html = renderEnterpriseOrganizationContent(
+      [
+        departmentNode({
+          id: 1,
+          name: 'Headquarters',
+          status: 1,
+          source_type: 1,
+          external_id: '',
+          sync_status: 1,
+          children: [
+            departmentNode({
+              id: 2,
+              parent_id: 1,
+              name: 'Engineering',
+              status: 2,
+              source_type: 2,
+              external_id: 'dingtalk-engineering',
+              sync_status: 2,
+              name_history: [{ name: 'R&D', changed_at: 1700000000 }],
+              children: [
+                departmentNode({
+                  id: 3,
+                  parent_id: 2,
+                  name: 'Platform',
+                  status: 3,
+                  source_type: 2,
+                  external_id: 'dingtalk-platform',
+                  sync_status: 3,
+                  sync_error: 'Deleted upstream during sync',
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+      [1, 2]
+    )
 
     for (const expected of [
       'Department',
@@ -117,6 +139,286 @@ describe('Enterprise organization department tree workflow', () => {
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('search schema accepts valid department and budget identifiers and drops invalid values', () => {
+    const parsed = enterpriseOrganizationSearchSchema.parse({
+      dept_id: '12',
+      budget_id: '34',
+    })
+    assert.equal(parsed.dept_id, 12)
+    assert.equal(parsed.budget_id, 34)
+
+    const invalid = enterpriseOrganizationSearchSchema.parse({
+      dept_id: '0',
+      budget_id: '-2',
+    })
+    assert.equal(invalid.dept_id, undefined)
+    assert.equal(invalid.budget_id, undefined)
+  })
+
+  test('normalizes stale search state for empty trees and invalid department ids', () => {
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments: [],
+        search: {
+          dept_id: 7,
+          budget_id: 12,
+        },
+      }),
+      {
+        dept_id: undefined,
+        budget_id: undefined,
+      }
+    )
+
+    const departments = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+          }),
+        ],
+      }),
+    ]
+
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments,
+        search: {
+          dept_id: 999,
+          budget_id: 12,
+        },
+      }),
+      {
+        dept_id: 1,
+        budget_id: undefined,
+      }
+    )
+  })
+
+  test('resolves department selection, ancestor expansion, and invalid fallback from current tree', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({
+                id: 3,
+                parent_id: 2,
+                name: 'Platform',
+              }),
+            ],
+          }),
+        ],
+      }),
+      departmentNode({
+        id: 4,
+        name: 'Operations',
+      }),
+    ]
+
+    assert.deepEqual(getAncestorDepartmentIds(tree, 3), [1, 2])
+    assert.deepEqual(getDefaultExpandedDepartmentIds(tree, 3), [1, 2, 4])
+
+    const resolved = resolveDepartmentSelection(tree, 3)
+    assert.equal(resolved.selectedDepartmentId, 3)
+    assert.equal(resolved.normalizedDepartmentId, 3)
+    assert.deepEqual(resolved.requiredExpandedIds, [1, 2, 4])
+
+    const fallback = resolveDepartmentSelection(tree, 999)
+    assert.equal(fallback.selectedDepartmentId, 1)
+    assert.equal(fallback.normalizedDepartmentId, 1)
+    assert.deepEqual(fallback.requiredExpandedIds, [1, 4])
+  })
+
+  test('syncs and toggles expanded department state without dropping required ancestors', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({ id: 3, parent_id: 2, name: 'Platform' }),
+            ],
+          }),
+        ],
+      }),
+    ]
+
+    const synced = syncExpandedDepartmentIds([2, 999], tree, [1])
+    assert.deepEqual(synced, [1, 2])
+    assert.deepEqual(toggleExpandedDepartmentId(synced, 2), [1])
+    assert.deepEqual(toggleExpandedDepartmentId([1], 2), [1, 2])
+  })
+
+  test('resolves budget selection within current department context only', () => {
+    assert.equal(resolveBudgetSelection([11, 12], 12, 11), 12)
+    assert.equal(resolveBudgetSelection([11, 12], 99, 12), 12)
+    assert.equal(resolveBudgetSelection([11, 12], 99, 98), 11)
+    assert.equal(resolveBudgetSelection([], 99, 98), null)
+  })
+
+  test('clears stale selected members when the current department member list changes', () => {
+    const engineeringMembers = [
+      departmentMember({
+        id: 1,
+        department_id: 2,
+        user_id: 2001,
+        username: 'alice',
+      }),
+      departmentMember({
+        id: 2,
+        department_id: 2,
+        user_id: 2002,
+        username: 'bob',
+      }),
+    ]
+    const financeMembers = [
+      departmentMember({
+        id: 3,
+        department_id: 8,
+        user_id: 3001,
+        username: 'carol',
+      }),
+    ]
+
+    assert.equal(
+      resolveDepartmentMemberSelection(engineeringMembers, 2002),
+      2002
+    )
+    assert.equal(resolveDepartmentMemberSelection(financeMembers, 2002), null)
+    assert.equal(resolveDepartmentMemberSelection([], 2002), null)
+  })
+
+  test('resets allocation draft when department, budget, or selected member context changes', () => {
+    const current = {
+      tenant_id: 9,
+      department_id: 2,
+      department_budget_id: 12,
+      target_user_id: 2001,
+      committed_quota: 300,
+      reason: 'carry over',
+    }
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 8,
+        selectedBudgetId: null,
+        selectedMemberUserId: null,
+        resetMode: 'department-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 8,
+        department_budget_id: 0,
+        target_user_id: 0,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 2,
+        selectedBudgetId: 19,
+        selectedMemberUserId: 2001,
+        resetMode: 'budget-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 2,
+        department_budget_id: 19,
+        target_user_id: 2001,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 2,
+        selectedBudgetId: 12,
+        selectedMemberUserId: 2002,
+        resetMode: 'member-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 2,
+        department_budget_id: 12,
+        target_user_id: 2002,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+  })
+
+  test('workspace empty state and scoped panels follow current department context', () => {
+    const emptyHtml = renderWorkspace(null, null)
+
+    assert.match(emptyHtml, /No departments yet/)
+
+    const department = departmentNode({
+      id: 7,
+      name: 'Security',
+      parent_id: 1,
+      source_type: 2,
+      external_id: 'dept-security',
+      sync_status: 1,
+      name_history: [{ name: 'InfoSec', changed_at: 1700000000 }],
+    })
+    const parent = departmentNode({
+      id: 1,
+      name: 'Headquarters',
+    })
+    const summaryHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentSummaryCard
+          department={department}
+          parentDepartment={parent}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Current Department Workspace',
+      'Security',
+      'Department ID #7',
+      'Headquarters (#1)',
+      'DingTalk',
+      'InfoSec',
+    ]) {
+      assert.match(summaryHtml, new RegExp(escapeRegExp(expected)))
+    }
+
+    const html = renderWorkspace(department, parent)
+
+    for (const expected of [
+      'Department Members',
+      'Department Budget',
+      'Current Member Governance',
+      'Current Member Wallet Allocation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.doesNotMatch(html, /Membership Lookup/)
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -243,6 +545,22 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(valid.success, true)
   })
 
+  test('rename username schema rejects invalid values and accepts readable usernames', () => {
+    const schema = createRenameUsernameSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      new_username: 'A',
+    })
+    assert.equal(invalid.success, false)
+
+    const valid = schema.safeParse({
+      tenant_id: 0,
+      new_username: 'alice_ops',
+    })
+    assert.equal(valid.success, true)
+  })
+
   test('budget error messaging prefers the specific reason key', () => {
     const payload: ApiResponse<EnterpriseBudgetErrorData> = {
       success: false,
@@ -286,6 +604,20 @@ describe('Enterprise organization department tree workflow', () => {
 
     assert.equal(
       __testRenderApiMessage(null, (key) => key),
+      'Request failed'
+    )
+  })
+
+  test('username mutation messaging prefers translated backend reason key', () => {
+    assert.equal(
+      __testRenderUsernameMutationMessage(
+        { message: 'enterprise.organization.username_exists' },
+        (key) => key
+      ),
+      'enterprise.organization.username_exists'
+    )
+    assert.equal(
+      __testRenderUsernameMutationMessage(null, (key) => key),
       'Request failed'
     )
   })
@@ -605,10 +937,85 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /Expired/)
     assert.match(html, /Already processed/)
   })
+
+  test('renders current member governance states inside the current department context', () => {
+    const department = departmentNode({
+      id: 7,
+      name: 'Security',
+    })
+    const selectedMember = departmentMember({
+      department_id: 7,
+      user_id: 2001,
+      username: 'alice',
+      display_name: 'Alice',
+      status: 1,
+    })
+
+    const emptyHtml = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nextProvider i18n={i18n}>
+          <DepartmentMemberContextCard
+            currentDepartment={department}
+            selectedMember={null}
+            memberships={[]}
+            loading={false}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+    assert.match(emptyHtml, /Select a department member/)
+    assert.match(
+      emptyHtml,
+      /Choose a member from the current department list to inspect memberships and create wallet allocations without typing a user identifier\./
+    )
+
+    const selectedHtml = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nextProvider i18n={i18n}>
+          <DepartmentMemberContextCard
+            currentDepartment={department}
+            selectedMember={selectedMember}
+            memberships={[
+              {
+                id: 91,
+                tenant_id: 0,
+                user_id: 2001,
+                department_id: 7,
+                department_name: 'Security',
+                external_user_id: '',
+                external_source: 'dingtalk',
+                status: 1,
+                joined_at: 1700000000,
+                left_at: 0,
+                created_at: 1700000000,
+                updated_at: 1700000001,
+              },
+            ]}
+            loading={false}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+
+    for (const expected of [
+      'Current Member Governance',
+      'Alice',
+      'Current department member',
+      'Selected from Security',
+      'Rename Username',
+      'Readable Username',
+      'Update Username',
+      'Department',
+      'Membership Status',
+    ]) {
+      assert.match(selectedHtml, new RegExp(escapeRegExp(expected)))
+    }
+  })
 })
 
 function renderEnterpriseOrganizationContent(
-  departments: DepartmentTreeNode[]
+  departments: DepartmentTreeNode[],
+  expandedIds?: number[]
 ) {
   return renderToStaticMarkup(
     <RouterContextProvider router={testRouter}>
@@ -616,8 +1023,30 @@ function renderEnterpriseOrganizationContent(
         <EnterpriseOrganizationContent
           isLoading={false}
           departments={departments}
+          expandedIds={expandedIds}
         />
       </I18nextProvider>
+    </RouterContextProvider>
+  )
+}
+
+function renderWorkspace(
+  currentDepartment: DepartmentTreeNode | null,
+  parentDepartment: DepartmentTreeNode | null
+) {
+  const queryClient = new QueryClient()
+  return renderToStaticMarkup(
+    <RouterContextProvider router={testRouter}>
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={i18n}>
+          <EnterpriseOrganizationWorkspace
+            currentDepartment={currentDepartment}
+            parentDepartment={parentDepartment}
+            selectedBudgetId={null}
+            onSelectedBudgetIdChange={() => undefined}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
     </RouterContextProvider>
   )
 }
@@ -664,6 +1093,27 @@ function departmentBudget(
     parent_status: overrides.parent_status ?? '',
     usage_ratio: overrides.usage_ratio ?? 0,
     threshold_state: overrides.threshold_state ?? 'healthy',
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function departmentMember(
+  overrides: Partial<DepartmentMemberItem> &
+    Pick<DepartmentMemberItem, 'department_id' | 'user_id'>
+): DepartmentMemberItem {
+  return {
+    id: overrides.id ?? overrides.user_id,
+    tenant_id: overrides.tenant_id ?? 0,
+    user_id: overrides.user_id,
+    username: overrides.username ?? `user-${overrides.user_id}`,
+    display_name: overrides.display_name ?? '',
+    department_id: overrides.department_id,
+    external_user_id: overrides.external_user_id ?? '',
+    external_source: overrides.external_source ?? 'manual',
+    status: overrides.status ?? 1,
+    joined_at: overrides.joined_at ?? 1700000000,
+    left_at: overrides.left_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -376,41 +375,27 @@ func (s *DingTalkOAuthService) findUniqueUserByEmail(email string) (*model.User,
 }
 
 func (s *DingTalkOAuthService) availableDingTalkUsername(identity DingTalkOAuthIdentity) string {
-	candidate := strings.TrimSpace(identity.ExternalUserId)
-	if candidate == "" {
-		candidate = strings.TrimSpace(identity.UnionId)
-	}
-	if candidate == "" {
-		candidate = strings.TrimSpace(identity.OpenId)
-	}
-	candidate = normalizeDingTalkUsername(candidate)
-	if candidate == "" {
-		candidate = "dingtalk"
-	}
+	base := firstReadableEnterpriseUsername(
+		identity.Name,
+		identity.Email,
+		identity.Mobile,
+		identity.ExternalUserId,
+		identity.UnionId,
+		identity.OpenId,
+	)
+	return resolveAvailableEnterpriseUsername(
+		base,
+		identity.ExternalUserId,
+		identity.UnionId,
+		identity.OpenId,
+		identity.Mobile,
+	)
+}
 
-	prefix := "dt_" + candidate
-	if len(prefix) > model.UserNameMaxLength {
-		prefix = prefix[:model.UserNameMaxLength]
-	}
-	if exists, err := model.CheckUserExistOrDeleted(prefix, ""); err == nil && !exists {
-		return prefix
-	}
-	for i := 0; i < 20; i++ {
-		suffix := strconv.Itoa(model.GetMaxUserId() + 1 + i)
-		baseLen := model.UserNameMaxLength - len(suffix) - 1
-		if baseLen < 2 {
-			baseLen = 2
-		}
-		base := prefix
-		if len(base) > baseLen {
-			base = base[:baseLen]
-		}
-		username := base + "_" + suffix
-		if exists, err := model.CheckUserExistOrDeleted(username, ""); err == nil && !exists {
-			return username
-		}
-	}
-	return fmt.Sprintf("dt_%d", time.Now().UnixNano()%100000000)
+// AvailableReadableUsernameForTest exposes the current DingTalk username policy
+// to service-level tests without widening the production API surface.
+func (s *DingTalkOAuthService) AvailableReadableUsernameForTest(identity DingTalkOAuthIdentity) string {
+	return s.availableDingTalkUsername(identity)
 }
 
 func (s *DingTalkOAuthService) readLocalDingTalkMembershipSnapshot(tenantId int, userId int, externalUserId string) ([]UserDepartmentItem, error) {
@@ -447,22 +432,6 @@ func dingTalkIdentityKey(identity DingTalkOAuthIdentity) string {
 		return "union:" + strings.TrimSpace(identity.UnionId)
 	}
 	return "open:" + strings.TrimSpace(identity.OpenId)
-}
-
-func normalizeDingTalkUsername(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	var builder strings.Builder
-	for _, r := range value {
-		switch {
-		case r >= 'a' && r <= 'z':
-			builder.WriteRune(r)
-		case r >= '0' && r <= '9':
-			builder.WriteRune(r)
-		case r == '_' || r == '-':
-			builder.WriteRune('_')
-		}
-	}
-	return strings.Trim(builder.String(), "_")
 }
 
 func firstNonEmpty(values ...string) string {

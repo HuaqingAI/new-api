@@ -168,6 +168,13 @@ func (s *ExposureService) Update(resourceID string, targetKey string, input Upda
 	return mapExposureItem(exposure), nil
 }
 
+func (s *ExposureService) Revoke(resourceID string, targetKey string) (ExposureItem, error) {
+	return s.Update(resourceID, targetKey, UpdateExposureInput{
+		VisibilityState: apmodel.ExposureVisibilityRevoked,
+		CallableState:   apmodel.ExposureCallableRevoked,
+	})
+}
+
 func (s *ExposureService) Get(resourceID string, targetKey string) (ExposureItem, error) {
 	if s == nil || s.db == nil {
 		return ExposureItem{}, ErrInvalidExposureInput

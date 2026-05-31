@@ -58,6 +58,39 @@ func TestExposureServiceCreatesAndUpdatesStubTargetProjection(t *testing.T) {
 	require.NotNil(t, updated.RevokedAt)
 }
 
+func TestExposureServiceKeepsTargetsIndependentOnRevoke(t *testing.T) {
+	svc, _, resource := newExposureServiceForTest(t)
+
+	_, err := svc.Create(resource.ResourceId, CreateExposureInput{
+		ResourceVersion:     "1.0.0",
+		ClientKey:           "client-a",
+		ClientScope:         "placeholder",
+		VisibilityState:     apmodel.ExposureVisibilityVisible,
+		CallableState:       apmodel.ExposureCallableEnabled,
+		FreshnessTTLSeconds: 300,
+	})
+	require.NoError(t, err)
+	_, err = svc.Create(resource.ResourceId, CreateExposureInput{
+		ResourceVersion:     "1.0.0",
+		ClientKey:           "client-b",
+		ClientScope:         "placeholder",
+		VisibilityState:     apmodel.ExposureVisibilityVisible,
+		CallableState:       apmodel.ExposureCallableEnabled,
+		FreshnessTTLSeconds: 300,
+	})
+	require.NoError(t, err)
+
+	revoked, err := svc.Revoke(resource.ResourceId, "client-a")
+	require.NoError(t, err)
+	require.Equal(t, apmodel.ExposureVisibilityRevoked, revoked.VisibilityState)
+	require.Equal(t, apmodel.ExposureCallableRevoked, revoked.CallableState)
+
+	clientB, err := svc.Get(resource.ResourceId, "client-b")
+	require.NoError(t, err)
+	require.Equal(t, apmodel.ExposureVisibilityVisible, clientB.VisibilityState)
+	require.Equal(t, apmodel.ExposureCallableEnabled, clientB.CallableState)
+}
+
 func TestExposureServiceRejectsInvalidStates(t *testing.T) {
 	svc, _, resource := newExposureServiceForTest(t)
 

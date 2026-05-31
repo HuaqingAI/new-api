@@ -19,6 +19,7 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.POST("/resources/:id/exposures", controlleragentplatform.CreateExposure)
 		agentPlatformRoute.GET("/resources/:id/exposures/:target", controlleragentplatform.GetExposure)
 		agentPlatformRoute.PUT("/resources/:id/exposures/:target", controlleragentplatform.UpdateExposure)
+		agentPlatformRoute.POST("/resources/:id/exposures/:target/revoke", controlleragentplatform.RevokeExposure)
 		agentPlatformRoute.POST("/resources/:id/publish", controlleragentplatform.PublishResource)
 		agentPlatformRoute.POST("/resources/:id/disable", controlleragentplatform.DisableResource)
 		agentPlatformRoute.POST("/resources/:id/revoke", controlleragentplatform.RevokeResource)

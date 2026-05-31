@@ -59,6 +59,7 @@ func setupExposureControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.R
 	router.GET("/api/agent-platform/resources/:id/exposures", ListExposures)
 	router.GET("/api/agent-platform/resources/:id/exposures/:target", GetExposure)
 	router.PUT("/api/agent-platform/resources/:id/exposures/:target", UpdateExposure)
+	router.POST("/api/agent-platform/resources/:id/exposures/:target/revoke", RevokeExposure)
 	return router, db, resource
 }
 
@@ -125,6 +126,23 @@ func TestExposureAPIWorkflow(t *testing.T) {
 	require.True(t, updateResp.Success, updateResp.Message)
 	updated := decodeExposureData[dtoagentplatform.ExposureItem](t, updateResp)
 	require.Equal(t, apmodel.ExposureVisibilityHidden, updated.VisibilityState)
+
+	recreate := performExposureRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+resource.ResourceId+"/exposures", dtoagentplatform.CreateExposureRequest{
+		ResourceVersion: "1.0.0",
+		ClientKey:       "client-b",
+		ClientScope:     "placeholder",
+		VisibilityState: apmodel.ExposureVisibilityVisible,
+		CallableState:   apmodel.ExposureCallableEnabled,
+	})
+	recreateResp := decodeExposureAPIResponse(t, recreate)
+	require.True(t, recreateResp.Success, recreateResp.Message)
+
+	revoke := performExposureRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+resource.ResourceId+"/exposures/client-b/revoke", nil)
+	revokeResp := decodeExposureAPIResponse(t, revoke)
+	require.True(t, revokeResp.Success, revokeResp.Message)
+	revoked := decodeExposureData[dtoagentplatform.ExposureItem](t, revokeResp)
+	require.Equal(t, apmodel.ExposureVisibilityRevoked, revoked.VisibilityState)
+	require.Equal(t, apmodel.ExposureCallableRevoked, revoked.CallableState)
 }
 
 func TestExposureAPIRejectsInvalidState(t *testing.T) {

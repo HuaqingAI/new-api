@@ -53,6 +53,15 @@ func UpdateExposure(c *gin.Context) {
 	common.ApiSuccess(c, mapExposureItem(item))
 }
 
+func RevokeExposure(c *gin.Context) {
+	item, err := exposureService().Revoke(c.Param("id"), c.Param("target"))
+	if err != nil {
+		writeExposureError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapExposureItem(item))
+}
+
 func GetExposure(c *gin.Context) {
 	item, err := exposureService().Get(c.Param("id"), c.Param("target"))
 	if err != nil {

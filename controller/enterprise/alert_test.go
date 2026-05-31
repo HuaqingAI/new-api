@@ -61,6 +61,48 @@ func TestAlertEventsAPIReturnsEmptyItemsArray(t *testing.T) {
 	require.JSONEq(t, `{"items":[],"total":0,"page":1,"page_size":20}`, string(response.Data))
 }
 
+func TestAlertEventsAPISupportsEventIDFilter(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	first := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       100,
+		Username:     "alice",
+		RequestId:    "req-alert-1",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "first",
+		CreatedAt:    1717117201,
+		UpdatedAt:    1717117201,
+	}
+	second := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       101,
+		Username:     "bob",
+		RequestId:    "req-alert-2",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "second",
+		CreatedAt:    1717117202,
+		UpdatedAt:    1717117202,
+	}
+	require.NoError(t, first.SetDepartmentSnapshot(nil))
+	require.NoError(t, second.SetDepartmentSnapshot(nil))
+	require.NoError(t, db.Create(&first).Error)
+	require.NoError(t, db.Create(&second).Error)
+
+	ok := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/events?event_id=2&page=1&page_size=20", nil)
+	okResponse := decodeEnterpriseAPIResponse(t, ok)
+	require.True(t, okResponse.Success, okResponse.Message)
+
+	payload := decodeEnterpriseData[dtoenterprise.AlertEventsResponse](t, okResponse)
+	require.Len(t, payload.Items, 1)
+	require.Equal(t, 2, payload.Items[0].Id)
+	require.Equal(t, "bob", payload.Items[0].Username)
+}
+
 func TestDepartmentRiskSummaryAPIValidatesQueryAndReturnsOverviewEnvelope(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 
@@ -182,7 +224,7 @@ func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
 	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, payload.Items[0].Status)
 	require.NotNil(t, payload.Items[0].Trace)
 	require.Equal(t, "req-1", payload.Items[0].Trace.RequestId)
-	require.Equal(t, "Engineering (#1) · req-1 · /enterprise-alerts?event_id=1", payload.Items[0].TraceSummary)
+	require.Equal(t, "Engineering (#1) · req-1 · /enterprise-alerts?tab=events&event_id=1", payload.Items[0].TraceSummary)
 }
 
 func TestAlertDeliveryResendAPICreatesManualDeliveryAndWritesAudit(t *testing.T) {

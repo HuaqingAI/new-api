@@ -96,6 +96,13 @@ func TestEnterpriseAlertsAPIHonorsTenantScopeAndEmptyResult(t *testing.T) {
 	require.Len(t, response.Items, 1)
 	require.NotNil(t, response.Items[0].DepartmentSnapshot)
 	require.Empty(t, response.Items[0].DepartmentSnapshot)
+
+	byEvent := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/events?tenant_id=7&event_id=1&page=1&page_size=20", adminCookies)
+	byEventPayload := decodeAdminActionsAPIResponse(t, byEvent)
+	require.True(t, byEventPayload.Success, byEventPayload.Message)
+	require.NoError(t, common.Unmarshal(byEventPayload.Data, &response))
+	require.Len(t, response.Items, 1)
+	require.Equal(t, "tenant-user", response.Items[0].Username)
 }
 
 func TestEnterpriseDepartmentRiskSummaryAPIRequiresEnterpriseAdminAndReturnsDrilldownContext(t *testing.T) {
@@ -281,7 +288,7 @@ func TestEnterpriseAlertDeliveriesAPIRequiresEnterpriseAdminAndSanitizesTracePay
 	require.Equal(t, "req-delivery-1", response.Items[0].Trace.RequestId)
 	require.Equal(t, "webhook", response.Items[0].ChannelType)
 	require.Equal(t, "webhook request failed", response.Items[0].ErrorReason)
-	require.Equal(t, "Unassigned · req-delivery-1 · /enterprise-alerts?event_id=77", response.Items[0].TraceSummary)
+	require.Equal(t, "Unassigned · req-delivery-1 · /enterprise-alerts?tab=events&event_id=77&tenant_id=7", response.Items[0].TraceSummary)
 }
 
 func TestEnterpriseAlertDeliveryResendAPIRequiresEnterpriseAdminAndCreatesManualDelivery(t *testing.T) {

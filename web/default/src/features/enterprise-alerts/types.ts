@@ -219,6 +219,7 @@ export type AlertRuleUpsertRequest = {
 export type EnterpriseAlertsSearch = {
   tab?: 'overview' | 'events' | 'deliveries' | 'rules'
   tenant_id?: number
+  event_id?: number
   department_id?: number
   unassigned_only?: boolean
   user_id?: number

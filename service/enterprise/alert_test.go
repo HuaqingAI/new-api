@@ -304,6 +304,49 @@ func TestAlertServiceListAlertEventsSupportsCombinedFiltersAndEmptySnapshotArray
 	require.Equal(t, "policy only", result.Items[0].Summary)
 }
 
+func TestAlertServiceListAlertEventsSupportsEventIDFilter(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	first := entmodel.AlertEvent{
+		TenantId:     7,
+		UserId:       99,
+		Username:     "delta",
+		RequestId:    "req-event-filter-1",
+		ModelName:    "gpt-4.1",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "first",
+		CreatedAt:    1717117208,
+		UpdatedAt:    1717117208,
+	}
+	second := entmodel.AlertEvent{
+		TenantId:     7,
+		UserId:       100,
+		Username:     "echo",
+		RequestId:    "req-event-filter-2",
+		ModelName:    "gpt-4.1",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "second",
+		CreatedAt:    1717117209,
+		UpdatedAt:    1717117209,
+	}
+	require.NoError(t, first.SetDepartmentSnapshot(nil))
+	require.NoError(t, second.SetDepartmentSnapshot(nil))
+	require.NoError(t, db.Create(&first).Error)
+	require.NoError(t, db.Create(&second).Error)
+
+	eventID := second.Id
+	result, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId: 7,
+		EventId:  &eventID,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, second.Id, result.Items[0].Id)
+	require.Equal(t, "echo", result.Items[0].Username)
+}
+
 func TestAlertServiceListAlertEventsFallsBackToSnapshotForLegacyRowsWithoutTokens(t *testing.T) {
 	service, db := setupAlertServiceTest(t)
 
@@ -543,6 +586,55 @@ func TestAlertServiceGetDepartmentRiskSummaryExcludesEventsAtUpperBound(t *testi
 	}
 	require.Equal(t, int64(1), itemsByName["Engineering"].RiskEventCount)
 	require.Equal(t, int64(1), result.Trend[0].RiskEventCount)
+}
+
+func TestAlertServiceEnqueueAlertDeliveriesProcessesLaterBatches(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "alice", Password: "password123", Group: "default", AffCode: "alice-aff"}).Error)
+	require.NoError(t, db.Create(&entmodel.Department{Id: 11, TenantId: 0, Name: "Engineering", Status: 1, SourceType: 1, NameHistory: "[]"}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{TenantId: 0, UserId: 1001, DepartmentId: 11, ExternalSource: "manual", Status: 1}).Error)
+
+	_, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:      0,
+		Name:          "Email abuse",
+		RiskTypes:     []string{"abuse"},
+		DepartmentIds: []int{11},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{Type: entmodel.AlertRuleChannelEmail, Receivers: []string{"ops@example.com"}},
+		},
+		ActorId: 999,
+	})
+	require.NoError(t, err)
+
+	for idx := 0; idx < 3; idx++ {
+		event := entmodel.AlertEvent{
+			TenantId:     0,
+			UserId:       1001,
+			Username:     "alice",
+			RequestId:    string(rune('a' + idx)),
+			ModelName:    "gpt-4o-mini",
+			RiskType:     "abuse",
+			ActionResult: AlertActionBlocked,
+			Summary:      "policy only",
+			CreatedAt:    1717117200 + int64(idx),
+			UpdatedAt:    1717117200 + int64(idx),
+		}
+		require.NoError(t, event.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+			{DepartmentId: 11, DepartmentName: "Engineering"},
+		}))
+		require.NoError(t, db.Create(&event).Error)
+	}
+
+	created, err := service.EnqueueAlertDeliveriesForPendingEvents(time.Unix(1717117210, 0), 24*time.Hour, 1)
+	require.NoError(t, err)
+	require.Equal(t, 3, created)
+
+	var deliveries []entmodel.AlertDelivery
+	require.NoError(t, db.Order("event_id ASC").Find(&deliveries).Error)
+	require.Len(t, deliveries, 3)
+	require.Equal(t, 1, deliveries[0].EventId)
+	require.Equal(t, 2, deliveries[1].EventId)
+	require.Equal(t, 3, deliveries[2].EventId)
 }
 
 func TestAlertServiceSaveAlertRuleValidatesAndMasksSecrets(t *testing.T) {

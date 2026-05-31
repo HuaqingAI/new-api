@@ -78,10 +78,6 @@ function buildRulePayload(draft) {
           .map((item) => item.trim())
           .filter(Boolean),
       },
-      {
-        type: 'webhook',
-        enabled: false,
-      },
     ],
   };
 }
@@ -103,6 +99,7 @@ export default function EnterpriseAlerts() {
     setLoading(true);
     try {
       const res = await getAlertEvents({
+        event_id: values.event_id || undefined,
         department_id: values.department_id || undefined,
         unassigned_only: values.unassigned_only || undefined,
         user_id: values.user_id || undefined,
@@ -173,9 +170,9 @@ export default function EnterpriseAlerts() {
     }
   }
 
-  async function loadDeliveries() {
+  async function loadDeliveries(params = { status: 'final_failed' }) {
     try {
-      const res = await getAlertDeliveries({ page: 1, page_size: 20, status: 'final_failed' });
+      const res = await getAlertDeliveries({ page: 1, page_size: 20, ...params });
       if (!res.success) {
         showError(res.message);
         return;
@@ -195,7 +192,7 @@ export default function EnterpriseAlerts() {
         return;
       }
       showSuccess(t(res.data?.created ? '已创建重发投递' : '已有未完成的人工重发'));
-      await loadDeliveries();
+      await loadDeliveries({ event_id: record.event_id });
     } catch (error) {
       showError(error.message);
     } finally {

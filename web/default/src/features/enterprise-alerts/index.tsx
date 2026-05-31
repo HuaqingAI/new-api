@@ -128,6 +128,7 @@ import type {
 export const enterpriseAlertsSearchSchema = z.object({
   tab: z.enum(['overview', 'events', 'deliveries', 'rules']).optional().catch(undefined),
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
+  event_id: z.coerce.number().int().positive().optional().catch(undefined),
   department_id: z.coerce.number().int().positive().optional().catch(undefined),
   unassigned_only: z.coerce.boolean().optional().catch(undefined),
   user_id: z.coerce.number().int().positive().optional().catch(undefined),
@@ -187,6 +188,7 @@ export function mapAlertFilterFormToSearch(values: AlertFilterFormValues) {
   return {
     tab: 'events' as const,
     tenant_id: parseOptionalNumber(values.tenant_id),
+    event_id: undefined,
     department_id: parseOptionalNumber(values.department_id),
     unassigned_only: undefined,
     user_id: parseOptionalNumber(values.user_id),
@@ -365,6 +367,7 @@ export function buildAlertEventEntrySearch(
   return {
     tab: 'events',
     tenant_id: previous.tenant_id,
+    event_id: undefined,
     department_id: entry.department_id,
     unassigned_only: entry.unassigned_only || undefined,
     from: entry.from,

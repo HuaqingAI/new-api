@@ -28,6 +28,7 @@ func ListAlertEvents(c *gin.Context) {
 
 	result, err := entservice.NewAlertService(model.DB).ListAlertEvents(entservice.AlertEventQuery{
 		TenantId:     tenantId,
+		EventId:      query.EventId,
 		DepartmentId: query.DepartmentId,
 		UnassignedOnly: query.UnassignedOnly,
 		UserId:       query.UserId,

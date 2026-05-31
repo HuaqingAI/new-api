@@ -2,6 +2,7 @@ package enterprise
 
 type AlertEventQuery struct {
 	TenantId     *int    `form:"tenant_id"`
+	EventId      *int    `form:"event_id,omitempty"`
 	DepartmentId *int    `form:"department_id,omitempty"`
 	UnassignedOnly *bool `form:"unassigned_only,omitempty"`
 	UserId       *int    `form:"user_id,omitempty"`

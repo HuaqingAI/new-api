@@ -31,5 +31,7 @@ describe('Enterprise alerts classic helpers', () => {
     assert.match(source, /unassigned_only:\s*value\?\.unassigned_only\s*\|\|\s*undefined/);
     assert.match(source, /from:\s*value\?\.from\s*\|\|\s*undefined/);
     assert.match(source, /to:\s*value\?\.to\s*\|\|\s*undefined/);
+    assert.match(source, /loadDeliveries\(\{\s*event_id:\s*record\.event_id\s*\}\)/);
+    assert.doesNotMatch(source, /type:\s*'webhook'\s*,\s*enabled:\s*false/);
   });
 });

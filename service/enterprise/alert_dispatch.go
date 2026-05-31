@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -106,6 +107,7 @@ func (s *AlertDispatchService) DispatchDueDeliveries(ctx context.Context, limit 
 }
 
 func (s *AlertDispatchService) dispatchDelivery(ctx context.Context, delivery *entmodel.AlertDelivery) (string, error) {
+	nowUnix := s.now().Unix()
 	trace, err := delivery.ParsedTracePayload()
 	if err != nil {
 		return "", err
@@ -113,18 +115,24 @@ func (s *AlertDispatchService) dispatchDelivery(ctx context.Context, delivery *e
 	if trace == nil {
 		trace = &entmodel.AlertDeliveryTracePayload{}
 	}
+	normalizeAlertTracePayloadDetailPaths(trace)
 
 	rule, err := loadAlertRuleByID(s.db, delivery.TenantId, delivery.RuleId)
 	if err != nil {
+		if errors.Is(err, ErrAlertRuleNotFound) {
+			return s.markDeliveryConfigurationFailure(delivery, nowUnix, err)
+		}
 		return "", err
 	}
 	channelConfig, err := findAlertRuleChannelConfig(rule, delivery.ChannelType)
 	if err != nil {
+		if errors.Is(err, ErrAlertRuleNotFound) {
+			return s.markDeliveryConfigurationFailure(delivery, nowUnix, err)
+		}
 		return "", err
 	}
 
 	notify := buildAlertNotifyPayload(delivery, trace)
-	nowUnix := s.now().Unix()
 	delivery.AttemptCount++
 	delivery.LastAttemptAt = nowUnix
 
@@ -181,6 +189,38 @@ func (s *AlertDispatchService) dispatchDelivery(ctx context.Context, delivery *e
 		errorReason,
 	))
 	return nextStatus, nil
+}
+
+func (s *AlertDispatchService) markDeliveryConfigurationFailure(delivery *entmodel.AlertDelivery, nowUnix int64, reason error) (string, error) {
+	attemptCount := delivery.AttemptCount + 1
+	if attemptCount < 1 {
+		attemptCount = 1
+	}
+	if delivery.MaxAttempts > 0 && attemptCount > delivery.MaxAttempts {
+		attemptCount = delivery.MaxAttempts
+	}
+	errorReason := summarizeAlertDispatchError(reason)
+	updates := map[string]any{
+		"status":          entmodel.AlertDeliveryStatusFinalFailed,
+		"attempt_count":   attemptCount,
+		"last_attempt_at": nowUnix,
+		"next_retry_at":   0,
+		"final_failed_at": nowUnix,
+		"error_reason":    errorReason,
+		"updated_at":      nowUnix,
+	}
+	if err := s.db.Model(delivery).Updates(updates).Error; err != nil {
+		return "", err
+	}
+	common.SysLog(fmt.Sprintf(
+		"enterprise alert delivery permanently failed: delivery_id=%d event_id=%d rule_id=%d channel_type=%s error=%s",
+		delivery.Id,
+		delivery.EventId,
+		delivery.RuleId,
+		delivery.ChannelType,
+		errorReason,
+	))
+	return entmodel.AlertDeliveryStatusFinalFailed, nil
 }
 
 func (s *AlertDispatchService) sendDeliveryByChannel(channel entmodel.AlertRuleChannelConfig, notify dto.Notify) error {

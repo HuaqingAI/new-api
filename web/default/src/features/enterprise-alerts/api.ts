@@ -60,6 +60,7 @@ export async function getAlertEvents(
     params: {
       ...(search.tab ? { tab: search.tab } : {}),
       ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.event_id === undefined ? {} : { event_id: search.event_id }),
       ...(search.department_id === undefined
         ? {}
         : { department_id: search.department_id }),

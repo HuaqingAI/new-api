@@ -52,6 +52,7 @@ type alertEventRow struct {
 
 type AlertEventQuery struct {
 	TenantId     int
+	EventId      *int
 	DepartmentId *int
 	UnassignedOnly *bool
 	UserId       *int
@@ -344,6 +345,9 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 		return AlertEventListResult{Items: []AlertEventItem{}}, nil
 	}
 	if query.TenantId < 0 {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
+	if query.EventId != nil && *query.EventId <= 0 {
 		return AlertEventListResult{}, ErrInvalidAlertEventQuery
 	}
 	if query.DepartmentId != nil && *query.DepartmentId <= 0 {
@@ -987,6 +991,7 @@ func (s *AlertService) ResendAlertDelivery(tenantId int, deliveryId int, actorId
 	if err != nil {
 		return AlertDeliveryResendResult{}, err
 	}
+	normalizeAlertTracePayloadDetailPaths(tracePayload)
 	if err := child.SetTracePayload(tracePayload); err != nil {
 		return AlertDeliveryResendResult{}, err
 	}
@@ -1023,20 +1028,19 @@ func (s *AlertService) EnqueueAlertDeliveriesForPendingEvents(now time.Time, loo
 		db = db.Where("created_at >= ?", minCreatedAt)
 	}
 
-	var events []entmodel.AlertEvent
-	if err := db.Order("created_at ASC, id ASC").Limit(batchSize).Find(&events).Error; err != nil {
-		return 0, err
-	}
-
 	created := 0
-	for _, event := range events {
-		count, err := s.enqueueDeliveriesForEvent(event, now)
-		if err != nil {
-			return created, err
+	var events []entmodel.AlertEvent
+	err := db.Order("created_at ASC, id ASC").FindInBatches(&events, batchSize, func(tx *gorm.DB, batch int) error {
+		for _, event := range events {
+			count, err := s.enqueueDeliveriesForEvent(event, now)
+			if err != nil {
+				return err
+			}
+			created += count
 		}
-		created += count
-	}
-	return created, nil
+		return nil
+	}).Error
+	return created, err
 }
 
 func (s *AlertService) enqueueDeliveriesForEvent(event entmodel.AlertEvent, now time.Time) (int, error) {
@@ -1203,6 +1207,9 @@ func sanitizeRiskSummary(riskType string, summary string, hits []string) string 
 }
 
 func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
+	if query.EventId != nil {
+		db = db.Where("id = ?", *query.EventId)
+	}
 	if query.UnassignedOnly != nil && *query.UnassignedOnly {
 		db = db.Where("(department_tokens = ? OR department_tokens = '' OR department_tokens IS NULL)", "|")
 	}
@@ -1483,7 +1490,7 @@ func normalizeAlertRuleChannels(inputs []AlertRuleChannelInput, existing map[str
 		if existingEmail, ok := existing[entmodel.AlertRuleChannelEmail]; ok {
 			byType[entmodel.AlertRuleChannelEmail] = AlertRuleChannelInput{
 				Type:      entmodel.AlertRuleChannelEmail,
-				Enabled:   boolPtr(existingEmail.Enabled),
+				Enabled:   boolPointer(existingEmail.Enabled),
 				Receivers: append([]string{}, existingEmail.Receivers...),
 			}
 		}
@@ -1533,7 +1540,7 @@ func normalizeAlertRuleChannels(inputs []AlertRuleChannelInput, existing map[str
 	return channels, nil
 }
 
-func boolPtr(value bool) *bool {
+func boolPointer(value bool) *bool {
 	return &value
 }
 
@@ -1715,6 +1722,7 @@ func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, e
 	}
 	var trace *AlertDeliveryTraceItem
 	if tracePayload != nil {
+		normalizeAlertTracePayloadDetailPaths(tracePayload)
 		trace = &AlertDeliveryTraceItem{
 			EventId:            tracePayload.EventId,
 			RequestId:          tracePayload.RequestId,
@@ -1904,8 +1912,8 @@ func buildAlertDeliveryFromMatch(
 		EventSummary:       event.Summary,
 		RuleId:             matched.Rule.Id,
 		RuleName:           matched.Rule.Name,
-		DetailRoute:        fmt.Sprintf("/enterprise-alerts?event_id=%d", event.Id),
-		DetailAPIPath:      fmt.Sprintf("/api/enterprise/alerts/events?tenant_id=%d&page=1&page_size=20", event.TenantId),
+		DetailRoute:        buildAlertEventDetailRoute(event),
+		DetailAPIPath:      buildAlertEventDetailAPIPath(event),
 	}
 
 	delivery := entmodel.AlertDelivery{
@@ -1936,6 +1944,38 @@ func buildAlertDeliveryDedupeKey(tenantId int, eventId int, ruleId int, channelT
 		channelType,
 		strconv.FormatInt(bucketStart, 10),
 	}, ":")
+}
+
+func buildAlertEventDetailRoute(event entmodel.AlertEvent) string {
+	detailRoute := fmt.Sprintf("/enterprise-alerts?tab=events&event_id=%d", event.Id)
+	if event.TenantId > 0 {
+		detailRoute += fmt.Sprintf("&tenant_id=%d", event.TenantId)
+	}
+	return detailRoute
+}
+
+func buildAlertEventDetailAPIPath(event entmodel.AlertEvent) string {
+	detailAPIPath := fmt.Sprintf("/api/enterprise/alerts/events?event_id=%d&page=1&page_size=20", event.Id)
+	if event.TenantId > 0 {
+		detailAPIPath += fmt.Sprintf("&tenant_id=%d", event.TenantId)
+	}
+	return detailAPIPath
+}
+
+func normalizeAlertTracePayloadDetailPaths(trace *entmodel.AlertDeliveryTracePayload) {
+	if trace == nil || trace.EventId <= 0 {
+		return
+	}
+	event := entmodel.AlertEvent{
+		Id:       trace.EventId,
+		TenantId: trace.TenantId,
+	}
+	if strings.TrimSpace(trace.DetailRoute) == "" || strings.Contains(trace.DetailRoute, "/enterprise-alerts?event_id=") {
+		trace.DetailRoute = buildAlertEventDetailRoute(event)
+	}
+	if strings.TrimSpace(trace.DetailAPIPath) == "" || !strings.Contains(trace.DetailAPIPath, "event_id=") {
+		trace.DetailAPIPath = buildAlertEventDetailAPIPath(event)
+	}
 }
 
 func buildManualAlertDeliveryDedupeKey(parent entmodel.AlertDelivery, round int64) string {

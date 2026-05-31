@@ -257,8 +257,92 @@ func TestAlertServiceListAlertDeliveriesFiltersTenantStatusAndPagination(t *test
 	require.Equal(t, "webhook timeout", result.Items[0].ErrorReason)
 	require.NotNil(t, result.Items[0].Trace)
 	require.Equal(t, "req-101", result.Items[0].Trace.RequestId)
-	require.Equal(t, "/enterprise-alerts?event_id=101", result.Items[0].Trace.DetailRoute)
-	require.Equal(t, "Engineering (#11) · req-101 · /enterprise-alerts?event_id=101", result.Items[0].TraceSummary)
+	require.Equal(t, "/enterprise-alerts?tab=events&event_id=101&tenant_id=7", result.Items[0].Trace.DetailRoute)
+	require.Equal(t, "Engineering (#11) · req-101 · /enterprise-alerts?tab=events&event_id=101&tenant_id=7", result.Items[0].TraceSummary)
+}
+
+func TestAlertDispatchServiceMarksMissingRuleFinalFailedAndContinues(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	dangling := entmodel.AlertDelivery{
+		TenantId:    0,
+		EventId:     10,
+		RuleId:      999,
+		ChannelType: entmodel.AlertRuleChannelEmail,
+		Status:      entmodel.AlertDeliveryStatusPending,
+		MaxAttempts: 4,
+		NextRetryAt: 1717117200,
+		DedupeKey:   "0:10:999:email:1717117200",
+	}
+	require.NoError(t, dangling.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:        10,
+		RequestId:      "req-missing-rule",
+		TenantId:       0,
+		Username:       "alice",
+		ModelName:      "gpt-4o-mini",
+		RiskType:       "abuse",
+		ActionResult:   "blocked",
+		EventCreatedAt: 1717117200,
+	}))
+	require.NoError(t, db.Create(&dangling).Error)
+
+	ruleResult, err := service.SaveAlertRule(AlertRuleInput{
+		TenantId:  0,
+		Name:      "Healthy email",
+		RiskTypes: []string{"abuse"},
+		ChannelConfigs: []AlertRuleChannelInput{
+			{Type: entmodel.AlertRuleChannelEmail, Receivers: []string{"ops@example.com"}},
+		},
+		ActorId: 999,
+	})
+	require.NoError(t, err)
+
+	healthy := entmodel.AlertDelivery{
+		TenantId:    0,
+		EventId:     11,
+		RuleId:      ruleResult.Item.Id,
+		ChannelType: entmodel.AlertRuleChannelEmail,
+		Status:      entmodel.AlertDeliveryStatusPending,
+		MaxAttempts: 4,
+		NextRetryAt: 1717117200,
+		DedupeKey:   "0:11:1:email:1717117200",
+	}
+	require.NoError(t, healthy.SetTracePayload(&entmodel.AlertDeliveryTracePayload{
+		EventId:           11,
+		RequestId:         "req-healthy",
+		TenantId:          0,
+		Username:          "alice",
+		ModelName:         "gpt-4o-mini",
+		RiskType:          "abuse",
+		ActionResult:      "blocked",
+		EventCreatedAt:    1717117201,
+		DepartmentSummary: "Engineering (#11)",
+		EventSummary:      "policy",
+		RuleId:            ruleResult.Item.Id,
+		RuleName:          ruleResult.Item.Name,
+	}))
+	require.NoError(t, db.Create(&healthy).Error)
+
+	dispatchService := NewAlertDispatchServiceForTest(
+		db,
+		func() time.Time { return time.Unix(1717117201, 0) },
+		func(subject string, receiver string, content string) error { return nil },
+		nil,
+	)
+	result, err := dispatchService.DispatchDueDeliveries(context.Background(), 20)
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Processed)
+	require.Equal(t, 1, result.Sent)
+	require.Equal(t, 1, result.FinalFailed)
+
+	var missingRule entmodel.AlertDelivery
+	require.NoError(t, db.First(&missingRule, dangling.Id).Error)
+	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, missingRule.Status)
+	require.Contains(t, missingRule.ErrorReason, "rule not found")
+
+	var delivered entmodel.AlertDelivery
+	require.NoError(t, db.First(&delivered, healthy.Id).Error)
+	require.Equal(t, entmodel.AlertDeliveryStatusSent, delivered.Status)
 }
 
 func TestAlertServiceResendAlertDeliveryCreatesManualPendingDelivery(t *testing.T) {

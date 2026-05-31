@@ -1,6 +1,8 @@
 package agentplatform
 
 import (
+	"io"
+
 	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/middleware"
@@ -116,7 +118,35 @@ func OpenCapabilityRefresh(c *gin.Context) {
 }
 
 func OpenCapabilitySkillInvoke(c *gin.Context) {
-	writeOpenCapabilityError(c, apservice.ErrOpenCapabilityContractInvalid, c.Param("id"), "")
+	claims, ok := openCapabilityClaims(c)
+	if !ok {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityPermissionDenied, c.Param("id"), "")
+		return
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityContractInvalid, c.Param("id"), "")
+		return
+	}
+	result, err := skillInvokeService().Invoke(apservice.SkillInvokeInput{
+		ClientID:   claims.ClientId,
+		ResourceID: c.Param("id"),
+		Payload:    body,
+	})
+	if err != nil {
+		writeOpenCapabilityError(c, err, c.Param("id"), "")
+		return
+	}
+	var output any
+	if err := common.Unmarshal(result.Output, &output); err != nil {
+		output = gin.H{"raw": string(result.Output)}
+	}
+	common.ApiSuccess(c, gin.H{
+		"resource_id":      result.ResourceID,
+		"resource_version": result.ResourceVersion,
+		"contract_version": result.ContractVersion,
+		"output":           output,
+	})
 }
 
 func OpenCapabilityKnowledgeQuery(c *gin.Context) {
@@ -127,8 +157,12 @@ func OpenCapabilityAgentDetail(c *gin.Context) {
 	OpenCapabilityResourceDetail(c)
 }
 
-func discoveryService() *apservice.DiscoveryService {
+var discoveryService = func() *apservice.DiscoveryService {
 	return apservice.NewDiscoveryService(model.DB)
+}
+
+var skillInvokeService = func() *apservice.SkillInvokeService {
+	return apservice.NewSkillInvokeService(model.DB)
 }
 
 func writeOpenCapabilityError(c *gin.Context, err error, resourceID string, resourceVersion string) {

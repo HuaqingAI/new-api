@@ -74,6 +74,14 @@ func MapOpenCapabilityError(err error, ctx OpenCapabilityContext) OpenCapability
 	case errors.Is(err, ErrOpenCapabilityContractInvalid), errors.Is(err, ErrInvalidTokenExchangeInput):
 		response.Error.Code = OpenCapabilityCodeContractInvalid
 		response.Error.Message = "contract invalid"
+	case errors.Is(err, ErrSkillInvokeTimeout):
+		response.Error.Code = OpenCapabilityCodeTimeout
+		response.Error.Message = "skill invoke timeout"
+		response.Error.Retryable = true
+	case errors.Is(err, ErrSkillInvokeUpstreamFailed):
+		response.Error.Code = OpenCapabilityCodeUpstreamFailed
+		response.Error.Message = "skill invoke upstream failed"
+		response.Error.Retryable = true
 	case errors.Is(err, ErrRefreshTokenInvalid):
 		response.Error.Code = OpenCapabilityCodePermissionDenied
 		response.Error.Message = "permission denied"

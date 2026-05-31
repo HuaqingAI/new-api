@@ -3,6 +3,8 @@ package agentplatform
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,6 +20,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type stubOpenCapabilityHTTPClient struct {
+	do func(req *http.Request) (*http.Response, error)
+}
+
+func (s stubOpenCapabilityHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return s.do(req)
+}
 
 type openCapabilityAPIResponse struct {
 	Success bool            `json:"success"`
@@ -71,6 +81,15 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		DetailJSON:      `{"skill":{"invoke_mode":"sync"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.SkillDef{
+		ResourceId:        resource.ResourceId,
+		ResourceVersion:   "1.0.0",
+		InvokeSchemaJSON:  `{"type":"object"}`,
+		OutputSchemaJSON:  `{"type":"object"}`,
+		InvokeMode:        "sync",
+		TimeoutSeconds:    1,
+		BindingConfigJSON: `{"method":"POST","url":"https://example.com/invoke"}`,
 	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.Exposure{
@@ -182,9 +201,58 @@ func TestOpenCapabilityReturnsStableErrorEnvelope(t *testing.T) {
 		ResourceID string `json:"resource_id"`
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
-	require.Equal(t, apservice.OpenCapabilityCodeContractInvalid, errorPayload.Code)
+	require.Equal(t, apservice.OpenCapabilityCodePermissionDenied, errorPayload.Code)
 	require.NotEmpty(t, errorPayload.RequestID)
 	require.Equal(t, "res_missing", errorPayload.ResourceID)
+}
+
+func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
+	router, _, token, resource := setupOpenCapabilityControllerTest(t)
+
+	original := skillInvokeService
+	skillInvokeService = func() *apservice.SkillInvokeService {
+		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
+			do: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(`{"ok":true}`)),
+				}, nil
+			},
+		})
+	}
+	defer func() { skillInvokeService = original }()
+
+	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
+		"input": "demo",
+	})
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.True(t, apiResponse.Success)
+}
+
+func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
+	router, _, token, resource := setupOpenCapabilityControllerTest(t)
+
+	original := skillInvokeService
+	skillInvokeService = func() *apservice.SkillInvokeService {
+		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
+			do: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("boom")
+			},
+		})
+	}
+	defer func() { skillInvokeService = original }()
+
+	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
+		"input": "demo",
+	})
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+
+	var errorPayload struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
+	require.Equal(t, apservice.OpenCapabilityCodeUpstreamFailed, errorPayload.Code)
 }
 
 func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {

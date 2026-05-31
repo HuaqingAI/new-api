@@ -174,6 +174,7 @@ GPT-5 Codex
 - 已完成 Story 4.5 的后端模型、任务服务、企业管理员配置 API、Default 前端配置面板和相关回归测试。
 - 已通过 `go test`、`bun test src/features/enterprise-usage/enterprise-usage.test.tsx` 和 `bun run typecheck` 验证本故事实现。
 - Senior Developer Review（AI）已修复已启用报告配置在编辑时重算 `next_run_at` 导致临近待发送任务被顺延的问题，以及报告配置表单在同作用域 refetch 时覆盖未保存输入的问题，并补充对应前后端回归测试。
+- Senior Developer Review（AI）后续复核已补齐 Story 4.5 测试声明与实际覆盖之间的缺口：修复 `usage_report_task_test.go` 对 `alert.go` 辅助函数的跨文件耦合，并新增时间窗口、到点任务筛选、失败不阻塞聚合、状态字段更新时间以及 `/usage/reports` 中间件权限回归测试。
 
 ### File List
 
@@ -212,6 +213,7 @@ GPT-5 Codex
 - 2026-05-29: 新增 `enterprise_usage_report_jobs` 模型、`usage_report_task` 调度、`/api/enterprise/usage/reports` 配置接口，以及 Default `enterprise-usage` 报告配置卡片与回归测试。
 - 2026-05-29: AI review 自动修复已启用报告配置在仅编辑接收人/时间范围时仍重算 `next_run_at`、导致临近待发送任务被顺延的问题，并补充后端回归测试。
 - 2026-05-29: AI review 修复报告配置表单在同租户数据 refetch 时重置脏表单、覆盖未保存输入的问题，并补充前端静态测试锁定重置契约。
+- 2026-05-31: AI review 补齐 Story 4.5 测试覆盖与故事声明的一致性，新增时间窗口/到点筛选/失败旁路聚合/状态更新时间/中间件权限回归测试，并移除 `usage_report_task_test.go` 对 `alert.go` helper 的跨文件耦合。
 
 ## Senior Developer Review (AI)
 
@@ -243,3 +245,27 @@ GPT-5 Codex
   - `GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise ./controller/enterprise ./tests/api -run 'UsageReport|EnterpriseUsage' -count=1`
   - `cd web/default && bun test src/features/enterprise-usage/enterprise-usage.test.tsx`
   - `cd web/default && bun run typecheck`
+
+### Follow-up Review Date
+
+- 2026-05-31 11:38:09 +0800
+
+### Follow-up Outcome
+
+- Changes Requested -> Fixed -> Approved
+
+### Follow-up Findings Fixed During Review
+
+1. Medium: `service/enterprise/usage_report_task_test.go` 仍依赖 `alert.go` 中的 `boolPtr` helper，造成报告测试对告警实现的跨文件耦合；一旦无关的告警 helper 改名或移动，Story 4.5 的报告测试会被连带打断。已改为在报告测试内统一使用局部 `usageReportBoolPtr`，消除隐式依赖。
+2. Medium: 故事子任务宣称 `usage_report_task_test.go` 已覆盖“到点任务挑选”和“时间窗口解析”，但原测试只验证配置保存与发送结果，没有单独锁定 `usageReportWindow` / `previousUsageReportWindow` 以及 `enabled + next_run_at <= now` 的筛选语义。已新增对应回归测试。
+3. Medium: 故事子任务宣称 `model/enterprise/usage_report_job.go` 的“状态字段更新正确”已有测试，但原 `usage_report_job_test.go` 仅检查 JSON wrapper 和迁移列存在性，没有证明 `status`、`error_reason`、`failure_count` 与 `UpdatedAt` 在更新路径上会正确落库。已补充更新路径测试。
+4. Medium: 故事子任务宣称 `controller/enterprise/usage_test.go` 已覆盖企业管理员权限，但 controller 级测试此前直接调用 handler，绕过了 `middleware.EnterpriseAdmin()`，无法证明 `/api/enterprise/usage/reports` 的 GET/PUT 真实会拒绝非管理员。已新增中间件挂载下的权限回归测试。
+5. Medium: 故事子任务宣称“任务失败不影响聚合任务继续运行”，但原测试只证明多个 report job 之间互不阻塞，没有验证报告失败后聚合任务仍能继续推进。已新增先失败 `RunDueReports`、再执行 `RunUsageAggregationTaskOnce` 的串联回归测试。
+
+### Follow-up Validation
+
+- 已运行：
+  - `GOCACHE=$(pwd)/.tmp/go-cache GOTMPDIR=$(pwd)/.tmp/go-tmp go test ./service/enterprise -run 'UsageReport' -count=1`
+  - `GOCACHE=$(pwd)/.tmp/go-cache GOTMPDIR=$(pwd)/.tmp/go-tmp go test ./model/enterprise -run 'UsageReport' -count=1`
+  - `GOCACHE=$(pwd)/.tmp/go-cache GOTMPDIR=$(pwd)/.tmp/go-tmp go test ./controller/enterprise -run 'UsageReport' -count=1`
+  - `GOCACHE=$(pwd)/.tmp/go-cache GOTMPDIR=$(pwd)/.tmp/go-tmp go test ./tests/api -run 'EnterpriseUsageReport' -count=1`

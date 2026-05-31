@@ -8,9 +8,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -371,6 +373,47 @@ func TestUsageReportConfigAPIValidatesAndPersists(t *testing.T) {
 	require.Equal(t, entservice.AdminActionUsageReportSet, actions[len(actions)-1].ActionType)
 	require.Equal(t, entservice.AdminObjectUsageReportJob, actions[len(actions)-1].ObjectType)
 	require.Contains(t, actions[len(actions)-1].Payload, "ops@example.com")
+}
+
+func TestUsageReportConfigAPIHonorsEnterpriseAdminPermissionMiddleware(t *testing.T) {
+	_, _ = setupEnterpriseControllerTest(t)
+	protected := gin.New()
+	protected.Use(func(c *gin.Context) {
+		if roleValue := c.GetHeader("X-Test-Role"); roleValue == "user" {
+			c.Set("id", 999)
+			c.Set("role", common.RoleCommonUser)
+		} else {
+			c.Set("id", 999)
+			c.Set("role", common.RoleAdminUser)
+		}
+		c.Next()
+	})
+	protected.PUT("/api/enterprise/usage/reports", middleware.EnterpriseAdmin(), SaveDepartmentUsageReportConfig)
+	protected.GET("/api/enterprise/usage/reports", middleware.EnterpriseAdmin(), GetDepartmentUsageReportConfig)
+
+	userWrite := performEnterpriseRequestWithHeaders(t, protected, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
+		Receivers: []string{"ops@example.com"},
+		Frequency: strPtr("daily"),
+		RangeType: strPtr("last7d"),
+		Enabled:   boolPtr(true),
+	}, map[string]string{"X-Test-Role": "user"})
+	userWriteResponse := decodeEnterpriseAPIResponse(t, userWrite)
+	require.False(t, userWriteResponse.Success)
+	require.Equal(t, "error.enterprise.permission.admin_required", userWriteResponse.Message)
+
+	adminWrite := performEnterpriseRequestWithHeaders(t, protected, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
+		Receivers: []string{"ops@example.com"},
+		Frequency: strPtr("daily"),
+		RangeType: strPtr("last7d"),
+		Enabled:   boolPtr(true),
+	}, nil)
+	adminWriteResponse := decodeEnterpriseAPIResponse(t, adminWrite)
+	require.True(t, adminWriteResponse.Success, adminWriteResponse.Message)
+
+	userRead := performEnterpriseRequestWithHeaders(t, protected, http.MethodGet, "/api/enterprise/usage/reports", nil, map[string]string{"X-Test-Role": "user"})
+	userReadResponse := decodeEnterpriseAPIResponse(t, userRead)
+	require.False(t, userReadResponse.Success)
+	require.Equal(t, "error.enterprise.permission.admin_required", userReadResponse.Message)
 }
 
 func strPtr(value string) *string {

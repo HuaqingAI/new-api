@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -82,4 +83,38 @@ func TestMigrateCreatesUsageReportJobTable(t *testing.T) {
 	} {
 		require.True(t, db.Migrator().HasColumn(&UsageReportJob{}, column), column)
 	}
+}
+
+func TestUsageReportJobUpdateRefreshesStatusAndTimestamps(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, Migrate(db))
+
+	job := UsageReportJob{
+		TenantId:  0,
+		Frequency: UsageReportFrequencyDaily,
+		RangeType: UsageReportRangeLast7Days,
+		Enabled:   true,
+		Status:    UsageReportStatusPending,
+	}
+	require.NoError(t, job.SetReceivers([]string{"ops@example.com"}))
+	require.NoError(t, job.SetLastSnapshot(nil))
+	require.NoError(t, db.Create(&job).Error)
+	require.NotZero(t, job.CreatedAt)
+	require.NotZero(t, job.UpdatedAt)
+
+	createdUpdatedAt := job.UpdatedAt
+	time.Sleep(time.Second)
+	require.NoError(t, db.Model(&job).Updates(map[string]any{
+		"status":        UsageReportStatusFailed,
+		"error_reason":  "smtp down",
+		"failure_count": 1,
+	}).Error)
+
+	var saved UsageReportJob
+	require.NoError(t, db.First(&saved, job.Id).Error)
+	require.Equal(t, UsageReportStatusFailed, saved.Status)
+	require.Equal(t, "smtp down", saved.ErrorReason)
+	require.Equal(t, int64(1), saved.FailureCount)
+	require.Greater(t, saved.UpdatedAt, createdUpdatedAt)
 }

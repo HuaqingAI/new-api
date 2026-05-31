@@ -104,6 +104,29 @@ func performEnterpriseRequest(t *testing.T, router *gin.Engine, method string, t
 	return recorder
 }
 
+func performEnterpriseRequestWithHeaders(t *testing.T, router *gin.Engine, method string, target string, body any, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var requestBody *bytes.Reader
+	if body == nil {
+		requestBody = bytes.NewReader(nil)
+	} else {
+		payload, err := common.Marshal(body)
+		require.NoError(t, err)
+		requestBody = bytes.NewReader(payload)
+	}
+	request := httptest.NewRequest(method, target, requestBody)
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
 func decodeEnterpriseAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) enterpriseAPIResponse {
 	t.Helper()
 

@@ -24,5 +24,12 @@ describe('Enterprise alerts classic helpers', () => {
     assert.match(source, /getAlertDeliveries/);
     assert.match(source, /resendAlertDelivery/);
     assert.match(source, /人工重发/);
+    assert.match(source, /部门风险概览/);
+    assert.match(source, /getDepartmentRiskSummary/);
+    assert.match(source, /查看风险事件/);
+    assert.match(source, /enterprise\.usage\.multi_dept_disclaimer/);
+    assert.match(source, /unassigned_only:\s*value\?\.unassigned_only\s*\|\|\s*undefined/);
+    assert.match(source, /from:\s*value\?\.from\s*\|\|\s*undefined/);
+    assert.match(source, /to:\s*value\?\.to\s*\|\|\s*undefined/);
   });
 });

@@ -98,6 +98,105 @@ func TestEnterpriseAlertsAPIHonorsTenantScopeAndEmptyResult(t *testing.T) {
 	require.Empty(t, response.Items[0].DepartmentSnapshot)
 }
 
+func TestEnterpriseDepartmentRiskSummaryAPIRequiresEnterpriseAdminAndReturnsDrilldownContext(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	deptID := 1
+	snapshot := modelenterprise.UsageSnapshot{
+		TenantId:     0,
+		DeptId:       &deptID,
+		DeptName:     "Engineering",
+		WindowStart:  1717117200,
+		WindowEnd:    1717120800,
+		RequestCount: 8,
+	}
+	require.NoError(t, snapshot.SetModelDistribution([]modelenterprise.UsageSnapshotModelStat{{ModelName: "gpt-4o-mini", RequestCount: 8}}))
+	require.NoError(t, snapshot.SetUserIds([]int{1001}))
+	require.NoError(t, fixture.db.Create(&snapshot).Error)
+
+	unassignedSnapshot := modelenterprise.UsageSnapshot{
+		TenantId:     0,
+		WindowStart:  1717117200,
+		WindowEnd:    1717120800,
+		RequestCount: 1,
+	}
+	require.NoError(t, unassignedSnapshot.SetModelDistribution([]modelenterprise.UsageSnapshotModelStat{{ModelName: "gpt-4o-mini", RequestCount: 1}}))
+	require.NoError(t, unassignedSnapshot.SetUserIds([]int{1002}))
+	require.NoError(t, fixture.db.Create(&unassignedSnapshot).Error)
+
+	event := modelenterprise.AlertEvent{
+		TenantId:     0,
+		UserId:       1001,
+		Username:     "member",
+		RequestId:    "req-risk-overview-api",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "1 hit",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot([]modelenterprise.AlertEventDepartmentSnapshot{
+		{DepartmentId: 1, DepartmentName: "Engineering"},
+	}))
+	require.NoError(t, fixture.db.Create(&event).Error)
+
+	commonUser := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/department-summary?from=1717117200&to=1717120800", fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled))
+	commonUserPayload := decodeAdminActionsAPIResponse(t, commonUser)
+	require.False(t, commonUserPayload.Success)
+	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
+
+	admin := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/department-summary?from=1717117200&to=1717120800&summary_sort=quota&summary_order=desc", adminCookies)
+	adminPayload := decodeAdminActionsAPIResponse(t, admin)
+	require.True(t, adminPayload.Success, adminPayload.Message)
+	require.NotContains(t, string(adminPayload.Data), "prompt")
+	require.NotContains(t, string(adminPayload.Data), "messages")
+
+	var response dtoenterprise.DepartmentRiskSummaryResponse
+	require.NoError(t, common.Unmarshal(adminPayload.Data, &response))
+	require.NotEmpty(t, response.Items)
+	require.Equal(t, "enterprise.usage.multi_dept_disclaimer", response.DisclaimerKey)
+	require.Equal(t, "Engineering", response.TopDepartments[0].DeptName)
+	require.Contains(t, response.TopDepartments[0].EventEntry.DetailRoute, "/enterprise-alerts?tab=events")
+	require.Contains(t, response.TopDepartments[0].EventEntry.DetailAPIPath, "/api/enterprise/alerts/events?")
+	require.True(t, response.Unassigned.IsUnassigned)
+	require.True(t, response.Unassigned.EventEntry.UnassignedOnly)
+}
+
+func TestEnterpriseDepartmentRiskSummaryAPIRejectsInvalidRangeAndReturnsEmptyResult(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+
+	invalidFrom := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/department-summary?from=bad&to=1717120800", adminCookies)
+	invalidFromPayload := decodeAdminActionsAPIResponse(t, invalidFrom)
+	require.False(t, invalidFromPayload.Success)
+	require.Equal(t, "common.invalid_params", invalidFromPayload.Message)
+
+	invalidRange := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/department-summary?from=1717120800&to=1717117200", adminCookies)
+	invalidRangePayload := decodeAdminActionsAPIResponse(t, invalidRange)
+	require.False(t, invalidRangePayload.Success)
+	require.Equal(t, "common.invalid_params", invalidRangePayload.Message)
+
+	empty := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/alerts/department-summary?from=1717117200&to=1717120800", adminCookies)
+	emptyPayload := decodeAdminActionsAPIResponse(t, empty)
+	require.True(t, emptyPayload.Success, emptyPayload.Message)
+
+	var response dtoenterprise.DepartmentRiskSummaryResponse
+	require.NoError(t, common.Unmarshal(emptyPayload.Data, &response))
+	require.Len(t, response.Items, 1)
+	require.Empty(t, response.TopDepartments)
+	require.Empty(t, response.Trend)
+	require.Equal(t, "enterprise.usage.multi_dept_disclaimer", response.DisclaimerKey)
+	require.Equal(t, "Risk rate = risky requests / total requests", response.Formula.Expression)
+	require.True(t, response.Unassigned.IsUnassigned)
+	require.Equal(t, "未归属", response.Unassigned.DeptName)
+	require.Zero(t, response.Unassigned.RiskEventCount)
+	require.Zero(t, response.Unassigned.TotalRequestCount)
+	require.True(t, response.Unassigned.EventEntry.UnassignedOnly)
+	require.Equal(t, response.Unassigned, response.Items[0])
+}
+
 func TestEnterpriseAlertDeliveriesAPIRequiresEnterpriseAdminAndSanitizesTracePayload(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 

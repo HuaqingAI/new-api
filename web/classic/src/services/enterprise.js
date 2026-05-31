@@ -38,6 +38,13 @@ export async function getAlertEvents(params = {}) {
   return res.data;
 }
 
+export async function getDepartmentRiskSummary(params = {}) {
+  const res = await API.get('/api/enterprise/alerts/department-summary', {
+    params,
+  });
+  return res.data;
+}
+
 export async function getAlertRules(params = {}) {
   const res = await API.get('/api/enterprise/alerts/rules', {
     params,

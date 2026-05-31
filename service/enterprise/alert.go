@@ -53,6 +53,7 @@ type alertEventRow struct {
 type AlertEventQuery struct {
 	TenantId     int
 	DepartmentId *int
+	UnassignedOnly *bool
 	UserId       *int
 	Username     string
 	ModelName    string
@@ -82,6 +83,65 @@ type AlertEventListResult struct {
 	Total    int
 	Page     int
 	PageSize int
+}
+
+type DepartmentRiskSummaryQuery struct {
+	TenantId int
+	From     int64
+	To       int64
+	Sort     UsageSummarySort
+}
+
+type DepartmentRiskEventEntry struct {
+	DetailRoute    string
+	DetailAPIPath  string
+	DepartmentId   *int
+	DepartmentName string
+	From           int64
+	To             int64
+	UnassignedOnly bool
+}
+
+type DepartmentRiskSummaryItem struct {
+	DeptId            *int
+	DeptName          string
+	IsUnassigned      bool
+	WindowStart       int64
+	WindowEnd         int64
+	RiskEventCount    int64
+	TotalRequestCount int64
+	RiskRate          float64
+	EventEntry        DepartmentRiskEventEntry
+}
+
+type DepartmentRiskTrendPoint struct {
+	WindowStart                 int64
+	WindowEnd                   int64
+	RiskEventCount              int64
+	TotalRequestCount           int64
+	RiskRate                    float64
+	UnassignedRiskEventCount    int64
+	UnassignedTotalRequestCount int64
+}
+
+type DepartmentRiskFormula struct {
+	Expression       string
+	NumeratorLabel   string
+	DenominatorLabel string
+}
+
+type DepartmentRiskSummaryResult struct {
+	Items          []DepartmentRiskSummaryItem
+	TopDepartments []DepartmentRiskSummaryItem
+	Trend          []DepartmentRiskTrendPoint
+	Unassigned     DepartmentRiskSummaryItem
+	Formula        DepartmentRiskFormula
+	DisclaimerKey  string
+}
+
+type parsedAlertEvent struct {
+	event       entmodel.AlertEvent
+	departments []entmodel.AlertEventDepartmentSnapshot
 }
 
 type AlertRuleChannelInput struct {
@@ -289,6 +349,9 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 	if query.DepartmentId != nil && *query.DepartmentId <= 0 {
 		return AlertEventListResult{}, ErrInvalidAlertEventQuery
 	}
+	if query.UnassignedOnly != nil && *query.UnassignedOnly && query.DepartmentId != nil {
+		return AlertEventListResult{}, ErrInvalidAlertEventQuery
+	}
 	if query.UserId != nil && *query.UserId <= 0 {
 		return AlertEventListResult{}, ErrInvalidAlertEventQuery
 	}
@@ -347,6 +410,251 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 		Total:    int(total),
 		Page:     page,
 		PageSize: pageSize,
+	}, nil
+}
+
+func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery) (DepartmentRiskSummaryResult, error) {
+	if s == nil || s.db == nil {
+		return DepartmentRiskSummaryResult{
+			Items:          []DepartmentRiskSummaryItem{},
+			TopDepartments: []DepartmentRiskSummaryItem{},
+			Trend:          []DepartmentRiskTrendPoint{},
+			Unassigned:     buildDepartmentRiskSummaryItem(nil, "", query.From, query.To, 0, 0, query.TenantId),
+			Formula:        defaultDepartmentRiskFormula(),
+			DisclaimerKey:  "enterprise.usage.multi_dept_disclaimer",
+		}, nil
+	}
+	if query.TenantId < 0 || query.From <= 0 || query.To <= 0 || query.From >= query.To {
+		return DepartmentRiskSummaryResult{}, ErrInvalidDepartmentRiskSummaryQuery
+	}
+
+	usageSummary, err := NewUsageAggregationService(s.db).GetDepartmentSummary(UsageSummaryQuery{
+		TenantId: query.TenantId,
+		From:     query.From,
+		To:       query.To,
+		Sort:     query.Sort,
+	})
+	if err != nil {
+		return DepartmentRiskSummaryResult{}, err
+	}
+
+	type eventAggregate struct {
+		deptId         *int
+		deptName       string
+		riskEventCount int64
+	}
+
+	var events []entmodel.AlertEvent
+	if err := s.db.
+		Where("tenant_id = ? AND created_at >= ? AND created_at < ?", query.TenantId, query.From, query.To).
+		Order("created_at ASC, id ASC").
+		Find(&events).Error; err != nil {
+		return DepartmentRiskSummaryResult{}, err
+	}
+
+	parsedEvents := make([]parsedAlertEvent, 0, len(events))
+	riskCounts := make(map[string]*eventAggregate)
+	for _, event := range events {
+		snapshot, err := event.ParsedDepartmentSnapshot()
+		if err != nil {
+			return DepartmentRiskSummaryResult{}, err
+		}
+		parsedEvents = append(parsedEvents, parsedAlertEvent{
+			event:       event,
+			departments: snapshot,
+		})
+		if len(snapshot) == 0 {
+			key := usageBucketKey(nil)
+			aggregate, ok := riskCounts[key]
+			if !ok {
+				aggregate = &eventAggregate{deptId: nil, deptName: entmodel.UsageSnapshotUnassignedDeptName}
+				riskCounts[key] = aggregate
+			}
+			aggregate.riskEventCount++
+			continue
+		}
+		seen := make(map[int]struct{}, len(snapshot))
+		for _, dept := range snapshot {
+			if dept.DepartmentId <= 0 {
+				continue
+			}
+			if _, ok := seen[dept.DepartmentId]; ok {
+				continue
+			}
+			seen[dept.DepartmentId] = struct{}{}
+			deptId := dept.DepartmentId
+			key := usageBucketKey(&deptId)
+			aggregate, ok := riskCounts[key]
+			if !ok {
+				aggregate = &eventAggregate{deptId: &deptId, deptName: normalizeUsageDeptName(&deptId, dept.DepartmentName)}
+				riskCounts[key] = aggregate
+			}
+			aggregate.riskEventCount++
+		}
+	}
+
+	usageByKey := make(map[string]UsageDepartmentSummaryItem, len(usageSummary.Items))
+	for _, item := range usageSummary.Items {
+		usageByKey[usageBucketKey(item.DeptId)] = item
+	}
+	if _, ok := usageByKey[usageBucketKey(nil)]; !ok {
+		usageByKey[usageBucketKey(nil)] = UsageDepartmentSummaryItem{
+			DeptId:      nil,
+			DeptName:    entmodel.UsageSnapshotUnassignedDeptName,
+			WindowStart: query.From,
+			WindowEnd:   query.To,
+		}
+	}
+	for key, aggregate := range riskCounts {
+		if _, ok := usageByKey[key]; ok {
+			continue
+		}
+		usageByKey[key] = UsageDepartmentSummaryItem{
+			DeptId:      aggregate.deptId,
+			DeptName:    aggregate.deptName,
+			WindowStart: query.From,
+			WindowEnd:   query.To,
+		}
+	}
+
+	var snapshots []entmodel.UsageSnapshot
+	if err := s.db.
+		Where("tenant_id = ? AND window_start >= ? AND window_end <= ?", query.TenantId, query.From, query.To).
+		Order("window_start ASC, id ASC").
+		Find(&snapshots).Error; err != nil {
+		return DepartmentRiskSummaryResult{}, err
+	}
+	items := make([]DepartmentRiskSummaryItem, 0, len(usageByKey))
+	for key, usageItem := range usageByKey {
+		riskEventCount := int64(0)
+		if aggregate, ok := riskCounts[key]; ok {
+			riskEventCount = aggregate.riskEventCount
+		}
+		item := buildDepartmentRiskSummaryItem(
+			usageItem.DeptId,
+			normalizeUsageDeptName(usageItem.DeptId, usageItem.DeptName),
+			query.From,
+			query.To,
+			riskEventCount,
+			usageItem.RequestCount,
+			query.TenantId,
+		)
+		items = append(items, item)
+	}
+	items = sortDepartmentRiskSummaryItems(items, query.Sort)
+	if items == nil {
+		items = []DepartmentRiskSummaryItem{}
+	}
+
+	topDepartments := make([]DepartmentRiskSummaryItem, 0, len(items))
+	for _, item := range items {
+		if item.IsUnassigned {
+			continue
+		}
+		topDepartments = append(topDepartments, item)
+		if len(topDepartments) == 5 {
+			break
+		}
+	}
+	if topDepartments == nil {
+		topDepartments = []DepartmentRiskSummaryItem{}
+	}
+
+	type trendAggregate struct {
+		windowStart                 int64
+		windowEnd                   int64
+		riskEventCount              int64
+		totalRequestCount           int64
+		unassignedRiskEventCount    int64
+		unassignedTotalRequestCount int64
+	}
+	trendByWindow := make(map[string]*trendAggregate)
+	trendWindowOrder := make([]string, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		pointKey := fmt.Sprintf("%d:%d", snapshot.WindowStart, snapshot.WindowEnd)
+		point, ok := trendByWindow[pointKey]
+		if !ok {
+			point = &trendAggregate{
+				windowStart: snapshot.WindowStart,
+				windowEnd:   snapshot.WindowEnd,
+			}
+			trendByWindow[pointKey] = point
+			trendWindowOrder = append(trendWindowOrder, pointKey)
+		}
+		point.totalRequestCount += snapshot.RequestCount
+		if snapshot.DeptId == nil {
+			point.unassignedTotalRequestCount += snapshot.RequestCount
+		}
+	}
+	for _, parsedEvent := range parsedEvents {
+		for _, pointKey := range trendWindowOrder {
+			point := trendByWindow[pointKey]
+			if point == nil {
+				continue
+			}
+			if parsedEvent.event.CreatedAt < point.windowStart || parsedEvent.event.CreatedAt >= point.windowEnd {
+				continue
+			}
+			if len(parsedEvent.departments) == 0 {
+				point.unassignedRiskEventCount++
+				point.riskEventCount++
+				break
+			}
+			seen := make(map[int]struct{}, len(parsedEvent.departments))
+			for _, dept := range parsedEvent.departments {
+				if dept.DepartmentId <= 0 {
+					continue
+				}
+				if _, ok := seen[dept.DepartmentId]; ok {
+					continue
+				}
+				seen[dept.DepartmentId] = struct{}{}
+				point.riskEventCount++
+			}
+			break
+		}
+	}
+	trend := make([]DepartmentRiskTrendPoint, 0, len(trendByWindow))
+	for _, pointKey := range trendWindowOrder {
+		point := trendByWindow[pointKey]
+		if point == nil {
+			continue
+		}
+		if len(trend) > 0 {
+			last := trend[len(trend)-1]
+			if last.WindowStart == point.windowStart && last.WindowEnd == point.windowEnd {
+				continue
+			}
+		}
+		trend = append(trend, DepartmentRiskTrendPoint{
+			WindowStart:                 point.windowStart,
+			WindowEnd:                   point.windowEnd,
+			RiskEventCount:              point.riskEventCount,
+			TotalRequestCount:           point.totalRequestCount,
+			RiskRate:                    calculateDepartmentRiskRate(point.riskEventCount, point.totalRequestCount),
+			UnassignedRiskEventCount:    point.unassignedRiskEventCount,
+			UnassignedTotalRequestCount: point.unassignedTotalRequestCount,
+		})
+	}
+	if trend == nil {
+		trend = []DepartmentRiskTrendPoint{}
+	}
+
+	unassigned := buildDepartmentRiskSummaryItem(nil, entmodel.UsageSnapshotUnassignedDeptName, query.From, query.To, 0, 0, query.TenantId)
+	for _, item := range items {
+		if item.IsUnassigned {
+			unassigned = item
+			break
+		}
+	}
+
+	return DepartmentRiskSummaryResult{
+		Items:          items,
+		TopDepartments: topDepartments,
+		Trend:          trend,
+		Unassigned:     unassigned,
+		Formula:        defaultDepartmentRiskFormula(),
+		DisclaimerKey:  "enterprise.usage.multi_dept_disclaimer",
 	}, nil
 }
 
@@ -895,6 +1203,9 @@ func sanitizeRiskSummary(riskType string, summary string, hits []string) string 
 }
 
 func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
+	if query.UnassignedOnly != nil && *query.UnassignedOnly {
+		db = db.Where("(department_tokens = ? OR department_tokens = '' OR department_tokens IS NULL)", "|")
+	}
 	if query.DepartmentId != nil {
 		tokenPattern := fmt.Sprintf("%%|%d|%%", *query.DepartmentId)
 		snapshotPattern := fmt.Sprintf("%%\"department_id\":%d%%", *query.DepartmentId)
@@ -922,9 +1233,136 @@ func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
 		db = db.Where("created_at >= ?", *query.From)
 	}
 	if query.To != nil {
-		db = db.Where("created_at <= ?", *query.To)
+		db = db.Where("created_at < ?", *query.To)
 	}
 	return db
+}
+
+func buildDepartmentRiskSummaryItem(
+	deptId *int,
+	deptName string,
+	from int64,
+	to int64,
+	riskEventCount int64,
+	totalRequestCount int64,
+	tenantId int,
+) DepartmentRiskSummaryItem {
+	name := normalizeUsageDeptName(deptId, deptName)
+	isUnassigned := deptId == nil
+	entry := DepartmentRiskEventEntry{
+		DepartmentId:   deptId,
+		DepartmentName: name,
+		From:           from,
+		To:             to,
+		UnassignedOnly: isUnassigned,
+	}
+	if isUnassigned {
+		entry.DetailRoute = fmt.Sprintf("/enterprise-alerts?tab=events&from=%d&to=%d&unassigned_only=true", from, to)
+		entry.DetailAPIPath = fmt.Sprintf("/api/enterprise/alerts/events?from=%d&to=%d&unassigned_only=true", from, to)
+	} else {
+		entry.DetailRoute = fmt.Sprintf("/enterprise-alerts?tab=events&department_id=%d&from=%d&to=%d", *deptId, from, to)
+		entry.DetailAPIPath = fmt.Sprintf("/api/enterprise/alerts/events?department_id=%d&from=%d&to=%d", *deptId, from, to)
+	}
+	if tenantId > 0 {
+		if isUnassigned {
+			entry.DetailRoute += fmt.Sprintf("&tenant_id=%d", tenantId)
+			entry.DetailAPIPath += fmt.Sprintf("&tenant_id=%d", tenantId)
+		} else {
+			entry.DetailRoute += fmt.Sprintf("&tenant_id=%d", tenantId)
+			entry.DetailAPIPath += fmt.Sprintf("&tenant_id=%d", tenantId)
+		}
+	}
+	return DepartmentRiskSummaryItem{
+		DeptId:            deptId,
+		DeptName:          name,
+		IsUnassigned:      isUnassigned,
+		WindowStart:       from,
+		WindowEnd:         to,
+		RiskEventCount:    riskEventCount,
+		TotalRequestCount: totalRequestCount,
+		RiskRate:          calculateDepartmentRiskRate(riskEventCount, totalRequestCount),
+		EventEntry:        entry,
+	}
+}
+
+func calculateDepartmentRiskRate(riskEventCount int64, totalRequestCount int64) float64 {
+	if totalRequestCount <= 0 {
+		return 0
+	}
+	return float64(riskEventCount) / float64(totalRequestCount)
+}
+
+func defaultDepartmentRiskFormula() DepartmentRiskFormula {
+	return DepartmentRiskFormula{
+		Expression:       "Risk rate = risky requests / total requests",
+		NumeratorLabel:   "Requests that triggered risk events",
+		DenominatorLabel: "Total requests from department members",
+	}
+}
+
+func sortDepartmentRiskSummaryItems(items []DepartmentRiskSummaryItem, sortConfig UsageSummarySort) []DepartmentRiskSummaryItem {
+	sorted := append([]DepartmentRiskSummaryItem{}, items...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return compareDepartmentRiskSummaryItems(sorted[i], sorted[j], sortConfig) < 0
+	})
+	return sorted
+}
+
+func compareDepartmentRiskSummaryItems(a DepartmentRiskSummaryItem, b DepartmentRiskSummaryItem, sortConfig UsageSummarySort) int {
+	compareNumeric := func(left int64, right int64) int {
+		if left < right {
+			return -1
+		}
+		if left > right {
+			return 1
+		}
+		return 0
+	}
+	compareFloat := func(left float64, right float64) int {
+		if left < right {
+			return -1
+		}
+		if left > right {
+			return 1
+		}
+		return 0
+	}
+	compareText := func(left string, right string) int {
+		return strings.Compare(strings.ToLower(left), strings.ToLower(right))
+	}
+	applyOrder := func(value int) int {
+		if sortConfig.Order == UsageSortOrderAsc {
+			return value
+		}
+		return -value
+	}
+	var primary int
+	switch sortConfig.Field {
+	case UsageSummarySortByQuota:
+		primary = compareFloat(a.RiskRate, b.RiskRate)
+	case UsageSummarySortByUsers:
+		primary = compareNumeric(a.RiskEventCount, b.RiskEventCount)
+	case UsageSummarySortByName:
+		primary = compareText(a.DeptName, b.DeptName)
+	default:
+		primary = compareNumeric(a.TotalRequestCount, b.TotalRequestCount)
+	}
+	if primary != 0 {
+		return applyOrder(primary)
+	}
+	if byRate := compareFloat(a.RiskRate, b.RiskRate); byRate != 0 {
+		return -byRate
+	}
+	if byRiskCount := compareNumeric(a.RiskEventCount, b.RiskEventCount); byRiskCount != 0 {
+		return -byRiskCount
+	}
+	if byTotal := compareNumeric(a.TotalRequestCount, b.TotalRequestCount); byTotal != 0 {
+		return -byTotal
+	}
+	if byName := compareText(a.DeptName, b.DeptName); byName != 0 {
+		return byName
+	}
+	return compareOptionalInt(a.DeptId, b.DeptId)
 }
 
 func normalizeAlertEventPage(page int, pageSize int) (int, int) {

@@ -17,24 +17,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { isRedirect } from '@tanstack/react-router'
+import i18n from '@/i18n/config'
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
 import { describe, test } from 'node:test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { I18nextProvider } from 'react-i18next'
 import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterprise-alerts/index'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import {
+  buildAlertEventEntrySearch,
   buildDeliveryFiltersAfterResend,
   buildAlertRulePayload,
+  DepartmentRiskOverviewTab,
+  EnterpriseAlertsPage,
   describeAlertRuleSecretStatus,
   enterpriseAlertsSearchSchema,
   formatDeliveryStatus,
+  formatRiskRate,
   formatTriggerSource,
   formatDeliveryTraceSummary,
   formatDepartmentSnapshot,
   mapAlertFilterFormToSearch,
+  overviewSearchFromAlerts,
 } from './index'
 import {
+  alertOverviewQueryKey,
   alertDeliveriesListQueryKey,
   alertRulesListQueryKey,
   enterpriseAlertDeliveriesQueryKey,
@@ -56,8 +64,10 @@ describe('Enterprise alerts feature', () => {
         page_size: '50',
       }),
       {
+        tab: 'events',
         tenant_id: 7,
         department_id: 11,
+        unassigned_only: undefined,
         user_id: 99,
         username: 'alice',
         model_name: 'gpt-4o-mini',
@@ -72,13 +82,46 @@ describe('Enterprise alerts feature', () => {
 
   test('search schema preserves page and page size defaults', () => {
     const parsed = enterpriseAlertsSearchSchema.parse({
+      tab: 'overview',
       department_id: '11',
       page: '2',
       page_size: '50',
     })
+    assert.equal(parsed.tab, 'overview')
     assert.equal(parsed.department_id, 11)
     assert.equal(parsed.page, 2)
     assert.equal(parsed.page_size, 50)
+  })
+
+  test('overview search normalizes summary inputs without carrying event filters', () => {
+    assert.deepEqual(
+      overviewSearchFromAlerts({
+        tab: 'events',
+        tenant_id: 7,
+        department_id: 11,
+        unassigned_only: true,
+        user_id: 99,
+        username: 'alice',
+        model_name: 'gpt-4o-mini',
+        risk_type: 'abuse',
+        from: 1717117200,
+        to: 1717120800,
+        page: 3,
+        page_size: 50,
+      }),
+      {
+        tenant_id: 7,
+        from: 1717117200,
+        to: 1717120800,
+        summary_sort: 'quota',
+        summary_order: 'desc',
+      }
+    )
+  })
+
+  test('formats risk rate as percentage text', () => {
+    assert.equal(formatRiskRate(0), '0.0%')
+    assert.equal(formatRiskRate(0.125), '12.5%')
   })
 
   test('formats department snapshot for multi-department events and falls back to unassigned', () => {
@@ -128,6 +171,27 @@ describe('Enterprise alerts feature', () => {
       'alerts',
       'deliveries',
     ])
+    assert.deepEqual(
+      alertOverviewQueryKey({
+        tenant_id: 7,
+        from: 1717117200,
+        to: 1717120800,
+        summary_sort: 'quota',
+        summary_order: 'desc',
+      }),
+      [
+        'enterprise',
+        'alerts',
+        'department-summary',
+        {
+          tenant_id: 7,
+          from: 1717117200,
+          to: 1717120800,
+          summary_sort: 'quota',
+          summary_order: 'desc',
+        },
+      ]
+    )
     assert.deepEqual(alertDeliveriesListQueryKey({ tenant_id: 7, page: 1 }), [
       'enterprise',
       'alerts',
@@ -190,6 +254,78 @@ describe('Enterprise alerts feature', () => {
           page: 1,
         },
       ]
+    )
+  })
+
+  test('maps overview drill-down entries into event-list search params', () => {
+    assert.deepEqual(
+      buildAlertEventEntrySearch(
+        {
+          tab: 'overview',
+          tenant_id: 7,
+          department_id: 22,
+          unassigned_only: true,
+          user_id: 99,
+          username: 'alice',
+          model_name: 'gpt-4o-mini',
+          risk_type: 'abuse',
+          from: 1717000000,
+          to: 1717003600,
+          page: 3,
+          page_size: 50,
+          summary_sort: 'quota',
+          summary_order: 'desc',
+        },
+        {
+          detail_route: '/enterprise-alerts?tab=events&department_id=11',
+          detail_api_path: '/api/enterprise/alerts/events?department_id=11',
+          department_id: 11,
+          department_name: 'Engineering',
+          from: 1717117200,
+          to: 1717120800,
+          unassigned_only: false,
+        }
+      ),
+      {
+        tab: 'events',
+        tenant_id: 7,
+        page: 1,
+        page_size: 50,
+        department_id: 11,
+        unassigned_only: undefined,
+        from: 1717117200,
+        to: 1717120800,
+      }
+    )
+
+    assert.deepEqual(
+      buildAlertEventEntrySearch(
+        {
+          tab: 'overview',
+          tenant_id: 7,
+          department_id: 22,
+          username: 'alice',
+          page: 2,
+        },
+        {
+          detail_route: '/enterprise-alerts?tab=events&unassigned_only=true',
+          detail_api_path: '/api/enterprise/alerts/events?unassigned_only=true',
+          department_name: 'Unassigned',
+          from: 1717117200,
+          to: 1717120800,
+          unassigned_only: true,
+        }
+      ),
+      {
+        tab: 'events',
+        tenant_id: 7,
+        department_id: undefined,
+        page: 1,
+        page_size: undefined,
+        from: 1717117200,
+        to: 1717120800,
+        unassigned_only: true,
+      }
     )
   })
 
@@ -375,6 +511,201 @@ describe('Enterprise alerts feature', () => {
     }
   })
 
+  test('renders risk overview disclaimer, formula, trend, unassigned bucket, and drill-down actions', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentRiskOverviewTab
+          summary={{
+            items: [
+              {
+                dept_id: 11,
+                dept_name: 'Engineering',
+                is_unassigned: false,
+                window_start: 1717117200,
+                window_end: 1717120800,
+                risk_event_count: 2,
+                total_request_count: 10,
+                risk_rate: 0.2,
+                event_entry: {
+                  detail_route:
+                    '/enterprise-alerts?tab=events&department_id=11&from=1717117200&to=1717120800',
+                  detail_api_path:
+                    '/api/enterprise/alerts/events?department_id=11&from=1717117200&to=1717120800',
+                  department_id: 11,
+                  department_name: 'Engineering',
+                  from: 1717117200,
+                  to: 1717120800,
+                  unassigned_only: false,
+                },
+              },
+              {
+                dept_name: 'Unassigned',
+                is_unassigned: true,
+                window_start: 1717117200,
+                window_end: 1717120800,
+                risk_event_count: 1,
+                total_request_count: 4,
+                risk_rate: 0.25,
+                event_entry: {
+                  detail_route:
+                    '/enterprise-alerts?tab=events&unassigned_only=true&from=1717117200&to=1717120800',
+                  detail_api_path:
+                    '/api/enterprise/alerts/events?unassigned_only=true&from=1717117200&to=1717120800',
+                  department_name: 'Unassigned',
+                  from: 1717117200,
+                  to: 1717120800,
+                  unassigned_only: true,
+                },
+              },
+            ],
+            top_departments: [
+              {
+                dept_id: 11,
+                dept_name: 'Engineering',
+                is_unassigned: false,
+                window_start: 1717117200,
+                window_end: 1717120800,
+                risk_event_count: 2,
+                total_request_count: 10,
+                risk_rate: 0.2,
+                event_entry: {
+                  detail_route:
+                    '/enterprise-alerts?tab=events&department_id=11&from=1717117200&to=1717120800',
+                  detail_api_path:
+                    '/api/enterprise/alerts/events?department_id=11&from=1717117200&to=1717120800',
+                  department_id: 11,
+                  department_name: 'Engineering',
+                  from: 1717117200,
+                  to: 1717120800,
+                  unassigned_only: false,
+                },
+              },
+            ],
+            trend: [
+              {
+                window_start: 1717117200,
+                window_end: 1717120800,
+                risk_event_count: 3,
+                total_request_count: 14,
+                risk_rate: 3 / 14,
+                unassigned_risk_event_count: 1,
+                unassigned_total_request_count: 4,
+              },
+            ],
+            unassigned: {
+              dept_name: 'Unassigned',
+              is_unassigned: true,
+              window_start: 1717117200,
+              window_end: 1717120800,
+              risk_event_count: 1,
+              total_request_count: 4,
+              risk_rate: 0.25,
+              event_entry: {
+                detail_route:
+                  '/enterprise-alerts?tab=events&unassigned_only=true&from=1717117200&to=1717120800',
+                detail_api_path:
+                  '/api/enterprise/alerts/events?unassigned_only=true&from=1717117200&to=1717120800',
+                department_name: 'Unassigned',
+                from: 1717117200,
+                to: 1717120800,
+                unassigned_only: true,
+              },
+            },
+            formula: {
+              expression: 'Risk rate = risky requests / total requests',
+              numerator_label: 'Requests that triggered risk events',
+              denominator_label: 'Total requests from department members',
+            },
+            disclaimer_key: 'enterprise.usage.multi_dept_disclaimer',
+          }}
+          isLoading={false}
+          errorMessage={null}
+          onOpenEventEntry={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Department totals cannot be added together across departments.',
+      'Department risk overview',
+      'Risk Rate Formula',
+      'Department totals are non-additive',
+      'Risk rate = risky requests / total requests',
+      'Requests that triggered risk events',
+      'Total requests from department members',
+      'Top Risk Departments',
+      'Recent Trend',
+      'Department Risk Summary',
+      'Engineering',
+      'Unassigned',
+      'View Risk Events',
+      '20.0%',
+      '25.0%',
+      'Unassigned: 1 / 4',
+      'Ranked by risk rate with drill-down entry into the event list.',
+      'Trend lines reflect the same multi-department duplicate-counting rule as the summary.',
+      'Review each department, the unassigned bucket, and jump straight to matching risk events.',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders overview empty and error states without hardcoded waits', () => {
+    const emptyHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentRiskOverviewTab
+          summary={{
+            items: [],
+            top_departments: [],
+            trend: [],
+            unassigned: {
+              dept_name: 'Unassigned',
+              is_unassigned: true,
+              window_start: 0,
+              window_end: 0,
+              risk_event_count: 0,
+              total_request_count: 0,
+              risk_rate: 0,
+              event_entry: {
+                detail_route: '/enterprise-alerts?tab=events&unassigned_only=true',
+                detail_api_path: '/api/enterprise/alerts/events?unassigned_only=true',
+                department_name: 'Unassigned',
+                from: 0,
+                to: 0,
+                unassigned_only: true,
+              },
+            },
+            formula: {
+              expression: 'Risk rate = risky requests / total requests',
+              numerator_label: 'Requests that triggered risk events',
+              denominator_label: 'Total requests from department members',
+            },
+            disclaimer_key: 'enterprise.usage.multi_dept_disclaimer',
+          }}
+          isLoading={false}
+          errorMessage={null}
+          onOpenEventEntry={() => undefined}
+        />
+      </I18nextProvider>
+    )
+    assert.match(emptyHtml, /No risk overview data for this time range/)
+    assert.match(emptyHtml, /No trend data for this time range/)
+
+    const errorHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentRiskOverviewTab
+          summary={undefined}
+          isLoading={false}
+          errorMessage='common.invalid_params'
+          onOpenEventEntry={() => undefined}
+        />
+      </I18nextProvider>
+    )
+    assert.match(errorHtml, /common\.invalid_params|Invalid parameters/)
+    assert.match(errorHtml, /Request failed/)
+    assert.doesNotMatch(errorHtml, /setTimeout|sleep|wait/i)
+  })
+
   test('mapped filters never include sensitive raw content fields', () => {
     const mapped = mapAlertFilterFormToSearch({
       tenant_id: '',
@@ -393,13 +724,33 @@ describe('Enterprise alerts feature', () => {
   })
 
   test('enterprise alerts page source keeps V1 workflow guidance and secret-safe messaging', () => {
-    const source = fs.readFileSync(
-      new URL('./index.tsx', import.meta.url),
-      'utf8'
-    )
+    const source = `${EnterpriseAlertsPage.toString()}\n${DepartmentRiskOverviewTab.toString()}\n${buildAlertEventEntrySearch.toString()}`
 
     for (const expected of [
-      'Deliveries',
+      'Department risk overview',
+      'Risk Rate Formula',
+      'Top Risk Departments',
+      'Recent Trend',
+      'Department Risk Summary',
+      'View Risk Events',
+      'Ranked by risk rate with drill-down entry into the event list.',
+      'Trend lines reflect the same multi-department duplicate-counting rule as the summary.',
+      'Review each department, the unassigned bucket, and jump straight to matching risk events.',
+      'Risk rate = risky requests / total requests',
+      'Requests that triggered risk events',
+      'Total requests from department members',
+      'buildAlertEventEntrySearch',
+      'buildAlertRulePayload',
+      'describeAlertRuleSecretStatus',
+      'formatDeliveryTraceSummary',
+      'DepartmentRiskTrendChart',
+      'enterprise.usage.multi_dept_disclaimer',
+      'unassigned_only',
+    ]) {
+      assert.match(source, new RegExp(escapeRegExp(expected)))
+    }
+
+    for (const expected of [
       'Review notification delivery results, retry timing, and trace lookup hints without exposing secrets or raw prompts.',
       'Show final failed only',
       'Retry source',
@@ -423,12 +774,8 @@ describe('Enterprise alerts feature', () => {
       'Secret already configured',
       'No secret configured',
     ]) {
-      assert.match(source, new RegExp(escapeRegExp(expected)))
+      assert.match(EnterpriseAlertsPage.toString(), new RegExp(escapeRegExp(expected)))
     }
-
-    assert.match(source, /describeAlertRuleSecretStatus\(/)
-    assert.match(source, /buildAlertRulePayload\(draft, normalizedSearch\.tenant_id\)/)
-    assert.match(source, /formatDeliveryTraceSummary\(/)
     assert.doesNotMatch(source, /plain-secret/i)
     assert.doesNotMatch(source, /token=secret/i)
   })

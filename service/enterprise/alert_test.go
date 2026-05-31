@@ -14,6 +14,26 @@ import (
 	"gorm.io/gorm"
 )
 
+func seedDepartmentRiskUsageSnapshot(t *testing.T, db *gorm.DB, tenantId int, deptId *int, deptName string, windowStart int64, windowEnd int64, requestCount int64, userIds []int) {
+	t.Helper()
+	snapshot := entmodel.UsageSnapshot{
+		TenantId:     tenantId,
+		DeptId:       deptId,
+		DeptName:     deptName,
+		WindowStart:  windowStart,
+		WindowEnd:    windowEnd,
+		RequestCount: requestCount,
+	}
+	require.NoError(t, snapshot.SetModelDistribution([]entmodel.UsageSnapshotModelStat{
+		{
+			ModelName:    "gpt-4o-mini",
+			RequestCount: requestCount,
+		},
+	}))
+	require.NoError(t, snapshot.SetUserIds(userIds))
+	require.NoError(t, db.Create(&snapshot).Error)
+}
+
 func setupAlertServiceTest(t *testing.T) (*AlertService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -323,6 +343,206 @@ func TestAlertServiceListAlertEventsRejectsInvalidQuery(t *testing.T) {
 		DepartmentId: &deptID,
 	})
 	require.ErrorIs(t, err, ErrInvalidAlertEventQuery)
+}
+
+func TestAlertServiceListAlertEventsSupportsUnassignedOnlyFilter(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	unassigned := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1,
+		Username:     "orphan",
+		RequestId:    "req-unassigned",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117201,
+		UpdatedAt:    1717117201,
+	}
+	require.NoError(t, unassigned.SetDepartmentSnapshot(nil))
+	assigned := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       2,
+		Username:     "assigned",
+		RequestId:    "req-assigned",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117202,
+		UpdatedAt:    1717117202,
+	}
+	require.NoError(t, assigned.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+	}))
+	require.NoError(t, db.Create(&unassigned).Error)
+	require.NoError(t, db.Create(&assigned).Error)
+
+	unassignedOnly := true
+	result, err := service.ListAlertEvents(AlertEventQuery{
+		TenantId:       0,
+		UnassignedOnly: &unassignedOnly,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "orphan", result.Items[0].Username)
+}
+
+func TestAlertServiceGetDepartmentRiskSummaryAggregatesAcrossUsageSnapshotsAndEventSnapshots(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	engineerId := 11
+	securityId := 22
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &engineerId, "Engineering", 1717117200, 1717120800, 10, []int{1001, 1002})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &securityId, "Security", 1717117200, 1717120800, 5, []int{1001})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, nil, entmodel.UsageSnapshotUnassignedDeptName, 1717117200, 1717120800, 2, []int{1003})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &engineerId, "Engineering", 1717120800, 1717124400, 4, []int{1002})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &securityId, "Security", 1717120800, 1717124400, 6, []int{1001, 1004})
+
+	eventOne := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1001,
+		Username:     "alice",
+		RequestId:    "req-risk-1",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, eventOne.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+		{DepartmentId: 22, DepartmentName: "Security"},
+	}))
+	eventTwo := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1002,
+		Username:     "bob",
+		RequestId:    "req-risk-2",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717121000,
+		UpdatedAt:    1717121000,
+	}
+	require.NoError(t, eventTwo.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+	}))
+	eventThree := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1003,
+		Username:     "carol",
+		RequestId:    "req-risk-3",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117600,
+		UpdatedAt:    1717117600,
+	}
+	require.NoError(t, eventThree.SetDepartmentSnapshot(nil))
+	require.NoError(t, db.Create(&eventOne).Error)
+	require.NoError(t, db.Create(&eventTwo).Error)
+	require.NoError(t, db.Create(&eventThree).Error)
+
+	result, err := service.GetDepartmentRiskSummary(DepartmentRiskSummaryQuery{
+		TenantId: 0,
+		From:     1717117200,
+		To:       1717124400,
+		Sort:     NormalizeUsageSummarySort("quota", "desc"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "enterprise.usage.multi_dept_disclaimer", result.DisclaimerKey)
+	require.Equal(t, "Risk rate = risky requests / total requests", result.Formula.Expression)
+	require.Len(t, result.Items, 3)
+	require.Len(t, result.TopDepartments, 2)
+	require.Len(t, result.Trend, 2)
+
+	itemsByName := map[string]DepartmentRiskSummaryItem{}
+	for _, item := range result.Items {
+		itemsByName[item.DeptName] = item
+	}
+	require.Equal(t, int64(2), itemsByName["Engineering"].RiskEventCount)
+	require.Equal(t, int64(14), itemsByName["Engineering"].TotalRequestCount)
+	require.InDelta(t, 2.0/14.0, itemsByName["Engineering"].RiskRate, 0.0001)
+	require.Equal(t, int64(1), itemsByName["Security"].RiskEventCount)
+	require.Equal(t, int64(11), itemsByName["Security"].TotalRequestCount)
+	require.InDelta(t, 1.0/11.0, itemsByName["Security"].RiskRate, 0.0001)
+	require.True(t, itemsByName["未归属"].IsUnassigned)
+	require.Equal(t, int64(1), itemsByName["未归属"].RiskEventCount)
+	require.Equal(t, int64(2), itemsByName["未归属"].TotalRequestCount)
+	require.True(t, itemsByName["未归属"].EventEntry.UnassignedOnly)
+	require.Contains(t, itemsByName["未归属"].EventEntry.DetailRoute, "unassigned_only=true")
+	require.Contains(t, itemsByName["Engineering"].EventEntry.DetailRoute, "department_id=11")
+
+	require.Equal(t, int64(3), result.Trend[0].RiskEventCount)
+	require.Equal(t, int64(17), result.Trend[0].TotalRequestCount)
+	require.Equal(t, int64(1), result.Trend[0].UnassignedRiskEventCount)
+	require.Equal(t, int64(2), result.Trend[0].UnassignedTotalRequestCount)
+	require.Equal(t, int64(1), result.Trend[1].RiskEventCount)
+	require.Equal(t, int64(10), result.Trend[1].TotalRequestCount)
+}
+
+func TestAlertServiceGetDepartmentRiskSummaryExcludesEventsAtUpperBound(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+
+	engineerId := 11
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &engineerId, "Engineering", 1717117200, 1717120800, 8, []int{1001})
+
+	inRange := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1001,
+		Username:     "alice",
+		RequestId:    "req-risk-in-range",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, inRange.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+	}))
+
+	atUpperBound := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1001,
+		Username:     "alice",
+		RequestId:    "req-risk-upper-bound",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717120800,
+		UpdatedAt:    1717120800,
+	}
+	require.NoError(t, atUpperBound.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 11, DepartmentName: "Engineering"},
+	}))
+
+	require.NoError(t, db.Create(&inRange).Error)
+	require.NoError(t, db.Create(&atUpperBound).Error)
+
+	result, err := service.GetDepartmentRiskSummary(DepartmentRiskSummaryQuery{
+		TenantId: 0,
+		From:     1717117200,
+		To:       1717120800,
+		Sort:     NormalizeUsageSummarySort("quota", "desc"),
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 2)
+	require.Len(t, result.Trend, 1)
+
+	itemsByName := map[string]DepartmentRiskSummaryItem{}
+	for _, item := range result.Items {
+		itemsByName[item.DeptName] = item
+	}
+	require.Equal(t, int64(1), itemsByName["Engineering"].RiskEventCount)
+	require.Equal(t, int64(1), result.Trend[0].RiskEventCount)
 }
 
 func TestAlertServiceSaveAlertRuleValidatesAndMasksSecrets(t *testing.T) {

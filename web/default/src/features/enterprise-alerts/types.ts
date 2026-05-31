@@ -50,6 +50,53 @@ export type AlertEventsResponse = {
   page_size: number
 }
 
+export type DepartmentRiskEventEntry = {
+  detail_route: string
+  detail_api_path: string
+  department_id?: number
+  department_name: string
+  from: number
+  to: number
+  unassigned_only: boolean
+}
+
+export type DepartmentRiskSummaryItem = {
+  dept_id?: number
+  dept_name: string
+  is_unassigned: boolean
+  window_start: number
+  window_end: number
+  risk_event_count: number
+  total_request_count: number
+  risk_rate: number
+  event_entry: DepartmentRiskEventEntry
+}
+
+export type DepartmentRiskTrendPoint = {
+  window_start: number
+  window_end: number
+  risk_event_count: number
+  total_request_count: number
+  risk_rate: number
+  unassigned_risk_event_count: number
+  unassigned_total_request_count: number
+}
+
+export type DepartmentRiskFormula = {
+  expression: string
+  numerator_label: string
+  denominator_label: string
+}
+
+export type DepartmentRiskSummaryResponse = {
+  items: DepartmentRiskSummaryItem[]
+  top_departments: DepartmentRiskSummaryItem[]
+  trend: DepartmentRiskTrendPoint[]
+  unassigned: DepartmentRiskSummaryItem
+  formula: DepartmentRiskFormula
+  disclaimer_key: string
+}
+
 export type AlertDeliveryStatus =
   | 'pending'
   | 'sent'
@@ -170,8 +217,10 @@ export type AlertRuleUpsertRequest = {
 }
 
 export type EnterpriseAlertsSearch = {
+  tab?: 'overview' | 'events' | 'deliveries' | 'rules'
   tenant_id?: number
   department_id?: number
+  unassigned_only?: boolean
   user_id?: number
   username?: string
   model_name?: string
@@ -180,6 +229,8 @@ export type EnterpriseAlertsSearch = {
   to?: number
   page?: number
   page_size?: number
+  summary_sort?: 'requests' | 'quota' | 'users' | 'dept_name'
+  summary_order?: 'asc' | 'desc'
 }
 
 export type EnterpriseAlertDeliveriesSearch = {

@@ -24,17 +24,23 @@ import type {
   AlertRulesResponse,
   AlertRuleUpsertRequest,
   AlertEventsResponse,
+  DepartmentRiskSummaryResponse,
   ApiResponse,
   EnterpriseAlertDeliveriesSearch,
   EnterpriseAlertsSearch,
 } from './types'
 
 export const enterpriseAlertsQueryKey = ['enterprise', 'alerts', 'events'] as const
+export const enterpriseAlertOverviewQueryKey = ['enterprise', 'alerts', 'department-summary'] as const
 export const enterpriseAlertDeliveriesQueryKey = ['enterprise', 'alerts', 'deliveries'] as const
 export const enterpriseAlertRulesQueryKey = ['enterprise', 'alerts', 'rules'] as const
 
 export function alertEventsListQueryKey(search: EnterpriseAlertsSearch) {
   return [...enterpriseAlertsQueryKey, search] as const
+}
+
+export function alertOverviewQueryKey(search: EnterpriseAlertsSearch) {
+  return [...enterpriseAlertOverviewQueryKey, search] as const
 }
 
 export function alertRulesListQueryKey(tenantId?: number) {
@@ -52,10 +58,14 @@ export async function getAlertEvents(
 ): Promise<ApiResponse<AlertEventsResponse>> {
   const res = await api.get('/api/enterprise/alerts/events', {
     params: {
+      ...(search.tab ? { tab: search.tab } : {}),
       ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
       ...(search.department_id === undefined
         ? {}
         : { department_id: search.department_id }),
+      ...(search.unassigned_only === undefined
+        ? {}
+        : { unassigned_only: search.unassigned_only }),
       ...(search.user_id === undefined ? {} : { user_id: search.user_id }),
       ...(search.username ? { username: search.username } : {}),
       ...(search.model_name ? { model_name: search.model_name } : {}),
@@ -64,6 +74,25 @@ export async function getAlertEvents(
       ...(search.to === undefined ? {} : { to: search.to }),
       ...(search.page === undefined ? {} : { page: search.page }),
       ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
+    },
+  })
+  return res.data
+}
+
+export async function getDepartmentRiskSummary(
+  search: EnterpriseAlertsSearch
+): Promise<ApiResponse<DepartmentRiskSummaryResponse>> {
+  const res = await api.get('/api/enterprise/alerts/department-summary', {
+    params: {
+      ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.from === undefined ? {} : { from: search.from }),
+      ...(search.to === undefined ? {} : { to: search.to }),
+      ...(search.summary_sort === undefined
+        ? {}
+        : { summary_sort: search.summary_sort }),
+      ...(search.summary_order === undefined
+        ? {}
+        : { summary_order: search.summary_order }),
     },
   })
   return res.data

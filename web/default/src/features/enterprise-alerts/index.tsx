@@ -28,12 +28,22 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import {
   AlertTriangle,
+  ArrowRight,
   BellRing,
+  Info,
   Plus,
   Save,
   Search,
   Trash2,
 } from 'lucide-react'
+import dayjs from 'dayjs'
+import {
+  CartesianGrid,
+  Line,
+  LineChart as RechartsLineChart,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
@@ -83,11 +93,18 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart'
 import { SectionPageLayout } from '@/components/layout'
 import {
   alertEventsListQueryKey,
   alertDeliveriesListQueryKey,
+  alertOverviewQueryKey,
   enterpriseAlertDeliveriesQueryKey,
+  getDepartmentRiskSummary,
   alertRulesListQueryKey,
   deleteAlertRule,
   getAlertDeliveries,
@@ -100,6 +117,8 @@ import type {
   AlertDeliveryItem,
   AlertDeliveryStatus,
   AlertEventItem,
+  DepartmentRiskSummaryItem,
+  DepartmentRiskTrendPoint,
   AlertRuleItem,
   AlertRuleUpsertRequest,
   EnterpriseAlertDeliveriesSearch,
@@ -107,8 +126,10 @@ import type {
 } from './types'
 
 export const enterpriseAlertsSearchSchema = z.object({
+  tab: z.enum(['overview', 'events', 'deliveries', 'rules']).optional().catch(undefined),
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
   department_id: z.coerce.number().int().positive().optional().catch(undefined),
+  unassigned_only: z.coerce.boolean().optional().catch(undefined),
   user_id: z.coerce.number().int().positive().optional().catch(undefined),
   username: z.string().optional().catch(undefined),
   model_name: z.string().optional().catch(undefined),
@@ -117,6 +138,8 @@ export const enterpriseAlertsSearchSchema = z.object({
   to: z.coerce.number().int().positive().optional().catch(undefined),
   page: z.coerce.number().int().positive().optional().catch(1),
   page_size: z.coerce.number().int().positive().optional().catch(20),
+  summary_sort: z.enum(['requests', 'quota', 'users', 'dept_name']).optional().catch(undefined),
+  summary_order: z.enum(['asc', 'desc']).optional().catch(undefined),
 })
 
 const filterSchema = z.object({
@@ -162,8 +185,10 @@ type RuleEditorState = {
 
 export function mapAlertFilterFormToSearch(values: AlertFilterFormValues) {
   return {
+    tab: 'events' as const,
     tenant_id: parseOptionalNumber(values.tenant_id),
     department_id: parseOptionalNumber(values.department_id),
+    unassigned_only: undefined,
     user_id: parseOptionalNumber(values.user_id),
     username: emptyToUndefined(values.username),
     model_name: emptyToUndefined(values.model_name),
@@ -291,6 +316,21 @@ export function describeAlertRuleSecretStatus(
   return masked ? `${configuredLabel} (${masked})` : configuredLabel
 }
 
+export function formatRiskRate(value: number) {
+  return `${(value * 100).toFixed(1)}%`
+}
+
+const departmentRiskTrendChartConfig = {
+  riskRate: {
+    label: 'Risk Rate',
+    color: 'var(--color-chart-1)',
+  },
+  riskEvents: {
+    label: 'Risk Events',
+    color: 'var(--color-chart-2)',
+  },
+} as const
+
 function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormValues {
   return {
     tenant_id: numberToString(search.tenant_id),
@@ -302,6 +342,35 @@ function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormVa
     from: numberToString(search.from),
     to: numberToString(search.to),
     page_size: numberToString(search.page_size ?? 20),
+  }
+}
+
+export function overviewSearchFromAlerts(
+  search: EnterpriseAlertsSearch
+): EnterpriseAlertsSearch {
+  const current = dayjs()
+  return {
+    tenant_id: search.tenant_id,
+    from: search.from ?? current.subtract(6, 'day').startOf('day').unix(),
+    to: search.to ?? current.add(1, 'day').startOf('day').unix(),
+    summary_sort: search.summary_sort ?? 'quota',
+    summary_order: search.summary_order ?? 'desc',
+  }
+}
+
+export function buildAlertEventEntrySearch(
+  previous: EnterpriseAlertsSearch,
+  entry: DepartmentRiskSummaryItem['event_entry']
+): EnterpriseAlertsSearch {
+  return {
+    tab: 'events',
+    tenant_id: previous.tenant_id,
+    department_id: entry.department_id,
+    unassigned_only: entry.unassigned_only || undefined,
+    from: entry.from,
+    to: entry.to,
+    page: 1,
+    page_size: previous.page_size,
   }
 }
 
@@ -317,6 +386,218 @@ function deliveriesSearchFromAlerts(
     page: search.page ?? 1,
     page_size: search.page_size ?? 20,
   }
+}
+
+export function DepartmentRiskOverviewTab(props: {
+  summary:
+    | {
+        items: DepartmentRiskSummaryItem[]
+        top_departments: DepartmentRiskSummaryItem[]
+        trend: DepartmentRiskTrendPoint[]
+        unassigned: DepartmentRiskSummaryItem
+        formula: {
+          expression: string
+          numerator_label: string
+          denominator_label: string
+        }
+        disclaimer_key: string
+      }
+    | undefined
+  isLoading: boolean
+  errorMessage: string | null
+  onOpenEventEntry: (entry: DepartmentRiskSummaryItem['event_entry']) => void
+}) {
+  const { t } = useTranslation()
+  const summary = props.summary
+
+  return (
+    <div className='space-y-6'>
+      <Alert>
+        <Info className='size-4' />
+        <AlertTitle>{t('Department risk overview')}</AlertTitle>
+        <AlertDescription>
+          {t(summary?.disclaimer_key ?? 'enterprise.usage.multi_dept_disclaimer')}
+        </AlertDescription>
+      </Alert>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Risk Rate Formula')}</CardTitle>
+          <CardDescription>
+            {t('Department totals are non-additive')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-2 text-sm'>
+          <div className='font-medium'>
+            {t(summary?.formula.expression ?? 'Risk rate = risky requests / total requests')}
+          </div>
+          <div className='text-muted-foreground'>
+            {t(summary?.formula.numerator_label ?? 'Requests that triggered risk events')}
+          </div>
+          <div className='text-muted-foreground'>
+            {t(summary?.formula.denominator_label ?? 'Total requests from department members')}
+          </div>
+        </CardContent>
+      </Card>
+
+      {props.isLoading ? (
+        <div className='space-y-3'>
+          <Skeleton className='h-32 w-full' />
+          <Skeleton className='h-64 w-full' />
+        </div>
+      ) : props.errorMessage ? (
+        <Alert variant='destructive'>
+          <AlertTriangle className='size-4' />
+          <AlertTitle>{t('Request failed')}</AlertTitle>
+          <AlertDescription>{t(props.errorMessage)}</AlertDescription>
+        </Alert>
+      ) : (
+        <>
+          <div className='grid gap-4 xl:grid-cols-[0.9fr_1.1fr]'>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('Top Risk Departments')}</CardTitle>
+                <CardDescription>
+                  {t('Ranked by risk rate with drill-down entry into the event list.')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className='space-y-3'>
+                  {(summary?.top_departments ?? []).length === 0 ? (
+                    <div className='text-muted-foreground text-sm'>
+                      {t('No risk overview data for this time range')}
+                    </div>
+                  ) : (
+                    summary?.top_departments.map((item) => (
+                      <button
+                        key={`${item.dept_id ?? 'unassigned'}-${item.window_start}`}
+                        type='button'
+                        className='hover:bg-muted/60 flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left'
+                        onClick={() => props.onOpenEventEntry(item.event_entry)}
+                      >
+                        <div className='space-y-1'>
+                          <div className='font-medium'>{item.dept_name || t('Unassigned')}</div>
+                          <div className='text-muted-foreground text-xs'>
+                            {t('Risk events')}: {item.risk_event_count} · {t('Requests')}: {item.total_request_count}
+                          </div>
+                        </div>
+                        <div className='flex items-center gap-3'>
+                          <Badge variant='secondary'>{formatRiskRate(item.risk_rate)}</Badge>
+                          <ArrowRight className='size-4' />
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('Recent Trend')}</CardTitle>
+                <CardDescription>
+                  {t('Trend lines reflect the same multi-department duplicate-counting rule as the summary.')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DepartmentRiskTrendChart trend={summary?.trend ?? []} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('Department Risk Summary')}</CardTitle>
+              <CardDescription>
+                {t('Review each department, the unassigned bucket, and jump straight to matching risk events.')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='overflow-x-auto'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('Department')}</TableHead>
+                      <TableHead>{t('Risk Events')}</TableHead>
+                      <TableHead>{t('Requests')}</TableHead>
+                      <TableHead>{t('Risk Rate')}</TableHead>
+                      <TableHead>{t('Actions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(summary?.items ?? []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className='text-muted-foreground text-center'>
+                          {t('No risk overview data for this time range')}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (summary?.items ?? []).map((item) => (
+                        <TableRow key={`${item.dept_id ?? 'unassigned'}-${item.window_start}`}>
+                          <TableCell className='font-medium'>
+                            {item.dept_name || t('Unassigned')}
+                          </TableCell>
+                          <TableCell>{item.risk_event_count}</TableCell>
+                          <TableCell>{item.total_request_count}</TableCell>
+                          <TableCell>{formatRiskRate(item.risk_rate)}</TableCell>
+                          <TableCell>
+                            <Button
+                              type='button'
+                              size='sm'
+                              variant='outline'
+                              onClick={() => props.onOpenEventEntry(item.event_entry)}
+                            >
+                              {t('View Risk Events')}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className='text-muted-foreground text-sm'>
+                {t('Unassigned')}: {summary?.unassigned.risk_event_count ?? 0} / {summary?.unassigned.total_request_count ?? 0}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
+
+function DepartmentRiskTrendChart(props: {
+  trend: DepartmentRiskTrendPoint[]
+}) {
+  const { t } = useTranslation()
+  const data = props.trend.map((point) => ({
+    label: dayjs(point.window_start * 1000).format('MM-DD HH:mm'),
+    riskRate: Number((point.risk_rate * 100).toFixed(2)),
+    riskEvents: point.risk_event_count,
+  }))
+
+  if (data.length === 0) {
+    return (
+      <div className='text-muted-foreground text-sm'>
+        {t('No trend data for this time range')}
+      </div>
+    )
+  }
+
+  return (
+    <ChartContainer config={departmentRiskTrendChartConfig} className='h-72 w-full'>
+      <RechartsLineChart accessibilityLayer data={data}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey='label' tickLine={false} axisLine={false} minTickGap={24} />
+        <YAxis yAxisId='left' tickLine={false} axisLine={false} width={48} />
+        <YAxis yAxisId='right' orientation='right' tickLine={false} axisLine={false} width={48} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Line yAxisId='left' type='monotone' dataKey='riskRate' stroke='var(--color-riskRate)' strokeWidth={2} dot={false} />
+        <Line yAxisId='right' type='monotone' dataKey='riskEvents' stroke='var(--color-riskEvents)' strokeWidth={2} dot={false} />
+      </RechartsLineChart>
+    </ChartContainer>
+  )
 }
 
 function createEmptyRuleDraft(): RuleEditorState {
@@ -378,7 +659,9 @@ export function EnterpriseAlertsPage() {
   }) as EnterpriseAlertsSearch
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'events' | 'deliveries' | 'rules'>('events')
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'deliveries' | 'rules'>(
+    (search.tab as 'overview' | 'events' | 'deliveries' | 'rules') ?? 'overview'
+  )
   const [draft, setDraft] = useState<RuleEditorState>(createEmptyRuleDraft())
   const [deliveryFilters, setDeliveryFilters] = useState<DeliveryFilterState>({
     status: 'final_failed',
@@ -403,6 +686,27 @@ export function EnterpriseAlertsPage() {
     () => deliveriesSearchFromAlerts(normalizedSearch, deliveryFilters),
     [normalizedSearch, deliveryFilters]
   )
+  const overviewSearch = useMemo(
+    () => overviewSearchFromAlerts(normalizedSearch),
+    [normalizedSearch]
+  )
+
+  useEffect(() => {
+    setActiveTab(
+      (search.tab as 'overview' | 'events' | 'deliveries' | 'rules') ?? 'overview'
+    )
+  }, [search.tab])
+
+  const overviewQuery = useQuery({
+    queryKey: alertOverviewQueryKey(overviewSearch),
+    queryFn: async () => {
+      const response = await getDepartmentRiskSummary(overviewSearch)
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data
+    },
+  })
 
   const alertsQuery = useQuery({
     queryKey: alertEventsListQueryKey(normalizedSearch),
@@ -547,6 +851,24 @@ export function EnterpriseAlertsPage() {
     await deleteRuleMutation.mutateAsync(draft.id)
   }
 
+  const handleTabChange = (value: 'overview' | 'events' | 'deliveries' | 'rules') => {
+    setActiveTab(value)
+    navigate({
+      to: '/enterprise-alerts',
+      search: (prev) => ({
+        ...prev,
+        tab: value,
+      }),
+    })
+  }
+
+  const handleOpenEventEntry = (entry: DepartmentRiskSummaryItem['event_entry']) => {
+    navigate({
+      to: '/enterprise-alerts',
+      search: (prev) => buildAlertEventEntrySearch(prev, entry),
+    })
+  }
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Enterprise Alerts')}</SectionPageLayout.Title>
@@ -555,15 +877,29 @@ export function EnterpriseAlertsPage() {
           <Tabs
             value={activeTab}
             onValueChange={(value) =>
-              setActiveTab(value as 'events' | 'deliveries' | 'rules')
+              handleTabChange(value as 'overview' | 'events' | 'deliveries' | 'rules')
             }
             className='space-y-6'
           >
-            <TabsList className='grid w-full grid-cols-3 md:w-[480px]'>
+            <TabsList className='grid w-full grid-cols-4 md:w-[640px]'>
+              <TabsTrigger value='overview'>{t('Risk Overview')}</TabsTrigger>
               <TabsTrigger value='events'>{t('Risk Events')}</TabsTrigger>
               <TabsTrigger value='deliveries'>{t('Deliveries')}</TabsTrigger>
               <TabsTrigger value='rules'>{t('Alert Rules')}</TabsTrigger>
             </TabsList>
+
+            <TabsContent value='overview' className='space-y-6'>
+              <DepartmentRiskOverviewTab
+                summary={overviewQuery.data}
+                isLoading={overviewQuery.isLoading}
+                errorMessage={
+                  overviewQuery.error instanceof Error
+                    ? overviewQuery.error.message
+                    : null
+                }
+                onOpenEventEntry={handleOpenEventEntry}
+              />
+            </TabsContent>
 
             <TabsContent value='events' className='space-y-6'>
               <Card>

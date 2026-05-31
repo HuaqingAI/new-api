@@ -56,6 +56,7 @@ var (
 	ErrUsageReportInvalidEmail                           = errors.New("enterprise usage report email invalid")
 	ErrUsageReportNotConfigured                          = errors.New("enterprise usage report not configured")
 	ErrInvalidAlertEventQuery                            = errors.New("enterprise alert event query invalid")
+	ErrInvalidDepartmentRiskSummaryQuery                 = errors.New("enterprise department risk summary query invalid")
 	ErrInvalidAlertDeliveryQuery                         = errors.New("enterprise alert delivery query invalid")
 	ErrAlertRuleNotFound                                 = errors.New("enterprise alert rule not found")
 	ErrAlertRuleInvalidInput                             = errors.New("enterprise alert rule input invalid")

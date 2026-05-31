@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -29,7 +29,6 @@ import {
   CreditCard,
   RefreshCw,
   RotateCcw,
-  Search,
   Settings,
   ShieldX,
   UserPlus,
@@ -95,7 +94,6 @@ import {
   departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
   departmentMembersQueryKey,
-  enterpriseOrganizationQueryKey,
   getDepartmentBudget,
   getDepartmentBudgetDetail,
   getDepartmentBudgets,
@@ -106,7 +104,6 @@ import {
   quotaAllocationQueryScopeKey,
   restoreDepartmentMember,
   revokeQuotaAllocation,
-  replaceUserDepartments,
   userDepartmentsQueryKey,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
@@ -142,6 +139,19 @@ export type EnterpriseOrganizationSearch = z.infer<
   typeof enterpriseOrganizationSearchSchema
 >
 
+export function normalizeMemberSelection(params: {
+  members: DepartmentMemberItem[]
+  selectedUserId: number | null | undefined
+}) {
+  if (
+    params.selectedUserId != null &&
+    params.members.some((item) => item.user_id === params.selectedUserId)
+  ) {
+    return params.selectedUserId
+  }
+  return null
+}
+
 export function normalizeEnterpriseOrganizationSearch(params: {
   departments: DepartmentTreeNode[]
   search: EnterpriseOrganizationSearch
@@ -168,19 +178,58 @@ export function normalizeEnterpriseOrganizationSearch(params: {
   }
 }
 
+export function resolveDepartmentMemberSelection(
+  members: DepartmentMemberItem[],
+  selectedMemberUserId: number | null | undefined
+) {
+  if (
+    selectedMemberUserId != null &&
+    members.some((item) => item.user_id === selectedMemberUserId)
+  ) {
+    return selectedMemberUserId
+  }
+  return null
+}
+
+export function syncAllocationFormDraft(params: {
+  current: {
+    tenant_id: number
+    department_id: number
+    department_budget_id: number
+    target_user_id: number
+    committed_quota: number
+    reason: string
+  }
+  departmentId: number
+  selectedBudgetId: number | null
+  selectedMemberUserId: number | null
+  resetMode: 'department-change' | 'budget-change' | 'member-change'
+}) {
+  if (params.resetMode === 'department-change') {
+    return {
+      tenant_id: params.current.tenant_id,
+      department_id: params.departmentId,
+      department_budget_id: 0,
+      target_user_id: 0,
+      committed_quota: 0,
+      reason: '',
+    }
+  }
+
+  return {
+    tenant_id: params.current.tenant_id,
+    department_id: params.departmentId,
+    department_budget_id: params.selectedBudgetId ?? 0,
+    target_user_id: params.selectedMemberUserId ?? 0,
+    committed_quota: 0,
+    reason: '',
+  }
+}
+
 function parsePositiveInt(value: string) {
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) return null
   return parsed
-}
-
-function parseDepartmentIds(value: string) {
-  if (!value.trim()) return []
-  const ids = value
-    .split(',')
-    .map((part) => Number(part.trim()))
-    .filter((id) => Number.isInteger(id) && id > 0)
-  return Array.from(new Set(ids))
 }
 
 export function createBudgetSchema(t: (key: string) => string) {
@@ -538,6 +587,45 @@ export function EnterpriseOrganizationWorkspace(props: {
   selectedBudgetId: number | null
   onSelectedBudgetIdChange: (budgetId: number | null) => void
 }) {
+  const { t } = useTranslation()
+  const [departmentMembers, setDepartmentMembers] = useState<DepartmentMemberItem[]>(
+    []
+  )
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState<number | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (!props.currentDepartment) {
+      setDepartmentMembers([])
+      setSelectedMemberUserId(null)
+    }
+  }, [props.currentDepartment])
+
+  useEffect(() => {
+    setSelectedMemberUserId((current) =>
+      resolveDepartmentMemberSelection(departmentMembers, current)
+    )
+  }, [departmentMembers])
+
+  const selectedMember = useMemo(
+    () =>
+      departmentMembers.find((item) => item.user_id === selectedMemberUserId) ??
+      null,
+    [departmentMembers, selectedMemberUserId]
+  )
+  const selectedMemberMembershipsQuery = useQuery({
+    queryKey: userDepartmentsQueryKey(selectedMember?.user_id ?? null),
+    queryFn: async () => {
+      if (!selectedMember?.user_id) return []
+      const result = await getUserDepartments(selectedMember.user_id)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+    enabled: Boolean(selectedMember?.user_id),
+  })
+
   if (!props.currentDepartment) {
     return <EnterpriseOrganizationEmptyState />
   }
@@ -551,14 +639,23 @@ export function EnterpriseOrganizationWorkspace(props: {
       <DepartmentMembersPanel
         departmentId={props.currentDepartment.id}
         departmentName={props.currentDepartment.name}
+        selectedMemberUserId={selectedMemberUserId}
+        onSelectedMemberChange={setSelectedMemberUserId}
+        onMembersChange={setDepartmentMembers}
+      />
+      <DepartmentMemberContextCard
+        currentDepartment={props.currentDepartment}
+        selectedMember={selectedMember}
+        memberships={selectedMemberMembershipsQuery.data ?? []}
+        loading={selectedMemberMembershipsQuery.isLoading}
       />
       <DepartmentBudgetPanel
         departmentId={props.currentDepartment.id}
         departmentName={props.currentDepartment.name}
         selectedBudgetId={props.selectedBudgetId}
         onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
+        selectedMember={selectedMember}
       />
-      <UserDepartmentsPanel />
     </div>
   )
 }
@@ -740,94 +837,6 @@ function DepartmentMetaStat({
   )
 }
 
-function UserDepartmentsPanel() {
-  const { t } = useTranslation()
-  const queryClient = useQueryClient()
-  const [userIdText, setUserIdText] = useState('')
-  const [departmentIdsText, setDepartmentIdsText] = useState('')
-  const userId = useMemo(() => parsePositiveInt(userIdText), [userIdText])
-  const departmentIds = useMemo(
-    () => parseDepartmentIds(departmentIdsText),
-    [departmentIdsText]
-  )
-
-  const userDepartmentsQuery = useQuery({
-    queryKey: userDepartmentsQueryKey(userId),
-    queryFn: async () => {
-      if (!userId) return null
-      const result = await getUserDepartments(userId)
-      if (!result.success)
-        throw new Error(result.message || t('Request failed'))
-      return result.data ?? { items: [], total: 0, is_unassigned: true }
-    },
-    enabled: Boolean(userId),
-  })
-
-  const replaceMutation = useMutation({
-    mutationFn: () => {
-      if (!userId) throw new Error('missing user id')
-      return replaceUserDepartments(userId, {
-        department_ids: departmentIds,
-        deactivate_stale: true,
-      })
-    },
-    onSuccess: async (result) => {
-      if (!result.success) {
-        toast.error(result.message || t('Request failed'))
-        return
-      }
-      await queryClient.invalidateQueries({
-        queryKey: enterpriseOrganizationQueryKey,
-      })
-      if (userId) {
-        await queryClient.invalidateQueries({
-          queryKey: userDepartmentsQueryKey(userId),
-        })
-      }
-      toast.success(t('Department memberships updated'))
-    },
-  })
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('Membership Lookup')}</CardTitle>
-        <CardDescription>
-          {t(
-            'Use this secondary tool when you need to inspect or replace memberships for a known user. The primary governance flow remains department-driven.'
-          )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className='flex flex-col gap-4'>
-        <div className='flex flex-col gap-2 sm:flex-row'>
-          <Input
-            inputMode='numeric'
-            value={userIdText}
-            onChange={(event) => setUserIdText(event.target.value)}
-            placeholder={t('User ID')}
-          />
-          <Input
-            value={departmentIdsText}
-            onChange={(event) => setDepartmentIdsText(event.target.value)}
-            placeholder={t('Department IDs, comma separated')}
-          />
-          <Button
-            onClick={() => replaceMutation.mutate()}
-            disabled={!userId || replaceMutation.isPending}
-          >
-            <Search data-icon='inline-start' />
-            {t('Replace Departments')}
-          </Button>
-        </div>
-        <UserDepartmentsTable
-          items={userDepartmentsQuery.data?.items ?? []}
-          hasResult={Boolean(userDepartmentsQuery.data)}
-        />
-      </CardContent>
-    </Card>
-  )
-}
-
 function UserDepartmentsTable({
   items,
   hasResult,
@@ -899,9 +908,15 @@ function UserDepartmentsTable({
 function DepartmentMembersPanel({
   departmentId,
   departmentName,
+  selectedMemberUserId,
+  onSelectedMemberChange,
+  onMembersChange,
 }: {
   departmentId: number
   departmentName: string
+  selectedMemberUserId: number | null
+  onSelectedMemberChange: (userId: number | null) => void
+  onMembersChange: (items: DepartmentMemberItem[]) => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -916,6 +931,10 @@ function DepartmentMembersPanel({
       return result.data ?? { items: [], total: 0 }
     },
   })
+
+  useEffect(() => {
+    onMembersChange(departmentMembersQuery.data?.items ?? [])
+  }, [departmentMembersQuery.data?.items, onMembersChange])
 
   const addMemberMutation = useMutation({
     mutationFn: () => {
@@ -970,6 +989,8 @@ function DepartmentMembersPanel({
         <DepartmentMembersTable
           departmentId={departmentId}
           items={departmentMembersQuery.data?.items ?? []}
+          selectedMemberUserId={selectedMemberUserId}
+          onSelectMember={onSelectedMemberChange}
         />
       </CardContent>
     </Card>
@@ -979,9 +1000,13 @@ function DepartmentMembersPanel({
 function DepartmentMembersTable({
   items,
   departmentId,
+  selectedMemberUserId,
+  onSelectMember,
 }: {
   items: DepartmentMemberItem[]
   departmentId: number
+  selectedMemberUserId: number | null
+  onSelectMember: (userId: number | null) => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -1036,12 +1061,18 @@ function DepartmentMembersTable({
           <TableHead>{t('User')}</TableHead>
           <TableHead>{t('Membership Status')}</TableHead>
           <TableHead>{t('External Source')}</TableHead>
+          <TableHead>{t('Current Member')}</TableHead>
           <TableHead className='text-right'>{t('Actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((item) => (
-          <TableRow key={item.id}>
+          <TableRow
+            key={item.id}
+            className={
+              selectedMemberUserId === item.user_id ? 'bg-muted/50' : undefined
+            }
+          >
             <TableCell>
               <div className='flex min-w-[160px] flex-col gap-1'>
                 <span className='font-medium'>
@@ -1059,6 +1090,19 @@ function DepartmentMembersTable({
               <Badge variant='secondary'>
                 {item.external_source || 'manual'}
               </Badge>
+            </TableCell>
+            <TableCell>
+              <Button
+                variant={
+                  selectedMemberUserId === item.user_id ? 'secondary' : 'outline'
+                }
+                size='sm'
+                onClick={() => onSelectMember(item.user_id)}
+              >
+                {selectedMemberUserId === item.user_id
+                  ? t('Current department member')
+                  : t('Use in workspace')}
+              </Button>
             </TableCell>
             <TableCell className='text-right'>
               {item.status === 1 ? (
@@ -1089,16 +1133,90 @@ function DepartmentMembersTable({
   )
 }
 
+export function DepartmentMemberContextCard({
+  currentDepartment,
+  selectedMember,
+  memberships,
+  loading,
+}: {
+  currentDepartment: DepartmentTreeNode
+  selectedMember: DepartmentMemberItem | null
+  memberships: UserDepartmentItem[]
+  loading: boolean
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Current Member Governance')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Use the current department member context to inspect memberships and drive wallet allocation without typing a user identifier.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {!selectedMember ? (
+          <Empty className='min-h-[220px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Users className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('Select a department member')}</EmptyTitle>
+              <EmptyDescription>
+                {t(
+                  'Choose a member from the current department list to inspect memberships and create wallet allocations without typing a user identifier.'
+                )}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <div className='grid gap-3 md:grid-cols-3'>
+              <DepartmentMetaStat
+                label={t('Current Member')}
+                value={
+                  selectedMember.display_name ||
+                  selectedMember.username ||
+                  `#${selectedMember.user_id}`
+                }
+              />
+              <DepartmentMetaStat
+                label={t('Current department member')}
+                value={t('Selected from {{department}}', {
+                  department: currentDepartment.name,
+                })}
+              />
+              <DepartmentMetaStat
+                label={t('Membership Status')}
+                value={statusLabel(selectedMember.status, t)}
+              />
+            </div>
+            {loading ? (
+              <Skeleton className='h-32 w-full' />
+            ) : (
+              <UserDepartmentsTable items={memberships} hasResult />
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function DepartmentBudgetPanel({
   departmentId,
   departmentName,
   selectedBudgetId,
   onSelectedBudgetIdChange,
+  selectedMember,
 }: {
   departmentId: number
   departmentName: string
   selectedBudgetId: number | null
   onSelectedBudgetIdChange: (budgetId: number | null) => void
+  selectedMember: DepartmentMemberItem | null
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -1144,6 +1262,11 @@ function DepartmentBudgetPanel({
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const normalizedTenantId = tenantId || 0
+  const previousDepartmentIdRef = useRef(departmentId)
+  const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
+  const previousSelectedMemberIdRef = useRef<number | null>(
+    selectedMember?.user_id ?? null
+  )
 
   const budgetQuery = useQuery({
     queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
@@ -1377,9 +1500,6 @@ function DepartmentBudgetPanel({
     if (form.getValues('department_id') !== departmentId) {
       form.setValue('department_id', departmentId)
     }
-    if (allocationForm.getValues('department_id') !== departmentId) {
-      allocationForm.setValue('department_id', departmentId)
-    }
   }, [allocationForm, departmentId, form])
 
   useEffect(() => {
@@ -1389,11 +1509,20 @@ function DepartmentBudgetPanel({
   }, [allocationForm, tenantId])
 
   useEffect(() => {
-    const nextBudgetId = effectiveBudgetId ?? 0
-    if (allocationForm.getValues('department_budget_id') !== nextBudgetId) {
-      allocationForm.setValue('department_budget_id', nextBudgetId)
-    }
-  }, [allocationForm, effectiveBudgetId])
+    if (previousDepartmentIdRef.current === departmentId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: selectedMember?.user_id ?? null,
+        resetMode: 'department-change',
+      })
+    )
+    previousDepartmentIdRef.current = departmentId
+    previousBudgetIdRef.current = effectiveBudgetId
+    previousSelectedMemberIdRef.current = selectedMember?.user_id ?? null
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
 
   useEffect(() => {
     const normalizedBudgetId = effectiveBudgetId ?? null
@@ -1401,6 +1530,35 @@ function DepartmentBudgetPanel({
       onSelectedBudgetIdChange(normalizedBudgetId)
     }
   }, [effectiveBudgetId, onSelectedBudgetIdChange, selectedBudgetId])
+
+  useEffect(() => {
+    if (previousBudgetIdRef.current === effectiveBudgetId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: selectedMember?.user_id ?? null,
+        resetMode: 'budget-change',
+      })
+    )
+    previousBudgetIdRef.current = effectiveBudgetId
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
+
+  useEffect(() => {
+    const nextSelectedMemberId = selectedMember?.user_id ?? null
+    if (previousSelectedMemberIdRef.current === nextSelectedMemberId) return
+    allocationForm.reset(
+      syncAllocationFormDraft({
+        current: allocationForm.getValues(),
+        departmentId,
+        selectedBudgetId: effectiveBudgetId,
+        selectedMemberUserId: nextSelectedMemberId,
+        resetMode: 'member-change',
+      })
+    )
+    previousSelectedMemberIdRef.current = nextSelectedMemberId
+  }, [allocationForm, departmentId, effectiveBudgetId, selectedMember])
 
   return (
     <div className='space-y-4'>
@@ -1605,10 +1763,10 @@ function DepartmentBudgetPanel({
       />
       <Card>
         <CardHeader>
-          <CardTitle>{t('Budget Wallet Detail')}</CardTitle>
+          <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
           <CardDescription>
             {t(
-              'Track the selected budget pool, its derived wallets, and the source allocation chain in one place.'
+              'Keep budget detail, derived wallets, and current member allocation in one current-department workflow.'
             )}
           </CardDescription>
         </CardHeader>
@@ -1625,19 +1783,27 @@ function DepartmentBudgetPanel({
                 allocationMutation.mutate(values)
               )}
             >
-              <FormField
-                control={allocationForm.control}
-                name='target_user_id'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Target User ID')}</FormLabel>
-                    <FormControl>
-                      <Input inputMode='numeric' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className='rounded-lg border p-3 md:col-span-2'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Current Member')}
+                </div>
+                <div className='mt-1 text-sm font-medium'>
+                  {selectedMember
+                    ? selectedMember.display_name ||
+                      selectedMember.username ||
+                      `#${selectedMember.user_id}`
+                    : t('No member selected')}
+                </div>
+                <div className='text-muted-foreground mt-1 text-xs'>
+                  {selectedMember
+                    ? t('Selected from {{department}}', {
+                        department: departmentName,
+                      })
+                    : t(
+                        'Select a member from the current department list before creating a wallet allocation.'
+                      )}
+                </div>
+              </div>
               <FormField
                 control={allocationForm.control}
                 name='committed_quota'
@@ -1668,10 +1834,31 @@ function DepartmentBudgetPanel({
                   </FormItem>
                 )}
               />
+              {!effectiveBudgetId ? (
+                <div className='md:col-span-2'>
+                  <Empty className='min-h-[140px] border'>
+                    <EmptyHeader>
+                      <EmptyMedia variant='icon'>
+                        <CreditCard className='size-4' />
+                      </EmptyMedia>
+                      <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
+                      <EmptyDescription>
+                        {t(
+                          'Choose a budget pool in the current department before creating a member wallet allocation.'
+                        )}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                </div>
+              ) : null}
               <div className='flex justify-end md:col-span-2'>
                 <Button
                   type='submit'
-                  disabled={!effectiveBudgetId || allocationMutation.isPending}
+                  disabled={
+                    !effectiveBudgetId ||
+                    !selectedMember ||
+                    allocationMutation.isPending
+                  }
                 >
                   <CreditCard data-icon='inline-start' />
                   {t('Create wallet allocation')}

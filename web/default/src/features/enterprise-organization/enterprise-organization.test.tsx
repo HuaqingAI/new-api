@@ -16,6 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
   __testRenderApiMessage,
+  DepartmentMemberContextCard,
   DepartmentSummaryCard,
   enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
@@ -28,7 +29,9 @@ import {
   createBudgetSchema,
   createAllocationSchema,
   normalizeEnterpriseOrganizationSearch,
+  resolveDepartmentMemberSelection,
   resolveBudgetSelection,
+  syncAllocationFormDraft,
 } from './index'
 import {
   getAncestorDepartmentIds,
@@ -41,6 +44,7 @@ import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
+  DepartmentMemberItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
   QuotaAllocationItem,
@@ -264,6 +268,85 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(resolveBudgetSelection([], 99, 98), null)
   })
 
+  test('clears stale selected members when the current department member list changes', () => {
+    const engineeringMembers = [
+      departmentMember({ id: 1, department_id: 2, user_id: 2001, username: 'alice' }),
+      departmentMember({ id: 2, department_id: 2, user_id: 2002, username: 'bob' }),
+    ]
+    const financeMembers = [
+      departmentMember({ id: 3, department_id: 8, user_id: 3001, username: 'carol' }),
+    ]
+
+    assert.equal(resolveDepartmentMemberSelection(engineeringMembers, 2002), 2002)
+    assert.equal(resolveDepartmentMemberSelection(financeMembers, 2002), null)
+    assert.equal(resolveDepartmentMemberSelection([], 2002), null)
+  })
+
+  test('resets allocation draft when department, budget, or selected member context changes', () => {
+    const current = {
+      tenant_id: 9,
+      department_id: 2,
+      department_budget_id: 12,
+      target_user_id: 2001,
+      committed_quota: 300,
+      reason: 'carry over',
+    }
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 8,
+        selectedBudgetId: null,
+        selectedMemberUserId: null,
+        resetMode: 'department-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 8,
+        department_budget_id: 0,
+        target_user_id: 0,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 2,
+        selectedBudgetId: 19,
+        selectedMemberUserId: 2001,
+        resetMode: 'budget-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 2,
+        department_budget_id: 19,
+        target_user_id: 2001,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+
+    assert.deepEqual(
+      syncAllocationFormDraft({
+        current,
+        departmentId: 2,
+        selectedBudgetId: 12,
+        selectedMemberUserId: 2002,
+        resetMode: 'member-change',
+      }),
+      {
+        tenant_id: 9,
+        department_id: 2,
+        department_budget_id: 12,
+        target_user_id: 2002,
+        committed_quota: 0,
+        reason: '',
+      }
+    )
+  })
+
   test('workspace empty state and scoped panels follow current department context', () => {
     const emptyHtml = renderWorkspace(null, null)
 
@@ -305,12 +388,15 @@ describe('Enterprise organization department tree workflow', () => {
     const html = renderWorkspace(department, parent)
 
     for (const expected of [
-      'Membership Lookup',
       'Department Members',
       'Department Budget',
+      'Current Member Governance',
+      'Current Member Wallet Allocation',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+
+    assert.doesNotMatch(html, /Membership Lookup/)
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -799,6 +885,73 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /Expired/)
     assert.match(html, /Already processed/)
   })
+
+  test('renders current member governance states inside the current department context', () => {
+    const department = departmentNode({
+      id: 7,
+      name: 'Security',
+    })
+    const selectedMember = departmentMember({
+      department_id: 7,
+      user_id: 2001,
+      username: 'alice',
+      display_name: 'Alice',
+      status: 1,
+    })
+
+    const emptyHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentMemberContextCard
+          currentDepartment={department}
+          selectedMember={null}
+          memberships={[]}
+          loading={false}
+        />
+      </I18nextProvider>
+    )
+    assert.match(emptyHtml, /Select a department member/)
+    assert.match(
+      emptyHtml,
+      /Choose a member from the current department list to inspect memberships and create wallet allocations without typing a user identifier\./
+    )
+
+    const selectedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentMemberContextCard
+          currentDepartment={department}
+          selectedMember={selectedMember}
+          memberships={[
+            {
+              id: 91,
+              tenant_id: 0,
+              user_id: 2001,
+              department_id: 7,
+              department_name: 'Security',
+              external_user_id: '',
+              external_source: 'dingtalk',
+              status: 1,
+              joined_at: 1700000000,
+              left_at: 0,
+              created_at: 1700000000,
+              updated_at: 1700000001,
+            },
+          ]}
+          loading={false}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Current Member Governance',
+      'Alice',
+      'Current department member',
+      'Selected from Security',
+      'Department',
+      'Membership Status',
+    ]) {
+      assert.match(selectedHtml, new RegExp(escapeRegExp(expected)))
+    }
+  })
 })
 
 function renderEnterpriseOrganizationContent(
@@ -881,6 +1034,27 @@ function departmentBudget(
     parent_status: overrides.parent_status ?? '',
     usage_ratio: overrides.usage_ratio ?? 0,
     threshold_state: overrides.threshold_state ?? 'healthy',
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function departmentMember(
+  overrides: Partial<DepartmentMemberItem> &
+    Pick<DepartmentMemberItem, 'department_id' | 'user_id'>
+): DepartmentMemberItem {
+  return {
+    id: overrides.id ?? overrides.user_id,
+    tenant_id: overrides.tenant_id ?? 0,
+    user_id: overrides.user_id,
+    username: overrides.username ?? `user-${overrides.user_id}`,
+    display_name: overrides.display_name ?? '',
+    department_id: overrides.department_id,
+    external_user_id: overrides.external_user_id ?? '',
+    external_source: overrides.external_source ?? 'manual',
+    status: overrides.status ?? 1,
+    joined_at: overrides.joined_at ?? 1700000000,
+    left_at: overrides.left_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

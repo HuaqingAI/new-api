@@ -1088,7 +1088,7 @@ func (s *AlertService) enqueueDeliveriesForEvent(event entmodel.AlertEvent, now 
 			if !channel.Enabled {
 				continue
 			}
-			delivery, createdThis, err := buildAlertDeliveryFromMatch(event, snapshot, matched, channel, now.Unix(), bucketSize)
+			delivery, createdThis, err := s.buildAlertDeliveryFromMatch(event, snapshot, matched, channel, now.Unix(), bucketSize)
 			if err != nil {
 				return created, err
 			}
@@ -1914,7 +1914,7 @@ func ruleMatchesAnyDepartment(ruleDepartmentIds []int, eventDepartments map[int]
 	return false
 }
 
-func buildAlertDeliveryFromMatch(
+func (s *AlertService) buildAlertDeliveryFromMatch(
 	event entmodel.AlertEvent,
 	snapshot []entmodel.AlertEventDepartmentSnapshot,
 	matched alertMatchedRule,

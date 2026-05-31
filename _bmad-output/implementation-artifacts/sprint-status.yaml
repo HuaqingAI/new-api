@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-29 23:10:00 +08:00
+last_updated: 2026-05-31 07:56:15 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -73,14 +73,14 @@ development_status:
   4-5-configure-and-send-scheduled-usage-reports: done
   epic-4-retrospective: done
 
-  epic-5: backlog
-  5-1-record-content-risk-events: backlog
-  5-2-query-and-filter-risk-events: backlog
-  5-3-configure-content-risk-alert-rules-and-channels: backlog
-  5-4-send-traceable-alert-notifications: backlog
-  5-5-manage-alert-delivery-status-and-manual-resend: backlog
-  5-6-display-department-risk-overview: backlog
-  epic-5-retrospective: optional
+  epic-5: done
+  5-1-record-content-risk-events: done
+  5-2-query-and-filter-risk-events: done
+  5-3-configure-content-risk-alert-rules-and-channels: done
+  5-4-send-traceable-alert-notifications: done
+  5-5-manage-alert-delivery-status-and-manual-resend: done
+  5-6-display-department-risk-overview: done
+  epic-5-retrospective: done
 
   epic-6: backlog
   6-1-rebuild-enterprise-organization-as-tree-driven-governance-view: backlog

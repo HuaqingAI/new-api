@@ -381,4 +381,9 @@ const (
 	MsgEnterpriseDingTalkSyncConflictNoCandidate       = "enterprise.dingtalk.sync_conflict_no_candidate"
 	MsgEnterpriseUsageReportInvalidEmail               = "enterprise.usage.report_invalid_email"
 	MsgEnterpriseUsageReportNotConfigured              = "enterprise.usage.report_not_configured"
+	MsgEnterpriseAlertRuleNotFound                     = "enterprise.alert.rule_not_found"
+	MsgEnterpriseAlertRuleInvalidEmail                 = "enterprise.alert.rule_invalid_email"
+	MsgEnterpriseAlertRuleInvalidWebhook               = "enterprise.alert.rule_invalid_webhook"
+	MsgEnterpriseAlertDeliveryNotFound                 = "enterprise.alert.delivery_not_found"
+	MsgEnterpriseAlertDeliveryResendNotAllowed         = "enterprise.alert.delivery_resend_not_allowed"
 )

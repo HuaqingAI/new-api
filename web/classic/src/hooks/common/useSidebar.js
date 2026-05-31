@@ -52,6 +52,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     redemption: true,
     user: true,
     enterprise: true,
+    enterprise_alerts: true,
     subscription: true,
     setting: true,
   },

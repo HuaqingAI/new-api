@@ -38,6 +38,7 @@ const routerMap = {
   topup: '/console/topup',
   user: '/console/user',
   enterprise: '/console/enterprise',
+  enterprise_alerts: '/console/enterprise-alerts',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -188,6 +189,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('企业组织'),
         itemKey: 'enterprise',
         to: '/enterprise',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('企业风险事件'),
+        itemKey: 'enterprise_alerts',
+        to: '/enterprise-alerts',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

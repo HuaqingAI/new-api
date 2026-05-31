@@ -49,7 +49,7 @@ func resourceVersionService() *apservice.ResourceVersionService {
 
 func writeResourceVersionError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, apservice.ErrInvalidResourceVersionInput):
+	case errors.Is(err, apservice.ErrInvalidResourceVersionInput), errors.Is(err, apservice.ErrSkillContractInvalid):
 		common.ApiErrorMsg(c, "invalid request params")
 	case errors.Is(err, apservice.ErrResourceNotFound), errors.Is(err, apservice.ErrResourceVersionNotFound):
 		common.ApiErrorMsg(c, "resource not found")

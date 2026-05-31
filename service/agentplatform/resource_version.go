@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrResourceVersionNotFound = errors.New("agent platform resource version not found")
+	ErrResourceVersionNotFound     = errors.New("agent platform resource version not found")
 	ErrInvalidResourceVersionInput = errors.New("agent platform resource version input invalid")
+	ErrSkillContractInvalid        = errors.New("agent platform skill contract invalid")
 )
 
 type SkillDetailInput struct {
@@ -269,6 +270,9 @@ func buildVersionDetailSnapshot(resourceType string, input CreateResourceVersion
 		if input.Skill == nil || input.Knowledge != nil || input.Agent != nil {
 			return "", ErrInvalidResourceVersionInput
 		}
+		if err := validateSkillDetailInput(*input.Skill); err != nil {
+			return "", err
+		}
 		payload, err := common.Marshal(input.Skill)
 		if err != nil {
 			return "", err
@@ -300,6 +304,9 @@ func buildVersionDetailSnapshot(resourceType string, input CreateResourceVersion
 func createTypedDetail(tx *gorm.DB, resourceType string, resourceID string, input CreateResourceVersionInput) error {
 	switch resourceType {
 	case apmodel.ResourceTypeSkill:
+		if err := validateSkillDetailInput(*input.Skill); err != nil {
+			return err
+		}
 		timeout := 0
 		if input.Skill.TimeoutSeconds != nil {
 			timeout = *input.Skill.TimeoutSeconds
@@ -389,6 +396,32 @@ func createTypedDetail(tx *gorm.DB, resourceType string, resourceID string, inpu
 	default:
 		return ErrInvalidResourceVersionInput
 	}
+}
+
+func validateSkillDetailInput(input SkillDetailInput) error {
+	input.InvokeMode = strings.TrimSpace(strings.ToLower(input.InvokeMode))
+	if len(input.InvokeSchema) == 0 || len(input.OutputSchema) == 0 || len(input.BindingConfig) == 0 {
+		return ErrSkillContractInvalid
+	}
+	if input.TimeoutSeconds == nil || *input.TimeoutSeconds <= 0 {
+		return ErrSkillContractInvalid
+	}
+	if input.InvokeMode != "sync" && input.InvokeMode != "async" {
+		return ErrSkillContractInvalid
+	}
+	invokeSchemaJSON, err := normalizeJSONText(input.InvokeSchema)
+	if err != nil || strings.TrimSpace(invokeSchemaJSON) == "" {
+		return ErrSkillContractInvalid
+	}
+	outputSchemaJSON, err := normalizeJSONText(input.OutputSchema)
+	if err != nil || strings.TrimSpace(outputSchemaJSON) == "" {
+		return ErrSkillContractInvalid
+	}
+	bindingConfigJSON, err := normalizeJSONText(input.BindingConfig)
+	if err != nil || strings.TrimSpace(bindingConfigJSON) == "" {
+		return ErrSkillContractInvalid
+	}
+	return nil
 }
 
 func normalizeJSONText(raw json.RawMessage) (string, error) {

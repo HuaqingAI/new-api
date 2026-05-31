@@ -170,6 +170,26 @@ func TestResourceVersionAPIRejectsMismatchedTypedDetail(t *testing.T) {
 	require.Equal(t, "invalid request params", response.Message)
 }
 
+func TestResourceVersionAPIRejectsInvalidSkillContract(t *testing.T) {
+	router, _, skill, _, _ := setupAgentPlatformVersionControllerTest(t)
+
+	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+skill.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Skill: &dtoagentplatform.SkillDetailRequest{
+			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
+			OutputSchema:   json.RawMessage(`{"type":"object"}`),
+			InvokeMode:     "stream",
+			TimeoutSeconds: intPtr(30),
+			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
+		},
+	})
+	response := decodeResourceVersionAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "invalid request params", response.Message)
+}
+
 func intPtr(v int) *int {
 	return &v
 }

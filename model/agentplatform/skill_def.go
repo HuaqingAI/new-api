@@ -5,10 +5,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
 var ErrInvalidSkillDefBody = errors.New("agent platform skill def body invalid")
+
+var allowedSkillInvokeModes = map[string]struct{}{
+	"sync":  {},
+	"async": {},
+}
 
 type SkillDef struct {
 	Id                int       `json:"id" gorm:"primaryKey"`
@@ -48,8 +54,45 @@ func (d *SkillDef) applyDefaultsAndValidate() error {
 	if d.InvokeMode == "" {
 		d.InvokeMode = "sync"
 	}
-	if d.ResourceId == "" || d.ResourceVersion == "" {
+	if d.ResourceId == "" || d.ResourceVersion == "" || d.InvokeSchemaJSON == "" || d.OutputSchemaJSON == "" || d.BindingConfigJSON == "" {
+		return ErrInvalidSkillDefBody
+	}
+	if _, ok := allowedSkillInvokeModes[d.InvokeMode]; !ok {
+		return ErrInvalidSkillDefBody
+	}
+	if d.TimeoutSeconds <= 0 {
+		return ErrInvalidSkillDefBody
+	}
+	if !validSkillJSONShape(d.InvokeSchemaJSON) || !validSkillJSONShape(d.OutputSchemaJSON) || !validSkillBindingConfig(d.BindingConfigJSON) {
 		return ErrInvalidSkillDefBody
 	}
 	return nil
+}
+
+func validSkillJSONShape(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	var payload map[string]any
+	if err := common.UnmarshalJsonStr(raw, &payload); err != nil {
+		return false
+	}
+	if len(payload) == 0 {
+		return false
+	}
+	return true
+}
+
+func validSkillBindingConfig(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	var payload map[string]any
+	if err := common.UnmarshalJsonStr(raw, &payload); err != nil {
+		return false
+	}
+	if len(payload) == 0 {
+		return false
+	}
+	return true
 }

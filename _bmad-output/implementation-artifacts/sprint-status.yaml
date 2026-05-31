@@ -109,7 +109,7 @@ development_status:
 
   agent-platform-epic-3: backlog
   ap-3-1-provide-skill-management-in-control-plane: done
-  ap-3-2-define-skill-detail-schema-and-invoke-readiness: backlog
+  ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
   ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: backlog
   agent-platform-epic-3-retrospective: optional
 

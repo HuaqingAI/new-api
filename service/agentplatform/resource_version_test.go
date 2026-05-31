@@ -106,6 +106,54 @@ func TestResourceVersionServiceRejectsMismatchedOrMissingTypedDetails(t *testing
 	require.ErrorIs(t, err, ErrInvalidResourceVersionInput)
 }
 
+func TestResourceVersionServiceRejectsInvalidSkillContract(t *testing.T) {
+	svc, _, skill, _, _ := newResourceVersionServiceForTest(t)
+
+	_, err := svc.Create(skill.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Skill: &SkillDetailInput{
+			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
+			OutputSchema:   json.RawMessage(`{"type":"object"}`),
+			InvokeMode:     "stream",
+			TimeoutSeconds: intPtr(30),
+			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrSkillContractInvalid)
+
+	_, err = svc.Create(skill.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.1",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Skill: &SkillDetailInput{
+			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
+			OutputSchema:   json.RawMessage(`{"type":"object"}`),
+			InvokeMode:     "sync",
+			TimeoutSeconds: intPtr(0),
+			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrSkillContractInvalid)
+
+	_, err = svc.Create(skill.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.2",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Skill: &SkillDetailInput{
+			OutputSchema:   json.RawMessage(`{"type":"object"}`),
+			InvokeMode:     "sync",
+			TimeoutSeconds: intPtr(30),
+			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrSkillContractInvalid)
+}
+
 func intPtr(v int) *int {
 	return &v
 }

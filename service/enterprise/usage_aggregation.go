@@ -80,9 +80,9 @@ type UsageDepartmentTrendPoint struct {
 }
 
 type UsageRecentLogsLink struct {
-	Path          string
-	Section       string
-	DepartmentId  *int
+	Path           string
+	Section        string
+	DepartmentId   *int
 	DepartmentName string
 	StartTimestamp int64
 	EndTimestamp   int64
@@ -275,8 +275,8 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 			ModelDistribution: []entmodel.UsageSnapshotModelStat{},
 			Trend:             []UsageDepartmentTrendPoint{},
 			RecentLogsLink: UsageRecentLogsLink{
-				Path:     "/usage-logs/common",
-				Section:  "common",
+				Path:      "/usage-logs/common",
+				Section:   "common",
 				Usernames: []string{},
 			},
 		}, ErrInvalidUsageDetailQuery
@@ -292,8 +292,8 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 			ModelDistribution: []entmodel.UsageSnapshotModelStat{},
 			Trend:             []UsageDepartmentTrendPoint{},
 			RecentLogsLink: UsageRecentLogsLink{
-				Path:     "/usage-logs/common",
-				Section:  "common",
+				Path:      "/usage-logs/common",
+				Section:   "common",
 				Usernames: []string{},
 			},
 		}, err
@@ -646,6 +646,10 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 	if err != nil {
 		return nil, nil, err
 	}
+	currentUsernames, err := loadCurrentUsernames(s.db, userIds)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	ranking := make(map[int]*UsageDepartmentUserRankItem, len(userIds))
 	for _, logRow := range logs {
@@ -657,12 +661,12 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 		if !ok {
 			item = &UsageDepartmentUserRankItem{
 				UserId:   logRow.UserId,
-				Username: logRow.Username,
+				Username: firstNonEmpty(currentUsernames[logRow.UserId], logRow.Username),
 			}
 			ranking[logRow.UserId] = item
 		}
 		if item.Username == "" {
-			item.Username = logRow.Username
+			item.Username = firstNonEmpty(currentUsernames[logRow.UserId], logRow.Username)
 		}
 		item.RequestCount++
 		item.PromptTokens += int64(logRow.PromptTokens)

@@ -162,6 +162,8 @@ func TestDingTalkOAuthCreatesUserWhenRegistrationEnabledAndNoContactSnapshot(t *
 	require.NoError(t, err)
 	require.Equal(t, entservice.DingTalkOAuthLoginStatusCreated, result.LoginStatus)
 	require.NotZero(t, result.User.Id)
+	require.Equal(t, "new_employee", result.User.Username)
+	require.NotContains(t, result.User.Username, "dt_")
 
 	var binding entmodel.DingTalkIdentity
 	require.NoError(t, db.Where("identity_key = ?", "union:union-new").First(&binding).Error)
@@ -298,4 +300,17 @@ func requireDingTalkMembershipSnapshot(t *testing.T, db *gorm.DB, userId int, de
 		ExternalSource: constant.EnterpriseExternalSourceDingTalk,
 		Status:         constant.EnterpriseMembershipStatusActive,
 	}).Error)
+}
+
+func TestDingTalkOAuthUsernameGenerationPrefersReadableIdentity(t *testing.T) {
+	svc, db := newDingTalkOAuthTestService(t)
+	require.NoError(t, db.Create(&model.User{Id: 250, Username: "alice", DisplayName: "Alice", Status: common.UserStatusEnabled, Group: "default", AffCode: "a1"}).Error)
+
+	username := svc.AvailableReadableUsernameForTest(entservice.DingTalkOAuthIdentity{
+		Name:           "Alice Chen",
+		Email:          "alice.chen@example.com",
+		ExternalUserId: "staff-100",
+	})
+
+	require.Equal(t, "alice_chen", username)
 }

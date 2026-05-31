@@ -102,6 +102,7 @@ import {
   getUserDepartments,
   quotaAllocationQueryKey,
   quotaAllocationQueryScopeKey,
+  renameDepartmentMember,
   restoreDepartmentMember,
   revokeQuotaAllocation,
   userDepartmentsQueryKey,
@@ -189,6 +190,23 @@ export function resolveDepartmentMemberSelection(
     return selectedMemberUserId
   }
   return null
+}
+
+export function createRenameUsernameSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    new_username: z
+      .string()
+      .trim()
+      .min(3, t('Username must be 3-20 characters'))
+      .max(20, t('Username must be 3-20 characters'))
+      .regex(
+        /^[a-z0-9]+(?:_[a-z0-9]+)*$/,
+        t(
+          'Username can only use lowercase letters, numbers, and single underscores'
+        )
+      ),
+  })
 }
 
 export function syncAllocationFormDraft(params: {
@@ -311,6 +329,14 @@ export function __testRenderApiMessage(
   return translator('Request failed')
 }
 
+export function __testRenderUsernameMutationMessage(
+  result: { message?: string } | null | undefined,
+  translator: (key: string) => string
+) {
+  if (!result?.message) return translator('Request failed')
+  return translator(result.message)
+}
+
 export function resolveEnterpriseOrganizationSelection(
   nodes: DepartmentTreeNode[],
   departmentId: number | null | undefined
@@ -329,7 +355,10 @@ export function resolveBudgetSelection(
   ) {
     return selectedBudgetId
   }
-  if (fallbackBudgetId != null && availableBudgetIds.includes(fallbackBudgetId)) {
+  if (
+    fallbackBudgetId != null &&
+    availableBudgetIds.includes(fallbackBudgetId)
+  ) {
     return fallbackBudgetId
   }
   return availableBudgetIds[0] ?? null
@@ -407,17 +436,11 @@ function departmentStatusVariant(status: number) {
   return 'neutral' as const
 }
 
-function departmentSourceLabel(
-  sourceType: number,
-  t: (key: string) => string
-) {
+function departmentSourceLabel(sourceType: number, t: (key: string) => string) {
   return sourceType === 2 ? t('DingTalk') : t('Manual')
 }
 
-function departmentSyncLabel(
-  syncStatus: number,
-  t: (key: string) => string
-) {
+function departmentSyncLabel(syncStatus: number, t: (key: string) => string) {
   if (syncStatus === 1) return t('Synced')
   if (syncStatus === 2) return t('Sync warning')
   if (syncStatus === 3) return t('Sync failed')
@@ -488,7 +511,8 @@ export function EnterpriseOrganization() {
   ])
 
   const currentDepartment = useMemo(
-    () => findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    () =>
+      findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
     [departments, resolvedSelection.selectedDepartmentId]
   )
   const parentDepartment = useMemo(() => {
@@ -553,11 +577,11 @@ export function EnterpriseOrganization() {
                   )}
                 </CardDescription>
               </CardHeader>
-            <CardContent className='px-0 pb-0'>
-              <EnterpriseOrganizationContent
-                isLoading={false}
-                departments={departments}
-                expandedIds={expandedIds}
+              <CardContent className='px-0 pb-0'>
+                <EnterpriseOrganizationContent
+                  isLoading={false}
+                  departments={departments}
+                  expandedIds={expandedIds}
                   selectedDepartmentId={currentDepartment?.id ?? null}
                   onToggleExpand={(departmentId) =>
                     setExpandedIds((current) =>
@@ -588,12 +612,12 @@ export function EnterpriseOrganizationWorkspace(props: {
   onSelectedBudgetIdChange: (budgetId: number | null) => void
 }) {
   const { t } = useTranslation()
-  const [departmentMembers, setDepartmentMembers] = useState<DepartmentMemberItem[]>(
-    []
-  )
-  const [selectedMemberUserId, setSelectedMemberUserId] = useState<number | null>(
-    null
-  )
+  const [departmentMembers, setDepartmentMembers] = useState<
+    DepartmentMemberItem[]
+  >([])
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState<
+    number | null
+  >(null)
 
   useEffect(() => {
     if (!props.currentDepartment) {
@@ -648,6 +672,7 @@ export function EnterpriseOrganizationWorkspace(props: {
         selectedMember={selectedMember}
         memberships={selectedMemberMembershipsQuery.data ?? []}
         loading={selectedMemberMembershipsQuery.isLoading}
+        onMemberRenamed={setSelectedMemberUserId}
       />
       <DepartmentBudgetPanel
         departmentId={props.currentDepartment.id}
@@ -793,11 +818,19 @@ export function DepartmentSummaryCard({
           />
           <DepartmentMetaStat
             label={t('Created At')}
-            value={department.created_at ? formatTimestamp(department.created_at) : '-'}
+            value={
+              department.created_at
+                ? formatTimestamp(department.created_at)
+                : '-'
+            }
           />
           <DepartmentMetaStat
             label={t('Updated At')}
-            value={department.updated_at ? formatTimestamp(department.updated_at) : '-'}
+            value={
+              department.updated_at
+                ? formatTimestamp(department.updated_at)
+                : '-'
+            }
           />
         </div>
         <div className='rounded-lg border p-3'>
@@ -806,9 +839,7 @@ export function DepartmentSummaryCard({
           </div>
           <div className='mt-2 text-sm'>
             {department.name_history.length > 0
-              ? department.name_history
-                  .map((entry) => entry.name)
-                  .join(', ')
+              ? department.name_history.map((entry) => entry.name).join(', ')
               : t('No historical names recorded')}
           </div>
           {department.sync_error ? (
@@ -1094,7 +1125,9 @@ function DepartmentMembersTable({
             <TableCell>
               <Button
                 variant={
-                  selectedMemberUserId === item.user_id ? 'secondary' : 'outline'
+                  selectedMemberUserId === item.user_id
+                    ? 'secondary'
+                    : 'outline'
                 }
                 size='sm'
                 onClick={() => onSelectMember(item.user_id)}
@@ -1138,13 +1171,92 @@ export function DepartmentMemberContextCard({
   selectedMember,
   memberships,
   loading,
+  onMemberRenamed,
 }: {
   currentDepartment: DepartmentTreeNode
   selectedMember: DepartmentMemberItem | null
   memberships: UserDepartmentItem[]
   loading: boolean
+  onMemberRenamed?: (userId: number | null) => void
 }) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const renderUsernameMessage = (
+    result: { message?: string } | null | undefined
+  ) => __testRenderUsernameMutationMessage(result, t)
+  const renameSchema = createRenameUsernameSchema(t)
+  type RenameFormValues = z.infer<typeof renameSchema>
+  const form = useForm<RenameFormValues>({
+    resolver: zodResolver(
+      renameSchema
+    ) as unknown as Resolver<RenameFormValues>,
+    defaultValues: {
+      tenant_id: currentDepartment.tenant_id ?? 0,
+      new_username: selectedMember?.username ?? '',
+    },
+  })
+
+  useEffect(() => {
+    form.reset({
+      tenant_id: currentDepartment.tenant_id ?? 0,
+      new_username: selectedMember?.username ?? '',
+    })
+  }, [currentDepartment.tenant_id, form, selectedMember?.username])
+
+  const renameMutation = useMutation({
+    mutationFn: async (values: RenameFormValues) => {
+      if (!selectedMember) throw new Error(t('Select a department member'))
+      return renameDepartmentMember(
+        currentDepartment.id,
+        selectedMember.user_id,
+        {
+          tenant_id: values.tenant_id || undefined,
+          new_username: values.new_username.trim(),
+        }
+      )
+    },
+    onSuccess: async (result) => {
+      if (!selectedMember) return
+      if (!result.success) {
+        toast.error(renderUsernameMessage(result))
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: departmentMembersQueryKey(currentDepartment.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: userDepartmentsQueryKey(selectedMember.user_id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetQueryKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetListQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: departmentBudgetDetailQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: quotaAllocationQueryScopeKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
+        }),
+      ])
+      onMemberRenamed?.(selectedMember.user_id)
+      toast.success(t('Username updated'))
+    },
+  })
 
   return (
     <Card>
@@ -1192,6 +1304,53 @@ export function DepartmentMemberContextCard({
                 label={t('Membership Status')}
                 value={statusLabel(selectedMember.status, t)}
               />
+            </div>
+            <div className='rounded-lg border p-4'>
+              <div className='mb-3'>
+                <div className='text-sm font-medium'>
+                  {t('Rename Username')}
+                </div>
+                <div className='text-muted-foreground text-xs'>
+                  {t(
+                    'Keep history logs and risk events on their original username snapshots. Current governance views switch to the updated username after refresh.'
+                  )}
+                </div>
+              </div>
+              <Form {...form}>
+                <form
+                  className='grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]'
+                  onSubmit={form.handleSubmit((values) =>
+                    renameMutation.mutate(values)
+                  )}
+                >
+                  <FormField
+                    control={form.control}
+                    name='new_username'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Readable Username')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder={t(
+                              'Use lowercase letters, numbers, or underscores'
+                            )}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className='flex items-end'>
+                    <Button
+                      type='submit'
+                      disabled={!selectedMember || renameMutation.isPending}
+                    >
+                      {t('Update Username')}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
             </div>
             {loading ? (
               <Skeleton className='h-32 w-full' />
@@ -1671,7 +1830,9 @@ function DepartmentBudgetPanel({
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value='daily'>{t('Daily')}</SelectItem>
+                              <SelectItem value='daily'>
+                                {t('Daily')}
+                              </SelectItem>
                               <SelectItem value='weekly'>
                                 {t('Weekly')}
                               </SelectItem>

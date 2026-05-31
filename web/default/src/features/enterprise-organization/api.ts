@@ -31,6 +31,7 @@ import type {
   DepartmentTreeNode,
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
+  RenameDepartmentMemberPayload,
   RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
   UserDepartmentsResponse,
@@ -70,7 +71,10 @@ export function quotaAllocationQueryKey(
   tenantId: number,
   budgetId: number | null
 ) {
-  return [...quotaAllocationQueryScopeKey(departmentId, tenantId), budgetId] as const
+  return [
+    ...quotaAllocationQueryScopeKey(departmentId, tenantId),
+    budgetId,
+  ] as const
 }
 
 export function departmentBudgetListQueryScopeKey(
@@ -130,7 +134,11 @@ export function departmentMembersQueryKey(departmentId: number) {
 }
 
 export function userDepartmentsQueryKey(userId: number | null) {
-  return [...enterpriseOrganizationQueryKey, 'user-departments', userId] as const
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'user-departments',
+    userId,
+  ] as const
 }
 
 export async function getDepartmentTree(): Promise<
@@ -282,6 +290,18 @@ export async function restoreDepartmentMember(
 ): Promise<ApiResponse<DepartmentMemberItem>> {
   const res = await api.post(
     `/api/enterprise/departments/${departmentId}/members/${userId}/restore`
+  )
+  return res.data
+}
+
+export async function renameDepartmentMember(
+  departmentId: number,
+  userId: number,
+  payload: RenameDepartmentMemberPayload
+): Promise<ApiResponse<DepartmentMemberItem>> {
+  const res = await api.put(
+    `/api/enterprise/departments/${departmentId}/members/${userId}/username`,
+    payload
   )
   return res.data
 }

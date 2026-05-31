@@ -1,18 +1,18 @@
 package enterprise
 
 type AlertEventQuery struct {
-	TenantId     *int    `form:"tenant_id"`
-	EventId      *int    `form:"event_id,omitempty"`
-	DepartmentId *int    `form:"department_id,omitempty"`
-	UnassignedOnly *bool `form:"unassigned_only,omitempty"`
-	UserId       *int    `form:"user_id,omitempty"`
-	Username     *string `form:"username,omitempty"`
-	ModelName    *string `form:"model_name,omitempty"`
-	RiskType     *string `form:"risk_type,omitempty"`
-	From         *int64  `form:"from,omitempty"`
-	To           *int64  `form:"to,omitempty"`
-	Page         *int    `form:"page,omitempty"`
-	PageSize     *int    `form:"page_size,omitempty"`
+	TenantId       *int    `form:"tenant_id"`
+	EventId        *int    `form:"event_id,omitempty"`
+	DepartmentId   *int    `form:"department_id,omitempty"`
+	UnassignedOnly *bool   `form:"unassigned_only,omitempty"`
+	UserId         *int    `form:"user_id,omitempty"`
+	Username       *string `form:"username,omitempty"`
+	ModelName      *string `form:"model_name,omitempty"`
+	RiskType       *string `form:"risk_type,omitempty"`
+	From           *int64  `form:"from,omitempty"`
+	To             *int64  `form:"to,omitempty"`
+	Page           *int    `form:"page,omitempty"`
+	PageSize       *int    `form:"page_size,omitempty"`
 }
 
 type AlertEventDepartmentSnapshot struct {
@@ -27,6 +27,7 @@ type AlertEventItem struct {
 	TenantId           int                            `json:"tenant_id"`
 	UserId             int                            `json:"user_id"`
 	Username           string                         `json:"username"`
+	UsernameSnapshot   string                         `json:"username_snapshot"`
 	RequestId          string                         `json:"request_id"`
 	ModelName          string                         `json:"model_name"`
 	RiskType           string                         `json:"risk_type"`
@@ -52,13 +53,13 @@ type DepartmentRiskSummaryQuery struct {
 }
 
 type DepartmentRiskEventEntry struct {
-	DetailRoute   string `json:"detail_route"`
-	DetailAPIPath string `json:"detail_api_path"`
-	DepartmentId  *int   `json:"department_id,omitempty"`
+	DetailRoute    string `json:"detail_route"`
+	DetailAPIPath  string `json:"detail_api_path"`
+	DepartmentId   *int   `json:"department_id,omitempty"`
 	DepartmentName string `json:"department_name"`
-	From          int64  `json:"from"`
-	To            int64  `json:"to"`
-	UnassignedOnly bool  `json:"unassigned_only"`
+	From           int64  `json:"from"`
+	To             int64  `json:"to"`
+	UnassignedOnly bool   `json:"unassigned_only"`
 }
 
 type DepartmentRiskSummaryItem struct {
@@ -74,13 +75,13 @@ type DepartmentRiskSummaryItem struct {
 }
 
 type DepartmentRiskTrendPoint struct {
-	WindowStart                int64   `json:"window_start"`
-	WindowEnd                  int64   `json:"window_end"`
-	RiskEventCount             int64   `json:"risk_event_count"`
-	TotalRequestCount          int64   `json:"total_request_count"`
-	RiskRate                   float64 `json:"risk_rate"`
-	UnassignedRiskEventCount   int64   `json:"unassigned_risk_event_count"`
-	UnassignedTotalRequestCount int64  `json:"unassigned_total_request_count"`
+	WindowStart                 int64   `json:"window_start"`
+	WindowEnd                   int64   `json:"window_end"`
+	RiskEventCount              int64   `json:"risk_event_count"`
+	TotalRequestCount           int64   `json:"total_request_count"`
+	RiskRate                    float64 `json:"risk_rate"`
+	UnassignedRiskEventCount    int64   `json:"unassigned_risk_event_count"`
+	UnassignedTotalRequestCount int64   `json:"unassigned_total_request_count"`
 }
 
 type DepartmentRiskFormula struct {
@@ -90,12 +91,12 @@ type DepartmentRiskFormula struct {
 }
 
 type DepartmentRiskSummaryResponse struct {
-	Items         []DepartmentRiskSummaryItem `json:"items"`
+	Items          []DepartmentRiskSummaryItem `json:"items"`
 	TopDepartments []DepartmentRiskSummaryItem `json:"top_departments"`
-	Trend         []DepartmentRiskTrendPoint `json:"trend"`
-	Unassigned    DepartmentRiskSummaryItem  `json:"unassigned"`
-	Formula       DepartmentRiskFormula      `json:"formula"`
-	DisclaimerKey string                     `json:"disclaimer_key"`
+	Trend          []DepartmentRiskTrendPoint  `json:"trend"`
+	Unassigned     DepartmentRiskSummaryItem   `json:"unassigned"`
+	Formula        DepartmentRiskFormula       `json:"formula"`
+	DisclaimerKey  string                      `json:"disclaimer_key"`
 }
 
 type AlertDeliveriesQuery struct {

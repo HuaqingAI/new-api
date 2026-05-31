@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -43,6 +44,13 @@ type MembershipMutationInput struct {
 	TenantId       int
 	ExternalSource string
 	ChangedAt      int64
+}
+
+type RenameDepartmentMemberInput struct {
+	TenantId    int
+	ActorId     int
+	NewUsername string
+	ChangedAt   int64
 }
 
 type UserDepartmentItem struct {
@@ -324,6 +332,83 @@ func (s *DepartmentMembershipService) RestoreDepartmentMember(departmentId int, 
 	return DepartmentMemberItem{}, ErrMembershipNotFound
 }
 
+func (s *DepartmentMembershipService) RenameDepartmentMember(departmentId int, userId int, input RenameDepartmentMemberInput) (DepartmentMemberItem, string, error) {
+	if departmentId <= 0 || userId <= 0 {
+		return DepartmentMemberItem{}, "", ErrInvalidMembershipInput
+	}
+	username := strings.TrimSpace(input.NewUsername)
+	if err := validateEnterpriseUsername(username); err != nil {
+		return DepartmentMemberItem{}, "", err
+	}
+	if err := s.ensureDepartmentExists(input.TenantId, departmentId); err != nil {
+		return DepartmentMemberItem{}, "", err
+	}
+
+	now := input.ChangedAt
+	if now == 0 {
+		now = time.Now().Unix()
+	}
+
+	var previousUsername string
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var membership entmodel.UserDepartment
+		if err := tx.Where(
+			"tenant_id = ? AND user_id = ? AND department_id = ? AND status = ?",
+			input.TenantId,
+			userId,
+			departmentId,
+			constant.EnterpriseMembershipStatusActive,
+		).First(&membership).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrMembershipNotFound
+			}
+			return err
+		}
+
+		var user model.User
+		if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserNotFound
+			}
+			return err
+		}
+
+		previousUsername = user.Username
+		if previousUsername == username {
+			return nil
+		}
+
+		var duplicateCount int64
+		if err := tx.Model(&model.User{}).
+			Where("username = ? AND id <> ?", username, userId).
+			Count(&duplicateCount).Error; err != nil {
+			return err
+		}
+		if duplicateCount > 0 {
+			return ErrEnterpriseUsernameExists
+		}
+
+		if err := tx.Model(&user).Updates(map[string]any{
+			"username": username,
+		}).Error; err != nil {
+			return err
+		}
+		return model.InvalidateUserCache(userId)
+	})
+	if err != nil {
+		return DepartmentMemberItem{}, previousUsername, err
+	}
+
+	item, err := s.getDepartmentMemberItem(departmentId, userId, input.TenantId)
+	if err != nil {
+		return DepartmentMemberItem{}, previousUsername, err
+	}
+	if previousUsername == "" {
+		previousUsername = item.Username
+	}
+	return item, previousUsername, nil
+}
+
 func (s *DepartmentMembershipService) updateMembershipStatus(departmentId int, userId int, input MembershipMutationInput, status int) error {
 	if departmentId <= 0 || userId <= 0 {
 		return ErrInvalidMembershipInput
@@ -352,6 +437,22 @@ func (s *DepartmentMembershipService) updateMembershipStatus(departmentId int, u
 		return ErrMembershipNotFound
 	}
 	return nil
+}
+
+func (s *DepartmentMembershipService) getDepartmentMemberItem(departmentId int, userId int, tenantId int) (DepartmentMemberItem, error) {
+	result, err := s.ListDepartmentMembers(departmentId, MembershipQuery{
+		TenantId: &tenantId,
+		Status:   intPtr(constant.EnterpriseMembershipStatusActive),
+	})
+	if err != nil {
+		return DepartmentMemberItem{}, err
+	}
+	for _, item := range result.Items {
+		if item.UserId == userId {
+			return item, nil
+		}
+	}
+	return DepartmentMemberItem{}, ErrMembershipNotFound
 }
 
 func (s *DepartmentMembershipService) ensureUserExists(userId int) error {

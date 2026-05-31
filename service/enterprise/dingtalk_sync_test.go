@@ -69,6 +69,10 @@ func TestDingTalkSyncFullSyncCreatesTreeUsersMembershipsAndIsIdempotent(t *testi
 	var userCount int64
 	require.NoError(t, db.Model(&model.User{}).Count(&userCount).Error)
 	require.Equal(t, int64(1), userCount)
+	var syncedUser model.User
+	require.NoError(t, db.First(&syncedUser).Error)
+	require.Equal(t, "alice", syncedUser.Username)
+	require.NotContains(t, syncedUser.Username, "dt_")
 	var membershipCount int64
 	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Where("external_source = ?", constant.EnterpriseExternalSourceDingTalk).Count(&membershipCount).Error)
 	require.Equal(t, int64(2), membershipCount)

@@ -51,18 +51,18 @@ type alertEventRow struct {
 }
 
 type AlertEventQuery struct {
-	TenantId     int
-	EventId      *int
-	DepartmentId *int
+	TenantId       int
+	EventId        *int
+	DepartmentId   *int
 	UnassignedOnly *bool
-	UserId       *int
-	Username     string
-	ModelName    string
-	RiskType     string
-	From         *int64
-	To           *int64
-	Page         int
-	PageSize     int
+	UserId         *int
+	Username       string
+	ModelName      string
+	RiskType       string
+	From           *int64
+	To             *int64
+	Page           int
+	PageSize       int
 }
 
 type AlertEventItem struct {
@@ -70,6 +70,7 @@ type AlertEventItem struct {
 	TenantId           int
 	UserId             int
 	Username           string
+	UsernameSnapshot   string
 	RequestId          string
 	ModelName          string
 	RiskType           string
@@ -388,6 +389,23 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 		return AlertEventListResult{Items: []AlertEventItem{}}, err
 	}
 
+	userIDs := make([]int, 0, len(events))
+	seenUserIDs := make(map[int]struct{}, len(events))
+	for _, event := range events {
+		if event.UserId <= 0 {
+			continue
+		}
+		if _, ok := seenUserIDs[event.UserId]; ok {
+			continue
+		}
+		seenUserIDs[event.UserId] = struct{}{}
+		userIDs = append(userIDs, event.UserId)
+	}
+	currentUsernames, err := loadCurrentUsernames(s.db, userIDs)
+	if err != nil {
+		return AlertEventListResult{}, err
+	}
+
 	items := make([]AlertEventItem, 0, len(events))
 	for _, event := range events {
 		snapshot, err := event.ParsedDepartmentSnapshot()
@@ -398,7 +416,8 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 			Id:                 event.Id,
 			TenantId:           event.TenantId,
 			UserId:             event.UserId,
-			Username:           event.Username,
+			Username:           firstNonEmpty(currentUsernames[event.UserId], event.Username),
+			UsernameSnapshot:   event.Username,
 			RequestId:          event.RequestId,
 			ModelName:          event.ModelName,
 			RiskType:           event.RiskType,
@@ -1228,7 +1247,12 @@ func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
 		db = db.Where("user_id = ?", *query.UserId)
 	}
 	if username := strings.TrimSpace(query.Username); username != "" {
-		db = db.Where("username = ?", username)
+		userIDs, err := lookupUserIDsByUsername(db, username)
+		if err == nil && len(userIDs) > 0 {
+			db = db.Where("(username = ? OR user_id IN ?)", username, userIDs)
+		} else {
+			db = db.Where("username = ?", username)
+		}
 	}
 	if modelName := strings.TrimSpace(query.ModelName); modelName != "" {
 		db = db.Where("model_name = ?", modelName)

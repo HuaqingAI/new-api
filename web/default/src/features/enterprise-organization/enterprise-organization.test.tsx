@@ -1,7 +1,4 @@
-import {
-  QueryClient,
-  QueryClientProvider,
-} from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterContextProvider,
   createMemoryHistory,
@@ -16,6 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
   __testRenderApiMessage,
+  __testRenderUsernameMutationMessage,
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
   enterpriseOrganizationSearchSchema,
@@ -28,6 +26,7 @@ import {
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
+  createRenameUsernameSchema,
   normalizeEnterpriseOrganizationSearch,
   resolveDepartmentMemberSelection,
   resolveBudgetSelection,
@@ -74,40 +73,43 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders a three-level department tree with status, source, external id, and sync state', () => {
-    const html = renderEnterpriseOrganizationContent([
-      departmentNode({
-        id: 1,
-        name: 'Headquarters',
-        status: 1,
-        source_type: 1,
-        external_id: '',
-        sync_status: 1,
-        children: [
-          departmentNode({
-            id: 2,
-            parent_id: 1,
-            name: 'Engineering',
-            status: 2,
-            source_type: 2,
-            external_id: 'dingtalk-engineering',
-            sync_status: 2,
-            name_history: [{ name: 'R&D', changed_at: 1700000000 }],
-            children: [
-              departmentNode({
-                id: 3,
-                parent_id: 2,
-                name: 'Platform',
-                status: 3,
-                source_type: 2,
-                external_id: 'dingtalk-platform',
-                sync_status: 3,
-                sync_error: 'Deleted upstream during sync',
-              }),
-            ],
-          }),
-        ],
-      }),
-    ], [1, 2])
+    const html = renderEnterpriseOrganizationContent(
+      [
+        departmentNode({
+          id: 1,
+          name: 'Headquarters',
+          status: 1,
+          source_type: 1,
+          external_id: '',
+          sync_status: 1,
+          children: [
+            departmentNode({
+              id: 2,
+              parent_id: 1,
+              name: 'Engineering',
+              status: 2,
+              source_type: 2,
+              external_id: 'dingtalk-engineering',
+              sync_status: 2,
+              name_history: [{ name: 'R&D', changed_at: 1700000000 }],
+              children: [
+                departmentNode({
+                  id: 3,
+                  parent_id: 2,
+                  name: 'Platform',
+                  status: 3,
+                  source_type: 2,
+                  external_id: 'dingtalk-platform',
+                  sync_status: 3,
+                  sync_error: 'Deleted upstream during sync',
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+      [1, 2]
+    )
 
     for (const expected of [
       'Department',
@@ -249,7 +251,9 @@ describe('Enterprise organization department tree workflow', () => {
             id: 2,
             parent_id: 1,
             name: 'Engineering',
-            children: [departmentNode({ id: 3, parent_id: 2, name: 'Platform' })],
+            children: [
+              departmentNode({ id: 3, parent_id: 2, name: 'Platform' }),
+            ],
           }),
         ],
       }),
@@ -270,14 +274,32 @@ describe('Enterprise organization department tree workflow', () => {
 
   test('clears stale selected members when the current department member list changes', () => {
     const engineeringMembers = [
-      departmentMember({ id: 1, department_id: 2, user_id: 2001, username: 'alice' }),
-      departmentMember({ id: 2, department_id: 2, user_id: 2002, username: 'bob' }),
+      departmentMember({
+        id: 1,
+        department_id: 2,
+        user_id: 2001,
+        username: 'alice',
+      }),
+      departmentMember({
+        id: 2,
+        department_id: 2,
+        user_id: 2002,
+        username: 'bob',
+      }),
     ]
     const financeMembers = [
-      departmentMember({ id: 3, department_id: 8, user_id: 3001, username: 'carol' }),
+      departmentMember({
+        id: 3,
+        department_id: 8,
+        user_id: 3001,
+        username: 'carol',
+      }),
     ]
 
-    assert.equal(resolveDepartmentMemberSelection(engineeringMembers, 2002), 2002)
+    assert.equal(
+      resolveDepartmentMemberSelection(engineeringMembers, 2002),
+      2002
+    )
     assert.equal(resolveDepartmentMemberSelection(financeMembers, 2002), null)
     assert.equal(resolveDepartmentMemberSelection([], 2002), null)
   })
@@ -523,6 +545,22 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(valid.success, true)
   })
 
+  test('rename username schema rejects invalid values and accepts readable usernames', () => {
+    const schema = createRenameUsernameSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      new_username: 'A',
+    })
+    assert.equal(invalid.success, false)
+
+    const valid = schema.safeParse({
+      tenant_id: 0,
+      new_username: 'alice_ops',
+    })
+    assert.equal(valid.success, true)
+  })
+
   test('budget error messaging prefers the specific reason key', () => {
     const payload: ApiResponse<EnterpriseBudgetErrorData> = {
       success: false,
@@ -566,6 +604,20 @@ describe('Enterprise organization department tree workflow', () => {
 
     assert.equal(
       __testRenderApiMessage(null, (key) => key),
+      'Request failed'
+    )
+  })
+
+  test('username mutation messaging prefers translated backend reason key', () => {
+    assert.equal(
+      __testRenderUsernameMutationMessage(
+        { message: 'enterprise.organization.username_exists' },
+        (key) => key
+      ),
+      'enterprise.organization.username_exists'
+    )
+    assert.equal(
+      __testRenderUsernameMutationMessage(null, (key) => key),
       'Request failed'
     )
   })
@@ -900,14 +952,16 @@ describe('Enterprise organization department tree workflow', () => {
     })
 
     const emptyHtml = renderToStaticMarkup(
-      <I18nextProvider i18n={i18n}>
-        <DepartmentMemberContextCard
-          currentDepartment={department}
-          selectedMember={null}
-          memberships={[]}
-          loading={false}
-        />
-      </I18nextProvider>
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nextProvider i18n={i18n}>
+          <DepartmentMemberContextCard
+            currentDepartment={department}
+            selectedMember={null}
+            memberships={[]}
+            loading={false}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
     )
     assert.match(emptyHtml, /Select a department member/)
     assert.match(
@@ -916,29 +970,31 @@ describe('Enterprise organization department tree workflow', () => {
     )
 
     const selectedHtml = renderToStaticMarkup(
-      <I18nextProvider i18n={i18n}>
-        <DepartmentMemberContextCard
-          currentDepartment={department}
-          selectedMember={selectedMember}
-          memberships={[
-            {
-              id: 91,
-              tenant_id: 0,
-              user_id: 2001,
-              department_id: 7,
-              department_name: 'Security',
-              external_user_id: '',
-              external_source: 'dingtalk',
-              status: 1,
-              joined_at: 1700000000,
-              left_at: 0,
-              created_at: 1700000000,
-              updated_at: 1700000001,
-            },
-          ]}
-          loading={false}
-        />
-      </I18nextProvider>
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nextProvider i18n={i18n}>
+          <DepartmentMemberContextCard
+            currentDepartment={department}
+            selectedMember={selectedMember}
+            memberships={[
+              {
+                id: 91,
+                tenant_id: 0,
+                user_id: 2001,
+                department_id: 7,
+                department_name: 'Security',
+                external_user_id: '',
+                external_source: 'dingtalk',
+                status: 1,
+                joined_at: 1700000000,
+                left_at: 0,
+                created_at: 1700000000,
+                updated_at: 1700000001,
+              },
+            ]}
+            loading={false}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
     )
 
     for (const expected of [
@@ -946,6 +1002,9 @@ describe('Enterprise organization department tree workflow', () => {
       'Alice',
       'Current department member',
       'Selected from Security',
+      'Rename Username',
+      'Readable Username',
+      'Update Username',
       'Department',
       'Membership Status',
     ]) {

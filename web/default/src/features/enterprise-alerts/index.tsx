@@ -17,15 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
-import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-import { useNavigate, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
+import dayjs from 'dayjs'
 import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   AlertTriangle,
   ArrowRight,
@@ -36,7 +33,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
-import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import {
   CartesianGrid,
   Line,
@@ -44,7 +41,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -57,6 +53,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart'
 import {
   Empty,
   EmptyContent,
@@ -94,11 +95,6 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart'
 import { SectionPageLayout } from '@/components/layout'
 import {
   alertEventsListQueryKey,
@@ -127,7 +123,10 @@ import type {
 } from './types'
 
 export const enterpriseAlertsSearchSchema = z.object({
-  tab: z.enum(['overview', 'events', 'deliveries', 'rules']).optional().catch(undefined),
+  tab: z
+    .enum(['overview', 'events', 'deliveries', 'rules'])
+    .optional()
+    .catch(undefined),
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
   event_id: z.coerce.number().int().positive().optional().catch(undefined),
   department_id: z.coerce.number().int().positive().optional().catch(undefined),
@@ -140,7 +139,10 @@ export const enterpriseAlertsSearchSchema = z.object({
   to: z.coerce.number().int().positive().optional().catch(undefined),
   page: z.coerce.number().int().positive().optional().catch(1),
   page_size: z.coerce.number().int().positive().optional().catch(20),
-  summary_sort: z.enum(['requests', 'quota', 'users', 'dept_name']).optional().catch(undefined),
+  summary_sort: z
+    .enum(['requests', 'quota', 'users', 'dept_name'])
+    .optional()
+    .catch(undefined),
   summary_order: z.enum(['asc', 'desc']).optional().catch(undefined),
 })
 
@@ -209,7 +211,10 @@ export function formatDepartmentSnapshot(
 ) {
   if (!item.department_snapshot.length) return fallbackLabel
   return item.department_snapshot
-    .map((department) => `${department.department_name} (#${department.department_id})`)
+    .map(
+      (department) =>
+        `${department.department_name} (#${department.department_id})`
+    )
     .join(', ')
 }
 
@@ -238,7 +243,11 @@ export function formatDeliveryTraceSummary(
   fallbackLabel: string
 ) {
   if (!item.trace) return fallbackLabel
-  return [item.trace.department_summary, item.trace.request_id, item.trace.detail_route]
+  return [
+    item.trace.department_summary,
+    item.trace.request_id,
+    item.trace.detail_route,
+  ]
     .filter(Boolean)
     .join(' · ')
 }
@@ -278,8 +287,7 @@ export function buildAlertRulePayload(
     enabled: draft.enabled,
     risk_types: parseLineSeparatedList(draft.riskTypes),
     department_ids: parseNumberList(draft.departmentIds),
-    dedupe_window_seconds:
-      parseOptionalNumber(draft.dedupeWindowSeconds) ?? 0,
+    dedupe_window_seconds: parseOptionalNumber(draft.dedupeWindowSeconds) ?? 0,
     channel_configs: [
       {
         type: 'email',
@@ -334,7 +342,9 @@ const departmentRiskTrendChartConfig = {
   },
 } as const
 
-function searchToFormDefaults(search: EnterpriseAlertsSearch): AlertFilterFormValues {
+function searchToFormDefaults(
+  search: EnterpriseAlertsSearch
+): AlertFilterFormValues {
   return {
     tenant_id: numberToString(search.tenant_id),
     department_id: numberToString(search.department_id),
@@ -386,7 +396,9 @@ function deliveriesSearchFromAlerts(
     tenant_id: search.tenant_id,
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.channel_type ? { channel_type: filters.channel_type } : {}),
-    ...(filters.trigger_source ? { trigger_source: filters.trigger_source } : {}),
+    ...(filters.trigger_source
+      ? { trigger_source: filters.trigger_source }
+      : {}),
     page: search.page ?? 1,
     page_size: search.page_size ?? 20,
   }
@@ -420,7 +432,9 @@ export function DepartmentRiskOverviewTab(props: {
         <Info className='size-4' />
         <AlertTitle>{t('Department risk overview')}</AlertTitle>
         <AlertDescription>
-          {t(summary?.disclaimer_key ?? 'enterprise.usage.multi_dept_disclaimer')}
+          {t(
+            summary?.disclaimer_key ?? 'enterprise.usage.multi_dept_disclaimer'
+          )}
         </AlertDescription>
       </Alert>
 
@@ -433,13 +447,22 @@ export function DepartmentRiskOverviewTab(props: {
         </CardHeader>
         <CardContent className='space-y-2 text-sm'>
           <div className='font-medium'>
-            {t(summary?.formula.expression ?? 'Risk rate = risky requests / total requests')}
+            {t(
+              summary?.formula.expression ??
+                'Risk rate = risky requests / total requests'
+            )}
           </div>
           <div className='text-muted-foreground'>
-            {t(summary?.formula.numerator_label ?? 'Requests that triggered risk events')}
+            {t(
+              summary?.formula.numerator_label ??
+                'Requests that triggered risk events'
+            )}
           </div>
           <div className='text-muted-foreground'>
-            {t(summary?.formula.denominator_label ?? 'Total requests from department members')}
+            {t(
+              summary?.formula.denominator_label ??
+                'Total requests from department members'
+            )}
           </div>
         </CardContent>
       </Card>
@@ -462,7 +485,9 @@ export function DepartmentRiskOverviewTab(props: {
               <CardHeader>
                 <CardTitle>{t('Top Risk Departments')}</CardTitle>
                 <CardDescription>
-                  {t('Ranked by risk rate with drill-down entry into the event list.')}
+                  {t(
+                    'Ranked by risk rate with drill-down entry into the event list.'
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -480,13 +505,18 @@ export function DepartmentRiskOverviewTab(props: {
                         onClick={() => props.onOpenEventEntry(item.event_entry)}
                       >
                         <div className='space-y-1'>
-                          <div className='font-medium'>{item.dept_name || t('Unassigned')}</div>
+                          <div className='font-medium'>
+                            {item.dept_name || t('Unassigned')}
+                          </div>
                           <div className='text-muted-foreground text-xs'>
-                            {t('Risk events')}: {item.risk_event_count} · {t('Requests')}: {item.total_request_count}
+                            {t('Risk events')}: {item.risk_event_count} ·{' '}
+                            {t('Requests')}: {item.total_request_count}
                           </div>
                         </div>
                         <div className='flex items-center gap-3'>
-                          <Badge variant='secondary'>{formatRiskRate(item.risk_rate)}</Badge>
+                          <Badge variant='secondary'>
+                            {formatRiskRate(item.risk_rate)}
+                          </Badge>
                           <ArrowRight className='size-4' />
                         </div>
                       </button>
@@ -500,7 +530,9 @@ export function DepartmentRiskOverviewTab(props: {
               <CardHeader>
                 <CardTitle>{t('Recent Trend')}</CardTitle>
                 <CardDescription>
-                  {t('Trend lines reflect the same multi-department duplicate-counting rule as the summary.')}
+                  {t(
+                    'Trend lines reflect the same multi-department duplicate-counting rule as the summary.'
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -513,7 +545,9 @@ export function DepartmentRiskOverviewTab(props: {
             <CardHeader>
               <CardTitle>{t('Department Risk Summary')}</CardTitle>
               <CardDescription>
-                {t('Review each department, the unassigned bucket, and jump straight to matching risk events.')}
+                {t(
+                  'Review each department, the unassigned bucket, and jump straight to matching risk events.'
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className='space-y-4'>
@@ -531,25 +565,34 @@ export function DepartmentRiskOverviewTab(props: {
                   <TableBody>
                     {(summary?.items ?? []).length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className='text-muted-foreground text-center'>
+                        <TableCell
+                          colSpan={5}
+                          className='text-muted-foreground text-center'
+                        >
                           {t('No risk overview data for this time range')}
                         </TableCell>
                       </TableRow>
                     ) : (
                       (summary?.items ?? []).map((item) => (
-                        <TableRow key={`${item.dept_id ?? 'unassigned'}-${item.window_start}`}>
+                        <TableRow
+                          key={`${item.dept_id ?? 'unassigned'}-${item.window_start}`}
+                        >
                           <TableCell className='font-medium'>
                             {item.dept_name || t('Unassigned')}
                           </TableCell>
                           <TableCell>{item.risk_event_count}</TableCell>
                           <TableCell>{item.total_request_count}</TableCell>
-                          <TableCell>{formatRiskRate(item.risk_rate)}</TableCell>
+                          <TableCell>
+                            {formatRiskRate(item.risk_rate)}
+                          </TableCell>
                           <TableCell>
                             <Button
                               type='button'
                               size='sm'
                               variant='outline'
-                              onClick={() => props.onOpenEventEntry(item.event_entry)}
+                              onClick={() =>
+                                props.onOpenEventEntry(item.event_entry)
+                              }
                             >
                               {t('View Risk Events')}
                             </Button>
@@ -561,7 +604,8 @@ export function DepartmentRiskOverviewTab(props: {
                 </Table>
               </div>
               <div className='text-muted-foreground text-sm'>
-                {t('Unassigned')}: {summary?.unassigned.risk_event_count ?? 0} / {summary?.unassigned.total_request_count ?? 0}
+                {t('Unassigned')}: {summary?.unassigned.risk_event_count ?? 0} /{' '}
+                {summary?.unassigned.total_request_count ?? 0}
               </div>
             </CardContent>
           </Card>
@@ -590,15 +634,43 @@ function DepartmentRiskTrendChart(props: {
   }
 
   return (
-    <ChartContainer config={departmentRiskTrendChartConfig} className='h-72 w-full'>
+    <ChartContainer
+      config={departmentRiskTrendChartConfig}
+      className='h-72 w-full'
+    >
       <RechartsLineChart accessibilityLayer data={data}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey='label' tickLine={false} axisLine={false} minTickGap={24} />
+        <XAxis
+          dataKey='label'
+          tickLine={false}
+          axisLine={false}
+          minTickGap={24}
+        />
         <YAxis yAxisId='left' tickLine={false} axisLine={false} width={48} />
-        <YAxis yAxisId='right' orientation='right' tickLine={false} axisLine={false} width={48} />
+        <YAxis
+          yAxisId='right'
+          orientation='right'
+          tickLine={false}
+          axisLine={false}
+          width={48}
+        />
         <ChartTooltip content={<ChartTooltipContent />} />
-        <Line yAxisId='left' type='monotone' dataKey='riskRate' stroke='var(--color-riskRate)' strokeWidth={2} dot={false} />
-        <Line yAxisId='right' type='monotone' dataKey='riskEvents' stroke='var(--color-riskEvents)' strokeWidth={2} dot={false} />
+        <Line
+          yAxisId='left'
+          type='monotone'
+          dataKey='riskRate'
+          stroke='var(--color-riskRate)'
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          yAxisId='right'
+          type='monotone'
+          dataKey='riskEvents'
+          stroke='var(--color-riskEvents)'
+          strokeWidth={2}
+          dot={false}
+        />
       </RechartsLineChart>
     </ChartContainer>
   )
@@ -663,7 +735,9 @@ export function EnterpriseAlertsPage() {
   }) as EnterpriseAlertsSearch
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'deliveries' | 'rules'>(
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'events' | 'deliveries' | 'rules'
+  >(
     (search.tab as 'overview' | 'events' | 'deliveries' | 'rules') ?? 'overview'
   )
   const [draft, setDraft] = useState<RuleEditorState>(createEmptyRuleDraft())
@@ -697,7 +771,8 @@ export function EnterpriseAlertsPage() {
 
   useEffect(() => {
     setActiveTab(
-      (search.tab as 'overview' | 'events' | 'deliveries' | 'rules') ?? 'overview'
+      (search.tab as 'overview' | 'events' | 'deliveries' | 'rules') ??
+        'overview'
     )
   }, [search.tab])
 
@@ -814,15 +889,15 @@ export function EnterpriseAlertsPage() {
       )
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : t('Request failed')
-      )
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
     },
   })
 
   const totalPages = Math.max(
     1,
-    Math.ceil((alertsQuery.data?.total ?? 0) / (alertsQuery.data?.page_size ?? 20))
+    Math.ceil(
+      (alertsQuery.data?.total ?? 0) / (alertsQuery.data?.page_size ?? 20)
+    )
   )
 
   const onSubmit = (values: AlertFilterFormValues) => {
@@ -855,7 +930,9 @@ export function EnterpriseAlertsPage() {
     await deleteRuleMutation.mutateAsync(draft.id)
   }
 
-  const handleTabChange = (value: 'overview' | 'events' | 'deliveries' | 'rules') => {
+  const handleTabChange = (
+    value: 'overview' | 'events' | 'deliveries' | 'rules'
+  ) => {
     setActiveTab(value)
     navigate({
       to: '/enterprise-alerts',
@@ -866,7 +943,9 @@ export function EnterpriseAlertsPage() {
     })
   }
 
-  const handleOpenEventEntry = (entry: DepartmentRiskSummaryItem['event_entry']) => {
+  const handleOpenEventEntry = (
+    entry: DepartmentRiskSummaryItem['event_entry']
+  ) => {
     navigate({
       to: '/enterprise-alerts',
       search: (prev) => buildAlertEventEntrySearch(prev, entry),
@@ -875,13 +954,17 @@ export function EnterpriseAlertsPage() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('Enterprise Alerts')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('Enterprise Alerts')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-6'>
           <Tabs
             value={activeTab}
             onValueChange={(value) =>
-              handleTabChange(value as 'overview' | 'events' | 'deliveries' | 'rules')
+              handleTabChange(
+                value as 'overview' | 'events' | 'deliveries' | 'rules'
+              )
             }
             className='space-y-6'
           >
@@ -1078,9 +1161,23 @@ export function EnterpriseAlertsPage() {
                                 {formatTimestamp(item.created_at)}
                               </TableCell>
                               <TableCell>
-                                {formatDepartmentSnapshot(item, t('Unassigned'))}
+                                {formatDepartmentSnapshot(
+                                  item,
+                                  t('Unassigned')
+                                )}
                               </TableCell>
-                              <TableCell>{item.username}</TableCell>
+                              <TableCell>
+                                <div className='flex min-w-[160px] flex-col gap-1'>
+                                  <span>{item.username}</span>
+                                  {item.username_snapshot &&
+                                  item.username_snapshot !== item.username ? (
+                                    <span className='text-muted-foreground text-xs'>
+                                      {t('Historical Username Snapshot')}:{' '}
+                                      {item.username_snapshot}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </TableCell>
                               <TableCell>{item.request_id}</TableCell>
                               <TableCell>{item.model_name}</TableCell>
                               <TableCell>{item.risk_type}</TableCell>
@@ -1098,29 +1195,36 @@ export function EnterpriseAlertsPage() {
                               href='#'
                               onClick={(event) => {
                                 event.preventDefault()
-                                if (normalizedSearch.page && normalizedSearch.page > 1) {
+                                if (
+                                  normalizedSearch.page &&
+                                  normalizedSearch.page > 1
+                                ) {
                                   changePage(normalizedSearch.page - 1)
                                 }
                               }}
                             />
                           </PaginationItem>
-                          {Array.from({ length: totalPages }).map((_, index) => {
-                            const page = index + 1
-                            return (
-                              <PaginationItem key={page}>
-                                <PaginationLink
-                                  href='#'
-                                  isActive={page === (normalizedSearch.page ?? 1)}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    changePage(page)
-                                  }}
-                                >
-                                  {page}
-                                </PaginationLink>
-                              </PaginationItem>
-                            )
-                          })}
+                          {Array.from({ length: totalPages }).map(
+                            (_, index) => {
+                              const page = index + 1
+                              return (
+                                <PaginationItem key={page}>
+                                  <PaginationLink
+                                    href='#'
+                                    isActive={
+                                      page === (normalizedSearch.page ?? 1)
+                                    }
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      changePage(page)
+                                    }}
+                                  >
+                                    {page}
+                                  </PaginationLink>
+                                </PaginationItem>
+                              )
+                            }
+                          )}
                           <PaginationItem>
                             <PaginationNext
                               href='#'
@@ -1185,12 +1289,15 @@ export function EnterpriseAlertsPage() {
                         onChange={(event) =>
                           setDeliveryFilters((prev) => ({
                             ...prev,
-                            status: event.target.value as DeliveryFilterState['status'],
+                            status: event.target
+                              .value as DeliveryFilterState['status'],
                           }))
                         }
                       >
                         <option value=''>{t('All statuses')}</option>
-                        <option value='final_failed'>{t('Final failed')}</option>
+                        <option value='final_failed'>
+                          {t('Final failed')}
+                        </option>
                         <option value='pending'>{t('Pending')}</option>
                         <option value='failed'>{t('Failed')}</option>
                         <option value='resent'>{t('Resent')}</option>
@@ -1205,14 +1312,17 @@ export function EnterpriseAlertsPage() {
                         onChange={(event) =>
                           setDeliveryFilters((prev) => ({
                             ...prev,
-                            channel_type: event.target.value as DeliveryFilterState['channel_type'],
+                            channel_type: event.target
+                              .value as DeliveryFilterState['channel_type'],
                           }))
                         }
                       >
                         <option value=''>{t('All channels')}</option>
                         <option value='email'>{t('Email')}</option>
                         <option value='webhook'>{t('Webhook')}</option>
-                        <option value='dingtalk_robot'>{t('DingTalk robot')}</option>
+                        <option value='dingtalk_robot'>
+                          {t('DingTalk robot')}
+                        </option>
                       </select>
                     </div>
                     <div className='space-y-2'>
@@ -1223,13 +1333,16 @@ export function EnterpriseAlertsPage() {
                         onChange={(event) =>
                           setDeliveryFilters((prev) => ({
                             ...prev,
-                            trigger_source: event.target.value as DeliveryFilterState['trigger_source'],
+                            trigger_source: event.target
+                              .value as DeliveryFilterState['trigger_source'],
                           }))
                         }
                       >
                         <option value=''>{t('All sources')}</option>
                         <option value='rule_match'>{t('Rule match')}</option>
-                        <option value='manual_resend'>{t('Manual resend')}</option>
+                        <option value='manual_resend'>
+                          {t('Manual resend')}
+                        </option>
                       </select>
                     </div>
                     <div className='flex items-end'>
@@ -1273,7 +1386,9 @@ export function EnterpriseAlertsPage() {
                       <TableBody>
                         {deliveriesQuery.data.items.map((item) => (
                           <TableRow key={item.id}>
-                            <TableCell>{formatTimestamp(item.created_at)}</TableCell>
+                            <TableCell>
+                              {formatTimestamp(item.created_at)}
+                            </TableCell>
                             <TableCell>
                               <Badge
                                 variant={
@@ -1313,7 +1428,9 @@ export function EnterpriseAlertsPage() {
                                 t('No trace details yet')
                               )}
                             </TableCell>
-                            <TableCell>{item.error_reason || t('No error')}</TableCell>
+                            <TableCell>
+                              {item.error_reason || t('No error')}
+                            </TableCell>
                             <TableCell>
                               {item.status === 'final_failed' ? (
                                 <Button
@@ -1321,7 +1438,9 @@ export function EnterpriseAlertsPage() {
                                   variant='outline'
                                   disabled={resendDeliveryMutation.isPending}
                                   onClick={() =>
-                                    void resendDeliveryMutation.mutateAsync(item)
+                                    void resendDeliveryMutation.mutateAsync(
+                                      item
+                                    )
                                   }
                                 >
                                   {t('Resend')}
@@ -1346,7 +1465,9 @@ export function EnterpriseAlertsPage() {
                         <EmptyMedia>
                           <BellRing className='size-6' />
                         </EmptyMedia>
-                        <EmptyTitle>{t('No final failed deliveries')}</EmptyTitle>
+                        <EmptyTitle>
+                          {t('No final failed deliveries')}
+                        </EmptyTitle>
                         <EmptyDescription>
                           {t(
                             'Switch filters to review the full history or wait for the dispatcher to produce new results.'
@@ -1436,7 +1557,8 @@ export function EnterpriseAlertsPage() {
                                 </Badge>
                               </div>
                               <p className='text-muted-foreground text-sm'>
-                                {rule.risk_types.join(', ') || t('No risk types')}
+                                {rule.risk_types.join(', ') ||
+                                  t('No risk types')}
                               </p>
                               <p className='text-muted-foreground text-sm'>
                                 {rule.department_ids.length
@@ -1472,7 +1594,9 @@ export function EnterpriseAlertsPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>
-                      {draft.id === undefined ? t('Create Rule') : t('Edit Rule')}
+                      {draft.id === undefined
+                        ? t('Create Rule')
+                        : t('Edit Rule')}
                     </CardTitle>
                     <CardDescription>
                       {t(
@@ -1518,7 +1642,9 @@ export function EnterpriseAlertsPage() {
                             setDraft((prev) => ({ ...prev, enabled: checked }))
                           }
                         />
-                        <span className='text-sm font-medium'>{t('Rule Enabled')}</span>
+                        <span className='text-sm font-medium'>
+                          {t('Rule Enabled')}
+                        </span>
                       </label>
                       <label className='flex items-center gap-3'>
                         <Switch
@@ -1560,7 +1686,9 @@ export function EnterpriseAlertsPage() {
                               departmentIds: event.target.value,
                             }))
                           }
-                          placeholder={t('Leave empty to target all departments')}
+                          placeholder={t(
+                            'Leave empty to target all departments'
+                          )}
                         />
                       </div>
                     </div>
@@ -1627,7 +1755,9 @@ export function EnterpriseAlertsPage() {
                                   webhookSecret: event.target.value,
                                 }))
                               }
-                              placeholder={t('Enter a new secret to replace the stored one')}
+                              placeholder={t(
+                                'Enter a new secret to replace the stored one'
+                              )}
                             />
                           </div>
                           <p className='text-muted-foreground text-sm'>
@@ -1688,7 +1818,9 @@ export function EnterpriseAlertsPage() {
                                   dingtalkRobotSecret: event.target.value,
                                 }))
                               }
-                              placeholder={t('Enter a new secret to replace the stored one')}
+                              placeholder={t(
+                                'Enter a new secret to replace the stored one'
+                              )}
                             />
                           </div>
                           <p className='text-muted-foreground text-sm'>

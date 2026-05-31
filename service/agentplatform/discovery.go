@@ -58,6 +58,8 @@ type CapabilityDetail struct {
 	DetailJSON          string
 	ExtensionsJSON      string
 	SupportedExtensions []string
+	ContractCompatible  bool
+	Diagnostics         CapabilityDiagnostics
 }
 
 type RefreshResult struct {
@@ -69,6 +71,24 @@ type RefreshResult struct {
 	ETag                string
 	VisibilityState     string
 	CallableState       string
+	ContractCompatible  bool
+	Diagnostics         CapabilityDiagnostics
+}
+
+type RefreshInput struct {
+	ClientID                string
+	ResourceID              string
+	ObservedETag            string
+	ObservedResourceVersion string
+	ObservedAtUnix          *int64
+}
+
+type CapabilityDiagnostics struct {
+	Reason             string
+	Converged          bool
+	ClientNonCompliant bool
+	ObservedETag       string
+	ObservedVersion    string
 }
 
 type DiscoveryService struct {
@@ -111,6 +131,13 @@ func (s *DiscoveryService) Discovery(query DiscoveryQuery) (DiscoveryResult, err
 			}
 			return DiscoveryResult{Items: []DiscoveryItem{}}, err
 		}
+		compatible, err := s.contractCompatible(query.ClientID, version.ContractVersion)
+		if err != nil {
+			return DiscoveryResult{Items: []DiscoveryItem{}}, err
+		}
+		if !compatible {
+			continue
+		}
 		items = append(items, DiscoveryItem{
 			ResourceID:       resource.ResourceId,
 			ResourceType:     resource.ResourceType,
@@ -151,7 +178,15 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 	if err != nil {
 		return CapabilityDetail{}, err
 	}
+	compatible, err := s.contractCompatible(clientID, version.ContractVersion)
+	if err != nil {
+		return CapabilityDetail{}, err
+	}
+	if !compatible {
+		return CapabilityDetail{}, ErrOpenCapabilityContractInvalid
+	}
 	supportedExtensions := extractExtensionNamespaces(exposure.ExtensionsJSON)
+	diagnostics := computeCapabilityDiagnostics(exposure, resource.Status, "", "", nil)
 
 	return CapabilityDetail{
 		ResourceID:          resource.ResourceId,
@@ -169,17 +204,24 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 		DetailJSON:          version.DetailJSON,
 		ExtensionsJSON:      exposure.ExtensionsJSON,
 		SupportedExtensions: supportedExtensions,
+		ContractCompatible:  compatible,
+		Diagnostics:         diagnostics,
 	}, nil
 }
 
-func (s *DiscoveryService) Refresh(clientID string, resourceID string) (RefreshResult, error) {
+func (s *DiscoveryService) Refresh(input RefreshInput) (RefreshResult, error) {
 	if s == nil || s.db == nil {
 		return RefreshResult{}, ErrOpenCapabilityContractInvalid
 	}
-	detail, err := s.Detail(clientID, resourceID)
+	input.ClientID = strings.TrimSpace(input.ClientID)
+	input.ResourceID = strings.TrimSpace(input.ResourceID)
+	input.ObservedETag = strings.TrimSpace(input.ObservedETag)
+	input.ObservedResourceVersion = strings.TrimSpace(input.ObservedResourceVersion)
+	detail, err := s.Detail(input.ClientID, input.ResourceID)
 	if err != nil {
 		return RefreshResult{}, err
 	}
+	diagnostics := computeCapabilityDiagnosticsFromDetail(detail, input)
 	return RefreshResult{
 		ResourceID:          detail.ResourceID,
 		ResourceVersion:     detail.ResourceVersion,
@@ -189,6 +231,8 @@ func (s *DiscoveryService) Refresh(clientID string, resourceID string) (RefreshR
 		ETag:                detail.ETag,
 		VisibilityState:     detail.VisibilityState,
 		CallableState:       detail.CallableState,
+		ContractCompatible:  detail.ContractCompatible,
+		Diagnostics:         diagnostics,
 	}, nil
 }
 
@@ -242,6 +286,73 @@ func capabilityFreshness(exposure apmodel.Exposure, resourceStatus string) strin
 		return OpenCapabilityFreshnessStale
 	}
 	return OpenCapabilityFreshnessFresh
+}
+
+func (s *DiscoveryService) contractCompatible(clientID string, resourceContractVersion string) (bool, error) {
+	clientID = strings.TrimSpace(clientID)
+	resourceContractVersion = strings.TrimSpace(resourceContractVersion)
+	if clientID == "" || resourceContractVersion == "" {
+		return false, ErrOpenCapabilityContractInvalid
+	}
+	var client apmodel.Client
+	if err := s.db.Where("client_id = ?", clientID).First(&client).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, ErrUnauthorizedClient
+		}
+		return false, err
+	}
+	return strings.TrimSpace(client.ContractVersion) == resourceContractVersion, nil
+}
+
+func computeCapabilityDiagnostics(exposure apmodel.Exposure, resourceStatus string, observedETag string, observedVersion string, observedAtUnix *int64) CapabilityDiagnostics {
+	freshness := capabilityFreshness(exposure, resourceStatus)
+	diagnostics := CapabilityDiagnostics{
+		Reason:          "in_sync",
+		Converged:       true,
+		ObservedETag:    observedETag,
+		ObservedVersion: observedVersion,
+	}
+	switch freshness {
+	case OpenCapabilityFreshnessRevoked:
+		diagnostics.Reason = "resource_revoked"
+		diagnostics.Converged = false
+	case OpenCapabilityFreshnessOffline:
+		diagnostics.Reason = "resource_offline"
+		diagnostics.Converged = false
+	case OpenCapabilityFreshnessStale:
+		diagnostics.Reason = "projection_stale"
+		diagnostics.Converged = false
+	}
+	if observedAtUnix != nil && exposure.PublishedAt != nil && freshness == OpenCapabilityFreshnessStale {
+		observedAt := time.Unix(*observedAtUnix, 0).UTC()
+		if observedAt.Before(exposure.PublishedAt.Add(-time.Duration(exposure.FreshnessTTLSeconds) * time.Second)) {
+			diagnostics.Reason = "client_non_compliant_stale"
+			diagnostics.ClientNonCompliant = true
+		}
+	}
+	return diagnostics
+}
+
+func computeCapabilityDiagnosticsFromDetail(detail CapabilityDetail, input RefreshInput) CapabilityDiagnostics {
+	diagnostics := detail.Diagnostics
+	diagnostics.ObservedETag = input.ObservedETag
+	diagnostics.ObservedVersion = input.ObservedResourceVersion
+	if detail.Freshness == OpenCapabilityFreshnessFresh {
+		if input.ObservedETag != "" && input.ObservedETag != detail.ETag {
+			diagnostics.Reason = "client_cache_mismatch"
+			diagnostics.Converged = false
+		}
+		if input.ObservedResourceVersion != "" && input.ObservedResourceVersion != detail.ResourceVersion {
+			diagnostics.Reason = "client_version_mismatch"
+			diagnostics.Converged = false
+		}
+	}
+	if detail.Freshness == OpenCapabilityFreshnessStale && input.ObservedAtUnix != nil {
+		diagnostics.ClientNonCompliant = true
+		diagnostics.Reason = "client_non_compliant_stale"
+		diagnostics.Converged = false
+	}
+	return diagnostics
 }
 
 func extractExtensionNamespaces(raw string) []string {

@@ -147,15 +147,19 @@ func TestOpenCapabilityDiscoveryDetailAndRefreshWorkflow(t *testing.T) {
 	require.True(t, detailResp.Success)
 
 	var detailData struct {
-		ResourceId string `json:"resource_id"`
-		ETag       string `json:"etag"`
+		ResourceId         string `json:"resource_id"`
+		ETag               string `json:"etag"`
+		ContractCompatible bool   `json:"contract_compatible"`
 	}
 	require.NoError(t, common.Unmarshal(detailResp.Data, &detailData))
 	require.Equal(t, resource.ResourceId, detailData.ResourceId)
 	require.NotEmpty(t, detailData.ETag)
+	require.True(t, detailData.ContractCompatible)
 
 	refresh := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/refresh", token, map[string]any{
-		"resource_id": resource.ResourceId,
+		"resource_id":               resource.ResourceId,
+		"observed_etag":             detailData.ETag,
+		"observed_resource_version": "1.0.0",
 	})
 	refreshResp := decodeOpenCapabilityAPIResponse(t, refresh)
 	require.True(t, refreshResp.Success)
@@ -214,4 +218,19 @@ func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
 	require.Equal(t, apservice.OpenCapabilityCodePermissionDenied, errorPayload.Code)
+}
+
+func TestOpenCapabilityDetailRejectsContractVersionMismatch(t *testing.T) {
+	router, db, token, resource := setupOpenCapabilityControllerTest(t)
+	require.NoError(t, db.Model(&apmodel.Client{}).Where("slug = ?", "cherry-studio").Update("contract_version", "2026-07").Error)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/resources/"+resource.ResourceId, token, nil)
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+
+	var errorPayload struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
+	require.Equal(t, apservice.OpenCapabilityCodeContractInvalid, errorPayload.Code)
 }

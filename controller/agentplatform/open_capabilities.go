@@ -74,6 +74,8 @@ func OpenCapabilityResourceDetail(c *gin.Context) {
 		Detail:              jsonTextToRawMessage(detail.DetailJSON),
 		Extensions:          jsonTextToRawMessage(detail.ExtensionsJSON),
 		SupportedExtensions: detail.SupportedExtensions,
+		ContractCompatible:  detail.ContractCompatible,
+		Diagnostics:         mapOpenCapabilityDiagnostics(detail.Diagnostics),
 	})
 }
 
@@ -88,7 +90,13 @@ func OpenCapabilityRefresh(c *gin.Context) {
 		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityContractInvalid, "", "")
 		return
 	}
-	result, err := discoveryService().Refresh(claims.ClientId, req.ResourceId)
+	result, err := discoveryService().Refresh(apservice.RefreshInput{
+		ClientID:                claims.ClientId,
+		ResourceID:              req.ResourceId,
+		ObservedETag:            req.ObservedETag,
+		ObservedResourceVersion: req.ObservedResourceVersion,
+		ObservedAtUnix:          req.ObservedAt,
+	})
 	if err != nil {
 		writeOpenCapabilityError(c, err, req.ResourceId, "")
 		return
@@ -102,6 +110,8 @@ func OpenCapabilityRefresh(c *gin.Context) {
 		ETag:                result.ETag,
 		VisibilityState:     result.VisibilityState,
 		CallableState:       result.CallableState,
+		ContractCompatible:  result.ContractCompatible,
+		Diagnostics:         mapOpenCapabilityDiagnostics(result.Diagnostics),
 	})
 }
 
@@ -137,4 +147,14 @@ func openCapabilityClaims(c *gin.Context) (apservice.TokenClaims, bool) {
 	}
 	claims, ok := value.(apservice.TokenClaims)
 	return claims, ok
+}
+
+func mapOpenCapabilityDiagnostics(input apservice.CapabilityDiagnostics) dtoagentplatform.OpenCapabilityDiagnostics {
+	return dtoagentplatform.OpenCapabilityDiagnostics{
+		Reason:             input.Reason,
+		Converged:          input.Converged,
+		ClientNonCompliant: input.ClientNonCompliant,
+		ObservedETag:       input.ObservedETag,
+		ObservedVersion:    input.ObservedVersion,
+	}
 }

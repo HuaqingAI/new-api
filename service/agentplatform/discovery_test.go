@@ -113,11 +113,13 @@ func TestDiscoveryServiceReturnsDetailAndRefresh(t *testing.T) {
 	require.Equal(t, skill.ResourceId, detail.ResourceID)
 	require.Equal(t, apmodel.ResourceTypeSkill, detail.ResourceType)
 	require.Contains(t, detail.SupportedExtensions, "cherry_studio")
+	require.True(t, detail.ContractCompatible)
 
-	refresh, err := svc.Refresh(clientID, skill.ResourceId)
+	refresh, err := svc.Refresh(RefreshInput{ClientID: clientID, ResourceID: skill.ResourceId})
 	require.NoError(t, err)
 	require.Equal(t, detail.ETag, refresh.ETag)
 	require.Equal(t, OpenCapabilityFreshnessFresh, refresh.Freshness)
+	require.True(t, refresh.ContractCompatible)
 }
 
 func TestDiscoveryServiceMapsRevokedAndOfflineFreshness(t *testing.T) {
@@ -161,4 +163,34 @@ func TestMapOpenCapabilityErrorIncludesStableFields(t *testing.T) {
 	payload, err := json.Marshal(response)
 	require.NoError(t, err)
 	require.Contains(t, string(payload), `"code":"contractInvalid"`)
+}
+
+func TestDiscoveryServiceDetectsContractVersionMismatch(t *testing.T) {
+	svc, db, _, skill, _, clientID := newDiscoveryServiceForTest(t)
+	require.NoError(t, db.Model(&apmodel.Client{}).Where("client_id = ?", clientID).Update("contract_version", "2026-07").Error)
+
+	_, err := svc.Detail(clientID, skill.ResourceId)
+	require.ErrorIs(t, err, ErrOpenCapabilityContractInvalid)
+}
+
+func TestDiscoveryServiceMarksRefreshAsStaleAndNonCompliant(t *testing.T) {
+	svc, db, _, skill, _, clientID := newDiscoveryServiceForTest(t)
+
+	oldPublishedAt := time.Now().UTC().Add(-10 * time.Minute)
+	require.NoError(t, db.Model(&apmodel.Exposure{}).
+		Where("resource_id = ? AND client_key = ?", skill.ResourceId, clientID).
+		Updates(map[string]any{"published_at": oldPublishedAt}).Error)
+
+	observedAt := time.Now().UTC().Unix()
+	refresh, err := svc.Refresh(RefreshInput{
+		ClientID:                clientID,
+		ResourceID:              skill.ResourceId,
+		ObservedETag:            "stale-etag",
+		ObservedResourceVersion: "0.9.0",
+		ObservedAtUnix:          &observedAt,
+	})
+	require.NoError(t, err)
+	require.Equal(t, OpenCapabilityFreshnessStale, refresh.Freshness)
+	require.Equal(t, "client_non_compliant_stale", refresh.Diagnostics.Reason)
+	require.True(t, refresh.Diagnostics.ClientNonCompliant)
 }

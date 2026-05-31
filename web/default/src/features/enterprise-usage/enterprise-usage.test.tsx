@@ -967,6 +967,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 3,
           username: 'carol',
+          display_name: 'Carol',
           request_count: 1,
           prompt_tokens: 100,
           completion_tokens: 200,
@@ -983,6 +984,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 1,
           username: 'alice',
+          display_name: 'Alice',
           request_count: 4,
           prompt_tokens: 400,
           completion_tokens: 160,
@@ -992,6 +994,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 2,
           username: 'bob',
+          display_name: 'Bob',
           request_count: 6,
           prompt_tokens: 260,
           completion_tokens: 120,

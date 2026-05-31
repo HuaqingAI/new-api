@@ -20,6 +20,7 @@ import {
   Activity,
   BarChart3,
   Box,
+  Boxes,
   Building2,
   CreditCard,
   FileText,
@@ -133,6 +134,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Agent Platform'),
+            url: '/agent-platform',
+            icon: Boxes,
           },
           {
             title: t('Enterprise Organization'),

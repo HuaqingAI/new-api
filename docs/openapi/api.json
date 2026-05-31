@@ -6485,6 +6485,890 @@
           }
         ]
       }
+    },
+    "/api/open-capabilities/discovery": {
+      "get": {
+        "summary": "查询当前客户端可见的开放能力投影列表",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "skill",
+                "knowledge",
+                "agent"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "resource_id": {
+                                "type": "string"
+                              },
+                              "resource_type": {
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "resource_version": {
+                                "type": "string"
+                              },
+                              "contract_version": {
+                                "type": "string"
+                              },
+                              "visibility_state": {
+                                "type": "string"
+                              },
+                              "callable_state": {
+                                "type": "string"
+                              },
+                              "freshness_ttl_seconds": {
+                                "type": "integer"
+                              },
+                              "freshness": {
+                                "type": "string"
+                              },
+                              "etag": {
+                                "type": "string"
+                              },
+                              "extensions": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "resource_id",
+                              "resource_type",
+                              "display_name",
+                              "resource_version",
+                              "contract_version",
+                              "visibility_state",
+                              "callable_state",
+                              "freshness_ttl_seconds",
+                              "freshness",
+                              "etag"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/resources/{id}": {
+      "get": {
+        "summary": "读取开放能力资源标准化 detail",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_type": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "visibility_state": {
+                          "type": "string"
+                        },
+                        "callable_state": {
+                          "type": "string"
+                        },
+                        "freshness_ttl_seconds": {
+                          "type": "integer"
+                        },
+                        "freshness": {
+                          "type": "string"
+                        },
+                        "etag": {
+                          "type": "string"
+                        },
+                        "schema": {
+                          "type": "object"
+                        },
+                        "detail": {
+                          "type": "object"
+                        },
+                        "extensions": {
+                          "type": "object"
+                        },
+                        "supported_extensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_type",
+                        "display_name",
+                        "resource_version",
+                        "contract_version",
+                        "status",
+                        "visibility_state",
+                        "callable_state",
+                        "freshness_ttl_seconds",
+                        "freshness",
+                        "etag"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/refresh": {
+      "post": {
+        "summary": "刷新并对账开放能力投影视图",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resource_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "resource_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "freshness_ttl_seconds": {
+                          "type": "integer"
+                        },
+                        "freshness": {
+                          "type": "string"
+                        },
+                        "etag": {
+                          "type": "string"
+                        },
+                        "visibility_state": {
+                          "type": "string"
+                        },
+                        "callable_state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_version",
+                        "contract_version",
+                        "freshness_ttl_seconds",
+                        "freshness",
+                        "etag",
+                        "visibility_state",
+                        "callable_state"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/skills/{id}/invoke": {
+      "post": {
+        "summary": "调用开放能力 Skill 标准入口",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/knowledge-bases/{id}/query": {
+      "post": {
+        "summary": "调用开放能力 Knowledge query 标准入口",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/agents/{id}": {
+      "get": {
+        "summary": "读取开放能力 Agent 标准 detail",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_type": {
+                          "type": "string"
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "visibility_state": {
+                          "type": "string"
+                        },
+                        "callable_state": {
+                          "type": "string"
+                        },
+                        "freshness_ttl_seconds": {
+                          "type": "integer"
+                        },
+                        "freshness": {
+                          "type": "string"
+                        },
+                        "etag": {
+                          "type": "string"
+                        },
+                        "schema": {
+                          "type": "object"
+                        },
+                        "detail": {
+                          "type": "object"
+                        },
+                        "extensions": {
+                          "type": "object"
+                        },
+                        "supported_extensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_type",
+                        "display_name",
+                        "resource_version",
+                        "contract_version",
+                        "status",
+                        "visibility_state",
+                        "callable_state",
+                        "freshness_ttl_seconds",
+                        "freshness",
+                        "etag"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
     }
   },
   "components": {

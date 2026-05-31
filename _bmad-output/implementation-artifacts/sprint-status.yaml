@@ -103,7 +103,7 @@ development_status:
   ap-2-1-register-clients-and-capability-declarations: done
   ap-2-2-implement-browser-delegated-auth-main-flow: done
   ap-2-3-implement-token-lifecycle-and-revocation: done
-  ap-2-4-publish-open-capability-standard-apis-and-error-envelope: backlog
+  ap-2-4-publish-open-capability-standard-apis-and-error-envelope: done
   ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: backlog
   agent-platform-epic-2-retrospective: optional
 

@@ -50,11 +50,18 @@ export type DepartmentUsageSummaryResponse = {
 export type DepartmentUsageUserRankItem = {
   user_id: number
   username: string
+  display_name: string
   request_count: number
   prompt_tokens: number
   completion_tokens: number
   token_count: number
   quota: number
+}
+
+export type DepartmentUsageLogUserOption = {
+  user_id: number
+  username: string
+  display_name: string
 }
 
 export type DepartmentUsageTrendPoint = {
@@ -75,6 +82,7 @@ export type DepartmentUsageLogFilters = {
   end_timestamp: number
   username: string
   username_options: string[]
+  user_options: DepartmentUsageLogUserOption[]
 }
 
 export type DepartmentUsageLogEntryLink = {

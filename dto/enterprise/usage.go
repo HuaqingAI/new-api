@@ -129,11 +129,18 @@ type DepartmentUsageSummaryResponse struct {
 type DepartmentUsageUserRankItem struct {
 	UserId           int    `json:"user_id"`
 	Username         string `json:"username"`
+	DisplayName      string `json:"display_name"`
 	RequestCount     int64  `json:"request_count"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
 	TokenCount       int64  `json:"token_count"`
 	Quota            int64  `json:"quota"`
+}
+
+type DepartmentUsageLogUserOption struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
 }
 
 type DepartmentUsageTrendPoint struct {
@@ -148,12 +155,13 @@ type DepartmentUsageTrendPoint struct {
 }
 
 type DepartmentUsageLogFilters struct {
-	DepartmentId    *int     `json:"department_id"`
-	DepartmentName  string   `json:"department_name"`
-	StartTimestamp  int64    `json:"start_timestamp"`
-	EndTimestamp    int64    `json:"end_timestamp"`
-	Username        string   `json:"username"`
-	UsernameOptions []string `json:"username_options"`
+	DepartmentId    *int                           `json:"department_id"`
+	DepartmentName  string                         `json:"department_name"`
+	StartTimestamp  int64                          `json:"start_timestamp"`
+	EndTimestamp    int64                          `json:"end_timestamp"`
+	Username        string                         `json:"username"`
+	UsernameOptions []string                       `json:"username_options"`
+	UserOptions     []DepartmentUsageLogUserOption `json:"user_options"`
 }
 
 type DepartmentUsageLogEntryLink struct {

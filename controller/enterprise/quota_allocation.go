@@ -117,6 +117,8 @@ func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterpri
 		DepartmentBudgetId:     item.DepartmentBudgetId,
 		DepartmentId:           item.DepartmentId,
 		TargetUserId:           item.TargetUserId,
+		TargetUsername:         item.TargetUsername,
+		TargetDisplayName:      item.TargetDisplayName,
 		WalletId:               item.WalletId,
 		ActorId:                item.ActorId,
 		CommittedQuota:         item.CommittedQuota,

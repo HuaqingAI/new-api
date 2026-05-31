@@ -47,6 +47,7 @@ func TestAlertEventsAPIValidatesQueryAndReturnsPaginationEnvelope(t *testing.T) 
 	require.Equal(t, 20, payload.PageSize)
 	require.Len(t, payload.Items, 1)
 	require.Equal(t, "alice", payload.Items[0].Username)
+	require.Equal(t, "Alice", payload.Items[0].DisplayName)
 	require.Equal(t, "2 sensitive word hits", payload.Items[0].Summary)
 	require.NotNil(t, payload.Items[0].DepartmentSnapshot)
 	require.Len(t, payload.Items[0].DepartmentSnapshot, 1)
@@ -193,7 +194,9 @@ func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
 		EventId:            1,
 		RequestId:          "req-1",
 		TenantId:           0,
+		UserId:             101,
 		Username:           "alice",
+		DisplayName:        "Alice",
 		ModelName:          "gpt-4o-mini",
 		RiskType:           "abuse",
 		ActionResult:       "blocked",
@@ -224,6 +227,8 @@ func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
 	require.Equal(t, entmodel.AlertDeliveryStatusFinalFailed, payload.Items[0].Status)
 	require.NotNil(t, payload.Items[0].Trace)
 	require.Equal(t, "req-1", payload.Items[0].Trace.RequestId)
+	require.Equal(t, 101, payload.Items[0].Trace.UserId)
+	require.Equal(t, "Alice", payload.Items[0].Trace.DisplayName)
 	require.Equal(t, "Engineering (#1) · req-1 · /enterprise-alerts?tab=events&event_id=1", payload.Items[0].TraceSummary)
 }
 
@@ -249,7 +254,9 @@ func TestAlertDeliveryResendAPICreatesManualDeliveryAndWritesAudit(t *testing.T)
 		EventId:           1,
 		RequestId:         "req-1",
 		TenantId:          0,
+		UserId:            101,
 		Username:          "alice",
+		DisplayName:       "Alice",
 		ModelName:         "gpt-4o-mini",
 		RiskType:          "abuse",
 		ActionResult:      "blocked",

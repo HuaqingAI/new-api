@@ -43,10 +43,6 @@ import {
 } from 'recharts'
 import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
-import {
-  formatEnterpriseUserPrimary,
-  formatEnterpriseUserSecondary,
-} from '@/features/enterprise-organization/lib/user-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -100,6 +96,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { SectionPageLayout } from '@/components/layout'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from '@/features/enterprise-organization/lib/user-display'
 import {
   alertEventsListQueryKey,
   alertDeliveriesListQueryKey,
@@ -244,10 +244,26 @@ export function formatDeliveryStatus(
 
 export function formatDeliveryTraceSummary(
   item: Pick<AlertDeliveryItem, 'trace'>,
-  fallbackLabel: string
+  fallbackLabel: string,
+  t?: (value: string) => string
 ) {
   if (!item.trace) return fallbackLabel
   return [
+    formatEnterpriseUserPrimary({
+      displayName: item.trace.display_name,
+      username: item.trace.username,
+      userId: item.trace.user_id,
+    }),
+    t
+      ? formatEnterpriseUserSecondary(
+          {
+            displayName: item.trace.display_name,
+            username: item.trace.username,
+            userId: item.trace.user_id,
+          },
+          t
+        )
+      : null,
     item.trace.department_summary,
     item.trace.request_id,
     item.trace.detail_route,
@@ -1174,6 +1190,7 @@ export function EnterpriseAlertsPage() {
                                 <div className='flex min-w-[160px] flex-col gap-1'>
                                   <span>
                                     {formatEnterpriseUserPrimary({
+                                      displayName: item.display_name,
                                       username: item.username,
                                       userId: item.user_id,
                                     })}
@@ -1181,6 +1198,7 @@ export function EnterpriseAlertsPage() {
                                   <span className='text-muted-foreground text-xs'>
                                     {formatEnterpriseUserSecondary(
                                       {
+                                        displayName: item.display_name,
                                         username: item.username,
                                         userId: item.user_id,
                                       },
@@ -1443,7 +1461,8 @@ export function EnterpriseAlertsPage() {
                             <TableCell>
                               {formatDeliveryTraceSummary(
                                 item,
-                                t('No trace details yet')
+                                t('No trace details yet'),
+                                t
                               )}
                             </TableCell>
                             <TableCell>

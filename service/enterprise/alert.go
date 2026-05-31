@@ -224,6 +224,7 @@ type AlertDeliveryTraceItem struct {
 	EventId            int
 	RequestId          string
 	TenantId           int
+	UserId             int
 	Username           string
 	DisplayName        string
 	ModelName          string
@@ -1754,6 +1755,7 @@ func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, e
 			EventId:            tracePayload.EventId,
 			RequestId:          tracePayload.RequestId,
 			TenantId:           tracePayload.TenantId,
+			UserId:             tracePayload.UserId,
 			Username:           tracePayload.Username,
 			DisplayName:        tracePayload.DisplayName,
 			ModelName:          tracePayload.ModelName,
@@ -1930,6 +1932,7 @@ func (s *AlertService) buildAlertDeliveryFromMatch(
 		EventId:            event.Id,
 		RequestId:          event.RequestId,
 		TenantId:           event.TenantId,
+		UserId:             event.UserId,
 		Username:           event.Username,
 		DisplayName:        "",
 		ModelName:          event.ModelName,

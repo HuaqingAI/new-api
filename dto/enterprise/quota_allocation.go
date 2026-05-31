@@ -1,12 +1,12 @@
 package enterprise
 
 type CreateQuotaAllocationRequest struct {
-	TenantId           *int    `json:"tenant_id,omitempty"`
-	DepartmentBudgetId int     `json:"department_budget_id"`
-	DepartmentId       int     `json:"department_id"`
-	TargetUserId       int     `json:"target_user_id"`
-	CommittedQuota     *int64  `json:"committed_quota,omitempty"`
-	Reason             string  `json:"reason,omitempty"`
+	TenantId           *int   `json:"tenant_id,omitempty"`
+	DepartmentBudgetId int    `json:"department_budget_id"`
+	DepartmentId       int    `json:"department_id"`
+	TargetUserId       int    `json:"target_user_id"`
+	CommittedQuota     *int64 `json:"committed_quota,omitempty"`
+	Reason             string `json:"reason,omitempty"`
 }
 
 type ReorderEnterpriseWalletRequest struct {
@@ -20,6 +20,8 @@ type QuotaAllocationItem struct {
 	DepartmentBudgetId     int    `json:"department_budget_id"`
 	DepartmentId           int    `json:"department_id"`
 	TargetUserId           int    `json:"target_user_id"`
+	TargetUsername         string `json:"target_username"`
+	TargetDisplayName      string `json:"target_display_name"`
 	WalletId               int    `json:"wallet_id"`
 	ActorId                int    `json:"actor_id"`
 	CommittedQuota         int64  `json:"committed_quota"`

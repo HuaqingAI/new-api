@@ -273,6 +273,7 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.NotNil(t, payload.ModelDistribution)
 	require.Empty(t, payload.ModelDistribution)
 	require.Len(t, payload.UserRanking, 1)
+	require.Equal(t, "Alice", payload.UserRanking[0].DisplayName)
 	require.Equal(t, int64(15), payload.UserRanking[0].TokenCount)
 	require.NotNil(t, payload.Trend)
 	require.Len(t, payload.Trend, 1)
@@ -280,6 +281,8 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.Equal(t, "common", payload.RecentLogsEntry.Section)
 	require.Equal(t, int64(1700003599), payload.RecentLogsEntry.Filters.EndTimestamp)
 	require.Equal(t, []string{"alice"}, payload.RecentLogsEntry.Filters.UsernameOptions)
+	require.Len(t, payload.RecentLogsEntry.Filters.UserOptions, 1)
+	require.Equal(t, "Alice", payload.RecentLogsEntry.Filters.UserOptions[0].DisplayName)
 }
 
 func TestUsageDetailAPIValidatesParamsAndNormalizesArrays(t *testing.T) {

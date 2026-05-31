@@ -187,6 +187,18 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 	}
 	supportedExtensions := extractExtensionNamespaces(exposure.ExtensionsJSON)
 	diagnostics := computeCapabilityDiagnostics(exposure, resource.Status, "", "", nil)
+	detailJSON := version.DetailJSON
+	callableState := exposure.CallableState
+	if resource.ResourceType == apmodel.ResourceTypeAgent {
+		callableState, diagnostics, err = s.resolveAgentCallableState(clientID, resource.ResourceId, callableState, diagnostics)
+		if err != nil {
+			return CapabilityDetail{}, err
+		}
+		detailJSON, err = s.buildAgentDetailPayload(resource.ResourceId, version.Version, version.DetailJSON)
+		if err != nil {
+			return CapabilityDetail{}, err
+		}
+	}
 
 	return CapabilityDetail{
 		ResourceID:          resource.ResourceId,
@@ -196,12 +208,12 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 		ContractVersion:     version.ContractVersion,
 		Status:              resource.Status,
 		VisibilityState:     exposure.VisibilityState,
-		CallableState:       exposure.CallableState,
+		CallableState:       callableState,
 		FreshnessTTLSeconds: exposure.FreshnessTTLSeconds,
 		Freshness:           capabilityFreshness(exposure, resource.Status),
 		ETag:                exposure.ETag,
 		SchemaJSON:          version.SchemaJSON,
-		DetailJSON:          version.DetailJSON,
+		DetailJSON:          detailJSON,
 		ExtensionsJSON:      exposure.ExtensionsJSON,
 		SupportedExtensions: supportedExtensions,
 		ContractCompatible:  compatible,
@@ -368,4 +380,79 @@ func extractExtensionNamespaces(raw string) []string {
 		namespaces = append(namespaces, strings.TrimSpace(key))
 	}
 	return namespaces
+}
+
+func (s *DiscoveryService) resolveAgentCallableState(clientID string, resourceID string, current string, diagnostics CapabilityDiagnostics) (string, CapabilityDiagnostics, error) {
+	var agentDef apmodel.AgentDef
+	if err := s.db.Where("resource_id = ?", resourceID).Order("id DESC").First(&agentDef).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return current, diagnostics, ErrOpenCapabilityContractInvalid
+		}
+		return current, diagnostics, err
+	}
+
+	var dependencies []map[string]any
+	if err := common.UnmarshalJsonStr(agentDef.DependenciesJSON, &dependencies); err != nil {
+		return current, diagnostics, ErrOpenCapabilityContractInvalid
+	}
+	for _, dependency := range dependencies {
+		resourceType := strings.TrimSpace(strings.ToLower(common.Interface2String(dependency["resource_type"])))
+		dependencyID := strings.TrimSpace(common.Interface2String(dependency["resource_id"]))
+		if resourceType == "" || dependencyID == "" {
+			diagnostics.Reason = "contract_invalid_dependency"
+			diagnostics.Converged = false
+			return "contract_invalid", diagnostics, nil
+		}
+		var depExposure apmodel.Exposure
+		if err := s.db.Where("resource_id = ? AND client_key = ?", dependencyID, clientID).Order("id DESC").First(&depExposure).Error; err != nil {
+			diagnostics.Reason = "dependency_not_published"
+			diagnostics.Converged = false
+			return "contract_invalid", diagnostics, nil
+		}
+		if depExposure.VisibilityState != apmodel.ExposureVisibilityVisible || depExposure.CallableState != apmodel.ExposureCallableEnabled {
+			diagnostics.Reason = "dependency_not_callable"
+			diagnostics.Converged = false
+			return "contract_invalid", diagnostics, nil
+		}
+	}
+	return current, diagnostics, nil
+}
+
+func (s *DiscoveryService) buildAgentDetailPayload(resourceID string, version string, fallback string) (string, error) {
+	var agentDef apmodel.AgentDef
+	if err := s.db.Where("resource_id = ? AND resource_version = ?", resourceID, version).First(&agentDef).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fallback, nil
+		}
+		return "", err
+	}
+	payload := map[string]any{
+		"manifest":               jsonTextToMap(agentDef.ManifestJSON),
+		"dependencies":           jsonTextToSlice(agentDef.DependenciesJSON),
+		"prompt_metadata":        jsonTextToMap(agentDef.PromptMetadataJSON),
+		"compatibility_metadata": jsonTextToMap(agentDef.CompatibilityMetaJSON),
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func jsonTextToMap(raw string) map[string]any {
+	result := map[string]any{}
+	if strings.TrimSpace(raw) == "" {
+		return result
+	}
+	_ = common.UnmarshalJsonStr(raw, &result)
+	return result
+}
+
+func jsonTextToSlice(raw string) []any {
+	result := []any{}
+	if strings.TrimSpace(raw) == "" {
+		return result
+	}
+	_ = common.UnmarshalJsonStr(raw, &result)
+	return result
 }

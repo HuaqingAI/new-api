@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-05-31 21:25:11 +08:00
+last_updated: 2026-06-01 00:36:25 +08:00
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -91,7 +91,7 @@ development_status:
   epic-6-retrospective: optional
 
   agent-platform-epic-1: backlog
-  ap-1-1-establish-shared-resource-registry-and-stable-identity: backlog
+  ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: backlog
   ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: backlog
   ap-1-4-establish-projection-baseline-decoupled-from-client-registration: backlog

@@ -59,6 +59,9 @@
     },
     {
       "name": "企业组织"
+    },
+    {
+      "name": "Agent Platform"
     }
   ],
   "paths": {
@@ -6037,6 +6040,430 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/DepartmentUsageReportConfigResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/agent-platform/resources": {
+      "get": {
+        "summary": "分页查询 Agent Platform 资源注册表",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "skill",
+                "knowledge",
+                "agent"
+              ]
+            }
+          },
+          {
+            "name": "owner_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer"
+                              },
+                              "resource_id": {
+                                "type": "string"
+                              },
+                              "resource_type": {
+                                "type": "string",
+                                "enum": [
+                                  "skill",
+                                  "knowledge",
+                                  "agent"
+                                ]
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "owner_user_id": {
+                                "type": "integer"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "draft",
+                                  "published",
+                                  "disabled",
+                                  "revoked",
+                                  "offline",
+                                  "deprecated"
+                                ]
+                              },
+                              "latest_version": {
+                                "type": "string"
+                              },
+                              "tenant_id": {
+                                "type": "integer"
+                              },
+                              "created_at": {
+                                "type": "integer"
+                              },
+                              "updated_at": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "resource_id",
+                              "resource_type",
+                              "display_name",
+                              "owner_user_id",
+                              "status",
+                              "latest_version",
+                              "tenant_id",
+                              "created_at",
+                              "updated_at"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "total",
+                        "page",
+                        "page_size"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "创建 Agent Platform 资源注册记录",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resource_type": {
+                    "type": "string",
+                    "enum": [
+                      "skill",
+                      "knowledge",
+                      "agent"
+                    ]
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "owner_user_id": {
+                    "type": "integer"
+                  },
+                  "tenant_id": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "resource_type",
+                  "display_name",
+                  "owner_user_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_type": {
+                          "type": "string",
+                          "enum": [
+                            "skill",
+                            "knowledge",
+                            "agent"
+                          ]
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "owner_user_id": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published",
+                            "disabled",
+                            "revoked",
+                            "offline",
+                            "deprecated"
+                          ]
+                        },
+                        "latest_version": {
+                          "type": "string"
+                        },
+                        "tenant_id": {
+                          "type": "integer"
+                        },
+                        "created_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "resource_id",
+                        "resource_type",
+                        "display_name",
+                        "owner_user_id",
+                        "status",
+                        "latest_version",
+                        "tenant_id",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/agent-platform/resources/{id}": {
+      "get": {
+        "summary": "按稳定资源 ID 查询 Agent Platform 资源",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_type": {
+                          "type": "string",
+                          "enum": [
+                            "skill",
+                            "knowledge",
+                            "agent"
+                          ]
+                        },
+                        "display_name": {
+                          "type": "string"
+                        },
+                        "owner_user_id": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published",
+                            "disabled",
+                            "revoked",
+                            "offline",
+                            "deprecated"
+                          ]
+                        },
+                        "latest_version": {
+                          "type": "string"
+                        },
+                        "tenant_id": {
+                          "type": "integer"
+                        },
+                        "created_at": {
+                          "type": "integer"
+                        },
+                        "updated_at": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "resource_id",
+                        "resource_type",
+                        "display_name",
+                        "owner_user_id",
+                        "status",
+                        "latest_version",
+                        "tenant_id",
+                        "created_at",
+                        "updated_at"
+                      ]
                     }
                   },
                   "required": [

@@ -174,6 +174,61 @@
 - `POST /api/stripe/webhook`、`/api/creem/webhook`、`/api/waffo/webhook`、`/api/waffo-pancake/webhook/:env`
 - `:env` 用于运营方在 Pancake 后台为 `test` / `prod` 各登记一个 webhook，处理器内会校验。
 
+### 3.19 企业管理 `/api/enterprise/**`
+
+企业管理路由由 `RegisterEnterpriseRouter` 挂载到 `/api/enterprise`，路由组先经过 `UserAuth`，再按资源叠加 `AdminAuth`、`RootAuth`、`EnterpriseAdmin` 或 `EnterpriseDepartmentAdmin(...)`。
+
+#### 组织与预算
+- `GET /api/enterprise/departments/tree`
+- `GET/PUT /api/enterprise/users/:id/departments`
+- `GET /api/enterprise/departments/:id/members`
+- `POST /api/enterprise/departments/:id/members`
+- `DELETE /api/enterprise/departments/:id/members/:user_id`
+- `POST /api/enterprise/departments/:id/members/:user_id/restore`
+- `GET /api/enterprise/departments/:id/budget`
+- `GET /api/enterprise/departments/:id/budgets`
+- `GET /api/enterprise/departments/:id/budgets/:budget_id`
+- `POST /api/enterprise/departments/:id/budget`
+- `GET/POST /api/enterprise/quota-allocations`
+- `POST /api/enterprise/quota-allocations/:id/revoke`
+- `POST /api/enterprise/departments/:id/admins`
+- `DELETE /api/enterprise/departments/:id/admins/:user_id`
+- `GET /api/enterprise/admin-actions`
+- `GET /api/enterprise/admin-actions/:id`
+
+#### 内容风险事件与告警
+- `GET /api/enterprise/alerts/events`
+  - 过滤参数支持 `tenant_id`、`department_id`、`unassigned_only`、`user_id`、`username`、`model_name`、`risk_type`、`from`、`to`、`page`、`page_size`
+  - 查询语义基于 `enterprise_alert_events` 中的历史部门快照，不回查当前成员关系
+- `GET /api/enterprise/alerts/department-summary`
+  - 必填参数：`from`、`to`
+  - 可选参数：`tenant_id`、`summary_sort`、`summary_order`
+  - 时间语义为 `[from, to)`；风险分子来自 `enterprise_alert_events`，风险分母复用 `enterprise_usage_snapshots`
+- `GET /api/enterprise/alerts/deliveries`
+  - 过滤参数支持 `tenant_id`、`rule_id`、`event_id`、`manual_parent_id`、`channel_type`、`status`、`trigger_source`、`page`、`page_size`
+- `POST /api/enterprise/alerts/deliveries/:id/resend`
+  - 支持按既有投递记录触发手动重发，并写入新的投递状态与审计记录
+- `GET /api/enterprise/alerts/rules`
+- `GET /api/enterprise/alerts/rules/:id`
+- `PUT /api/enterprise/alerts/rules`
+  - 同一接口承载创建与更新；通道配置当前支持 `email`、`webhook`、`dingtalk_robot`
+- `DELETE /api/enterprise/alerts/rules/:id`
+
+#### 用量聚合与报告
+- `GET /api/enterprise/usage/department-summary`
+- `GET /api/enterprise/usage/department-detail`
+- `GET /api/enterprise/usage/export`
+- `GET/PUT /api/enterprise/usage/reports`
+
+#### 钉钉企业集成
+- `GET/PUT /api/enterprise/dingtalk/config`
+- `POST /api/enterprise/dingtalk/connectivity-test`
+- `POST /api/enterprise/dingtalk/sync/full`
+- `GET /api/enterprise/dingtalk/sync/tasks/:id`
+- `GET /api/enterprise/dingtalk/sync/logs`
+- `GET /api/enterprise/dingtalk/sync/conflicts`
+- `POST /api/enterprise/dingtalk/sync/conflicts/:id/bind-candidate`
+
 ## 4. 模型转发 API（`SetRelayRouter`）
 
 转发路径统一遵循 `controller.Relay(c, types.RelayFormat*)` 的入口分发，最终落到 `relay/channel/<provider>/` 适配器实现。可见 [relay/channel/](../relay/channel/)（40 个 provider）：`openai`, `claude`, `gemini`, `aws`(Bedrock), `vertex`, `ali`, `baidu`, `baidu_v2`, `tencent`, `volcengine`, `xunfei`, `zhipu`, `zhipu_4v`, `moonshot`, `deepseek`, `mistral`, `cohere`, `replicate`, `cloudflare`, `xai`, `xinference`, `siliconflow`, `lingyiwanwu`, `minimax`, `mokaai`, `ollama`, `openrouter`, `palm`, `perplexity`, `coze`, `dify`, `submodel`, `task`, `jina`, `jimeng`, `ai360`, `codex`。
@@ -225,6 +280,7 @@
 ## 6. 端点统计
 
 - 控制台 `/api/**`：约 200+ 端点（用户/订阅/渠道/令牌/兑换/日志/配置/部署/订阅/Vendor/Model meta/Task/MJ）
+- 其中 `/api/enterprise/**` 已覆盖组织树、部门预算、预算分配、管理员审计、钉钉同步、风险事件、告警规则、告警投递、风险概览和用量报告配置
 - 转发 `/v1`、`/v1beta`、`/pg`、`/mj`、`/suno`：约 40 端点（含 8 个 NotImplemented 占位）
 - 视频 `/v1/video*`、`/kling`、`/jimeng`：8 端点
 - Dashboard 兼容 `/dashboard`、`/v1/dashboard`：4 端点

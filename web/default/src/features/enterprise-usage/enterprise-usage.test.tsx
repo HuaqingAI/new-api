@@ -27,6 +27,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api'
+import dayjs from '@/lib/dayjs'
 import { ROLE } from '@/lib/roles'
 import { buildSearchParams } from '@/features/usage-logs/lib/filter'
 import {
@@ -42,6 +43,7 @@ import {
   compareDepartmentUsageItems,
   enterpriseUsageSearchSchema,
   formatModelDistributionSummary,
+  normalizeEnterpriseUsageSearch,
   normalizeDepartmentUsageDetail,
   normalizeDepartmentUsageItems,
   resolveDepartmentUsageExportParams,
@@ -55,30 +57,32 @@ import type {
   DepartmentUsageReportJobItem,
   DepartmentUsageSummaryItem,
 } from './types'
+import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
 
 describe('Enterprise usage overview dashboard', () => {
   test('resolves default and preset-backed time windows into exact query params', () => {
     const now = new Date('2026-05-29T12:00:00.000Z')
+    const current = dayjs(now)
 
     const today = resolveEnterpriseUsageRange({}, now)
     assert.equal(today.preset, 'today')
-    assert.equal(today.from, 1779984000)
-    assert.equal(today.to, 1780070400)
+    assert.equal(today.from, current.startOf('day').unix())
+    assert.equal(today.to, current.add(1, 'day').startOf('day').unix())
     assert.equal(today.rangeLabel, '2026-05-29 ~ 2026-05-29')
 
     const yesterday = resolveEnterpriseUsageRange({ preset: 'yesterday' }, now)
-    assert.equal(yesterday.from, 1779897600)
-    assert.equal(yesterday.to, 1779984000)
+    assert.equal(yesterday.from, current.subtract(1, 'day').startOf('day').unix())
+    assert.equal(yesterday.to, current.startOf('day').unix())
     assert.equal(yesterday.rangeLabel, '2026-05-28 ~ 2026-05-28')
 
     const last7 = resolveEnterpriseUsageRange({ preset: 'last7d' }, now)
-    assert.equal(last7.from, 1779465600)
-    assert.equal(last7.to, 1780070400)
+    assert.equal(last7.from, current.subtract(6, 'day').startOf('day').unix())
+    assert.equal(last7.to, current.add(1, 'day').startOf('day').unix())
     assert.equal(last7.rangeLabel, '2026-05-23 ~ 2026-05-29')
 
     const last30 = resolveEnterpriseUsageRange({ preset: 'last30d' }, now)
-    assert.equal(last30.from, 1777478400)
-    assert.equal(last30.to, 1780070400)
+    assert.equal(last30.from, current.subtract(29, 'day').startOf('day').unix())
+    assert.equal(last30.to, current.add(1, 'day').startOf('day').unix())
     assert.equal(last30.rangeLabel, '2026-04-30 ~ 2026-05-29')
   })
 
@@ -98,7 +102,14 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(custom.from, 1748390400)
     assert.equal(custom.to, 1748476800)
     assert.equal(custom.customToDate, '2025-05-28')
-    assert.equal(custom.rangeLabel, '2025-05-28 ~ 2025-05-29')
+    assert.equal(
+      custom.rangeLabel,
+      `${dayjs(custom.from * 1000).format('YYYY-MM-DD')} ~ ${dayjs(
+        custom.to * 1000
+      )
+        .subtract(1, 'second')
+        .format('YYYY-MM-DD')}`
+    )
 
     const invalid = resolveEnterpriseUsageRange(
       {
@@ -124,6 +135,94 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(parsed.from, 1748390400)
     assert.equal(parsed.to, 1748476800)
     assert.equal(parsed.tenant_id, 3)
+  })
+
+  test('normalizes usage search around the current department tree and clears stale child state', () => {
+    const departments = [
+      departmentTreeNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentTreeNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+          }),
+        ],
+      }),
+      departmentTreeNode({
+        id: 3,
+        name: 'Operations',
+      }),
+    ]
+
+    assert.deepEqual(
+      normalizeEnterpriseUsageSearch({
+        departments,
+        search: {
+          dept_id: undefined,
+          log_user: 'alice',
+          sort: 'tokens',
+          summary_sort: 'users',
+          summary_order: 'asc',
+        },
+      }),
+      {
+        dept_id: 1,
+        log_user: undefined,
+        sort: 'tokens',
+        summary_sort: 'users',
+        summary_order: 'asc',
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseUsageSearch({
+        departments,
+        search: {
+          dept_id: 999,
+          log_user: 'alice',
+          sort: 'quota',
+        },
+      }),
+      {
+        dept_id: 1,
+        log_user: undefined,
+        sort: 'quota',
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseUsageSearch({
+        departments,
+        search: {
+          dept_id: 2,
+          log_user: 'alice',
+          sort: 'requests',
+        },
+      }),
+      {
+        dept_id: 2,
+        log_user: 'alice',
+        sort: 'requests',
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseUsageSearch({
+        departments: [],
+        search: {
+          dept_id: 2,
+          log_user: 'alice',
+          sort: 'requests',
+        },
+      }),
+      {
+        dept_id: undefined,
+        log_user: undefined,
+        sort: 'requests',
+      }
+    )
   })
 
   test('builds a serializable feature-scoped query key for department summary requests', () => {
@@ -290,7 +389,9 @@ describe('Enterprise usage overview dashboard', () => {
       'gpt-4o',
       'claude-sonnet-4',
       '+1 more models',
-      'Enterprise Usage Overview',
+      'Current Department Analysis',
+      'Department Tree',
+      'Select a department from the tree to drive the analysis workspace on the right.',
       'Top Model',
       'Models',
       'Department totals are non-additive',
@@ -301,7 +402,8 @@ describe('Enterprise usage overview dashboard', () => {
       'Last 30 Days',
       'Custom',
       'Apply',
-      'View Details',
+      'Current department context',
+      'Analysis Notes',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -345,7 +447,7 @@ describe('Enterprise usage overview dashboard', () => {
       </I18nextProvider>
     )
     assert.match(emptyHtml, /No department usage data for this time range/)
-    assert.match(emptyHtml, /Enterprise Usage Overview/)
+    assert.match(emptyHtml, /Current Department Analysis/)
 
     const errorHtml = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -972,15 +1074,16 @@ describe('Enterprise usage overview dashboard', () => {
 
     for (const expected of [
       'Engineering',
+      'Current Department Analysis',
       'Usage Trend',
       'User Ranking',
       'Sort by Quota',
       'Sort by Requests',
       'Sort by Tokens',
       'Open Recent Logs',
-      'Back to overview',
       'Recent Logs User Filter',
       'Scheduled Usage Reports',
+      'Analysis Notes',
       'Save Report Configuration',
       'Inspect top users, model mix, time trend, and recent logs.',
       'alice',
@@ -1252,4 +1355,25 @@ function reportUsageItem(
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function departmentTreeNode(
+  overrides: Partial<DepartmentTreeNode> & Pick<DepartmentTreeNode, 'id' | 'name'>
+): DepartmentTreeNode {
+  return {
+    id: overrides.id,
+    tenant_id: overrides.tenant_id ?? 1,
+    name: overrides.name,
+    parent_id: overrides.parent_id ?? null,
+    status: overrides.status ?? 1,
+    source_type: overrides.source_type ?? 1,
+    external_id: overrides.external_id ?? '',
+    sync_status: overrides.sync_status ?? 1,
+    sync_error: overrides.sync_error ?? '',
+    name_history: overrides.name_history ?? [],
+    created_at: overrides.created_at ?? 0,
+    updated_at: overrides.updated_at ?? 0,
+    deleted_at: overrides.deleted_at ?? 0,
+    children: overrides.children ?? [],
+  }
 }

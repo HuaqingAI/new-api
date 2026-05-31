@@ -114,7 +114,7 @@ development_status:
   agent-platform-epic-3-retrospective: optional
 
   agent-platform-epic-4: backlog
-  ap-4-1-manage-knowledge-resources-with-provider-metadata: backlog
+  ap-4-1-manage-knowledge-resources-with-provider-metadata: done
   ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: backlog
   ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: backlog
   ap-4-4-integrate-first-http-retrieval-provider-adapter: backlog

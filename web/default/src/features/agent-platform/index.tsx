@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
-import { getAgentPlatformSkills } from './api'
+import { getAgentPlatformKnowledge, getAgentPlatformSkills } from './api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -71,6 +71,10 @@ export function AgentPlatformShell() {
     queryKey: ['agent-platform', 'skills', 'summary'],
     queryFn: getAgentPlatformSkills,
   })
+  const knowledgeQuery = useQuery({
+    queryKey: ['agent-platform', 'knowledge', 'summary'],
+    queryFn: getAgentPlatformKnowledge,
+  })
 
   const domainCards: DomainCard[] = [
     {
@@ -105,9 +109,9 @@ export function AgentPlatformShell() {
       icon: BookOpen,
       title: t('Knowledge'),
       description: t(
-        'Knowledge retrieval contracts and provider-backed detail views will use this section as their management shell.'
+        'Knowledge management now surfaces provider-backed metadata from the live control plane.'
       ),
-      status: t('Pending Epic 4'),
+      status: t('Knowledge control plane live'),
     },
     {
       key: 'agents',
@@ -339,6 +343,62 @@ export function AgentPlatformShell() {
                       />
                     </EmptyContent>
                   </Empty>
+                )}
+              </div>
+
+              <div className='border-border/60 bg-muted/20 rounded-2xl border p-4'>
+                <div className='mb-3 flex items-center justify-between gap-3'>
+                  <div>
+                    <p className='text-sm font-medium'>{t('Knowledge management')}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      {t(
+                        'Provider-backed Knowledge resources now surface here without turning the platform into a retrieval runtime.'
+                      )}
+                    </p>
+                  </div>
+                  <Badge
+                    variant='outline'
+                    className='border-sky-300 bg-sky-50 text-sky-700'
+                  >
+                    {t('Epic 4 active')}
+                  </Badge>
+                </div>
+
+                {knowledgeQuery.data?.success &&
+                Array.isArray(knowledgeQuery.data?.data?.items) &&
+                knowledgeQuery.data.data.items.length > 0 ? (
+                  <div className='space-y-3'>
+                    {knowledgeQuery.data.data.items.map((knowledge: any) => (
+                      <div
+                        key={knowledge.resource_id}
+                        className='border-border/60 bg-background/80 rounded-2xl border px-4 py-3'
+                      >
+                        <div className='flex items-start justify-between gap-3'>
+                          <div className='space-y-1'>
+                            <p className='font-medium'>{knowledge.display_name}</p>
+                            <p className='text-muted-foreground text-xs'>
+                              {knowledge.resource_id}
+                            </p>
+                          </div>
+                          <Badge variant='outline'>
+                            {knowledge.status || t('draft')}
+                          </Badge>
+                        </div>
+                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
+                          <span>{t('Owner')}: {knowledge.owner_user_id}</span>
+                          <span>
+                            {t('Latest version')}: {knowledge.latest_version || t('Not versioned')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className='text-muted-foreground text-sm'>
+                    {knowledgeQuery.isLoading
+                      ? t('Loading Knowledge resources')
+                      : t('Knowledge management is ready for the first provider-backed resource.')}
+                  </p>
                 )}
               </div>
             </CardContent>

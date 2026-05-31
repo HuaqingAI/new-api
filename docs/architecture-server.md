@@ -78,6 +78,7 @@ HTTP Request
     - `controller.AutomaticallyTestChannels()`：周期模型探活
     - `service.StartCodexCredentialAutoRefreshTask()`：Codex token 续期（10 分钟检查，到期 < 1 天则刷新）
     - `service.StartSubscriptionQuotaResetTask()`：订阅配额重置
+    - `serviceenterprise.StartEnterpriseTasks()`：主节点 enterprise scheduler，统一驱动余额到期回收、钱包状态同步、用量聚合、定期报告和告警投递
     - `controller.StartChannelUpstreamModelUpdateTask()`：上游模型列表同步
     - **主节点专属**（由 `common.IsMasterNode()` 控制）：`controller.UpdateMidjourneyTaskBulk()` + `UpdateTaskBulk()`
 14. `common.StartPyroScope()` / `common.StartSystemMonitor()`：可观测性
@@ -196,12 +197,18 @@ HTTP Request
 | 通知 | `webhook.go`、`notify-limit.go`、`user_notify.go` |
 | 调度任务 | `subscription_reset_task.go` |
 | Passkey | `passkey/` 子包 |
+| 企业组织/告警/用量 | `enterprise/` 子包（部门、预算、钉钉、风险事件、规则、投递、概览、scheduler） |
 
 **计费链路（参考 [pkg/billingexpr/expr.md](../pkg/billingexpr/expr.md)，CLAUDE.md Rule 7）：**
 1. `service.PreConsumeQuota`：请求进入时按估算预扣
 2. Adaptor `DoResponse`：解析上游 usage
 3. `service.PostConsumeQuotaPostBilling`：实际扣费（含表达式规则）
 4. 写 `Log`（消费类型）+ 异步更新 `QuotaData`
+
+**Enterprise 子系统补充：**
+- `service/enterprise/scheduler.go` 统一启动两条 ticker：maintenance（余额到期、钱包同步、用量聚合、定期报告）与 alert dispatch（告警投递）。
+- `service/enterprise/alert.go` 负责风险事件写入、规则读写、投递列表、手动重发与部门风险概览查询。
+- `service/enterprise/alert_dispatch.go` 与 `alert_dispatch_task.go` 负责规则匹配、通知发送和投递状态推进。
 
 ---
 
@@ -232,6 +239,10 @@ HTTP Request
 - `model_metas` / `vendor_metas` / `pricings`
 - `twofas` / `passkeys` / `custom_oauth_providers` / `user_oauth_bindings`
 - `prefill_groups` / `usedata_*` / `perf_metrics` / `checkins`
+- `enterprise_departments` / `enterprise_user_departments` / `enterprise_department_budgets` / `enterprise_quota_allocations`
+- `enterprise_admin_actions` / `enterprise_alert_events` / `enterprise_alert_rules` / `enterprise_alert_deliveries`
+- `enterprise_usage_snapshots` / `enterprise_usage_report_jobs`
+- `enterprise_dingtalk_configs` / `enterprise_dingtalk_identities` / `enterprise_dingtalk_sync_tasks` / `enterprise_dingtalk_sync_logs` / `enterprise_dingtalk_sync_conflicts`
 
 ### 7.3 缓存层
 
@@ -318,6 +329,8 @@ HTTP Request
 | 主节点专属任务 | `common.IsMasterNode()` 守门（由 `NODE_TYPE=master` 设置） |
 | `FRONTEND_BASE_URL` 行为 | 非主节点 301 跳外部前端，主节点强制忽略避免循环 |
 | 节点标识 | `HOSTNAME` / `NODE_NAME` 用于审计日志 |
+
+enterprise 相关后台任务同样受主节点约束：`serviceenterprise.StartEnterpriseTasks()` 在非 master 节点直接返回，不会重复发送报告或重复分发告警。
 
 ---
 

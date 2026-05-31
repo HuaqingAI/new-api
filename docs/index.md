@@ -65,6 +65,8 @@
 |------|----------|
 | [api-contracts-server.md](api-contracts-server.md) | Go 后端 HTTP API 契约：路由分组、鉴权、请求/响应、错误码、relay/中转端点 |
 | [data-models-server.md](data-models-server.md) | GORM 数据模型：表结构、索引、关系、跨 DB 兼容性注意 |
+| [enterprise/usage-aggregation.md](enterprise/usage-aggregation.md) | 企业部门用量聚合、导出与定期报告实现说明 |
+| [enterprise/alerting.md](enterprise/alerting.md) | 企业风险事件、告警规则、投递状态、风险概览与 scheduler 说明 |
 | [openapi/](openapi/) | OpenAPI / Swagger 资源 |
 | [../pkg/billingexpr/expr.md](../pkg/billingexpr/expr.md) | 计费表达式系统（Rule 7 必读） |
 

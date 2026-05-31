@@ -16,6 +16,7 @@ func Migrate(db *gorm.DB) error {
 		&AdminAction{},
 		&Client{},
 		&AuthorizationGrant{},
+		&RefreshToken{},
 	)
 }
 

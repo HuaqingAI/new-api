@@ -2,15 +2,22 @@ package agentplatform
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/model"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 func OAuthAuthorize(c *gin.Context) {
+	userID, ok := sessionUserID(c)
+	if !ok || userID <= 0 {
+		common.ApiErrorMsg(c, "not logged in")
+		return
+	}
 	var req dtoagentplatform.OAuthAuthorizeRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		common.ApiErrorMsg(c, "invalid request params")
@@ -23,7 +30,7 @@ func OAuthAuthorize(c *gin.Context) {
 		State:               req.State,
 		CodeChallenge:       req.CodeChallenge,
 		CodeChallengeMethod: req.CodeChallengeMethod,
-		UserId:              c.GetInt("id"),
+		UserId:              userID,
 	})
 	if err != nil {
 		writeOAuthError(c, err)
@@ -48,21 +55,46 @@ func OAuthToken(c *gin.Context) {
 	}
 	result, err := oauthTokenService().Exchange(apservice.TokenExchangeInput{
 		ClientId:     req.ClientId,
+		GrantType:    req.GrantType,
 		Code:         req.Code,
 		CodeVerifier: req.CodeVerifier,
 		RedirectURI:  req.RedirectURI,
+		RefreshToken: req.RefreshToken,
+		Scope:        req.Scope,
 	})
 	if err != nil {
 		writeOAuthError(c, err)
 		return
 	}
 	common.ApiSuccess(c, dtoagentplatform.OAuthTokenResponse{
-		AccessToken:     result.AccessToken,
-		TokenType:       result.TokenType,
-		ExpiresIn:       result.ExpiresIn,
-		Scope:           result.Scope,
-		ContractVersion: result.ContractVersion,
+		AccessToken:      result.AccessToken,
+		TokenType:        result.TokenType,
+		ExpiresIn:        result.ExpiresIn,
+		RefreshToken:     result.RefreshToken,
+		RefreshExpiresIn: result.RefreshExpiresIn,
+		Scope:            result.Scope,
+		ContractVersion:  result.ContractVersion,
+		GrantId:          result.GrantId,
 	})
+}
+
+func OAuthRevoke(c *gin.Context) {
+	var req dtoagentplatform.OAuthRevokeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	if err := oauthTokenService().Revoke(apservice.RevokeTokenInput{
+		ClientId:      req.ClientId,
+		Token:         req.Token,
+		TokenTypeHint: req.TokenTypeHint,
+		ActorUserID:   currentActorID(c),
+		RequestID:     c.GetHeader("X-Request-ID"),
+	}); err != nil {
+		writeOAuthError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"revoked": true})
 }
 
 func oauthAuthorizeService() *apservice.OAuthAuthorizeService {
@@ -75,11 +107,35 @@ func oauthTokenService() *apservice.OAuthTokenService {
 
 func writeOAuthError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, apservice.ErrInvalidAuthorizeInput), errors.Is(err, apservice.ErrInvalidTokenExchangeInput), errors.Is(err, apservice.ErrAuthorizationCodeInvalid):
+	case errors.Is(err, apservice.ErrInvalidAuthorizeInput),
+		errors.Is(err, apservice.ErrInvalidTokenExchangeInput),
+		errors.Is(err, apservice.ErrAuthorizationCodeInvalid),
+		errors.Is(err, apservice.ErrRefreshTokenInvalid),
+		errors.Is(err, apservice.ErrGrantRevoked):
 		common.ApiErrorMsg(c, "invalid request params")
 	case errors.Is(err, apservice.ErrUnauthorizedClient):
 		common.ApiErrorMsg(c, "client not found")
 	default:
 		common.ApiError(c, err)
 	}
+}
+
+func sessionUserID(c *gin.Context) (int, bool) {
+	if id := c.GetInt("id"); id > 0 {
+		return id, true
+	}
+	session := sessions.Default(c)
+	raw := session.Get("id")
+	id, ok := raw.(int)
+	return id, ok
+}
+
+func currentActorID(c *gin.Context) int {
+	if id, ok := sessionUserID(c); ok && id > 0 {
+		return id
+	}
+	if header := strings.TrimSpace(c.GetHeader("New-Api-User")); header != "" {
+		return common.String2Int(header)
+	}
+	return 0
 }

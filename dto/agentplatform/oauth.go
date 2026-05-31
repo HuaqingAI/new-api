@@ -21,15 +21,27 @@ type OAuthAuthorizeResponse struct {
 
 type OAuthTokenRequest struct {
 	ClientId     string `json:"client_id"`
+	GrantType    string `json:"grant_type"`
 	Code         string `json:"code"`
 	CodeVerifier string `json:"code_verifier"`
 	RedirectURI  string `json:"redirect_uri"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
 }
 
 type OAuthTokenResponse struct {
-	AccessToken     string `json:"access_token"`
-	TokenType       string `json:"token_type"`
-	ExpiresIn       int    `json:"expires_in"`
-	Scope           string `json:"scope"`
-	ContractVersion string `json:"contract_version"`
+	AccessToken      string `json:"access_token"`
+	TokenType        string `json:"token_type"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	RefreshExpiresIn int    `json:"refresh_expires_in,omitempty"`
+	Scope            string `json:"scope"`
+	ContractVersion  string `json:"contract_version"`
+	GrantId          string `json:"grant_id,omitempty"`
+}
+
+type OAuthRevokeRequest struct {
+	ClientId      string `json:"client_id"`
+	Token         string `json:"token"`
+	TokenTypeHint string `json:"token_type_hint"`
 }

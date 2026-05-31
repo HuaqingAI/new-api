@@ -72,8 +72,11 @@ func TestResourceVersionServiceCreatesTypedDetailsForAllResourceTypes(t *testing
 		ContractVersion: "2026-06",
 		Schema:          json.RawMessage(`{"type":"object"}`),
 		Agent: &AgentDetailInput{
-			Manifest:          json.RawMessage(`{"name":"agent"}`),
-			Dependencies:      json.RawMessage(`["skill","knowledge"]`),
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
+				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
+			]`),
 			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
 			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
 		},
@@ -203,6 +206,75 @@ func TestResourceVersionServiceRejectsInvalidKnowledgeContract(t *testing.T) {
 		CreatedBy: 100,
 	})
 	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
+}
+
+func TestResourceVersionServiceRejectsInvalidAgentDependencies(t *testing.T) {
+	svc, _, skill, knowledge, agent := newResourceVersionServiceForTest(t)
+
+	_, err := svc.Create(agent.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Agent: &AgentDetailInput{
+			Manifest:          json.RawMessage(`{"name":"agent"}`),
+			Dependencies:      json.RawMessage(`[]`),
+			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
+			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
+
+	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.1",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Agent: &AgentDetailInput{
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"skill","resource_id":""},
+				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
+			]`),
+			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
+			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
+
+	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.2",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Agent: &AgentDetailInput{
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"workflow","resource_id":"res_unknown"},
+				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
+			]`),
+			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
+			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
+
+	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.3",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Agent: &AgentDetailInput{
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
+				{"resource_type":"knowledge","resource_id":"res_missing"}
+			]`),
+			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
+			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
 }
 
 func intPtr(v int) *int {

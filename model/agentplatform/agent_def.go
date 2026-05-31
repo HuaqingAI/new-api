@@ -5,21 +5,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
 var ErrInvalidAgentDefBody = errors.New("agent platform agent def body invalid")
 
 type AgentDef struct {
-	Id                     int       `json:"id" gorm:"primaryKey"`
-	ResourceId             string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
-	ResourceVersion        string    `json:"resource_version" gorm:"type:varchar(64);uniqueIndex:idx_ap_agent_def_version;not null"`
-	ManifestJSON           string    `json:"manifest_json" gorm:"column:manifest_json;type:text"`
-	DependenciesJSON       string    `json:"dependencies_json" gorm:"column:dependencies_json;type:text"`
-	PromptMetadataJSON     string    `json:"prompt_metadata_json" gorm:"column:prompt_metadata_json;type:text"`
-	CompatibilityMetaJSON  string    `json:"compatibility_meta_json" gorm:"column:compatibility_meta_json;type:text"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	Id                    int       `json:"id" gorm:"primaryKey"`
+	ResourceId            string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
+	ResourceVersion       string    `json:"resource_version" gorm:"type:varchar(64);uniqueIndex:idx_ap_agent_def_version;not null"`
+	ManifestJSON          string    `json:"manifest_json" gorm:"column:manifest_json;type:text"`
+	DependenciesJSON      string    `json:"dependencies_json" gorm:"column:dependencies_json;type:text"`
+	PromptMetadataJSON    string    `json:"prompt_metadata_json" gorm:"column:prompt_metadata_json;type:text"`
+	CompatibilityMetaJSON string    `json:"compatibility_meta_json" gorm:"column:compatibility_meta_json;type:text"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 func (AgentDef) TableName() string {
@@ -44,8 +45,33 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 	d.DependenciesJSON = strings.TrimSpace(d.DependenciesJSON)
 	d.PromptMetadataJSON = strings.TrimSpace(d.PromptMetadataJSON)
 	d.CompatibilityMetaJSON = strings.TrimSpace(d.CompatibilityMetaJSON)
-	if d.ResourceId == "" || d.ResourceVersion == "" {
+	if d.ResourceId == "" || d.ResourceVersion == "" || d.ManifestJSON == "" || d.DependenciesJSON == "" || d.CompatibilityMetaJSON == "" {
+		return ErrInvalidAgentDefBody
+	}
+	if !validAgentJSONObject(d.ManifestJSON) || !validAgentJSONArray(d.DependenciesJSON) || !validAgentJSONObject(d.CompatibilityMetaJSON) {
 		return ErrInvalidAgentDefBody
 	}
 	return nil
+}
+
+func validAgentJSONObject(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	var payload map[string]any
+	if err := common.UnmarshalJsonStr(raw, &payload); err != nil {
+		return false
+	}
+	return len(payload) > 0
+}
+
+func validAgentJSONArray(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	var payload []any
+	if err := common.UnmarshalJsonStr(raw, &payload); err != nil {
+		return false
+	}
+	return len(payload) > 0
 }

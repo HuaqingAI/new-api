@@ -16,6 +16,7 @@ var (
 	ErrInvalidResourceVersionInput = errors.New("agent platform resource version input invalid")
 	ErrSkillContractInvalid        = errors.New("agent platform skill contract invalid")
 	ErrKnowledgeContractInvalid    = errors.New("agent platform knowledge contract invalid")
+	ErrAgentDependencyInvalid      = errors.New("agent platform agent dependency invalid")
 )
 
 type SkillDetailInput struct {
@@ -295,6 +296,9 @@ func buildVersionDetailSnapshot(resourceType string, input CreateResourceVersion
 		if input.Agent == nil || input.Skill != nil || input.Knowledge != nil {
 			return "", ErrInvalidResourceVersionInput
 		}
+		if err := validateAgentDetailInput(nil, *input.Agent); err != nil {
+			return "", err
+		}
 		payload, err := common.Marshal(input.Agent)
 		if err != nil {
 			return "", err
@@ -375,6 +379,9 @@ func createTypedDetail(tx *gorm.DB, resourceType string, resourceID string, inpu
 		}).Error
 		return normalizeTypedDetailWriteError(err)
 	case apmodel.ResourceTypeAgent:
+		if err := validateAgentDetailInput(tx, *input.Agent); err != nil {
+			return err
+		}
 		manifestJSON, err := normalizeJSONText(input.Agent.Manifest)
 		if err != nil {
 			return ErrInvalidResourceVersionInput
@@ -455,6 +462,40 @@ func validateKnowledgeDetailInput(input KnowledgeDetailInput) error {
 	citationSchemaJSON, err := normalizeJSONText(input.CitationSchema)
 	if err != nil || strings.TrimSpace(citationSchemaJSON) == "" {
 		return ErrKnowledgeContractInvalid
+	}
+	return nil
+}
+
+func validateAgentDetailInput(db *gorm.DB, input AgentDetailInput) error {
+	manifestJSON, err := normalizeJSONText(input.Manifest)
+	if err != nil || strings.TrimSpace(manifestJSON) == "" {
+		return ErrAgentDependencyInvalid
+	}
+	dependenciesJSON, err := normalizeJSONText(input.Dependencies)
+	if err != nil || strings.TrimSpace(dependenciesJSON) == "" {
+		return ErrAgentDependencyInvalid
+	}
+	compatibilityJSON, err := normalizeJSONText(input.CompatibilityMeta)
+	if err != nil || strings.TrimSpace(compatibilityJSON) == "" {
+		return ErrAgentDependencyInvalid
+	}
+
+	var dependencies []map[string]any
+	if err := common.UnmarshalJsonStr(dependenciesJSON, &dependencies); err != nil || len(dependencies) == 0 {
+		return ErrAgentDependencyInvalid
+	}
+	for _, dependency := range dependencies {
+		resourceType := strings.TrimSpace(strings.ToLower(common.Interface2String(dependency["resource_type"])))
+		resourceID := strings.TrimSpace(common.Interface2String(dependency["resource_id"]))
+		if resourceID == "" || (resourceType != apmodel.ResourceTypeSkill && resourceType != apmodel.ResourceTypeKnowledge) {
+			return ErrAgentDependencyInvalid
+		}
+		if db != nil {
+			var resource apmodel.Resource
+			if err := db.Where("resource_id = ? AND resource_type = ?", resourceID, resourceType).First(&resource).Error; err != nil {
+				return ErrAgentDependencyInvalid
+			}
+		}
 	}
 	return nil
 }

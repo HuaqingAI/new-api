@@ -122,6 +122,6 @@ development_status:
 
   agent-platform-epic-5: backlog
   ap-5-1-provide-agent-definition-management-in-control-plane: done
-  ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: backlog
+  ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: backlog
   agent-platform-epic-5-retrospective: optional

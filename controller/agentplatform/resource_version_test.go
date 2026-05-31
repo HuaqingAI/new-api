@@ -136,8 +136,11 @@ func TestResourceVersionAPIWorkflow(t *testing.T) {
 		ContractVersion: "2026-06",
 		Schema:          json.RawMessage(`{"type":"object"}`),
 		Agent: &dtoagentplatform.AgentDetailRequest{
-			Manifest:          json.RawMessage(`{"name":"agent"}`),
-			Dependencies:      json.RawMessage(`["skill","knowledge"]`),
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
+				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
+			]`),
 			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
 			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
 		},
@@ -206,6 +209,28 @@ func TestResourceVersionAPIRejectsInvalidKnowledgeContract(t *testing.T) {
 			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
 			QuerySchema:        json.RawMessage(`{"type":"object"}`),
 			CitationSchema:     json.RawMessage(`{"type":"array"}`),
+		},
+	})
+	response := decodeResourceVersionAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "invalid request params", response.Message)
+}
+
+func TestResourceVersionAPIRejectsInvalidAgentDependencies(t *testing.T) {
+	router, _, skill, _, agent := setupAgentPlatformVersionControllerTest(t)
+
+	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+agent.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Agent: &dtoagentplatform.AgentDetailRequest{
+			Manifest: json.RawMessage(`{"name":"agent"}`),
+			Dependencies: json.RawMessage(`[
+				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
+				{"resource_type":"knowledge","resource_id":"res_missing"}
+			]`),
+			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
+			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
 		},
 	})
 	response := decodeResourceVersionAPIResponse(t, recorder)

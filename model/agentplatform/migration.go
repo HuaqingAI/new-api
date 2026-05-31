@@ -12,6 +12,7 @@ func Migrate(db *gorm.DB) error {
 		&SkillDef{},
 		&KnowledgeDef{},
 		&AgentDef{},
+		&AdminAction{},
 	)
 }
 

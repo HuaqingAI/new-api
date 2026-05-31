@@ -15,5 +15,10 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.GET("/resources/:id", controlleragentplatform.GetResource)
 		agentPlatformRoute.POST("/resources/:id/versions", controlleragentplatform.CreateResourceVersion)
 		agentPlatformRoute.GET("/resources/:id/versions/:version", controlleragentplatform.GetResourceVersion)
+		agentPlatformRoute.POST("/resources/:id/publish", controlleragentplatform.PublishResource)
+		agentPlatformRoute.POST("/resources/:id/disable", controlleragentplatform.DisableResource)
+		agentPlatformRoute.POST("/resources/:id/revoke", controlleragentplatform.RevokeResource)
+		agentPlatformRoute.POST("/resources/:id/offline", controlleragentplatform.OfflineResource)
+		agentPlatformRoute.POST("/resources/:id/versions/:version/rollback", controlleragentplatform.RollbackResourceVersion)
 	}
 }

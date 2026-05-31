@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   BookOpen,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
+import { getAgentPlatformSkills } from './api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -65,6 +67,10 @@ const STATUS_TONES: Record<string, string> = {
 
 export function AgentPlatformShell() {
   const { t } = useTranslation()
+  const skillsQuery = useQuery({
+    queryKey: ['agent-platform', 'skills', 'summary'],
+    queryFn: getAgentPlatformSkills,
+  })
 
   const domainCards: DomainCard[] = [
     {
@@ -90,9 +96,9 @@ export function AgentPlatformShell() {
       icon: Puzzle,
       title: t('Skills'),
       description: t(
-        'Skill detail contracts, publish history, and invoke readiness will attach here once control-plane foundations stabilize.'
+        'Skill management now reads from the control plane and anchors the next invoke-contract stories.'
       ),
-      status: t('Pending Epic 3'),
+      status: t('Skill control plane live'),
     },
     {
       key: 'knowledge',
@@ -252,39 +258,89 @@ export function AgentPlatformShell() {
               <CardTitle>{t('Current focus')}</CardTitle>
               <CardDescription>
                 {t(
-                  'This shell is intentionally non-interactive beyond navigation, so teams can align on terminology before wiring live client and projection workflows.'
+                  'The shell now exposes the first live Skill management slice while deeper client, publishing, and diagnostics flows continue to land story by story.'
                 )}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Empty className='min-h-[280px] rounded-2xl border border-dashed border-amber-300 bg-amber-50/50'>
-                <EmptyHeader>
-                  <EmptyMedia
-                    variant='icon'
-                    className='bg-amber-100 text-amber-700'
-                  >
-                    <AlertTriangle className='h-4 w-4' />
-                  </EmptyMedia>
-                  <EmptyTitle>
-                    {t('Client and publishing actions come next')}
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    {t(
-                      'The shell is live, but actionable client registration, publish targeting, and diagnostics drill-down stay with the follow-up stories.'
-                    )}
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button
+              <div className='space-y-4'>
+                <div className='flex items-center justify-between gap-3'>
+                  <div>
+                    <p className='text-sm font-medium'>{t('Skill management')}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      {t(
+                        'Published and draft Skills now surface here from the live Agent Platform control plane.'
+                      )}
+                    </p>
+                  </div>
+                  <Badge
                     variant='outline'
-                    render={
-                      <Link to='/enterprise-alerts'>
-                        {t('Review existing diagnostics patterns')}
-                      </Link>
-                    }
-                  />
-                </EmptyContent>
-              </Empty>
+                    className='border-emerald-300 bg-emerald-50 text-emerald-700'
+                  >
+                    {t('Epic 3 active')}
+                  </Badge>
+                </div>
+
+                {skillsQuery.data?.success && Array.isArray(skillsQuery.data?.data?.items) && skillsQuery.data.data.items.length > 0 ? (
+                  <div className='space-y-3'>
+                    {skillsQuery.data.data.items.map((skill: any) => (
+                      <div
+                        key={skill.resource_id}
+                        className='border-border/60 bg-muted/30 rounded-2xl border px-4 py-3'
+                      >
+                        <div className='flex items-start justify-between gap-3'>
+                          <div className='space-y-1'>
+                            <p className='font-medium'>{skill.display_name}</p>
+                            <p className='text-muted-foreground text-xs'>
+                              {skill.resource_id}
+                            </p>
+                          </div>
+                          <Badge variant='outline'>
+                            {skill.status || t('draft')}
+                          </Badge>
+                        </div>
+                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
+                          <span>{t('Owner')}: {skill.owner_user_id}</span>
+                          <span>{t('Latest version')}: {skill.latest_version || t('Not versioned')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty className='min-h-[280px] rounded-2xl border border-dashed border-amber-300 bg-amber-50/50'>
+                    <EmptyHeader>
+                      <EmptyMedia
+                        variant='icon'
+                        className='bg-amber-100 text-amber-700'
+                      >
+                        <AlertTriangle className='h-4 w-4' />
+                      </EmptyMedia>
+                      <EmptyTitle>
+                        {skillsQuery.isLoading
+                          ? t('Loading Skills')
+                          : t('No Skills yet')}
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        {skillsQuery.isLoading
+                          ? t('The Skill control-plane slice is fetching the current registry view.')
+                          : t(
+                              'Create the first Skill in the Agent Platform control plane to turn this shell into a live management surface.'
+                            )}
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button
+                        variant='outline'
+                        render={
+                          <Link to='/enterprise-alerts'>
+                            {t('Review existing diagnostics patterns')}
+                          </Link>
+                        }
+                      />
+                    </EmptyContent>
+                  </Empty>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

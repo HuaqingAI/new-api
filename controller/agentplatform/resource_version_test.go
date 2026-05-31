@@ -119,9 +119,11 @@ func TestResourceVersionAPIWorkflow(t *testing.T) {
 		Schema:          json.RawMessage(`{"type":"object"}`),
 		Knowledge: &dtoagentplatform.KnowledgeDetailRequest{
 			KnowledgeMode:      "retrieval",
-			ProviderType:       "http",
+			ProviderType:       "http_retrieval",
 			ProviderAdapterKey: "http_retrieval",
 			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
+			QuerySchema:        json.RawMessage(`{"type":"object"}`),
+			CitationSchema:     json.RawMessage(`{"items":{"type":"object"}}`),
 		},
 	})
 	knowledgeResponse := decodeResourceVersionAPIResponse(t, knowledgeRecorder)
@@ -183,6 +185,27 @@ func TestResourceVersionAPIRejectsInvalidSkillContract(t *testing.T) {
 			InvokeMode:     "stream",
 			TimeoutSeconds: intPtr(30),
 			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
+		},
+	})
+	response := decodeResourceVersionAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "invalid request params", response.Message)
+}
+
+func TestResourceVersionAPIRejectsInvalidKnowledgeContract(t *testing.T) {
+	router, _, _, knowledge, _ := setupAgentPlatformVersionControllerTest(t)
+
+	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+knowledge.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Knowledge: &dtoagentplatform.KnowledgeDetailRequest{
+			KnowledgeMode:      "answer_generation",
+			ProviderType:       "lightrag",
+			ProviderAdapterKey: "lightrag",
+			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
+			QuerySchema:        json.RawMessage(`{"type":"object"}`),
+			CitationSchema:     json.RawMessage(`{"type":"array"}`),
 		},
 	})
 	response := decodeResourceVersionAPIResponse(t, recorder)

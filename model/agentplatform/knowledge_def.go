@@ -5,10 +5,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
 var ErrInvalidKnowledgeDefBody = errors.New("agent platform knowledge def body invalid")
+
+var allowedKnowledgeProviderTypes = map[string]struct{}{
+	"native":         {},
+	"http_retrieval": {},
+}
 
 type KnowledgeDef struct {
 	Id                       int       `json:"id" gorm:"primaryKey"`
@@ -58,5 +64,25 @@ func (d *KnowledgeDef) applyDefaultsAndValidate() error {
 	if d.ResourceId == "" || d.ResourceVersion == "" || d.ProviderType == "" || d.ProviderAdapterKey == "" {
 		return ErrInvalidKnowledgeDefBody
 	}
+	if d.KnowledgeMode != "retrieval" {
+		return ErrInvalidKnowledgeDefBody
+	}
+	if _, ok := allowedKnowledgeProviderTypes[d.ProviderType]; !ok {
+		return ErrInvalidKnowledgeDefBody
+	}
+	if !validKnowledgeJSONShape(d.ProviderConfigJSON) || !validKnowledgeJSONShape(d.QuerySchemaJSON) || !validKnowledgeJSONShape(d.CitationSchemaJSON) {
+		return ErrInvalidKnowledgeDefBody
+	}
 	return nil
+}
+
+func validKnowledgeJSONShape(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	var payload map[string]any
+	if err := common.UnmarshalJsonStr(raw, &payload); err != nil {
+		return false
+	}
+	return len(payload) > 0
 }

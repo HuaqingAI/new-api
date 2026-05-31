@@ -53,11 +53,11 @@ func TestResourceVersionServiceCreatesTypedDetailsForAllResourceTypes(t *testing
 		Schema:          json.RawMessage(`{"type":"object"}`),
 		Knowledge: &KnowledgeDetailInput{
 			KnowledgeMode:        "retrieval",
-			ProviderType:         "http",
+			ProviderType:         "http_retrieval",
 			ProviderAdapterKey:   "http_retrieval",
 			ProviderConfig:       json.RawMessage(`{"endpoint":"https://example.com"}`),
 			QuerySchema:          json.RawMessage(`{"type":"object"}`),
-			CitationSchema:       json.RawMessage(`{"type":"array"}`),
+			CitationSchema:       json.RawMessage(`{"items":{"type":"object"}}`),
 			FreshnessRules:       json.RawMessage(`{"ttl":300}`),
 			ProviderCapabilities: json.RawMessage(`{"freshness":true}`),
 		},
@@ -91,7 +91,7 @@ func TestResourceVersionServiceRejectsMismatchedOrMissingTypedDetails(t *testing
 		ContractVersion: "2026-06",
 		Knowledge: &KnowledgeDetailInput{
 			KnowledgeMode:      "retrieval",
-			ProviderType:       "http",
+			ProviderType:       "http_retrieval",
 			ProviderAdapterKey: "http_retrieval",
 		},
 		CreatedBy: 100,
@@ -152,6 +152,57 @@ func TestResourceVersionServiceRejectsInvalidSkillContract(t *testing.T) {
 		CreatedBy: 100,
 	})
 	require.ErrorIs(t, err, ErrSkillContractInvalid)
+}
+
+func TestResourceVersionServiceRejectsInvalidKnowledgeContract(t *testing.T) {
+	svc, _, _, knowledge, _ := newResourceVersionServiceForTest(t)
+
+	_, err := svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Knowledge: &KnowledgeDetailInput{
+			KnowledgeMode:      "answer_generation",
+			ProviderType:       "http_retrieval",
+			ProviderAdapterKey: "provider-a",
+			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
+			QuerySchema:        json.RawMessage(`{"type":"object"}`),
+			CitationSchema:     json.RawMessage(`{"type":"array"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
+
+	_, err = svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.1",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Knowledge: &KnowledgeDetailInput{
+			KnowledgeMode:      "retrieval",
+			ProviderType:       "lightrag",
+			ProviderAdapterKey: "lightrag",
+			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
+			QuerySchema:        json.RawMessage(`{"type":"object"}`),
+			CitationSchema:     json.RawMessage(`{"type":"array"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
+
+	_, err = svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
+		Version:         "1.0.2",
+		ContractVersion: "2026-06",
+		Schema:          json.RawMessage(`{"type":"object"}`),
+		Knowledge: &KnowledgeDetailInput{
+			KnowledgeMode:      "retrieval",
+			ProviderType:       "http_retrieval",
+			ProviderAdapterKey: "provider-a",
+			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
+			QuerySchema:        json.RawMessage(`{"type":"object"}`),
+		},
+		CreatedBy: 100,
+	})
+	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
 }
 
 func intPtr(v int) *int {

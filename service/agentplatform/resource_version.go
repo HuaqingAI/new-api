@@ -15,6 +15,7 @@ var (
 	ErrResourceVersionNotFound     = errors.New("agent platform resource version not found")
 	ErrInvalidResourceVersionInput = errors.New("agent platform resource version input invalid")
 	ErrSkillContractInvalid        = errors.New("agent platform skill contract invalid")
+	ErrKnowledgeContractInvalid    = errors.New("agent platform knowledge contract invalid")
 )
 
 type SkillDetailInput struct {
@@ -282,6 +283,9 @@ func buildVersionDetailSnapshot(resourceType string, input CreateResourceVersion
 		if input.Knowledge == nil || input.Skill != nil || input.Agent != nil {
 			return "", ErrInvalidResourceVersionInput
 		}
+		if err := validateKnowledgeDetailInput(*input.Knowledge); err != nil {
+			return "", err
+		}
 		payload, err := common.Marshal(input.Knowledge)
 		if err != nil {
 			return "", err
@@ -334,6 +338,9 @@ func createTypedDetail(tx *gorm.DB, resourceType string, resourceID string, inpu
 		}).Error
 		return normalizeTypedDetailWriteError(err)
 	case apmodel.ResourceTypeKnowledge:
+		if err := validateKnowledgeDetailInput(*input.Knowledge); err != nil {
+			return err
+		}
 		providerConfigJSON, err := normalizeJSONText(input.Knowledge.ProviderConfig)
 		if err != nil {
 			return ErrInvalidResourceVersionInput
@@ -420,6 +427,34 @@ func validateSkillDetailInput(input SkillDetailInput) error {
 	bindingConfigJSON, err := normalizeJSONText(input.BindingConfig)
 	if err != nil || strings.TrimSpace(bindingConfigJSON) == "" {
 		return ErrSkillContractInvalid
+	}
+	return nil
+}
+
+func validateKnowledgeDetailInput(input KnowledgeDetailInput) error {
+	input.KnowledgeMode = strings.TrimSpace(strings.ToLower(input.KnowledgeMode))
+	input.ProviderType = strings.TrimSpace(strings.ToLower(input.ProviderType))
+	input.ProviderAdapterKey = strings.TrimSpace(input.ProviderAdapterKey)
+	if input.KnowledgeMode != "retrieval" {
+		return ErrKnowledgeContractInvalid
+	}
+	if input.ProviderType != "native" && input.ProviderType != "http_retrieval" {
+		return ErrKnowledgeContractInvalid
+	}
+	if input.ProviderAdapterKey == "" {
+		return ErrKnowledgeContractInvalid
+	}
+	providerConfigJSON, err := normalizeJSONText(input.ProviderConfig)
+	if err != nil || strings.TrimSpace(providerConfigJSON) == "" {
+		return ErrKnowledgeContractInvalid
+	}
+	querySchemaJSON, err := normalizeJSONText(input.QuerySchema)
+	if err != nil || strings.TrimSpace(querySchemaJSON) == "" {
+		return ErrKnowledgeContractInvalid
+	}
+	citationSchemaJSON, err := normalizeJSONText(input.CitationSchema)
+	if err != nil || strings.TrimSpace(citationSchemaJSON) == "" {
+		return ErrKnowledgeContractInvalid
 	}
 	return nil
 }

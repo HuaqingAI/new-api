@@ -51,18 +51,18 @@ type alertEventRow struct {
 }
 
 type AlertEventQuery struct {
-	TenantId     int
-	EventId      *int
-	DepartmentId *int
+	TenantId       int
+	EventId        *int
+	DepartmentId   *int
 	UnassignedOnly *bool
-	UserId       *int
-	Username     string
-	ModelName    string
-	RiskType     string
-	From         *int64
-	To           *int64
-	Page         int
-	PageSize     int
+	UserId         *int
+	Username       string
+	ModelName      string
+	RiskType       string
+	From           *int64
+	To             *int64
+	Page           int
+	PageSize       int
 }
 
 type AlertEventItem struct {
@@ -70,6 +70,8 @@ type AlertEventItem struct {
 	TenantId           int
 	UserId             int
 	Username           string
+	DisplayName        string
+	UsernameSnapshot   string
 	RequestId          string
 	ModelName          string
 	RiskType           string
@@ -223,6 +225,7 @@ type AlertDeliveryTraceItem struct {
 	RequestId          string
 	TenantId           int
 	Username           string
+	DisplayName        string
 	ModelName          string
 	RiskType           string
 	ActionResult       string
@@ -388,6 +391,23 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 		return AlertEventListResult{Items: []AlertEventItem{}}, err
 	}
 
+	userIDs := make([]int, 0, len(events))
+	seenUserIDs := make(map[int]struct{}, len(events))
+	for _, event := range events {
+		if event.UserId <= 0 {
+			continue
+		}
+		if _, ok := seenUserIDs[event.UserId]; ok {
+			continue
+		}
+		seenUserIDs[event.UserId] = struct{}{}
+		userIDs = append(userIDs, event.UserId)
+	}
+	currentUsers, err := loadCurrentUserIdentities(s.db, userIDs)
+	if err != nil {
+		return AlertEventListResult{}, err
+	}
+
 	items := make([]AlertEventItem, 0, len(events))
 	for _, event := range events {
 		snapshot, err := event.ParsedDepartmentSnapshot()
@@ -398,7 +418,9 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 			Id:                 event.Id,
 			TenantId:           event.TenantId,
 			UserId:             event.UserId,
-			Username:           event.Username,
+			Username:           firstNonEmpty(currentUsers[event.UserId].Username, event.Username),
+			DisplayName:        currentUsers[event.UserId].DisplayName,
+			UsernameSnapshot:   event.Username,
 			RequestId:          event.RequestId,
 			ModelName:          event.ModelName,
 			RiskType:           event.RiskType,
@@ -1066,7 +1088,7 @@ func (s *AlertService) enqueueDeliveriesForEvent(event entmodel.AlertEvent, now 
 			if !channel.Enabled {
 				continue
 			}
-			delivery, createdThis, err := buildAlertDeliveryFromMatch(event, snapshot, matched, channel, now.Unix(), bucketSize)
+			delivery, createdThis, err := s.buildAlertDeliveryFromMatch(event, snapshot, matched, channel, now.Unix(), bucketSize)
 			if err != nil {
 				return created, err
 			}
@@ -1228,7 +1250,12 @@ func applyAlertEventFilters(db *gorm.DB, query AlertEventQuery) *gorm.DB {
 		db = db.Where("user_id = ?", *query.UserId)
 	}
 	if username := strings.TrimSpace(query.Username); username != "" {
-		db = db.Where("username = ?", username)
+		userIDs, err := lookupUserIDsByUsername(db, username)
+		if err == nil && len(userIDs) > 0 {
+			db = db.Where("(username = ? OR user_id IN ?)", username, userIDs)
+		} else {
+			db = db.Where("username = ?", username)
+		}
 	}
 	if modelName := strings.TrimSpace(query.ModelName); modelName != "" {
 		db = db.Where("model_name = ?", modelName)
@@ -1728,6 +1755,7 @@ func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, e
 			RequestId:          tracePayload.RequestId,
 			TenantId:           tracePayload.TenantId,
 			Username:           tracePayload.Username,
+			DisplayName:        tracePayload.DisplayName,
 			ModelName:          tracePayload.ModelName,
 			RiskType:           tracePayload.RiskType,
 			ActionResult:       tracePayload.ActionResult,
@@ -1886,7 +1914,7 @@ func ruleMatchesAnyDepartment(ruleDepartmentIds []int, eventDepartments map[int]
 	return false
 }
 
-func buildAlertDeliveryFromMatch(
+func (s *AlertService) buildAlertDeliveryFromMatch(
 	event entmodel.AlertEvent,
 	snapshot []entmodel.AlertEventDepartmentSnapshot,
 	matched alertMatchedRule,
@@ -1903,6 +1931,7 @@ func buildAlertDeliveryFromMatch(
 		RequestId:          event.RequestId,
 		TenantId:           event.TenantId,
 		Username:           event.Username,
+		DisplayName:        "",
 		ModelName:          event.ModelName,
 		RiskType:           event.RiskType,
 		ActionResult:       event.ActionResult,
@@ -1914,6 +1943,12 @@ func buildAlertDeliveryFromMatch(
 		RuleName:           matched.Rule.Name,
 		DetailRoute:        buildAlertEventDetailRoute(event),
 		DetailAPIPath:      buildAlertEventDetailAPIPath(event),
+	}
+	if event.UserId > 0 {
+		if identity, err := loadCurrentUserIdentities(s.db, []int{event.UserId}); err == nil {
+			tracePayload.DisplayName = identity[event.UserId].DisplayName
+			tracePayload.Username = firstNonEmpty(identity[event.UserId].Username, tracePayload.Username)
+		}
 	}
 
 	delivery := entmodel.AlertDelivery{

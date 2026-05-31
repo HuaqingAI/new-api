@@ -58,6 +58,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.PUT("/api/enterprise/users/:id/departments", ReplaceUserDepartments)
 	router.GET("/api/enterprise/departments/:id/members", ListDepartmentMembers)
 	router.POST("/api/enterprise/departments/:id/members", AddDepartmentMember)
+	router.PUT("/api/enterprise/departments/:id/members/:user_id/username", RenameDepartmentMember)
 	router.DELETE("/api/enterprise/departments/:id/members/:user_id", DeactivateDepartmentMember)
 	router.POST("/api/enterprise/departments/:id/members/:user_id/restore", RestoreDepartmentMember)
 	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
@@ -195,6 +196,14 @@ func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
 	require.Equal(t, 1, members.Total)
 	require.Len(t, members.Items, 1)
 
+	renameRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/departments/1/members/100/username", dtoenterprise.RenameDepartmentMemberRequest{
+		NewUsername: "alice_ops",
+	})
+	renameResponse := decodeEnterpriseAPIResponse(t, renameRecorder)
+	require.True(t, renameResponse.Success, renameResponse.Message)
+	renamed := decodeEnterpriseData[dtoenterprise.DepartmentMemberItem](t, renameResponse)
+	require.Equal(t, "alice_ops", renamed.Username)
+
 	deactivateRecorder := performEnterpriseRequest(t, router, http.MethodDelete, "/api/enterprise/departments/1/members/100", nil)
 	deactivateResponse := decodeEnterpriseAPIResponse(t, deactivateRecorder)
 	require.True(t, deactivateResponse.Success, deactivateResponse.Message)
@@ -226,10 +235,11 @@ func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
 
 	var actions []entmodel.AdminAction
 	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
-	require.Len(t, actions, 3)
+	require.Len(t, actions, 4)
 	require.Equal(t, "enterprise.organization.membership.add", actions[0].ActionType)
-	require.Equal(t, "enterprise.organization.membership.disable", actions[1].ActionType)
-	require.Equal(t, "enterprise.organization.membership.restore", actions[2].ActionType)
+	require.Equal(t, "enterprise.organization.membership.rename", actions[1].ActionType)
+	require.Equal(t, "enterprise.organization.membership.disable", actions[2].ActionType)
+	require.Equal(t, "enterprise.organization.membership.restore", actions[3].ActionType)
 }
 
 func TestEnterpriseMembershipAPIRejectsInvalidRequests(t *testing.T) {
@@ -248,6 +258,13 @@ func TestEnterpriseMembershipAPIRejectsInvalidRequests(t *testing.T) {
 	missingDepartmentResponse := decodeEnterpriseAPIResponse(t, missingDepartmentRecorder)
 	require.False(t, missingDepartmentResponse.Success)
 	require.Equal(t, "enterprise.organization.department_not_found", missingDepartmentResponse.Message)
+
+	renameInvalidRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/departments/1/members/100/username", dtoenterprise.RenameDepartmentMemberRequest{
+		NewUsername: "A",
+	})
+	renameInvalidResponse := decodeEnterpriseAPIResponse(t, renameInvalidRecorder)
+	require.False(t, renameInvalidResponse.Success)
+	require.Equal(t, "enterprise.organization.username_invalid", renameInvalidResponse.Message)
 
 	invalidPathRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/users/not-an-id/departments", nil)
 	invalidPathResponse := decodeEnterpriseAPIResponse(t, invalidPathRecorder)

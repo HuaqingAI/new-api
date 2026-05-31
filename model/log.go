@@ -31,6 +31,43 @@ func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm
 	return tx.Where(column+" = ?", value), nil
 }
 
+func applyLogUsernameFilter(tx *gorm.DB, column string, username string) (*gorm.DB, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return tx, nil
+	}
+	userIDs, err := lookupCurrentUserIDsByUsername(username)
+	if err != nil {
+		return nil, err
+	}
+	if len(userIDs) == 0 {
+		return applyExplicitLogTextFilter(tx, column, username)
+	}
+	if strings.Contains(username, "%") {
+		pattern, err := sanitizeLikePattern(username)
+		if err != nil {
+			return nil, err
+		}
+		return tx.Where("("+column+" LIKE ? ESCAPE '!' OR logs.user_id IN ?)", pattern, userIDs), nil
+	}
+	return tx.Where("("+column+" = ? OR logs.user_id IN ?)", username, userIDs), nil
+}
+
+func lookupCurrentUserIDsByUsername(username string) ([]int, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return []int{}, nil
+	}
+	var userIDs []int
+	if err := DB.Model(&User{}).Where("username = ?", username).Pluck("id", &userIDs).Error; err != nil {
+		return nil, err
+	}
+	if userIDs == nil {
+		userIDs = []int{}
+	}
+	return userIDs, nil
+}
+
 type Log struct {
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
@@ -326,7 +363,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
 	}
-	if tx, err = applyExplicitLogTextFilter(tx, "logs.username", username); err != nil {
+	if tx, err = applyLogUsernameFilter(tx, "logs.username", username); err != nil {
 		return nil, 0, err
 	}
 	if tokenName != "" {
@@ -460,10 +497,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
 
-	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
+	if tx, err = applyLogUsernameFilter(tx, "username", username); err != nil {
 		return stat, err
 	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
+	if rpmTpmQuery, err = applyLogUsernameFilter(rpmTpmQuery, "username", username); err != nil {
 		return stat, err
 	}
 	if tokenName != "" {
@@ -513,7 +550,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
 	tx := LOG_DB.Table("logs").Select("ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0)")
 	if username != "" {
-		tx = tx.Where("username = ?", username)
+		var err error
+		if tx, err = applyLogUsernameFilter(tx, "username", username); err != nil {
+			common.SysError("failed to apply username filter: " + err.Error())
+			return 0
+		}
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)

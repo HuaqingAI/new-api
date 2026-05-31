@@ -3,6 +3,7 @@ package enterprise_test
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
@@ -17,6 +18,7 @@ func newMembershipTestService(t *testing.T) (*entservice.DepartmentMembershipSer
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	common.RedisEnabled = false
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, entmodel.AutoMigrate(db))
 
@@ -85,6 +87,14 @@ func TestMembershipLifecycleAndDuplicateGuard(t *testing.T) {
 	var user model.User
 	require.NoError(t, db.First(&user, 100).Error)
 	require.Equal(t, "vip", user.Group)
+
+	renamed, previousUsername, err := svc.RenameDepartmentMember(1, 100, entservice.RenameDepartmentMemberInput{
+		TenantId:    0,
+		NewUsername: "alice_ops",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "alice", previousUsername)
+	require.Equal(t, "alice_ops", renamed.Username)
 }
 
 func TestReplaceUserDepartmentsRejectsDuplicateDepartmentIds(t *testing.T) {
@@ -96,6 +106,26 @@ func TestReplaceUserDepartmentsRejectsDuplicateDepartmentIds(t *testing.T) {
 		ExternalSource: "manual",
 	})
 	require.ErrorIs(t, err, entservice.ErrDuplicateDepartment)
+}
+
+func TestRenameDepartmentMemberRejectsInvalidOrDuplicateUsername(t *testing.T) {
+	svc, db := newMembershipTestService(t)
+	seedUserAndDepartments(t, db)
+
+	_, err := svc.AddDepartmentMember(1, entservice.AddDepartmentMemberInput{UserId: 100, ExternalSource: "manual"})
+	require.NoError(t, err)
+
+	_, _, err = svc.RenameDepartmentMember(1, 100, entservice.RenameDepartmentMemberInput{
+		TenantId:    0,
+		NewUsername: "A",
+	})
+	require.ErrorIs(t, err, entservice.ErrEnterpriseUsernameInvalid)
+
+	_, _, err = svc.RenameDepartmentMember(1, 100, entservice.RenameDepartmentMemberInput{
+		TenantId:    0,
+		NewUsername: "bob",
+	})
+	require.ErrorIs(t, err, entservice.ErrEnterpriseUsernameExists)
 }
 
 func intPtr(v int) *int {

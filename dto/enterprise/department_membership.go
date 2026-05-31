@@ -31,6 +31,12 @@ type MembershipStatusRequest struct {
 	ChangedAt      *int64 `json:"changed_at,omitempty"`
 }
 
+type RenameDepartmentMemberRequest struct {
+	TenantId    *int   `json:"tenant_id,omitempty"`
+	NewUsername string `json:"new_username"`
+	ChangedAt   *int64 `json:"changed_at,omitempty"`
+}
+
 type UserDepartmentItem struct {
 	Id             int    `json:"id"`
 	TenantId       int    `json:"tenant_id"`

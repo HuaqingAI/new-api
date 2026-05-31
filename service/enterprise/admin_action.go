@@ -15,6 +15,7 @@ const (
 	AdminActionMembershipAdd                 = "enterprise.organization.membership.add"
 	AdminActionMembershipDisable             = "enterprise.organization.membership.disable"
 	AdminActionMembershipRestore             = "enterprise.organization.membership.restore"
+	AdminActionMembershipRename              = "enterprise.organization.membership.rename"
 	AdminActionDeptAdminGrant                = "enterprise.organization.department_admin.grant"
 	AdminActionDeptAdminRevoke               = "enterprise.organization.department_admin.revoke"
 	AdminActionDingTalkConfigSet             = "enterprise.dingtalk.config.set"

@@ -65,6 +65,14 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
 	router.GET("/api/enterprise/usage/reports", GetDepartmentUsageReportConfig)
 	router.PUT("/api/enterprise/usage/reports", SaveDepartmentUsageReportConfig)
+	router.GET("/api/enterprise/alerts/events", ListAlertEvents)
+	router.GET("/api/enterprise/alerts/department-summary", GetDepartmentRiskSummary)
+	router.GET("/api/enterprise/alerts/deliveries", ListAlertDeliveries)
+	router.POST("/api/enterprise/alerts/deliveries/:id/resend", ResendAlertDelivery)
+	router.GET("/api/enterprise/alerts/rules", ListAlertRules)
+	router.GET("/api/enterprise/alerts/rules/:id", GetAlertRule)
+	router.PUT("/api/enterprise/alerts/rules", SaveAlertRule)
+	router.DELETE("/api/enterprise/alerts/rules/:id", DeleteAlertRule)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -90,6 +98,29 @@ func performEnterpriseRequest(t *testing.T, router *gin.Engine, method string, t
 	request := httptest.NewRequest(method, target, requestBody)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
+func performEnterpriseRequestWithHeaders(t *testing.T, router *gin.Engine, method string, target string, body any, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var requestBody *bytes.Reader
+	if body == nil {
+		requestBody = bytes.NewReader(nil)
+	} else {
+		payload, err := common.Marshal(body)
+		require.NoError(t, err)
+		requestBody = bytes.NewReader(payload)
+	}
+	request := httptest.NewRequest(method, target, requestBody)
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range headers {
+		request.Header.Set(key, value)
 	}
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)

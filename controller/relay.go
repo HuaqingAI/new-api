@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	serviceenterprise "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -136,7 +138,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if needSensitiveCheck && meta != nil {
 		contains, words := service.CheckSensitiveText(meta.CombineText)
 		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
+			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected (%d hits)", len(words)))
+			serviceenterprise.RecordRiskEvent(c, serviceenterprise.RecordRiskEventInput{
+				TenantId:      relayTenantID(c),
+				ModelName:     relayInfo.OriginModelName,
+				RiskType:      serviceenterprise.AlertRiskTypeSensitiveWords,
+				ActionResult:  serviceenterprise.AlertActionBlocked,
+				Summary:       fmt.Sprintf("%d sensitive word hits", len(words)),
+				SensitiveHits: words,
+			})
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
 			return
 		}
@@ -287,6 +297,18 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 		// Best-effort: leave CombineText empty to avoid large allocations.
 	}
 	return meta
+}
+
+func relayTenantID(c *gin.Context) int {
+	raw := strings.TrimSpace(c.Query("tenant_id"))
+	if raw == "" {
+		return 0
+	}
+	tenantID, err := strconv.Atoi(raw)
+	if err != nil || tenantID < 0 {
+		return 0
+	}
+	return tenantID
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {

@@ -49,6 +49,7 @@ import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedEnterpriseUsageIndexRouteImport } from './routes/_authenticated/enterprise-usage/index'
 import { Route as AuthenticatedEnterpriseOrganizationIndexRouteImport } from './routes/_authenticated/enterprise-organization/index'
 import { Route as AuthenticatedEnterpriseDingtalkIndexRouteImport } from './routes/_authenticated/enterprise-dingtalk/index'
+import { Route as AuthenticatedEnterpriseAlertsIndexRouteImport } from './routes/_authenticated/enterprise-alerts/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
@@ -282,6 +283,12 @@ const AuthenticatedEnterpriseDingtalkIndexRoute =
     path: '/enterprise-dingtalk/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedEnterpriseAlertsIndexRoute =
+  AuthenticatedEnterpriseAlertsIndexRouteImport.update({
+    id: '/enterprise-alerts/',
+    path: '/enterprise-alerts/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -446,6 +453,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
   '/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
@@ -507,6 +515,7 @@ export interface FileRoutesByTo {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/enterprise-alerts': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/enterprise-dingtalk': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/enterprise-organization': typeof AuthenticatedEnterpriseOrganizationIndexRoute
   '/enterprise-usage': typeof AuthenticatedEnterpriseUsageIndexRoute
@@ -572,6 +581,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
   '/_authenticated/enterprise-dingtalk/': typeof AuthenticatedEnterpriseDingtalkIndexRoute
   '/_authenticated/enterprise-organization/': typeof AuthenticatedEnterpriseOrganizationIndexRoute
   '/_authenticated/enterprise-usage/': typeof AuthenticatedEnterpriseUsageIndexRoute
@@ -636,6 +646,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/channels/'
     | '/dashboard/'
+    | '/enterprise-alerts/'
     | '/enterprise-dingtalk/'
     | '/enterprise-organization/'
     | '/enterprise-usage/'
@@ -697,6 +708,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/channels'
     | '/dashboard'
+    | '/enterprise-alerts'
     | '/enterprise-dingtalk'
     | '/enterprise-organization'
     | '/enterprise-usage'
@@ -761,6 +773,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/enterprise-alerts/'
     | '/_authenticated/enterprise-dingtalk/'
     | '/_authenticated/enterprise-organization/'
     | '/_authenticated/enterprise-usage/'
@@ -1094,6 +1107,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEnterpriseDingtalkIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/enterprise-alerts/': {
+      id: '/_authenticated/enterprise-alerts/'
+      path: '/enterprise-alerts'
+      fullPath: '/enterprise-alerts/'
+      preLoaderRoute: typeof AuthenticatedEnterpriseAlertsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard/': {
       id: '/_authenticated/dashboard/'
       path: '/dashboard'
@@ -1344,6 +1364,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedEnterpriseAlertsIndexRoute: typeof AuthenticatedEnterpriseAlertsIndexRoute
   AuthenticatedEnterpriseDingtalkIndexRoute: typeof AuthenticatedEnterpriseDingtalkIndexRoute
   AuthenticatedEnterpriseOrganizationIndexRoute: typeof AuthenticatedEnterpriseOrganizationIndexRoute
   AuthenticatedEnterpriseUsageIndexRoute: typeof AuthenticatedEnterpriseUsageIndexRoute
@@ -1369,6 +1390,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedEnterpriseAlertsIndexRoute:
+    AuthenticatedEnterpriseAlertsIndexRoute,
   AuthenticatedEnterpriseDingtalkIndexRoute:
     AuthenticatedEnterpriseDingtalkIndexRoute,
   AuthenticatedEnterpriseOrganizationIndexRoute:

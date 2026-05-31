@@ -145,6 +145,11 @@ export function useSidebarData(): SidebarData {
             icon: BarChart3,
           },
           {
+            title: t('Enterprise Alerts'),
+            url: '/enterprise-alerts',
+            icon: ShieldCheck,
+          },
+          {
             title: t('DingTalk Integration'),
             url: '/enterprise-dingtalk',
             icon: ShieldCheck,

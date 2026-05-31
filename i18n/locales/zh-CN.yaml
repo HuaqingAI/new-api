@@ -138,6 +138,11 @@ enterprise.organization.quota_allocation_budget_inactive: "部门预算池当前
 enterprise.organization.quota_allocation_quota_invalid: "分配额度必须大于0"
 enterprise.organization.quota_allocation_quota_exceeded: "分配额度超过部门预算池剩余额度"
 enterprise.organization.quota_allocation_user_out_of_department: "目标用户不是该部门的在册成员"
+enterprise.alert.rule_not_found: "告警规则不存在"
+enterprise.alert.rule_invalid_email: "告警规则邮件接收人格式无效"
+enterprise.alert.rule_invalid_webhook: "告警规则 Webhook 地址无效"
+enterprise.alert.delivery_not_found: "告警投递记录不存在"
+enterprise.alert.delivery_resend_not_allowed: "仅最终失败的告警投递允许人工重发"
 
 # Subscription messages
 subscription.not_enabled: "套餐未启用"

@@ -129,7 +129,52 @@ AI 上游渠道配置。
 #### `RankingsData` 等 — [model/usedata_rankings.go](../model/usedata_rankings.go), [model/perf_metric.go](../model/perf_metric.go)
 排行榜与性能指标聚合表。
 
-### 2.5 多媒体任务
+### 2.5 企业域实体
+
+#### `Department` / `UserDepartment` / `DepartmentRole`
+位于 [model/enterprise/](../model/enterprise/) 子目录，对应企业组织树、成员关系与部门管理员授权。成员关系按 `joined_at` / `left_at` 保留历史区间，供预算、用量和风险事件按历史快照归因。
+
+#### `DepartmentBudget` / `QuotaAllocation`
+企业预算池与成员钱包分配模型。预算周期、剩余额度、到期回收和钱包状态同步由 enterprise scheduler 统一驱动。
+
+#### `AdminAction`
+企业管理动作审计流。与请求级风险事件分离，适合记录规则编辑、手动重发、钉钉同步、管理员授权等低频管理行为。
+
+#### `AlertEvent` — [model/enterprise/alert_event.go](../model/enterprise/alert_event.go)
+- 表名：`enterprise_alert_events`
+- 关键字段：`tenant_id`、`user_id`、`username`、`request_id`、`model_name`、`risk_type`、`action_result`、`department_snapshot`、`department_tokens`、`summary`、`created_at`
+- 索引：`(tenant_id, created_at)`、`user_id`、`request_id`、`risk_type`
+- 说明：
+  - `department_snapshot` 以 `TEXT` 保存请求发生时的部门快照，跨库序列化使用 `common.Marshal` / `common.UnmarshalJsonStr`
+  - `department_tokens` 是按部门 ID 预展开的文本 token，用于“包含某部门”筛选，避免依赖数据库专属 JSON 查询
+  - 仅保存追溯所需摘要，不记录原始 prompt 或完整敏感内容
+
+#### `AlertRule` — [model/enterprise/alert_rule.go](../model/enterprise/alert_rule.go)
+- 表名：`enterprise_alert_rules`
+- 关键字段：`tenant_id`、`name`、`enabled`、`risk_types`、`department_ids`、`channel_configs`、`dedupe_window_seconds`、`created_by`、`updated_by`
+- 索引/约束：`(tenant_id, enabled)`、`(tenant_id, name)` 唯一
+- 说明：
+  - `risk_types`、`department_ids`、`channel_configs` 都以 `TEXT` JSON 形式存储
+  - 当前告警通道支持 `email`、`webhook`、`dingtalk_robot`
+
+#### `AlertDelivery` — [model/enterprise/alert_delivery.go](../model/enterprise/alert_delivery.go)
+- 表名：`enterprise_alert_deliveries`
+- 关键字段：`tenant_id`、`event_id`、`rule_id`、`channel_type`、`status`、`attempt_count`、`max_attempts`、`next_retry_at`、`sent_at`、`final_failed_at`、`error_reason`、`dedupe_key`、`trace_payload`、`trigger_source`、`manual_parent_id`
+- 索引/约束：
+  - `(tenant_id, created_at)` 用于租户内投递列表分页
+  - `(tenant_id, status, next_retry_at)` 用于调度 due deliveries
+  - `dedupe_key` 唯一，避免重复投递
+- 说明：
+  - `trace_payload` 保存事件摘要、部门快照、规则名和 drill-down 入口，用于投递追踪与手动重发
+  - `trigger_source` 区分规则匹配自动投递与手动重发
+
+#### `UsageSnapshot` / `UsageReportJob`
+企业用量聚合快照与定期报告状态表。`UsageSnapshot` 作为部门风险率分母事实源，`UsageReportJob` 作为报告配置与执行状态源。
+
+#### `DingTalkConfig` / `DingTalkIdentity` / `DingTalkSyncTask` / `DingTalkSyncLog` / `DingTalkSyncConflict`
+钉钉企业集成与同步链路数据表，覆盖配置、外部身份映射、同步任务、同步日志与冲突解决状态。
+
+### 2.6 多媒体任务
 
 #### `Task` — [model/task.go](../model/task.go:44)
 统一异步任务（视频/Suno 等）。
@@ -140,7 +185,7 @@ AI 上游渠道配置。
 #### `Midjourney` — [model/midjourney.go](../model/midjourney.go:3)
 Midjourney 专用任务表（与 `Task` 并存，历史原因）。`mj_id`/`status`/`progress`/`submit_time`/`start_time`/`finish_time` 索引。
 
-### 2.6 其他配置
+### 2.7 其他配置
 
 #### `Option` — [model/option.go](../model/option.go:18)
 全局 KV 配置（前端 / 渠道 / 邮件 / 计费等）。`Key` 主键。`InitOptionMap` 初始化时从 [setting/](../setting/) 各子包同步默认值，统一通过 `common.OptionMap`（带读写锁）暴露。
@@ -194,11 +239,14 @@ Midjourney 专用任务表（与 `Task` 并存，历史原因）。`mj_id`/`stat
 | channels | `name`、`tag` | 列表/标签批操作 |
 | abilities | `(group, model, channel_id)` PK + `priority`、`weight`、`tag` | 路由 |
 | tasks | `task_id`、`(status, progress)`、`platform` | 任务查询 |
+| enterprise_alert_events | `(tenant_id, created_at)`、`request_id`、`risk_type`、`user_id` | 风险事件分页、请求排障、风险类型过滤 |
+| enterprise_alert_rules | `(tenant_id, enabled)`、`(tenant_id, name)` uniq | 启用规则扫描、租户内规则名唯一 |
+| enterprise_alert_deliveries | `(tenant_id, created_at)`、`(tenant_id, status, next_retry_at)`、`dedupe_key` uniq | 投递列表、待重试调度、防重复投递 |
 
 ---
 
 ## 5. 启动顺序
 
-`main.go` → `model.InitDB()` → 自动迁移所有结构体 → `createRootAccountIfNeed` → `CheckSetup` → 初始化各类缓存（`subscriptionPlanCache`、`token cache`、`channel cache` 等）。
+`main.go` → `model.InitDB()` → 自动迁移所有结构体（包含 `model/enterprise/Migrate` 注册的企业表）→ `createRootAccountIfNeed` → `CheckSetup` → 初始化各类缓存（`subscriptionPlanCache`、`token cache`、`channel cache` 等）。
 
 > 详细控制器与 DTO 字段映射参见 [api-contracts-server.md](api-contracts-server.md)；上游适配器使用的 RelayInfo / ChannelMeta 等运行时类型见 [relay/common/relay_info.go](../relay/common/relay_info.go)。

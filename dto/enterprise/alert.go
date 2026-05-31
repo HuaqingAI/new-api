@@ -3,6 +3,7 @@ package enterprise
 type AlertEventQuery struct {
 	TenantId     *int    `form:"tenant_id"`
 	DepartmentId *int    `form:"department_id,omitempty"`
+	UnassignedOnly *bool `form:"unassigned_only,omitempty"`
 	UserId       *int    `form:"user_id,omitempty"`
 	Username     *string `form:"username,omitempty"`
 	ModelName    *string `form:"model_name,omitempty"`
@@ -39,6 +40,61 @@ type AlertEventsResponse struct {
 	Total    int              `json:"total"`
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
+}
+
+type DepartmentRiskSummaryQuery struct {
+	TenantId     *int    `form:"tenant_id,omitempty"`
+	From         int64   `form:"from"`
+	To           int64   `form:"to"`
+	SummarySort  *string `form:"summary_sort,omitempty"`
+	SummaryOrder *string `form:"summary_order,omitempty"`
+}
+
+type DepartmentRiskEventEntry struct {
+	DetailRoute   string `json:"detail_route"`
+	DetailAPIPath string `json:"detail_api_path"`
+	DepartmentId  *int   `json:"department_id,omitempty"`
+	DepartmentName string `json:"department_name"`
+	From          int64  `json:"from"`
+	To            int64  `json:"to"`
+	UnassignedOnly bool  `json:"unassigned_only"`
+}
+
+type DepartmentRiskSummaryItem struct {
+	DeptId            *int                     `json:"dept_id"`
+	DeptName          string                   `json:"dept_name"`
+	IsUnassigned      bool                     `json:"is_unassigned"`
+	WindowStart       int64                    `json:"window_start"`
+	WindowEnd         int64                    `json:"window_end"`
+	RiskEventCount    int64                    `json:"risk_event_count"`
+	TotalRequestCount int64                    `json:"total_request_count"`
+	RiskRate          float64                  `json:"risk_rate"`
+	EventEntry        DepartmentRiskEventEntry `json:"event_entry"`
+}
+
+type DepartmentRiskTrendPoint struct {
+	WindowStart                int64   `json:"window_start"`
+	WindowEnd                  int64   `json:"window_end"`
+	RiskEventCount             int64   `json:"risk_event_count"`
+	TotalRequestCount          int64   `json:"total_request_count"`
+	RiskRate                   float64 `json:"risk_rate"`
+	UnassignedRiskEventCount   int64   `json:"unassigned_risk_event_count"`
+	UnassignedTotalRequestCount int64  `json:"unassigned_total_request_count"`
+}
+
+type DepartmentRiskFormula struct {
+	Expression       string `json:"expression"`
+	NumeratorLabel   string `json:"numerator_label"`
+	DenominatorLabel string `json:"denominator_label"`
+}
+
+type DepartmentRiskSummaryResponse struct {
+	Items         []DepartmentRiskSummaryItem `json:"items"`
+	TopDepartments []DepartmentRiskSummaryItem `json:"top_departments"`
+	Trend         []DepartmentRiskTrendPoint `json:"trend"`
+	Unassigned    DepartmentRiskSummaryItem  `json:"unassigned"`
+	Formula       DepartmentRiskFormula      `json:"formula"`
+	DisclaimerKey string                     `json:"disclaimer_key"`
 }
 
 type AlertDeliveriesQuery struct {

@@ -29,7 +29,7 @@ import {
   Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
-import { getAlertDeliveries, getAlertEvents, getAlertRules, resendAlertDelivery, saveAlertRule } from '../../services/enterprise';
+import { getAlertDeliveries, getAlertEvents, getAlertRules, getDepartmentRiskSummary, resendAlertDelivery, saveAlertRule } from '../../services/enterprise';
 import { showError, showSuccess } from '../../helpers';
 import { formatClassicAlertDepartments } from './alertHelpers';
 
@@ -89,6 +89,7 @@ function buildRulePayload(draft) {
 export default function EnterpriseAlerts() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [riskSummary, setRiskSummary] = useState({ top_departments: [], unassigned: null, formula: null, disclaimer_key: 'enterprise.usage.multi_dept_disclaimer' });
   const [savingRule, setSavingRule] = useState(false);
   const [events, setEvents] = useState([]);
   const [rules, setRules] = useState([]);
@@ -103,10 +104,13 @@ export default function EnterpriseAlerts() {
     try {
       const res = await getAlertEvents({
         department_id: values.department_id || undefined,
+        unassigned_only: values.unassigned_only || undefined,
         user_id: values.user_id || undefined,
         username: values.username || undefined,
         model_name: values.model_name || undefined,
         risk_type: values.risk_type || undefined,
+        from: values.from || undefined,
+        to: values.to || undefined,
         page: values.page || 1,
         page_size: values.page_size || 20,
       });
@@ -139,6 +143,31 @@ export default function EnterpriseAlerts() {
         setDraft(nextDraft);
         ruleFormApi?.setValues(nextDraft);
       }
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  async function loadRiskSummary() {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const from = now - 7 * 24 * 60 * 60;
+      const res = await getDepartmentRiskSummary({
+        from,
+        to: now,
+        summary_sort: 'quota',
+        summary_order: 'desc',
+      });
+      if (!res.success) {
+        showError(res.message);
+        return;
+      }
+      setRiskSummary({
+        top_departments: res.data?.top_departments || [],
+        unassigned: res.data?.unassigned || null,
+        formula: res.data?.formula || null,
+        disclaimer_key: res.data?.disclaimer_key || 'enterprise.usage.multi_dept_disclaimer',
+      });
     } catch (error) {
       showError(error.message);
     }
@@ -202,11 +231,65 @@ export default function EnterpriseAlerts() {
     void loadEvents();
     void loadRules();
     void loadDeliveries();
+    void loadRiskSummary();
   }, []);
 
   return (
     <div className='dashboard-container'>
       <Typography.Title heading={4}>{t('企业风险事件')}</Typography.Title>
+      <Card title={t('部门风险概览')} style={{ width: '100%', marginBottom: 16 }}>
+        <Space vertical align='start' style={{ width: '100%' }}>
+          <Typography.Text type='secondary'>
+            {t(riskSummary.disclaimer_key || 'enterprise.usage.multi_dept_disclaimer')}
+          </Typography.Text>
+          <Typography.Text>
+            {t(riskSummary.formula?.expression || 'Risk rate = risky requests / total requests')}
+          </Typography.Text>
+          {(riskSummary.top_departments || []).length === 0 ? (
+            <Empty title={t('暂无风险概览')} description={t('请先生成部门用量快照和风险事件数据')} />
+          ) : (
+            <Table
+              pagination={false}
+              dataSource={riskSummary.top_departments}
+              rowKey={(record) => `${record.dept_id || 'unassigned'}-${record.window_start}`}
+              columns={[
+                { title: t('部门'), dataIndex: 'dept_name' },
+                { title: t('风险次数'), dataIndex: 'risk_event_count' },
+                { title: t('请求数'), dataIndex: 'total_request_count' },
+                {
+                  title: t('风险率'),
+                  dataIndex: 'risk_rate',
+                  render: (value) => `${((value || 0) * 100).toFixed(1)}%`,
+                },
+                {
+                  title: t('风险事件入口'),
+                  dataIndex: 'event_entry',
+                  render: (value) => (
+                    <Button
+                      theme='borderless'
+                      onClick={() =>
+                        loadEvents({
+                          department_id: value?.department_id || undefined,
+                          unassigned_only: value?.unassigned_only || undefined,
+                          from: value?.from || undefined,
+                          to: value?.to || undefined,
+                          page: 1,
+                          page_size: 20,
+                        })
+                      }
+                    >
+                      {t('查看风险事件')}
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          )}
+          <Typography.Text type='secondary'>
+            {t('未归属')}: {riskSummary.unassigned?.risk_event_count || 0} / {riskSummary.unassigned?.total_request_count || 0}
+          </Typography.Text>
+        </Space>
+      </Card>
       <Tabs type='line'>
         <Tabs.TabPane tab={t('企业风险事件列表')} itemKey='events'>
           <Space vertical align='start' style={{ width: '100%' }}>

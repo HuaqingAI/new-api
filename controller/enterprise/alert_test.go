@@ -61,6 +61,74 @@ func TestAlertEventsAPIReturnsEmptyItemsArray(t *testing.T) {
 	require.JSONEq(t, `{"items":[],"total":0,"page":1,"page_size":20}`, string(response.Data))
 }
 
+func TestDepartmentRiskSummaryAPIValidatesQueryAndReturnsOverviewEnvelope(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	deptID := 1
+	snapshot := entmodel.UsageSnapshot{
+		TenantId:     0,
+		DeptId:       &deptID,
+		DeptName:     "Engineering",
+		WindowStart:  1717117200,
+		WindowEnd:    1717120800,
+		RequestCount: 8,
+	}
+	require.NoError(t, snapshot.SetModelDistribution([]entmodel.UsageSnapshotModelStat{{ModelName: "gpt-4o-mini", RequestCount: 8}}))
+	require.NoError(t, snapshot.SetUserIds([]int{100}))
+	require.NoError(t, db.Create(&snapshot).Error)
+
+	unassignedSnapshot := entmodel.UsageSnapshot{
+		TenantId:     0,
+		WindowStart:  1717117200,
+		WindowEnd:    1717120800,
+		RequestCount: 2,
+	}
+	require.NoError(t, unassignedSnapshot.SetModelDistribution([]entmodel.UsageSnapshotModelStat{{ModelName: "gpt-4o-mini", RequestCount: 2}}))
+	require.NoError(t, unassignedSnapshot.SetUserIds([]int{101}))
+	require.NoError(t, db.Create(&unassignedSnapshot).Error)
+
+	event := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       100,
+		Username:     "alice",
+		RequestId:    "req-risk-summary-1",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "policy only",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 1, DepartmentName: "Engineering"},
+	}))
+	require.NoError(t, db.Create(&event).Error)
+
+	invalid := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/department-summary?from=bad&to=1717120800", nil)
+	invalidResponse := decodeEnterpriseAPIResponse(t, invalid)
+	require.False(t, invalidResponse.Success)
+	require.Equal(t, "common.invalid_params", invalidResponse.Message)
+
+	ok := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/department-summary?from=1717117200&to=1717120800&summary_sort=quota&summary_order=desc", nil)
+	okResponse := decodeEnterpriseAPIResponse(t, ok)
+	require.True(t, okResponse.Success, okResponse.Message)
+
+	payload := decodeEnterpriseData[dtoenterprise.DepartmentRiskSummaryResponse](t, okResponse)
+	require.NotNil(t, payload.Items)
+	require.NotNil(t, payload.TopDepartments)
+	require.NotNil(t, payload.Trend)
+	require.Equal(t, "enterprise.usage.multi_dept_disclaimer", payload.DisclaimerKey)
+	require.Equal(t, "Risk rate = risky requests / total requests", payload.Formula.Expression)
+	require.Len(t, payload.Items, 2)
+	require.Equal(t, "Engineering", payload.TopDepartments[0].DeptName)
+	require.Equal(t, int64(1), payload.TopDepartments[0].RiskEventCount)
+	require.Equal(t, int64(8), payload.TopDepartments[0].TotalRequestCount)
+	require.False(t, payload.TopDepartments[0].EventEntry.UnassignedOnly)
+	require.Contains(t, payload.TopDepartments[0].EventEntry.DetailRoute, "department_id=1")
+	require.True(t, payload.Unassigned.IsUnassigned)
+	require.Contains(t, payload.Unassigned.EventEntry.DetailRoute, "unassigned_only=true")
+}
+
 func TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 

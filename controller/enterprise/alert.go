@@ -29,6 +29,7 @@ func ListAlertEvents(c *gin.Context) {
 	result, err := entservice.NewAlertService(model.DB).ListAlertEvents(entservice.AlertEventQuery{
 		TenantId:     tenantId,
 		DepartmentId: query.DepartmentId,
+		UnassignedOnly: query.UnassignedOnly,
 		UserId:       query.UserId,
 		Username:     readOptionalString(query.Username),
 		ModelName:    readOptionalString(query.ModelName),
@@ -80,6 +81,80 @@ func ListAlertEvents(c *gin.Context) {
 		Total:    result.Total,
 		Page:     result.Page,
 		PageSize: result.PageSize,
+	})
+}
+
+func GetDepartmentRiskSummary(c *gin.Context) {
+	var req dtoenterprise.DepartmentRiskSummaryQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	if req.From <= 0 || req.To <= 0 || req.From >= req.To {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
+	result, err := entservice.NewAlertService(model.DB).GetDepartmentRiskSummary(entservice.DepartmentRiskSummaryQuery{
+		TenantId: tenantId,
+		From:     req.From,
+		To:       req.To,
+		Sort:     sortConfig,
+	})
+	if err != nil {
+		writeAlertEventError(c, err)
+		return
+	}
+
+	items := make([]dtoenterprise.DepartmentRiskSummaryItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, mapDepartmentRiskSummaryItem(item))
+	}
+	if items == nil {
+		items = []dtoenterprise.DepartmentRiskSummaryItem{}
+	}
+
+	topDepartments := make([]dtoenterprise.DepartmentRiskSummaryItem, 0, len(result.TopDepartments))
+	for _, item := range result.TopDepartments {
+		topDepartments = append(topDepartments, mapDepartmentRiskSummaryItem(item))
+	}
+	if topDepartments == nil {
+		topDepartments = []dtoenterprise.DepartmentRiskSummaryItem{}
+	}
+
+	trend := make([]dtoenterprise.DepartmentRiskTrendPoint, 0, len(result.Trend))
+	for _, point := range result.Trend {
+		trend = append(trend, dtoenterprise.DepartmentRiskTrendPoint{
+			WindowStart:                 point.WindowStart,
+			WindowEnd:                   point.WindowEnd,
+			RiskEventCount:              point.RiskEventCount,
+			TotalRequestCount:           point.TotalRequestCount,
+			RiskRate:                    point.RiskRate,
+			UnassignedRiskEventCount:    point.UnassignedRiskEventCount,
+			UnassignedTotalRequestCount: point.UnassignedTotalRequestCount,
+		})
+	}
+	if trend == nil {
+		trend = []dtoenterprise.DepartmentRiskTrendPoint{}
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentRiskSummaryResponse{
+		Items:          items,
+		TopDepartments: topDepartments,
+		Trend:          trend,
+		Unassigned:     mapDepartmentRiskSummaryItem(result.Unassigned),
+		Formula: dtoenterprise.DepartmentRiskFormula{
+			Expression:       result.Formula.Expression,
+			NumeratorLabel:   result.Formula.NumeratorLabel,
+			DenominatorLabel: result.Formula.DenominatorLabel,
+		},
+		DisclaimerKey: result.DisclaimerKey,
 	})
 }
 
@@ -366,6 +441,8 @@ func writeAlertEventError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrInvalidAlertEventQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrInvalidDepartmentRiskSummaryQuery):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrInvalidAlertDeliveryQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrAlertRuleInvalidInput), errors.Is(err, entservice.ErrAlertRuleChannelRequired):
@@ -498,4 +575,26 @@ func optionalString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func mapDepartmentRiskSummaryItem(item entservice.DepartmentRiskSummaryItem) dtoenterprise.DepartmentRiskSummaryItem {
+	return dtoenterprise.DepartmentRiskSummaryItem{
+		DeptId:            item.DeptId,
+		DeptName:          item.DeptName,
+		IsUnassigned:      item.IsUnassigned,
+		WindowStart:       item.WindowStart,
+		WindowEnd:         item.WindowEnd,
+		RiskEventCount:    item.RiskEventCount,
+		TotalRequestCount: item.TotalRequestCount,
+		RiskRate:          item.RiskRate,
+		EventEntry: dtoenterprise.DepartmentRiskEventEntry{
+			DetailRoute:    item.EventEntry.DetailRoute,
+			DetailAPIPath:  item.EventEntry.DetailAPIPath,
+			DepartmentId:   item.EventEntry.DepartmentId,
+			DepartmentName: item.EventEntry.DepartmentName,
+			From:           item.EventEntry.From,
+			To:             item.EventEntry.To,
+			UnassignedOnly: item.EventEntry.UnassignedOnly,
+		},
+	}
 }

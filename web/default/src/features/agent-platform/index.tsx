@@ -31,7 +31,11 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
-import { getAgentPlatformKnowledge, getAgentPlatformSkills } from './api'
+import {
+  getAgentPlatformAgents,
+  getAgentPlatformKnowledge,
+  getAgentPlatformSkills,
+} from './api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +78,10 @@ export function AgentPlatformShell() {
   const knowledgeQuery = useQuery({
     queryKey: ['agent-platform', 'knowledge', 'summary'],
     queryFn: getAgentPlatformKnowledge,
+  })
+  const agentsQuery = useQuery({
+    queryKey: ['agent-platform', 'agents', 'summary'],
+    queryFn: getAgentPlatformAgents,
   })
 
   const domainCards: DomainCard[] = [
@@ -118,9 +126,9 @@ export function AgentPlatformShell() {
       icon: Bot,
       title: t('Agents'),
       description: t(
-        'Agent definition metadata and dependency boundaries will appear here without turning the platform into a runtime orchestrator.'
+        'Agent definition metadata now surfaces here while runtime orchestration stays explicitly out of scope.'
       ),
-      status: t('Pending Epic 5'),
+      status: t('Agent definitions live'),
     },
     {
       key: 'publishing',
@@ -398,6 +406,62 @@ export function AgentPlatformShell() {
                     {knowledgeQuery.isLoading
                       ? t('Loading Knowledge resources')
                       : t('Knowledge management is ready for the first provider-backed resource.')}
+                  </p>
+                )}
+              </div>
+
+              <div className='border-border/60 bg-muted/20 rounded-2xl border p-4'>
+                <div className='mb-3 flex items-center justify-between gap-3'>
+                  <div>
+                    <p className='text-sm font-medium'>{t('Agent definitions')}</p>
+                    <p className='text-muted-foreground text-sm'>
+                      {t(
+                        'Agent resources now surface as managed definitions without implying any server-side runtime ownership.'
+                      )}
+                    </p>
+                  </div>
+                  <Badge
+                    variant='outline'
+                    className='border-rose-300 bg-rose-50 text-rose-700'
+                  >
+                    {t('Epic 5 active')}
+                  </Badge>
+                </div>
+
+                {agentsQuery.data?.success &&
+                Array.isArray(agentsQuery.data?.data?.items) &&
+                agentsQuery.data.data.items.length > 0 ? (
+                  <div className='space-y-3'>
+                    {agentsQuery.data.data.items.map((agent: any) => (
+                      <div
+                        key={agent.resource_id}
+                        className='border-border/60 bg-background/80 rounded-2xl border px-4 py-3'
+                      >
+                        <div className='flex items-start justify-between gap-3'>
+                          <div className='space-y-1'>
+                            <p className='font-medium'>{agent.display_name}</p>
+                            <p className='text-muted-foreground text-xs'>
+                              {agent.resource_id}
+                            </p>
+                          </div>
+                          <Badge variant='outline'>
+                            {agent.status || t('draft')}
+                          </Badge>
+                        </div>
+                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
+                          <span>{t('Owner')}: {agent.owner_user_id}</span>
+                          <span>
+                            {t('Latest version')}: {agent.latest_version || t('Not versioned')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className='text-muted-foreground text-sm'>
+                    {agentsQuery.isLoading
+                      ? t('Loading Agent definitions')
+                      : t('Agent definition management is ready for the first published template resource.')}
                   </p>
                 )}
               </div>

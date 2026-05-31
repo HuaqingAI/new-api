@@ -46,3 +46,12 @@ export async function getAgentPlatformKnowledge() {
   })
   return res.data
 }
+
+export type AgentPlatformAgentItem = AgentPlatformSkillItem
+
+export async function getAgentPlatformAgents() {
+  const res = await api.get('/api/agent-platform/agents', {
+    params: { page: 1, page_size: 12 },
+  })
+  return res.data
+}

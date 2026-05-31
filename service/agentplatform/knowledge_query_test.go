@@ -1,7 +1,12 @@
 package agentplatform
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -53,7 +58,7 @@ func newKnowledgeQueryServiceForTest(t *testing.T) (*KnowledgeQueryService, *gor
 		KnowledgeMode:            "retrieval",
 		ProviderType:             "http_retrieval",
 		ProviderAdapterKey:       "provider-a",
-		ProviderConfigJSON:       `{"endpoint":"https://example.com/query"}`,
+		ProviderConfigJSON:       `{"url":"https://example.com/query","method":"POST"}`,
 		QuerySchemaJSON:          `{"type":"object"}`,
 		CitationSchemaJSON:       `{"items":{"type":"object"}}`,
 		FreshnessRulesJSON:       `{"ttl":300}`,
@@ -74,8 +79,59 @@ func newKnowledgeQueryServiceForTest(t *testing.T) (*KnowledgeQueryService, *gor
 	return NewKnowledgeQueryService(db), db, client.ClientId, resource
 }
 
+type stubKnowledgeProvider struct {
+	validate func(ctx context.Context, binding KnowledgeProviderBinding) error
+	query    func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error)
+}
+
+type stubKnowledgeHTTPClient struct {
+	do func(req *http.Request) (*http.Response, error)
+}
+
+func (s stubKnowledgeHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return s.do(req)
+}
+
+func (s stubKnowledgeProvider) ValidateBinding(ctx context.Context, binding KnowledgeProviderBinding) error {
+	if s.validate != nil {
+		return s.validate(ctx, binding)
+	}
+	return nil
+}
+
+func (s stubKnowledgeProvider) Query(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
+	if s.query != nil {
+		return s.query(ctx, binding, req)
+	}
+	return KnowledgeProviderQueryResponse{}, nil
+}
+
+func (s stubKnowledgeProvider) Refresh(ctx context.Context, binding KnowledgeProviderBinding) (KnowledgeProviderRefreshState, error) {
+	return KnowledgeProviderRefreshState{Status: "ready"}, nil
+}
+
+func (s stubKnowledgeProvider) Health(ctx context.Context, binding KnowledgeProviderBinding) (KnowledgeProviderHealthState, error) {
+	return KnowledgeProviderHealthState{Status: "healthy"}, nil
+}
+
 func TestKnowledgeQueryServiceReturnsStructuredRetrievalResult(t *testing.T) {
 	svc, _, clientID, resource := newKnowledgeQueryServiceForTest(t)
+	svc = svc.WithProvider(stubKnowledgeProvider{
+		query: func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
+			return KnowledgeProviderQueryResponse{
+				Items: []KnowledgeResultItem{
+					{
+						ID:      "doc-1",
+						Score:   0.92,
+						Snippet: "Result for " + req.Query,
+					},
+				},
+				Citations: []KnowledgeCitation{
+					{SourceID: "doc-1", Title: "Doc 1"},
+				},
+			}, nil
+		},
+	})
 
 	result, err := svc.Query(KnowledgeQueryInput{
 		ClientID:   clientID,
@@ -101,4 +157,51 @@ func TestKnowledgeQueryServiceRejectsInvalidPayload(t *testing.T) {
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal([]byte(`{"query":"ok"}`), &payload))
+}
+
+func TestHTTPRetrievalProviderMapsHTTPErrors(t *testing.T) {
+	provider := NewHTTPRetrievalProvider().WithHTTPClient(stubKnowledgeHTTPClient{
+		do: func(req *http.Request) (*http.Response, error) {
+			return nil, context.DeadlineExceeded
+		},
+	})
+	_, err := provider.Query(context.Background(), KnowledgeProviderBinding{
+		ProviderType: "http_retrieval",
+		Config: map[string]any{
+			"url": "https://example.com/query",
+		},
+	}, KnowledgeProviderQueryRequest{Query: "demo"})
+	require.ErrorIs(t, err, ErrSkillInvokeTimeout)
+
+	provider = NewHTTPRetrievalProvider().WithHTTPClient(stubKnowledgeHTTPClient{
+		do: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusBadGateway,
+				Body:       io.NopCloser(bytes.NewBufferString(`{"error":"bad gateway"}`)),
+			}, nil
+		},
+	})
+	_, err = provider.Query(context.Background(), KnowledgeProviderBinding{
+		ProviderType: "http_retrieval",
+		Config: map[string]any{
+			"url": "https://example.com/query",
+		},
+	}, KnowledgeProviderQueryRequest{Query: "demo"})
+	require.ErrorIs(t, err, ErrSkillInvokeUpstreamFailed)
+}
+
+func TestKnowledgeQueryServiceMapsProviderFailures(t *testing.T) {
+	svc, _, clientID, resource := newKnowledgeQueryServiceForTest(t)
+	svc = svc.WithProvider(stubKnowledgeProvider{
+		query: func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
+			return KnowledgeProviderQueryResponse{}, errors.New("provider broke")
+		},
+	})
+
+	_, err := svc.Query(KnowledgeQueryInput{
+		ClientID:   clientID,
+		ResourceID: resource.ResourceId,
+		Payload:    []byte(`{"query":"demo"}`),
+	})
+	require.Error(t, err)
 }

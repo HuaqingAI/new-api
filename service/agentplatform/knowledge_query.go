@@ -1,10 +1,12 @@
 package agentplatform
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	"gorm.io/gorm"
 )
@@ -38,11 +40,22 @@ type KnowledgeCitation struct {
 }
 
 type KnowledgeQueryService struct {
-	db *gorm.DB
+	db       *gorm.DB
+	provider KnowledgeProvider
 }
 
 func NewKnowledgeQueryService(db *gorm.DB) *KnowledgeQueryService {
-	return &KnowledgeQueryService{db: db}
+	return &KnowledgeQueryService{
+		db:       db,
+		provider: NewHTTPRetrievalProvider(),
+	}
+}
+
+func (s *KnowledgeQueryService) WithProvider(provider KnowledgeProvider) *KnowledgeQueryService {
+	if provider != nil {
+		s.provider = provider
+	}
+	return s
 }
 
 func (s *KnowledgeQueryService) Query(input KnowledgeQueryInput) (KnowledgeQueryResult, error) {
@@ -84,31 +97,31 @@ func (s *KnowledgeQueryService) Query(input KnowledgeQueryInput) (KnowledgeQuery
 	if strings.TrimSpace(request.Query) == "" {
 		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
 	}
+	bindingConfig := map[string]any{}
+	if err := common.UnmarshalJsonStr(knowledgeDef.ProviderConfigJSON, &bindingConfig); err != nil {
+		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
+	}
+	binding := KnowledgeProviderBinding{
+		ProviderType:       knowledgeDef.ProviderType,
+		ProviderAdapterKey: knowledgeDef.ProviderAdapterKey,
+		Config:             bindingConfig,
+	}
+	if err := s.provider.ValidateBinding(context.Background(), binding); err != nil {
+		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
+	}
+	providerResponse, err := s.provider.Query(context.Background(), binding, KnowledgeProviderQueryRequest{
+		Query: strings.TrimSpace(request.Query),
+	})
+	if err != nil {
+		return KnowledgeQueryResult{}, err
+	}
 
 	result := KnowledgeQueryResult{
 		ResourceID:      detail.ResourceID,
 		ResourceVersion: detail.ResourceVersion,
 		ContractVersion: detail.ContractVersion,
-		Items: []KnowledgeResultItem{
-			{
-				ID:      "doc-1",
-				Score:   0.98,
-				Snippet: "Retrieval-ready Knowledge result for query: " + strings.TrimSpace(request.Query),
-				Metadata: map[string]any{
-					"provider_type": knowledgeDef.ProviderType,
-				},
-			},
-		},
-		Citations: []KnowledgeCitation{
-			{
-				SourceID: "doc-1",
-				Title:    "Knowledge Source",
-				URL:      "https://example.com/knowledge/doc-1",
-				Metadata: map[string]any{
-					"provider_adapter_key": knowledgeDef.ProviderAdapterKey,
-				},
-			},
-		},
+		Items:           providerResponse.Items,
+		Citations:       providerResponse.Citations,
 	}
 	return result, nil
 }

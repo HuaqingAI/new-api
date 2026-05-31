@@ -17,6 +17,8 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.POST("/clients", controlleragentplatform.CreateClient)
 		agentPlatformRoute.GET("/clients/:id", controlleragentplatform.GetClient)
 		agentPlatformRoute.PUT("/clients/:id", controlleragentplatform.UpdateClient)
+		agentPlatformRoute.GET("/oauth/authorize", controlleragentplatform.OAuthAuthorize)
+		agentPlatformRoute.POST("/oauth/token", controlleragentplatform.OAuthToken)
 		agentPlatformRoute.POST("/resources/:id/versions", controlleragentplatform.CreateResourceVersion)
 		agentPlatformRoute.GET("/resources/:id/versions/:version", controlleragentplatform.GetResourceVersion)
 		agentPlatformRoute.GET("/resources/:id/exposures", controlleragentplatform.ListExposures)

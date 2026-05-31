@@ -101,7 +101,7 @@ development_status:
 
   agent-platform-epic-2: backlog
   ap-2-1-register-clients-and-capability-declarations: done
-  ap-2-2-implement-browser-delegated-auth-main-flow: backlog
+  ap-2-2-implement-browser-delegated-auth-main-flow: done
   ap-2-3-implement-token-lifecycle-and-revocation: backlog
   ap-2-4-publish-open-capability-standard-apis-and-error-envelope: backlog
   ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: backlog

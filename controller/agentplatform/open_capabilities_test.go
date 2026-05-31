@@ -36,7 +36,7 @@ type openCapabilityAPIResponse struct {
 	Error   json.RawMessage `json:"error,omitempty"`
 }
 
-func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, string, apmodel.Resource) {
+func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, string, apmodel.Resource, apmodel.Resource) {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -58,7 +58,7 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		ClientType:             "desktop",
 		Status:                 "active",
 		AllowedGrantTypesJSON:  `["client_credentials"]`,
-		AllowedScopesJSON:      `["ap.resources.read","ap.skills.invoke","ap.agents.read"]`,
+		AllowedScopesJSON:      `["ap.resources.read","ap.skills.invoke","ap.knowledge.query","ap.agents.read"]`,
 		ContractVersion:        "2026-06",
 		CapabilitiesJSON:       `{"discovery":true}`,
 		AllowClientCredentials: true,
@@ -72,13 +72,30 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		Status:        apmodel.ResourceStatusPublished,
 		LatestVersion: "1.0.0",
 	}
+	knowledge := apmodel.Resource{
+		ResourceType:  apmodel.ResourceTypeKnowledge,
+		DisplayName:   "Discovery Knowledge",
+		OwnerUserId:   100,
+		Status:        apmodel.ResourceStatusPublished,
+		LatestVersion: "1.0.0",
+	}
 	require.NoError(t, db.Create(&resource).Error)
+	require.NoError(t, db.Create(&knowledge).Error)
 	require.NoError(t, db.Create(&apmodel.ResourceVersion{
 		ResourceId:      resource.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
 		SchemaJSON:      `{"type":"object"}`,
 		DetailJSON:      `{"skill":{"invoke_mode":"sync"}}`,
+		Status:          apmodel.ResourceStatusPublished,
+		CreatedBy:       100,
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.ResourceVersion{
+		ResourceId:      knowledge.ResourceId,
+		Version:         "1.0.0",
+		ContractVersion: "2026-06",
+		SchemaJSON:      `{"type":"object"}`,
+		DetailJSON:      `{"knowledge":{"mode":"retrieval"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
@@ -90,6 +107,18 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		InvokeMode:        "sync",
 		TimeoutSeconds:    1,
 		BindingConfigJSON: `{"method":"POST","url":"https://example.com/invoke"}`,
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.KnowledgeDef{
+		ResourceId:               knowledge.ResourceId,
+		ResourceVersion:          "1.0.0",
+		KnowledgeMode:            "retrieval",
+		ProviderType:             "http_retrieval",
+		ProviderAdapterKey:       "provider-a",
+		ProviderConfigJSON:       `{"endpoint":"https://example.com/query"}`,
+		QuerySchemaJSON:          `{"type":"object"}`,
+		CitationSchemaJSON:       `{"items":{"type":"object"}}`,
+		FreshnessRulesJSON:       `{"ttl":300}`,
+		ProviderCapabilitiesJSON: `{"citations":true}`,
 	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.Exposure{
@@ -103,11 +132,21 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		ExtensionsJSON:      `{"cherry_studio":{"ui_variant":"enterprise"}}`,
 		PublishedAt:         &now,
 	}).Error)
+	require.NoError(t, db.Create(&apmodel.Exposure{
+		ResourceId:          knowledge.ResourceId,
+		ResourceVersion:     "1.0.0",
+		ClientKey:           client.ClientId,
+		VisibilityState:     apmodel.ExposureVisibilityVisible,
+		CallableState:       apmodel.ExposureCallableEnabled,
+		FreshnessTTLSeconds: 300,
+		ETag:                "etag-knowledge",
+		PublishedAt:         &now,
+	}).Error)
 
 	tokenResult, err := apservice.NewOAuthTokenService(db).Exchange(apservice.TokenExchangeInput{
 		ClientId:  client.ClientId,
 		GrantType: "client_credentials",
-		Scope:     "ap.resources.read ap.skills.invoke ap.agents.read",
+		Scope:     "ap.resources.read ap.skills.invoke ap.knowledge.query ap.agents.read",
 	})
 	require.NoError(t, err)
 
@@ -117,8 +156,9 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 	router.GET("/api/open-capabilities/resources/:id", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityResourceDetail)
 	router.POST("/api/open-capabilities/refresh", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityRefresh)
 	router.POST("/api/open-capabilities/skills/:id/invoke", middleware.AgentPlatformBearer("ap.skills.invoke"), OpenCapabilitySkillInvoke)
+	router.POST("/api/open-capabilities/knowledge-bases/:id/query", middleware.AgentPlatformBearer("ap.knowledge.query"), OpenCapabilityKnowledgeQuery)
 	router.GET("/api/open-capabilities/agents/:id", middleware.AgentPlatformBearer("ap.agents.read"), OpenCapabilityAgentDetail)
-	return router, db, tokenResult.AccessToken, resource
+	return router, db, tokenResult.AccessToken, resource, knowledge
 }
 
 func performOpenCapabilityRequest(t *testing.T, router *gin.Engine, method string, target string, token string, body any) *httptest.ResponseRecorder {
@@ -148,7 +188,7 @@ func decodeOpenCapabilityAPIResponse(t *testing.T, recorder *httptest.ResponseRe
 }
 
 func TestOpenCapabilityDiscoveryDetailAndRefreshWorkflow(t *testing.T) {
-	router, _, token, resource := setupOpenCapabilityControllerTest(t)
+	router, _, token, resource, _ := setupOpenCapabilityControllerTest(t)
 
 	discovery := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/discovery", token, nil)
 	discoveryResp := decodeOpenCapabilityAPIResponse(t, discovery)
@@ -159,7 +199,7 @@ func TestOpenCapabilityDiscoveryDetailAndRefreshWorkflow(t *testing.T) {
 		Total int              `json:"total"`
 	}
 	require.NoError(t, common.Unmarshal(discoveryResp.Data, &discoveryData))
-	require.Equal(t, 1, discoveryData.Total)
+	require.Equal(t, 2, discoveryData.Total)
 
 	detail := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/resources/"+resource.ResourceId, token, nil)
 	detailResp := decodeOpenCapabilityAPIResponse(t, detail)
@@ -185,7 +225,7 @@ func TestOpenCapabilityDiscoveryDetailAndRefreshWorkflow(t *testing.T) {
 }
 
 func TestOpenCapabilityReturnsStableErrorEnvelope(t *testing.T) {
-	router, _, token, _ := setupOpenCapabilityControllerTest(t)
+	router, _, token, _, _ := setupOpenCapabilityControllerTest(t)
 
 	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/res_missing/invoke", token, map[string]any{
 		"input": "demo",
@@ -207,7 +247,7 @@ func TestOpenCapabilityReturnsStableErrorEnvelope(t *testing.T) {
 }
 
 func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
-	router, _, token, resource := setupOpenCapabilityControllerTest(t)
+	router, _, token, resource, _ := setupOpenCapabilityControllerTest(t)
 
 	original := skillInvokeService
 	skillInvokeService = func() *apservice.SkillInvokeService {
@@ -229,8 +269,24 @@ func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
 	require.True(t, apiResponse.Success)
 }
 
+func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
+	router, _, token, _, knowledge := setupOpenCapabilityControllerTest(t)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/knowledge-bases/"+knowledge.ResourceId+"/query", token, map[string]any{
+		"query": "what is the answer?",
+	})
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.True(t, apiResponse.Success)
+
+	var data struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Len(t, data.Items, 1)
+}
+
 func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
-	router, _, token, resource := setupOpenCapabilityControllerTest(t)
+	router, _, token, resource, _ := setupOpenCapabilityControllerTest(t)
 
 	original := skillInvokeService
 	skillInvokeService = func() *apservice.SkillInvokeService {
@@ -256,7 +312,7 @@ func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
 }
 
 func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {
-	router, db, _, resource := setupOpenCapabilityControllerTest(t)
+	router, db, _, resource, _ := setupOpenCapabilityControllerTest(t)
 
 	client := apmodel.Client{
 		Slug:                   "narrow-client",
@@ -289,7 +345,7 @@ func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {
 }
 
 func TestOpenCapabilityDetailRejectsContractVersionMismatch(t *testing.T) {
-	router, db, token, resource := setupOpenCapabilityControllerTest(t)
+	router, db, token, resource, _ := setupOpenCapabilityControllerTest(t)
 	require.NoError(t, db.Model(&apmodel.Client{}).Where("slug = ?", "cherry-studio").Update("contract_version", "2026-07").Error)
 
 	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/resources/"+resource.ResourceId, token, nil)

@@ -150,7 +150,32 @@ func OpenCapabilitySkillInvoke(c *gin.Context) {
 }
 
 func OpenCapabilityKnowledgeQuery(c *gin.Context) {
-	writeOpenCapabilityError(c, apservice.ErrOpenCapabilityContractInvalid, c.Param("id"), "")
+	claims, ok := openCapabilityClaims(c)
+	if !ok {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityPermissionDenied, c.Param("id"), "")
+		return
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityContractInvalid, c.Param("id"), "")
+		return
+	}
+	result, err := knowledgeQueryService().Query(apservice.KnowledgeQueryInput{
+		ClientID:   claims.ClientId,
+		ResourceID: c.Param("id"),
+		Payload:    body,
+	})
+	if err != nil {
+		writeOpenCapabilityError(c, err, c.Param("id"), "")
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"resource_id":      result.ResourceID,
+		"resource_version": result.ResourceVersion,
+		"contract_version": result.ContractVersion,
+		"items":            result.Items,
+		"citations":        result.Citations,
+	})
 }
 
 func OpenCapabilityAgentDetail(c *gin.Context) {
@@ -163,6 +188,10 @@ var discoveryService = func() *apservice.DiscoveryService {
 
 var skillInvokeService = func() *apservice.SkillInvokeService {
 	return apservice.NewSkillInvokeService(model.DB)
+}
+
+var knowledgeQueryService = func() *apservice.KnowledgeQueryService {
+	return apservice.NewKnowledgeQueryService(model.DB)
 }
 
 func writeOpenCapabilityError(c *gin.Context, err error, resourceID string, resourceVersion string) {

@@ -14,6 +14,7 @@ func Migrate(db *gorm.DB) error {
 		&AgentDef{},
 		&Exposure{},
 		&AdminAction{},
+		&Client{},
 	)
 }
 

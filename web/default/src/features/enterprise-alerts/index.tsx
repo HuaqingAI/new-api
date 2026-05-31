@@ -73,6 +73,7 @@ import {
   FormLabel,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Pagination,
   PaginationContent,
@@ -1177,7 +1178,7 @@ export function EnterpriseAlertsPage() {
                 <CardContent className='space-y-4'>
                   <div className='grid gap-4 md:grid-cols-4'>
                     <div className='space-y-2'>
-                      <FormLabel>{t('Status')}</FormLabel>
+                      <Label>{t('Status')}</Label>
                       <select
                         className='border-input bg-background rounded-md border px-3 py-2 text-sm'
                         value={deliveryFilters.status}
@@ -1197,7 +1198,7 @@ export function EnterpriseAlertsPage() {
                       </select>
                     </div>
                     <div className='space-y-2'>
-                      <FormLabel>{t('Channel')}</FormLabel>
+                      <Label>{t('Channel')}</Label>
                       <select
                         className='border-input bg-background rounded-md border px-3 py-2 text-sm'
                         value={deliveryFilters.channel_type}
@@ -1215,7 +1216,7 @@ export function EnterpriseAlertsPage() {
                       </select>
                     </div>
                     <div className='space-y-2'>
-                      <FormLabel>{t('Retry source')}</FormLabel>
+                      <Label>{t('Retry source')}</Label>
                       <select
                         className='border-input bg-background rounded-md border px-3 py-2 text-sm'
                         value={deliveryFilters.trigger_source}
@@ -1482,7 +1483,7 @@ export function EnterpriseAlertsPage() {
                   <CardContent className='space-y-5'>
                     <div className='grid gap-4 md:grid-cols-2'>
                       <div className='space-y-2'>
-                        <FormLabel>{t('Rule Name')}</FormLabel>
+                        <Label>{t('Rule Name')}</Label>
                         <Input
                           value={draft.name}
                           onChange={(event) =>
@@ -1495,7 +1496,7 @@ export function EnterpriseAlertsPage() {
                         />
                       </div>
                       <div className='space-y-2'>
-                        <FormLabel>{t('Deduplication Window (seconds)')}</FormLabel>
+                        <Label>{t('Deduplication Window (seconds)')}</Label>
                         <Input
                           value={draft.dedupeWindowSeconds}
                           onChange={(event) =>
@@ -1537,7 +1538,7 @@ export function EnterpriseAlertsPage() {
 
                     <div className='grid gap-4 lg:grid-cols-2'>
                       <div className='space-y-2'>
-                        <FormLabel>{t('Risk Types')}</FormLabel>
+                        <Label>{t('Risk Types')}</Label>
                         <Textarea
                           value={draft.riskTypes}
                           onChange={(event) =>
@@ -1550,7 +1551,7 @@ export function EnterpriseAlertsPage() {
                         />
                       </div>
                       <div className='space-y-2'>
-                        <FormLabel>{t('Department IDs')}</FormLabel>
+                        <Label>{t('Department IDs')}</Label>
                         <Textarea
                           value={draft.departmentIds}
                           onChange={(event) =>
@@ -1565,7 +1566,7 @@ export function EnterpriseAlertsPage() {
                     </div>
 
                     <div className='space-y-2'>
-                      <FormLabel>{t('Email Receivers')}</FormLabel>
+                      <Label>{t('Email Receivers')}</Label>
                       <Textarea
                         value={draft.emailReceivers}
                         onChange={(event) =>
@@ -1603,7 +1604,7 @@ export function EnterpriseAlertsPage() {
                         </CardHeader>
                         <CardContent className='space-y-3'>
                           <div className='space-y-2'>
-                            <FormLabel>{t('Webhook URL')}</FormLabel>
+                            <Label>{t('Webhook URL')}</Label>
                             <Input
                               value={draft.webhookUrl}
                               onChange={(event) =>
@@ -1616,7 +1617,7 @@ export function EnterpriseAlertsPage() {
                             />
                           </div>
                           <div className='space-y-2'>
-                            <FormLabel>{t('Webhook Secret')}</FormLabel>
+                            <Label>{t('Webhook Secret')}</Label>
                             <Input
                               type='password'
                               value={draft.webhookSecret}
@@ -1664,7 +1665,7 @@ export function EnterpriseAlertsPage() {
                         </CardHeader>
                         <CardContent className='space-y-3'>
                           <div className='space-y-2'>
-                            <FormLabel>{t('DingTalk Robot URL')}</FormLabel>
+                            <Label>{t('DingTalk Robot URL')}</Label>
                             <Input
                               value={draft.dingtalkRobotUrl}
                               onChange={(event) =>
@@ -1677,7 +1678,7 @@ export function EnterpriseAlertsPage() {
                             />
                           </div>
                           <div className='space-y-2'>
-                            <FormLabel>{t('DingTalk Robot Secret')}</FormLabel>
+                            <Label>{t('DingTalk Robot Secret')}</Label>
                             <Input
                               type='password'
                               value={draft.dingtalkRobotSecret}

@@ -81,3 +81,11 @@ development_status:
   5-5-manage-alert-delivery-status-and-manual-resend: done
   5-6-display-department-risk-overview: done
   epic-5-retrospective: done
+
+  epic-6: backlog
+  6-1-rebuild-enterprise-organization-as-tree-driven-governance-view: backlog
+  6-2-rebuild-department-usage-as-tree-driven-analysis-view: backlog
+  6-3-move-membership-and-budget-operations-into-department-context: backlog
+  6-4-fix-dingtalk-username-strategy-and-controlled-rename: backlog
+  6-5-unify-enterprise-user-display-rules: backlog
+  epic-6-retrospective: optional

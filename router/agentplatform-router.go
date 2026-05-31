@@ -13,5 +13,7 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.GET("/resources", controlleragentplatform.ListResources)
 		agentPlatformRoute.POST("/resources", controlleragentplatform.CreateResource)
 		agentPlatformRoute.GET("/resources/:id", controlleragentplatform.GetResource)
+		agentPlatformRoute.POST("/resources/:id/versions", controlleragentplatform.CreateResourceVersion)
+		agentPlatformRoute.GET("/resources/:id/versions/:version", controlleragentplatform.GetResourceVersion)
 	}
 }

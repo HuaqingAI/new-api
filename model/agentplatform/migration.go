@@ -6,7 +6,13 @@ func Migrate(db *gorm.DB) error {
 	if db == nil {
 		return nil
 	}
-	return db.AutoMigrate(&Resource{})
+	return db.AutoMigrate(
+		&Resource{},
+		&ResourceVersion{},
+		&SkillDef{},
+		&KnowledgeDef{},
+		&AgentDef{},
+	)
 }
 
 func AutoMigrate(db *gorm.DB) error {

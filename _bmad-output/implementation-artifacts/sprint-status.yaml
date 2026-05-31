@@ -92,7 +92,7 @@ development_status:
 
   agent-platform-epic-1: backlog
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
-  ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: backlog
+  ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
   ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: backlog
   ap-1-4-establish-projection-baseline-decoupled-from-client-registration: backlog
   ap-1-5-build-publication-projection-and-exposure-model: backlog

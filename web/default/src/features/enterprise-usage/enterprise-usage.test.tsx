@@ -62,23 +62,23 @@ describe('Enterprise usage overview dashboard', () => {
 
     const today = resolveEnterpriseUsageRange({}, now)
     assert.equal(today.preset, 'today')
-    assert.equal(today.from, 1780012800)
-    assert.equal(today.to, 1780099200)
+    assert.equal(today.from, 1779984000)
+    assert.equal(today.to, 1780070400)
     assert.equal(today.rangeLabel, '2026-05-29 ~ 2026-05-29')
 
     const yesterday = resolveEnterpriseUsageRange({ preset: 'yesterday' }, now)
-    assert.equal(yesterday.from, 1779926400)
-    assert.equal(yesterday.to, 1780012800)
+    assert.equal(yesterday.from, 1779897600)
+    assert.equal(yesterday.to, 1779984000)
     assert.equal(yesterday.rangeLabel, '2026-05-28 ~ 2026-05-28')
 
     const last7 = resolveEnterpriseUsageRange({ preset: 'last7d' }, now)
-    assert.equal(last7.from, 1779494400)
-    assert.equal(last7.to, 1780099200)
+    assert.equal(last7.from, 1779465600)
+    assert.equal(last7.to, 1780070400)
     assert.equal(last7.rangeLabel, '2026-05-23 ~ 2026-05-29')
 
     const last30 = resolveEnterpriseUsageRange({ preset: 'last30d' }, now)
-    assert.equal(last30.from, 1777507200)
-    assert.equal(last30.to, 1780099200)
+    assert.equal(last30.from, 1777478400)
+    assert.equal(last30.to, 1780070400)
     assert.equal(last30.rangeLabel, '2026-04-30 ~ 2026-05-29')
   })
 
@@ -98,7 +98,7 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(custom.from, 1748390400)
     assert.equal(custom.to, 1748476800)
     assert.equal(custom.customToDate, '2025-05-28')
-    assert.equal(custom.rangeLabel, '2025-05-28 ~ 2025-05-28')
+    assert.equal(custom.rangeLabel, '2025-05-28 ~ 2025-05-29')
 
     const invalid = resolveEnterpriseUsageRange(
       {

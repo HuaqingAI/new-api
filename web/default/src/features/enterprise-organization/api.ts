@@ -41,25 +41,97 @@ export const enterpriseOrganizationQueryKey = [
   'organization',
 ] as const
 
-export const departmentBudgetQueryKey = [
-  ...enterpriseOrganizationQueryKey,
-  'department-budget',
-] as const
+export function departmentBudgetQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-budget',
+    departmentId,
+    tenantId,
+  ] as const
+}
 
-export const quotaAllocationQueryKey = [
-  ...enterpriseOrganizationQueryKey,
-  'quota-allocation',
-] as const
+export function quotaAllocationQueryScopeKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'quota-allocation',
+    departmentId,
+    tenantId,
+  ] as const
+}
 
-export const departmentBudgetListQueryKey = [
-  ...enterpriseOrganizationQueryKey,
-  'department-budget-list',
-] as const
+export function quotaAllocationQueryKey(
+  departmentId: number,
+  tenantId: number,
+  budgetId: number | null
+) {
+  return [...quotaAllocationQueryScopeKey(departmentId, tenantId), budgetId] as const
+}
 
-export const departmentBudgetDetailQueryKey = [
-  ...enterpriseOrganizationQueryKey,
-  'department-budget-detail',
-] as const
+export function departmentBudgetListQueryScopeKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-budget-list',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function departmentBudgetListQueryKey(
+  departmentId: number,
+  tenantId: number,
+  sortBy?: DepartmentBudgetSortField,
+  sortOrder?: 'asc' | 'desc'
+) {
+  return [
+    ...departmentBudgetListQueryScopeKey(departmentId, tenantId),
+    sortBy,
+    sortOrder,
+  ] as const
+}
+
+export function departmentBudgetDetailQueryScopeKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-budget-detail',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function departmentBudgetDetailQueryKey(
+  departmentId: number,
+  tenantId: number,
+  budgetId: number | null
+) {
+  return [
+    ...departmentBudgetDetailQueryScopeKey(departmentId, tenantId),
+    budgetId,
+  ] as const
+}
+
+export function departmentMembersQueryKey(departmentId: number) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-members',
+    departmentId,
+  ] as const
+}
+
+export function userDepartmentsQueryKey(userId: number | null) {
+  return [...enterpriseOrganizationQueryKey, 'user-departments', userId] as const
+}
 
 export async function getDepartmentTree(): Promise<
   ApiResponse<DepartmentTreeNode[]>

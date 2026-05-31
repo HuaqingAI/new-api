@@ -1,4 +1,8 @@
 import {
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import {
   RouterContextProvider,
   createMemoryHistory,
   createRootRoute,
@@ -12,7 +16,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
   __testRenderApiMessage,
+  DepartmentSummaryCard,
+  enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
+  EnterpriseOrganizationWorkspace,
   DepartmentBudgetDetailTable,
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
@@ -20,7 +27,16 @@ import {
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
+  normalizeEnterpriseOrganizationSearch,
+  resolveBudgetSelection,
 } from './index'
+import {
+  getAncestorDepartmentIds,
+  getDefaultExpandedDepartmentIds,
+  resolveDepartmentSelection,
+  syncExpandedDepartmentIds,
+  toggleExpandedDepartmentId,
+} from './lib/tree-utils'
 import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
@@ -87,7 +103,7 @@ describe('Enterprise organization department tree workflow', () => {
           }),
         ],
       }),
-    ])
+    ], [1, 2])
 
     for (const expected of [
       'Department',
@@ -114,6 +130,184 @@ describe('Enterprise organization department tree workflow', () => {
       'Sync failed',
       '1 historical name(s)',
       'Deleted upstream during sync',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('search schema accepts valid department and budget identifiers and drops invalid values', () => {
+    const parsed = enterpriseOrganizationSearchSchema.parse({
+      dept_id: '12',
+      budget_id: '34',
+    })
+    assert.equal(parsed.dept_id, 12)
+    assert.equal(parsed.budget_id, 34)
+
+    const invalid = enterpriseOrganizationSearchSchema.parse({
+      dept_id: '0',
+      budget_id: '-2',
+    })
+    assert.equal(invalid.dept_id, undefined)
+    assert.equal(invalid.budget_id, undefined)
+  })
+
+  test('normalizes stale search state for empty trees and invalid department ids', () => {
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments: [],
+        search: {
+          dept_id: 7,
+          budget_id: 12,
+        },
+      }),
+      {
+        dept_id: undefined,
+        budget_id: undefined,
+      }
+    )
+
+    const departments = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+          }),
+        ],
+      }),
+    ]
+
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments,
+        search: {
+          dept_id: 999,
+          budget_id: 12,
+        },
+      }),
+      {
+        dept_id: 1,
+        budget_id: undefined,
+      }
+    )
+  })
+
+  test('resolves department selection, ancestor expansion, and invalid fallback from current tree', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({
+                id: 3,
+                parent_id: 2,
+                name: 'Platform',
+              }),
+            ],
+          }),
+        ],
+      }),
+      departmentNode({
+        id: 4,
+        name: 'Operations',
+      }),
+    ]
+
+    assert.deepEqual(getAncestorDepartmentIds(tree, 3), [1, 2])
+    assert.deepEqual(getDefaultExpandedDepartmentIds(tree, 3), [1, 2, 4])
+
+    const resolved = resolveDepartmentSelection(tree, 3)
+    assert.equal(resolved.selectedDepartmentId, 3)
+    assert.equal(resolved.normalizedDepartmentId, 3)
+    assert.deepEqual(resolved.requiredExpandedIds, [1, 2, 4])
+
+    const fallback = resolveDepartmentSelection(tree, 999)
+    assert.equal(fallback.selectedDepartmentId, 1)
+    assert.equal(fallback.normalizedDepartmentId, 1)
+    assert.deepEqual(fallback.requiredExpandedIds, [1, 4])
+  })
+
+  test('syncs and toggles expanded department state without dropping required ancestors', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [departmentNode({ id: 3, parent_id: 2, name: 'Platform' })],
+          }),
+        ],
+      }),
+    ]
+
+    const synced = syncExpandedDepartmentIds([2, 999], tree, [1])
+    assert.deepEqual(synced, [1, 2])
+    assert.deepEqual(toggleExpandedDepartmentId(synced, 2), [1])
+    assert.deepEqual(toggleExpandedDepartmentId([1], 2), [1, 2])
+  })
+
+  test('resolves budget selection within current department context only', () => {
+    assert.equal(resolveBudgetSelection([11, 12], 12, 11), 12)
+    assert.equal(resolveBudgetSelection([11, 12], 99, 12), 12)
+    assert.equal(resolveBudgetSelection([11, 12], 99, 98), 11)
+    assert.equal(resolveBudgetSelection([], 99, 98), null)
+  })
+
+  test('workspace empty state and scoped panels follow current department context', () => {
+    const emptyHtml = renderWorkspace(null, null)
+
+    assert.match(emptyHtml, /No departments yet/)
+
+    const department = departmentNode({
+      id: 7,
+      name: 'Security',
+      parent_id: 1,
+      source_type: 2,
+      external_id: 'dept-security',
+      sync_status: 1,
+      name_history: [{ name: 'InfoSec', changed_at: 1700000000 }],
+    })
+    const parent = departmentNode({
+      id: 1,
+      name: 'Headquarters',
+    })
+    const summaryHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentSummaryCard
+          department={department}
+          parentDepartment={parent}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Current Department Workspace',
+      'Security',
+      'Department ID #7',
+      'Headquarters (#1)',
+      'DingTalk',
+      'InfoSec',
+    ]) {
+      assert.match(summaryHtml, new RegExp(escapeRegExp(expected)))
+    }
+
+    const html = renderWorkspace(department, parent)
+
+    for (const expected of [
+      'Membership Lookup',
+      'Department Members',
+      'Department Budget',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -608,7 +802,8 @@ describe('Enterprise organization department tree workflow', () => {
 })
 
 function renderEnterpriseOrganizationContent(
-  departments: DepartmentTreeNode[]
+  departments: DepartmentTreeNode[],
+  expandedIds?: number[]
 ) {
   return renderToStaticMarkup(
     <RouterContextProvider router={testRouter}>
@@ -616,8 +811,30 @@ function renderEnterpriseOrganizationContent(
         <EnterpriseOrganizationContent
           isLoading={false}
           departments={departments}
+          expandedIds={expandedIds}
         />
       </I18nextProvider>
+    </RouterContextProvider>
+  )
+}
+
+function renderWorkspace(
+  currentDepartment: DepartmentTreeNode | null,
+  parentDepartment: DepartmentTreeNode | null
+) {
+  const queryClient = new QueryClient()
+  return renderToStaticMarkup(
+    <RouterContextProvider router={testRouter}>
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={i18n}>
+          <EnterpriseOrganizationWorkspace
+            currentDepartment={currentDepartment}
+            parentDepartment={parentDepartment}
+            selectedBudgetId={null}
+            onSelectedBudgetIdChange={() => undefined}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
     </RouterContextProvider>
   )
 }

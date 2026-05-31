@@ -70,6 +70,7 @@ type AlertEventItem struct {
 	TenantId           int
 	UserId             int
 	Username           string
+	DisplayName        string
 	UsernameSnapshot   string
 	RequestId          string
 	ModelName          string
@@ -224,6 +225,7 @@ type AlertDeliveryTraceItem struct {
 	RequestId          string
 	TenantId           int
 	Username           string
+	DisplayName        string
 	ModelName          string
 	RiskType           string
 	ActionResult       string
@@ -401,7 +403,7 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 		seenUserIDs[event.UserId] = struct{}{}
 		userIDs = append(userIDs, event.UserId)
 	}
-	currentUsernames, err := loadCurrentUsernames(s.db, userIDs)
+	currentUsers, err := loadCurrentUserIdentities(s.db, userIDs)
 	if err != nil {
 		return AlertEventListResult{}, err
 	}
@@ -416,7 +418,8 @@ func (s *AlertService) ListAlertEvents(query AlertEventQuery) (AlertEventListRes
 			Id:                 event.Id,
 			TenantId:           event.TenantId,
 			UserId:             event.UserId,
-			Username:           firstNonEmpty(currentUsernames[event.UserId], event.Username),
+			Username:           firstNonEmpty(currentUsers[event.UserId].Username, event.Username),
+			DisplayName:        currentUsers[event.UserId].DisplayName,
 			UsernameSnapshot:   event.Username,
 			RequestId:          event.RequestId,
 			ModelName:          event.ModelName,
@@ -1752,6 +1755,7 @@ func mapAlertDeliveryItem(delivery entmodel.AlertDelivery) (AlertDeliveryItem, e
 			RequestId:          tracePayload.RequestId,
 			TenantId:           tracePayload.TenantId,
 			Username:           tracePayload.Username,
+			DisplayName:        tracePayload.DisplayName,
 			ModelName:          tracePayload.ModelName,
 			RiskType:           tracePayload.RiskType,
 			ActionResult:       tracePayload.ActionResult,
@@ -1927,6 +1931,7 @@ func buildAlertDeliveryFromMatch(
 		RequestId:          event.RequestId,
 		TenantId:           event.TenantId,
 		Username:           event.Username,
+		DisplayName:        "",
 		ModelName:          event.ModelName,
 		RiskType:           event.RiskType,
 		ActionResult:       event.ActionResult,
@@ -1938,6 +1943,12 @@ func buildAlertDeliveryFromMatch(
 		RuleName:           matched.Rule.Name,
 		DetailRoute:        buildAlertEventDetailRoute(event),
 		DetailAPIPath:      buildAlertEventDetailAPIPath(event),
+	}
+	if event.UserId > 0 {
+		if identity, err := loadCurrentUserIdentities(s.db, []int{event.UserId}); err == nil {
+			tracePayload.DisplayName = identity[event.UserId].DisplayName
+			tracePayload.Username = firstNonEmpty(identity[event.UserId].Username, tracePayload.Username)
+		}
 	}
 
 	delivery := entmodel.AlertDelivery{

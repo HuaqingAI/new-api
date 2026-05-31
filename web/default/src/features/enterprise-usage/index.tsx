@@ -47,6 +47,10 @@ import { useAuthStore } from '@/stores/auth-store'
 import dayjs from '@/lib/dayjs'
 import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from '@/features/enterprise-organization/lib/user-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -1715,8 +1719,24 @@ function DepartmentUserRankingTable(props: {
           ) : (
             props.items.map((item) => (
               <TableRow key={item.user_id}>
-                <TableCell className='font-medium'>
-                  {item.username || item.user_id}
+                <TableCell>
+                  <div className='flex min-w-[180px] flex-col gap-1'>
+                    <span className='font-medium'>
+                      {formatEnterpriseUserPrimary({
+                        username: item.username,
+                        userId: item.user_id,
+                      })}
+                    </span>
+                    <span className='text-muted-foreground text-xs'>
+                      {formatEnterpriseUserSecondary(
+                        {
+                          username: item.username,
+                          userId: item.user_id,
+                        },
+                        t
+                      )}
+                    </span>
+                  </div>
                 </TableCell>
                 <TableCell>{formatNumber(item.request_count)}</TableCell>
                 <TableCell>{formatNumber(item.token_count)}</TableCell>

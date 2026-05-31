@@ -61,11 +61,18 @@ type UsageDetailQuery struct {
 type UsageDepartmentUserRankItem struct {
 	UserId           int
 	Username         string
+	DisplayName      string
 	RequestCount     int64
 	PromptTokens     int64
 	CompletionTokens int64
 	TokenCount       int64
 	Quota            int64
+}
+
+type UsageRecentLogsUserOption struct {
+	UserId      int
+	Username    string
+	DisplayName string
 }
 
 type UsageDepartmentTrendPoint struct {
@@ -87,6 +94,7 @@ type UsageRecentLogsLink struct {
 	StartTimestamp int64
 	EndTimestamp   int64
 	Usernames      []string
+	UserOptions    []UsageRecentLogsUserOption
 }
 
 type UsageDepartmentDetailResult struct {
@@ -278,6 +286,7 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 				Path:      "/usage-logs/common",
 				Section:   "common",
 				Usernames: []string{},
+				UserOptions: []UsageRecentLogsUserOption{},
 			},
 		}, ErrInvalidUsageDetailQuery
 	}
@@ -295,6 +304,7 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 				Path:      "/usage-logs/common",
 				Section:   "common",
 				Usernames: []string{},
+				UserOptions: []UsageRecentLogsUserOption{},
 			},
 		}, err
 	}
@@ -313,6 +323,7 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 			StartTimestamp: query.From,
 			EndTimestamp:   query.To - 1,
 			Usernames:      []string{},
+			UserOptions:    []UsageRecentLogsUserOption{},
 		},
 	}
 	if len(snapshots) == 0 {
@@ -366,13 +377,14 @@ func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (U
 	})
 
 	userIds := sortedUsageBucketUserIDs(allUserIds)
-	userRanking, usernames, err := s.buildDepartmentUserRanking(query, userIds)
+	userRanking, usernames, userOptions, err := s.buildDepartmentUserRanking(query, userIds)
 	if err != nil {
 		return UsageDepartmentDetailResult{}, err
 	}
 	result.UserRanking = userRanking
 	result.RecentLogsLink.DepartmentName = result.DeptName
 	result.RecentLogsLink.Usernames = usernames
+	result.RecentLogsLink.UserOptions = userOptions
 	return result, nil
 }
 
@@ -628,9 +640,9 @@ func mergeUsageModelStats(base []entmodel.UsageSnapshotModelStat, extra []entmod
 	return merged
 }
 
-func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQuery, userIds []int) ([]UsageDepartmentUserRankItem, []string, error) {
+func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQuery, userIds []int) ([]UsageDepartmentUserRankItem, []string, []UsageRecentLogsUserOption, error) {
 	if len(userIds) == 0 {
-		return []UsageDepartmentUserRankItem{}, []string{}, nil
+		return []UsageDepartmentUserRankItem{}, []string{}, []UsageRecentLogsUserOption{}, nil
 	}
 
 	var logs []model.Log
@@ -639,16 +651,16 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 		Where("type = ? AND created_at >= ? AND created_at < ? AND user_id IN ?", model.LogTypeConsume, query.From, query.To, userIds).
 		Order("created_at ASC, id ASC").
 		Find(&logs).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	memberships, _, err := s.loadMembershipContext(query.TenantId, userIds, query.From, query.To)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	currentUsernames, err := loadCurrentUsernames(s.db, userIds)
+	currentUsers, err := loadCurrentUserIdentities(s.db, userIds)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	ranking := make(map[int]*UsageDepartmentUserRankItem, len(userIds))
@@ -659,14 +671,19 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 
 		item, ok := ranking[logRow.UserId]
 		if !ok {
+			currentUser := currentUsers[logRow.UserId]
 			item = &UsageDepartmentUserRankItem{
-				UserId:   logRow.UserId,
-				Username: firstNonEmpty(currentUsernames[logRow.UserId], logRow.Username),
+				UserId:      logRow.UserId,
+				Username:    firstNonEmpty(currentUser.Username, logRow.Username),
+				DisplayName: currentUser.DisplayName,
 			}
 			ranking[logRow.UserId] = item
 		}
 		if item.Username == "" {
-			item.Username = firstNonEmpty(currentUsernames[logRow.UserId], logRow.Username)
+			item.Username = firstNonEmpty(currentUsers[logRow.UserId].Username, logRow.Username)
+		}
+		if item.DisplayName == "" {
+			item.DisplayName = currentUsers[logRow.UserId].DisplayName
 		}
 		item.RequestCount++
 		item.PromptTokens += int64(logRow.PromptTokens)
@@ -677,10 +694,16 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 
 	items := make([]UsageDepartmentUserRankItem, 0, len(ranking))
 	usernames := make([]string, 0, len(ranking))
+	userOptions := make([]UsageRecentLogsUserOption, 0, len(ranking))
 	for _, item := range ranking {
 		items = append(items, *item)
 		if item.Username != "" {
 			usernames = append(usernames, item.Username)
+			userOptions = append(userOptions, UsageRecentLogsUserOption{
+				UserId:      item.UserId,
+				Username:    item.Username,
+				DisplayName: item.DisplayName,
+			})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -693,13 +716,25 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 		if items[i].TokenCount != items[j].TokenCount {
 			return items[i].TokenCount > items[j].TokenCount
 		}
+		if items[i].DisplayName != items[j].DisplayName {
+			return items[i].DisplayName < items[j].DisplayName
+		}
 		if items[i].Username != items[j].Username {
 			return items[i].Username < items[j].Username
 		}
 		return items[i].UserId < items[j].UserId
 	})
 	sort.Strings(usernames)
-	return items, usernames, nil
+	sort.Slice(userOptions, func(i, j int) bool {
+		if userOptions[i].DisplayName != userOptions[j].DisplayName {
+			return userOptions[i].DisplayName < userOptions[j].DisplayName
+		}
+		if userOptions[i].Username != userOptions[j].Username {
+			return userOptions[i].Username < userOptions[j].Username
+		}
+		return userOptions[i].UserId < userOptions[j].UserId
+	})
+	return items, usernames, userOptions, nil
 }
 
 func usageLogMatchesDepartment(logRow model.Log, deptId *int, memberships []entmodel.UserDepartment) bool {

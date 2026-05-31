@@ -43,6 +43,10 @@ import {
 } from 'recharts'
 import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from '@/features/enterprise-organization/lib/user-display'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1168,7 +1172,21 @@ export function EnterpriseAlertsPage() {
                               </TableCell>
                               <TableCell>
                                 <div className='flex min-w-[160px] flex-col gap-1'>
-                                  <span>{item.username}</span>
+                                  <span>
+                                    {formatEnterpriseUserPrimary({
+                                      username: item.username,
+                                      userId: item.user_id,
+                                    })}
+                                  </span>
+                                  <span className='text-muted-foreground text-xs'>
+                                    {formatEnterpriseUserSecondary(
+                                      {
+                                        username: item.username,
+                                        userId: item.user_id,
+                                      },
+                                      t
+                                    )}
+                                  </span>
                                   {item.username_snapshot &&
                                   item.username_snapshot !== item.username ? (
                                     <span className='text-muted-foreground text-xs'>

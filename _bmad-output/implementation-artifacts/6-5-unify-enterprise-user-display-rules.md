@@ -1,0 +1,158 @@
+---
+baseline_commit: 47db854619d5393f1a1099f3e9ea3eec75ebae8c
+---
+
+# Story 6.5: 企业页面统一用户标识展示规则
+
+Status: done
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As a 管理员,
+I want 企业页面统一按“可读名称优先，username / ID 兜底”展示用户,
+so that 我在不同页面看到的是一致且可识别的对象。
+
+## Acceptance Criteria
+
+1. **Given** 管理员查看成员列表、预算分配、wallet 明细、用量排行、日志入口或风险事件  
+   **When** 页面展示用户标识  
+   **Then** 系统优先展示可读名称  
+   **And** 在需要消歧时补充 username 或 user ID 作为兜底信息。
+2. **Given** 用户没有可用的可读名称  
+   **When** 页面渲染用户标识  
+   **Then** 系统回退到 username  
+   **And** 在 username 仍不足以消歧时显示 user ID。
+3. **Given** 同一用户出现在多个企业页面  
+   **When** 管理员跨页面查看该用户  
+   **Then** 组织页、预算页、用量页和风险页遵循同一展示规则  
+   **And** Default 前端优先完整落地该规则，Classic 主题至少保持语义一致。
+
+## Tasks / Subtasks
+
+- [ ] 定义统一的企业用户展示契约，并抽出可复用的格式化入口供 Default 企业功能共用 (AC: 1, 2, 3)
+  - [ ] 先梳理当前实际分裂的展示语义：`enterprise-organization` 成员行仍是 `username` 主、`display_name` 次，预算 wallet 明细已经是 `target_display_name` 优先，用量排行仍只展示 `username`，风险事件主列表显示当前 `username` 并把 `username_snapshot` 放在次行。这些页面不能继续各自硬编码一套 fallback 规则。[Source: web/default/src/features/enterprise-organization/index.tsx; web/default/src/features/enterprise-usage/index.tsx; web/default/src/features/enterprise-alerts/index.tsx]
+  - [ ] 抽出共享的企业用户展示 helper / view-model（可落在 `web/default/src/features/enterprise-*/` 共用位置），明确至少三类输出：主展示名、辅助消歧信息、以及保留给查询/跳转使用的真实筛选值；不要让每个页面自己重新决定“先显示 username 还是 display_name”。[Source: _bmad-output/planning-artifacts/architecture.md#Frontend Architecture; web/default/src/hooks/use-user-display.ts]
+  - [ ] 统一规则必须是“可读名称优先，username 次之，user ID 最后兜底”；但“是否需要同时显示 username / ID”应由页面语义决定，例如列表和详情在发生重名或需要操作对象确认时才补充辅助信息，而不是所有地方都把三者重复堆满。[Source: _bmad-output/planning-artifacts/epics.md#Story 6.5: 企业页面统一用户标识展示规则]
+
+- [ ] 补齐后端/DTO 对可读名称的支持，避免 6.5 退化成局部 UI 拼接补丁 (AC: 1, 2, 3)
+  - [ ] `DepartmentMemberItem` 与预算 wallet 明细已经返回 `display_name` / `target_display_name`，应直接复用；但用量排行 DTO 目前只有 `username`，风险事件/投递 trace DTO 也主要暴露 `username` 和 `username_snapshot`。为满足跨页面统一展示，需在真正缺失的链路上扩展 DTO 和 service，而不是前端凭空猜测可读名。[Source: dto/enterprise/department_membership.go; dto/enterprise/department_budget.go; dto/enterprise/usage.go; dto/enterprise/alert.go]
+  - [ ] 优先在 `service/enterprise/user_lookup.go` 抽象“当前用户可读身份”加载能力（至少 `id + username + display_name`），供 `usage_aggregation.go`、`alert.go` 等读侧复用；不要继续只提供 `loadCurrentUsernames(...)` 然后在每个 service 再发明第二次 lookup。[Source: service/enterprise/user_lookup.go; service/enterprise/usage_aggregation.go; service/enterprise/alert.go]
+  - [ ] 新增 DTO 字段时保持现有 JSON 约束和三库兼容习惯：Go tag 继续使用 `snake_case`，数组默认输出 `[]`，只在真正可选的标量上使用指针；不要因为 6.5 顺手改坏现有日志/告警/用量接口契约风格。[Source: AGENTS.md#Rule 2: Database Compatibility — SQLite, MySQL >= 5.7.8, PostgreSQL >= 9.6; _bmad-output/planning-artifacts/architecture.md#Coding Standards]
+
+- [ ] 在 Default 企业页面完整应用统一展示规则，覆盖组织、预算、用量和风险四条主线 (AC: 1, 2, 3)
+  - [ ] 组织页与预算相关视图要对齐到同一规则：成员列表、当前成员治理卡片、rename 区、预算 wallet 明细、allocation 相关用户标签都应以可读名称为主、username / ID 为辅；不要让 Story 6.4 刚建立的 rename 能力只影响部分区域。[Source: _bmad-output/implementation-artifacts/6-3-move-membership-and-budget-operations-into-department-context.md; _bmad-output/implementation-artifacts/6-4-fix-dingtalk-username-strategy-and-controlled-rename.md; web/default/src/features/enterprise-organization/index.tsx]
+  - [ ] 用量页要把当前部门分析区里的用户排行、最近日志入口用户 chips/选项、以及任何从排行跳向日志的用户标签统一到新规则；但日志跳转实际携带的查询参数仍必须是 `username` / `user_id` 语义，不得把显示名当成筛选值传给日志模块。[Source: _bmad-output/implementation-artifacts/4-3-view-department-usage-details.md; _bmad-output/implementation-artifacts/6-2-rebuild-department-usage-as-tree-driven-analysis-view.md; controller/enterprise/usage.go; model/log.go]
+  - [ ] 风险页要对齐事件列表、投递 trace、部门风险 drill-down 入口等展示语义：当前治理视图优先展示最新可读名，但历史 `username_snapshot` 仍应保留为辅助历史信息，而不是被隐藏、覆盖或回写。[Source: _bmad-output/implementation-artifacts/5-6-display-department-risk-overview.md; web/default/src/features/enterprise-alerts/index.tsx; service/enterprise/alert.go]
+  - [ ] 如 6.5 需要新增一个“展示用户名快照”“当前用户名”“当前可读名”的通用文案或 badge 语义，必须在 Default 企业页面里保持统一，不要出现组织页一套说法、风险页另一套说法。[Source: web/default/src/i18n/locales/en.json; web/default/src/i18n/locales/zh.json]
+
+- [ ] 明确保留历史快照与筛选契约，不让“统一展示”误伤现有日志、风险和查询语义 (AC: 1, 2)
+  - [ ] Story 6.4 已明确：历史日志与风险事件保留原始 username snapshot，当前治理视图刷新后切换到最新用户名。6.5 只能统一“当前页面如何展示对象”，不能回写 `logs.username`、`enterprise_alert_events.username`，也不能批量重算历史快照。[Source: _bmad-output/implementation-artifacts/6-4-fix-dingtalk-username-strategy-and-controlled-rename.md; model/log.go; service/enterprise/alert.go]
+  - [ ] 风险事件和用量最近日志入口的筛选仍应基于当前 `username` / `user_id` 查找链路；如果 UI 为了更可读而展示 `display_name`，必须继续保留底层筛选值与展示值分离，避免“看到 Alice，实际把 Alice 当 username 查询”这类回归。[Source: controller/enterprise/alert.go; controller/enterprise/usage.go; web/default/src/features/enterprise-usage/index.tsx]
+  - [ ] 不要因为 6.5 追求统一展示就重新解释 `enterprise.usage.multi_dept_disclaimer`、多部门重复计入、风险率口径或日志路由；这些属于既有业务语义，6.5 只改用户标识显示方式。[Source: _bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md#284; _bmad-output/planning-artifacts/epics.md#Story 6.5: 企业页面统一用户标识展示规则]
+
+- [ ] 保持 Classic 最小可用一致性，但不把 6.5 扩成 Classic 深度重构 (AC: 3)
+  - [ ] `web/classic/src/pages/Enterprise/Department.js` 当前部门成员表只展示 `username`；`web/classic/src/pages/Enterprise/Alerts.js` 的风险事件表也只展示 `username`。至少要让这些必要入口在有 `display_name` 时遵守“可读名优先，username / ID 兜底”的同一语义。[Source: web/classic/src/pages/Enterprise/Department.js; web/classic/src/pages/Enterprise/Alerts.js]
+  - [ ] Classic 继续遵守现有 `pages/` + `services/` + Semi Design 模式，只做必要字段消费和表格展示调整，不复制 Default 的共享组件、树驱动交互或复杂状态管理。[Source: _bmad-output/planning-artifacts/architecture.md#Classic Theme; web/classic/src/services/enterprise.js]
+
+- [ ] 补齐测试与 i18n，锁定统一展示规则 (AC: 1, 2, 3)
+  - [ ] 后端测试至少覆盖：用量排行和风险事件响应在有 `display_name` / 无 `display_name` / username 已修改三种场景下返回正确的当前展示基础字段；并确认历史 `username_snapshot` 与日志筛选契约未变。[Source: controller/enterprise/usage_test.go; controller/enterprise/alert_test.go; service/enterprise/usage_aggregation_test.go; service/enterprise/alert_test.go]
+  - [ ] 扩展 Default feature tests，覆盖组织页成员显示顺序、wallet 明细显示顺序、用量排行 fallback、风险事件当前名 + 历史快照并存、以及最近日志入口仍传 username 查询参数而非 display name。[Source: web/default/src/features/enterprise-organization/enterprise-organization.test.tsx; web/default/src/features/enterprise-usage/enterprise-usage.test.tsx; web/default/src/features/enterprise-alerts/enterprise-alerts.test.tsx]
+  - [ ] Classic 至少补 smoke / 页面级断言，确认企业成员表和风险事件表在存在可读名时不再退回纯 username 主显示。[Source: web/classic/src/pages/Enterprise/Alerts.smoke.test.js; web/classic/src/pages/Enterprise/Department.js]
+  - [ ] 所有新增文案同步到 `web/default/src/i18n/locales/{en,zh,fr,ru,ja,vi}.json`，Classic 同步其必需语言包，并执行 `cd web/default && bun run i18n:sync`；不要只在英文 locale 中新增“Historical Username Snapshot”“Current username”“Readable name”等文案。[Source: AGENTS.md#Internationalization (i18n)]
+
+## Dev Notes
+
+- Story 6.5 是 Story 6.4 的直接后续。6.4 已修正 DingTalk 默认 username 策略并提供受控 rename，6.5 不再重新设计 rename 本身，而是把这些“更可读的账号信息”真正统一到企业治理页面展示层。[Source: _bmad-output/implementation-artifacts/6-4-fix-dingtalk-username-strategy-and-controlled-rename.md]
+- 当前代码已经暴露出明显分裂：
+  - 组织成员表是 `username` 主、`display_name` 次；
+  - 预算 wallet 明细已经优先用 `target_display_name`；
+  - 用量排行只有 `username`；
+  - 风险事件主表显示当前 `username`，并在次行显示 `username_snapshot`。
+  6.5 的重点就是把这些现成能力收敛成一条规则，而不是只在单页上“调个显示顺序”。[Source: web/default/src/features/enterprise-organization/index.tsx; web/default/src/features/enterprise-usage/index.tsx; web/default/src/features/enterprise-alerts/index.tsx]
+- 目前 `service/enterprise/user_lookup.go` 只有 `loadCurrentUsernames(...)`。如果 6.5 只改前端，很容易让用量页和风险页因为拿不到 `display_name` 而继续用 username。更稳妥的做法是把“当前用户展示身份”作为共享 lookup 能力补齐，再由 controller/DTO 暴露给前端。[Source: service/enterprise/user_lookup.go]
+- 用量与风险页面都已经有“当前名”和“历史快照”并存的语义边界：用量 recent logs 仍通过 username 进入日志页，风险事件仍保留 `username_snapshot`。6.5 必须保留“展示更可读”与“筛选/历史仍基于 username 快照”的双轨语义。[Source: controller/enterprise/usage.go; controller/enterprise/alert.go; model/log.go; service/enterprise/alert.go]
+- 这条故事不应该触碰 relay、billing expression、历史日志回填、风险事件重写或全局用户管理页。范围要严格限制在企业管理相关 DTO、service lookup、Default/Classic 企业页面展示和对应测试/i18n。[Source: AGENTS.md; pkg/billingexpr/expr.md]
+- 没有独立 UX 文档；本故事的 UX 约束直接来自 Epic 6 follow-up 与既有企业页面：跨页面一致、管理员可快速识别对象、历史快照可见但不喧宾夺主。[Source: _bmad-output/planning-artifacts/epics.md; _bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md]
+
+### Project Structure Notes
+
+- 重点修改文件预计包括：
+  - `service/enterprise/user_lookup.go`
+  - `service/enterprise/usage_aggregation.go`
+  - `service/enterprise/alert.go`
+  - `controller/enterprise/usage.go`
+  - `controller/enterprise/alert.go`
+  - `dto/enterprise/usage.go`
+  - `dto/enterprise/alert.go`
+  - `web/default/src/features/enterprise-organization/index.tsx`
+  - `web/default/src/features/enterprise-usage/index.tsx`
+  - `web/default/src/features/enterprise-alerts/index.tsx`
+  - 需要时新增共用企业展示 helper（优先放在现有 enterprise feature 共享位置）
+  - `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx`
+  - `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx`
+  - `web/default/src/features/enterprise-alerts/enterprise-alerts.test.tsx`
+  - `web/classic/src/pages/Enterprise/Department.js`
+  - `web/classic/src/pages/Enterprise/Alerts.js`
+  - `web/default/src/i18n/locales/en.json`
+  - `web/default/src/i18n/locales/zh.json`
+  - `web/default/src/i18n/locales/fr.json`
+  - `web/default/src/i18n/locales/ru.json`
+  - `web/default/src/i18n/locales/ja.json`
+  - `web/default/src/i18n/locales/vi.json`
+- 保持不改或仅只读依赖：
+  - `relay/**`
+  - `pkg/billingexpr/**`
+  - `model/log.go`
+  - `controller/log.go`
+  - `web/default/src/features/usage-logs/**` 的筛选核心语义
+
+### References
+
+- [Source: _bmad-output/planning-artifacts/epics.md#Story 6.5: 企业页面统一用户标识展示规则]
+- [Source: _bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md#V12-Follow-up-2026-05-31]
+- [Source: _bmad-output/planning-artifacts/architecture.md#Classic Theme]
+- [Source: _bmad-output/implementation-artifacts/6-2-rebuild-department-usage-as-tree-driven-analysis-view.md]
+- [Source: _bmad-output/implementation-artifacts/6-3-move-membership-and-budget-operations-into-department-context.md]
+- [Source: _bmad-output/implementation-artifacts/6-4-fix-dingtalk-username-strategy-and-controlled-rename.md]
+- [Source: _bmad-output/implementation-artifacts/5-6-display-department-risk-overview.md]
+- [Source: service/enterprise/user_lookup.go]
+- [Source: service/enterprise/usage_aggregation.go]
+- [Source: service/enterprise/alert.go]
+- [Source: controller/enterprise/usage.go]
+- [Source: controller/enterprise/alert.go]
+- [Source: dto/enterprise/usage.go]
+- [Source: dto/enterprise/alert.go]
+- [Source: web/default/src/features/enterprise-organization/index.tsx]
+- [Source: web/default/src/features/enterprise-usage/index.tsx]
+- [Source: web/default/src/features/enterprise-alerts/index.tsx]
+- [Source: web/classic/src/pages/Enterprise/Department.js]
+- [Source: web/classic/src/pages/Enterprise/Alerts.js]
+
+## Dev Agent Record
+
+### Agent Model Used
+
+GPT-5 Codex
+
+### Debug Log References
+
+- 已按要求先读取 `.agents/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
+- `_bmad/scripts/resolve_customization.py` 因当前 Python 缺少 `tomllib` 无法运行，已按 skill fallback 手工解析 `.agents/skills/bmad-create-story/customize.toml` 与 `_bmad/bmm/config.yaml`。
+- 已完整读取 `_bmad-output/implementation-artifacts/sprint-status.yaml`，确认目标 story key 为 `6-5-unify-enterprise-user-display-rules`，原状态为 `backlog`，Epic 6 已处于 `in-progress`。
+- 已加载并分析 Epic 6、PRD follow-up、architecture、Story 6.1/6.2/6.3/6.4、Story 5.6，以及当前 Default / Classic 企业页面与相关 service/controller/dto 实现。
+- 已确认本故事主要是“跨页面统一展示语义 + 读侧 DTO 补齐”，不是新增认证能力、不是重写日志系统，也不是重新设计 username policy。
+- 当前仓库未发现独立 `project-context.md` 或单独 UX 文档，因此本故事以上述规划文档、AGENTS.md 和真实代码现状为准。
+- 本次未进行外部技术检索：需求聚焦仓库内既有数据结构、页面展示与筛选契约，没有发现必须依赖最新外部文档的库升级或时效性风险点。
+
+### Completion Notes List
+
+- 已创建 Story 6.5 故事文档，明确目标是统一企业页面“可读名称优先，username / ID 兜底”的展示规则。
+- 已明确 6.5 需要同时覆盖 Default 组织、预算、用量、风险页面，以及 Classic 必要入口的最小语义一致。
+- 已把最关键的实现风险写入 guardrails：历史 `username_snapshot` 与日志筛选契约必须保留，不能因为统一展示而把 display name 当成底层查询值。
+- 已指出当前真正缺口在用量/风险 DTO 与 `service/enterprise/user_lookup.go` 共享 lookup 能力，而不是只改前端文案顺序。
+
+### File List
+
+- `_bmad-output/implementation-artifacts/6-5-unify-enterprise-user-display-rules.md`

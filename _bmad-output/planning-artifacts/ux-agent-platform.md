@@ -77,6 +77,12 @@ related_architecture: "./architecture-agent-platform.md"
 ### Skills / Knowledge / Agents
 
 - 统一使用“列表 + 详情/编辑抽屉 + 版本标签 + 发布历史”布局。
+- MVP 最低可用形态不是静态说明卡片或 narrative shell，而是与现有 `web/default` 管理页一致的真实列表工作区。
+- 最低交互应至少覆盖：
+  - loading / empty / error states
+  - status badge 与版本标签
+  - 列表级信息组织（按 tab、分组或筛选）
+  - 详情入口或清晰的 forward-compatible workspace slot
 
 ### Publishing
 

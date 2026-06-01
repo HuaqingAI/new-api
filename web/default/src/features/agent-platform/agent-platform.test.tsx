@@ -27,7 +27,7 @@ const testRouter = createRouter({
 })
 
 describe('Agent Platform shell', () => {
-  test('renders navigation contract and live skill management copy', () => {
+  test('renders route-backed management workspace copy', () => {
     const queryClient = new QueryClient()
     const html = renderToStaticMarkup(
       <RouterContextProvider router={testRouter}>
@@ -40,14 +40,17 @@ describe('Agent Platform shell', () => {
     )
 
     assert.match(html, /Agent Platform/)
-    assert.match(html, /Navigation contract/)
+    assert.match(html, /Agent Platform Overview/)
     assert.match(html, /Overview/)
-    assert.match(html, /Clients/)
     assert.match(html, /Skills/)
-    assert.match(html, /Publishing/)
+    assert.match(html, /Knowledge/)
+    assert.match(html, /Agents/)
+    assert.match(html, /Navigation contract/)
+    assert.match(html, /Current implementation focus/)
+    assert.match(html, /Live route surface/)
+    assert.match(html, /Control-plane API wiring/)
+    assert.match(html, /UI parity/)
     assert.match(html, /Audit &amp; Diagnostics/)
-    assert.match(html, /Web Default MVP/)
-    assert.match(html, /Skill management/)
-    assert.match(html, /Epic 3 active/)
+    assert.match(html, /Workspace domains/)
   })
 })

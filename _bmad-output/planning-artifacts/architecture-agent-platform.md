@@ -693,6 +693,15 @@ Rationale:
 - `agent-platform-publishing`
 - `agent-platform-audit`
 
+**MVP completion clarification:**
+
+A frontend story is not considered complete merely because a narrative shell or static card surface exists. For Agent Platform control-plane UI, the minimum completion bar is:
+
+- the route surface is actually reachable inside the generated `web/default` router;
+- control-plane API requests are wired to live `/api/agent-platform/**` endpoints or an explicitly approved compatibility fallback;
+- newly introduced UI copy is integrated into frontend i18n;
+- the page structure, loading / empty / error states, and status expression follow the existing `web/default` admin-module interaction language rather than a standalone story shell.
+
 **Information architecture:**
 
 Navigation order:

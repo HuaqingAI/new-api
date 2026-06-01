@@ -632,3 +632,26 @@ So that 我可以消费可复用的 `Agent` 元数据，而不要求平台替我
 **When** 本 Epic 完成
 **Then** 首个 `Agent` 验证闭环覆盖 publish -> discovery -> detail -> dependency/reference-boundary validation -> audit trail
 **And** 不要求平台交付任何服务端 `Agent` runtime 或 orchestration engine。
+
+### Story 5.4: 收口 Agent Platform `web/default` 控制面集成与体验一致性
+
+As a 平台管理员,
+I want Agent Platform 控制面在 `web/default` 中以真实可访问、可取数、可国际化且与既有管理模块一致的方式交付,
+So that 这个产品线的控制面不是 story 占位壳，而是可持续扩展的正式管理入口。
+
+**Acceptance Criteria:**
+
+**Given** 侧边栏已出现 Agent Platform 导航入口
+**When** 管理员点击进入
+**Then** 真实 route surface 可访问且不会因生成路由缺失而 404
+**And** 该入口与 `web/default` 其余 admin 模块处于同一导航与布局体系中。
+
+**Given** Skill、Knowledge、Agent 控制面入口已经存在
+**When** 页面请求对应数据
+**Then** 页面能够连通 live `/api/agent-platform/**` 控制面接口或显式批准的兼容 fallback
+**And** 不会因前后端路由接线不一致而出现默认 404。
+
+**Given** Agent Platform 页面在 `web/default` 中渲染
+**When** 页面展示文案、状态、空态和错误态
+**Then** 新增文案遵循 frontend i18n 约束
+**And** 页面结构、状态表达与现有 `enterprise-*` 模块一致，不以 narrative shell 视作完成。

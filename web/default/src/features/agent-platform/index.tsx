@@ -22,20 +22,19 @@ import {
   AlertTriangle,
   BookOpen,
   Bot,
+  Boxes,
   Compass,
   Layers3,
   Network,
   Puzzle,
+  RefreshCw,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
-import {
-  getAgentPlatformAgents,
-  getAgentPlatformKnowledge,
-  getAgentPlatformSkills,
-} from './api'
+import { LoadingState } from '@/components/loading-state'
+import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,32 +44,159 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type {
+  AgentPlatformItem,
+  AgentPlatformListResponse,
+} from './api'
 import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { cn } from '@/lib/utils'
+  getAgentPlatformAgents,
+  getAgentPlatformKnowledge,
+  getAgentPlatformSkills,
+} from './api'
 
-type DomainCard = {
-  key: string
-  icon: React.ElementType
-  title: string
+type ResourceListCardProps = {
+  badgeLabel: string
   description: string
-  status: string
+  emptyDescription: string
+  errorPrefix: string
+  icon: React.ElementType
+  isLoading: boolean
+  onRetry: () => void
+  response?: AgentPlatformListResponse
+  title: string
 }
 
-const STATUS_TONES: Record<string, string> = {
-  foundation: 'border-emerald-300 bg-emerald-50 text-emerald-700',
-  pending: 'border-amber-300 bg-amber-50 text-amber-700',
-  diagnostics: 'border-slate-300 bg-slate-50 text-slate-700',
+type SummaryMetric = {
+  key: string
+  label: string
+  value: string | number
+  helper: string
+  icon: React.ElementType
+}
+
+function formatStatusLabel(status: string, t: ReturnType<typeof useTranslation>['t']) {
+  const value = status.trim().toLowerCase()
+  if (!value) {
+    return t('Unknown')
+  }
+  return t(value)
+}
+
+function statusVariantFor(value: string) {
+  switch (value.trim().toLowerCase()) {
+    case 'published':
+      return 'success' as const
+    case 'draft':
+      return 'warning' as const
+    case 'disabled':
+    case 'offline':
+      return 'neutral' as const
+    case 'revoked':
+      return 'danger' as const
+    default:
+      return 'info' as const
+  }
+}
+
+function getItems(response?: AgentPlatformListResponse) {
+  return response?.success && Array.isArray(response.data?.items)
+    ? response.data.items
+    : []
+}
+
+function ResourceListCard(props: ResourceListCardProps) {
+  const { t } = useTranslation()
+  const Icon = props.icon
+  const items = getItems(props.response)
+  const loadFailed =
+    props.response != null &&
+    props.response.success === false &&
+    !!props.response.message
+
+  return (
+    <Card>
+      <CardHeader className='gap-3 border-b'>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='space-y-1'>
+            <CardTitle className='flex items-center gap-2'>
+              <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
+                <Icon className='size-4' />
+              </span>
+              {props.title}
+            </CardTitle>
+            <CardDescription>{props.description}</CardDescription>
+          </div>
+          <Badge variant='outline'>{props.badgeLabel}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className='pt-4'>
+        {props.isLoading ? (
+          <LoadingState message={t('Loading...')} className='min-h-[240px]' />
+        ) : loadFailed ? (
+          <ErrorState
+            className='min-h-[240px]'
+            title={t('Failed to load data')}
+            description={`${props.errorPrefix}: ${props.response?.message ?? t('Request failed')}`}
+            onRetry={props.onRetry}
+          />
+        ) : items.length === 0 ? (
+          <div className='flex min-h-[240px] items-center justify-center rounded-xl border border-dashed'>
+            <div className='space-y-2 px-6 text-center'>
+              <AlertTriangle className='text-muted-foreground mx-auto size-5' />
+              <p className='font-medium'>{t('No Data')}</p>
+              <p className='text-muted-foreground text-sm'>
+                {props.emptyDescription}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className='space-y-3'>
+            {items.map((item) => (
+              <ResourceRow key={item.resource_id} item={item} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ResourceRow(props: { item: AgentPlatformItem }) {
+  const { t } = useTranslation()
+  const item = props.item
+
+  return (
+    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
+      <div className='flex items-start justify-between gap-3'>
+        <div className='space-y-1'>
+          <p className='font-medium'>{item.display_name}</p>
+          <p className='text-muted-foreground text-xs'>{item.resource_id}</p>
+        </div>
+        <StatusBadge
+          label={formatStatusLabel(item.status, t)}
+          variant={statusVariantFor(item.status)}
+          copyable={false}
+        />
+      </div>
+      <div className='text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs'>
+        <span>
+          {t('Owner')}: {item.owner_user_id}
+        </span>
+        <span>
+          {t('Latest version')}: {item.latest_version || t('Not versioned')}
+        </span>
+        <span>
+          {t('Tenant')}: {item.tenant_id || t('Global')}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 export function AgentPlatformShell() {
   const { t } = useTranslation()
+
   const skillsQuery = useQuery({
     queryKey: ['agent-platform', 'skills', 'summary'],
     queryFn: getAgentPlatformSkills,
@@ -84,69 +210,38 @@ export function AgentPlatformShell() {
     queryFn: getAgentPlatformAgents,
   })
 
-  const domainCards: DomainCard[] = [
-    {
-      key: 'overview',
-      icon: Compass,
-      title: t('Agent Platform Overview'),
-      description: t(
-        'Track registry foundations, projection rollout, and the next implementation slices in one place.'
-      ),
-      status: t('Foundation ready'),
-    },
-    {
-      key: 'clients',
-      icon: Network,
-      title: t('Clients'),
-      description: t(
-        'Client registration lands in the next epic, but this shell reserves the contract and capability declaration workspace now.'
-      ),
-      status: t('Pending Epic 2'),
-    },
+  const skillItems = getItems(skillsQuery.data)
+  const knowledgeItems = getItems(knowledgeQuery.data)
+  const agentItems = getItems(agentsQuery.data)
+
+  const metrics: SummaryMetric[] = [
     {
       key: 'skills',
+      label: t('Skills'),
+      value: skillItems.length,
+      helper: t('Live control-plane entries'),
       icon: Puzzle,
-      title: t('Skills'),
-      description: t(
-        'Skill management now reads from the control plane and anchors the next invoke-contract stories.'
-      ),
-      status: t('Skill control plane live'),
     },
     {
       key: 'knowledge',
+      label: t('Knowledge'),
+      value: knowledgeItems.length,
+      helper: t('Provider-backed resources'),
       icon: BookOpen,
-      title: t('Knowledge'),
-      description: t(
-        'Knowledge management now surfaces provider-backed metadata from the live control plane.'
-      ),
-      status: t('Knowledge control plane live'),
     },
     {
       key: 'agents',
+      label: t('Agents'),
+      value: agentItems.length,
+      helper: t('Definition templates'),
       icon: Bot,
-      title: t('Agents'),
-      description: t(
-        'Agent definition metadata now surfaces here while runtime orchestration stays explicitly out of scope.'
-      ),
-      status: t('Agent definitions live'),
     },
     {
-      key: 'publishing',
+      key: 'domains',
+      label: t('Workspace domains'),
+      value: 7,
+      helper: t('Overview to diagnostics'),
       icon: Layers3,
-      title: t('Publishing'),
-      description: t(
-        'Projection state, visibility, callable readiness, and client-targeted rollout actions converge in this publishing lane.'
-      ),
-      status: t('Projection baseline ready'),
-    },
-    {
-      key: 'audit',
-      icon: ShieldCheck,
-      title: t('Audit & Diagnostics'),
-      description: t(
-        'Lifecycle governance already records action trails; this shell reserves the drill-down surface for future diagnostics work.'
-      ),
-      status: t('Diagnostics baseline ready'),
     },
   ]
 
@@ -154,321 +249,245 @@ export function AgentPlatformShell() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Agent Platform')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <div className='flex items-center gap-3'>
-          <Badge
-            variant='outline'
-            className='border-emerald-300 bg-emerald-50 text-emerald-700'
-          >
-            {t('Web Default MVP')}
-          </Badge>
+        <div className='flex items-center gap-2'>
           <Button
-            variant='default'
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              void skillsQuery.refetch()
+              void knowledgeQuery.refetch()
+              void agentsQuery.refetch()
+            }}
+            disabled={
+              skillsQuery.isFetching ||
+              knowledgeQuery.isFetching ||
+              agentsQuery.isFetching
+            }
+          >
+            <RefreshCw className='size-4' />
+            {t('Refresh')}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
             render={
-              <Link to='/system-settings/site'>
-                {t('Review system settings')}
-              </Link>
+              <Link to='/system-settings/site'>{t('System Settings')}</Link>
             }
           />
         </div>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='space-y-8'>
-          <div className='space-y-2'>
-            <p className='text-muted-foreground max-w-3xl text-sm leading-6'>
-              {t(
-                'A dedicated control-plane shell for clients, resources, publishing, and diagnostics in web/default.'
-              )}
-            </p>
-          </div>
-        <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-          {domainCards.map((card) => {
-            const Icon = card.icon
-            const tone =
-              card.key === 'overview' || card.key === 'publishing'
-                ? STATUS_TONES.foundation
-                : card.key === 'audit'
-                  ? STATUS_TONES.diagnostics
-                  : STATUS_TONES.pending
-
-            return (
-              <Card
-                key={card.key}
-                className='border-border/70 bg-card/80 shadow-sm backdrop-blur'
-              >
-                <CardHeader className='space-y-4'>
-                  <div className='flex items-start justify-between gap-3'>
-                    <div className='flex items-center gap-3'>
-                      <div className='bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-2xl'>
-                        <Icon className='h-5 w-5' />
-                      </div>
-                      <div>
-                        <CardTitle className='text-lg'>{card.title}</CardTitle>
-                        <CardDescription>{card.description}</CardDescription>
-                      </div>
-                    </div>
-                    <Badge
-                      variant='outline'
-                      className={cn('whitespace-nowrap', tone)}
+        <div className='space-y-6'>
+          <Card>
+            <CardHeader className='gap-3 border-b'>
+              <div className='flex items-start gap-3'>
+                <span className='bg-primary/10 text-primary inline-flex size-10 items-center justify-center rounded-xl'>
+                  <Boxes className='size-5' />
+                </span>
+                <div className='space-y-1'>
+                  <CardTitle>{t('Agent Platform Overview')}</CardTitle>
+                  <CardDescription>
+                    {t(
+                      'The Agent Platform control plane now uses live admin routes, live control-plane data, and the same interaction language as the existing web/default governance modules.'
+                    )}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className='pt-4'>
+              <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+                {metrics.map((metric) => {
+                  const Icon = metric.icon
+                  return (
+                    <div
+                      key={metric.key}
+                      className='rounded-xl border bg-muted/20 px-4 py-3'
                     >
-                      {card.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-              </Card>
-            )
-          })}
-        </div>
-
-        <div className='grid gap-6 xl:grid-cols-[1.6fr_1fr]'>
-          <Card className='border-border/70 bg-card/80 shadow-sm'>
-            <CardHeader>
-              <CardTitle>{t('Navigation contract')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'The MVP shell freezes the information architecture before the deeper client, publishing, and diagnostics screens arrive.'
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='space-y-4'>
-              <div className='grid gap-3 sm:grid-cols-2'>
-                {[
-                  t('Overview'),
-                  t('Clients'),
-                  t('Skills'),
-                  t('Knowledge'),
-                  t('Agents'),
-                  t('Publishing'),
-                  t('Audit & Diagnostics'),
-                ].map((item, index) => (
-                  <div
-                    key={item}
-                    className='border-border/60 bg-muted/40 flex items-center gap-3 rounded-2xl border px-4 py-3'
-                  >
-                    <span className='text-muted-foreground text-sm font-medium'>
-                      {index + 1}.
-                    </span>
-                    <span className='font-medium'>{item}</span>
-                  </div>
-                ))}
-              </div>
-              <div className='border-border/60 bg-muted/40 rounded-2xl border p-4'>
-                <div className='mb-2 flex items-center gap-2 text-sm font-medium'>
-                  <Sparkles className='text-primary h-4 w-4' />
-                  {t('Implementation note')}
-                </div>
-                <p className='text-muted-foreground text-sm leading-6'>
-                  {t(
-                    'Classic theme parity stays out of MVP scope, so this shell intentionally anchors future Agent Platform work in web/default only.'
-                  )}
-                </p>
+                      <div className='flex items-center justify-between gap-3'>
+                        <span className='text-muted-foreground text-sm font-medium'>
+                          {metric.label}
+                        </span>
+                        <Icon className='text-muted-foreground size-4' />
+                      </div>
+                      <div className='mt-2 text-2xl font-semibold'>
+                        {metric.value}
+                      </div>
+                      <p className='text-muted-foreground mt-1 text-xs'>
+                        {metric.helper}
+                      </p>
+                    </div>
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
 
-          <Card className='border-border/70 bg-card/80 shadow-sm'>
-            <CardHeader>
-              <CardTitle>{t('Current focus')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'The shell now exposes the first live Skill management slice while deeper client, publishing, and diagnostics flows continue to land story by story.'
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className='space-y-4'>
-                <div className='flex items-center justify-between gap-3'>
-                  <div>
-                    <p className='text-sm font-medium'>{t('Skill management')}</p>
-                    <p className='text-muted-foreground text-sm'>
+          <Tabs
+            defaultValue='overview'
+            className='space-y-6'
+          >
+            <TabsList className='grid w-full grid-cols-4 md:w-[560px]'>
+              <TabsTrigger value='overview'>{t('Overview')}</TabsTrigger>
+              <TabsTrigger value='skills'>{t('Skills')}</TabsTrigger>
+              <TabsTrigger value='knowledge'>{t('Knowledge')}</TabsTrigger>
+              <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value='overview' className='space-y-6'>
+              <div className='grid gap-4 xl:grid-cols-[1.2fr_1fr]'>
+                <Card>
+                  <CardHeader className='gap-3 border-b'>
+                    <CardTitle>{t('Navigation contract')}</CardTitle>
+                    <CardDescription>
                       {t(
-                        'Published and draft Skills now surface here from the live Agent Platform control plane.'
+                        'The management navigation order remains fixed so that later Clients, Publishing, and Audit slices can extend this page without reworking the information architecture.'
                       )}
-                    </p>
-                  </div>
-                  <Badge
-                    variant='outline'
-                    className='border-emerald-300 bg-emerald-50 text-emerald-700'
-                  >
-                    {t('Epic 3 active')}
-                  </Badge>
-                </div>
-
-                {skillsQuery.data?.success && Array.isArray(skillsQuery.data?.data?.items) && skillsQuery.data.data.items.length > 0 ? (
-                  <div className='space-y-3'>
-                    {skillsQuery.data.data.items.map((skill: any) => (
-                      <div
-                        key={skill.resource_id}
-                        className='border-border/60 bg-muted/30 rounded-2xl border px-4 py-3'
-                      >
-                        <div className='flex items-start justify-between gap-3'>
-                          <div className='space-y-1'>
-                            <p className='font-medium'>{skill.display_name}</p>
-                            <p className='text-muted-foreground text-xs'>
-                              {skill.resource_id}
-                            </p>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className='pt-4'>
+                    <div className='grid gap-3 sm:grid-cols-2'>
+                      {[
+                        {
+                          icon: Compass,
+                          label: t('Overview'),
+                        },
+                        {
+                          icon: Network,
+                          label: t('Clients'),
+                        },
+                        {
+                          icon: Puzzle,
+                          label: t('Skills'),
+                        },
+                        {
+                          icon: BookOpen,
+                          label: t('Knowledge'),
+                        },
+                        {
+                          icon: Bot,
+                          label: t('Agents'),
+                        },
+                        {
+                          icon: Layers3,
+                          label: t('Publishing'),
+                        },
+                        {
+                          icon: ShieldCheck,
+                          label: t('Audit & Diagnostics'),
+                        },
+                      ].map((entry, index) => {
+                        const Icon = entry.icon
+                        return (
+                          <div
+                            key={entry.label}
+                            className='flex items-center gap-3 rounded-xl border bg-muted/20 px-4 py-3'
+                          >
+                            <span className='text-muted-foreground text-sm font-medium'>
+                              {index + 1}.
+                            </span>
+                            <Icon className='text-muted-foreground size-4' />
+                            <span className='font-medium'>{entry.label}</span>
                           </div>
-                          <Badge variant='outline'>
-                            {skill.status || t('draft')}
-                          </Badge>
-                        </div>
-                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
-                          <span>{t('Owner')}: {skill.owner_user_id}</span>
-                          <span>{t('Latest version')}: {skill.latest_version || t('Not versioned')}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <Empty className='min-h-[280px] rounded-2xl border border-dashed border-amber-300 bg-amber-50/50'>
-                    <EmptyHeader>
-                      <EmptyMedia
-                        variant='icon'
-                        className='bg-amber-100 text-amber-700'
-                      >
-                        <AlertTriangle className='h-4 w-4' />
-                      </EmptyMedia>
-                      <EmptyTitle>
-                        {skillsQuery.isLoading
-                          ? t('Loading Skills')
-                          : t('No Skills yet')}
-                      </EmptyTitle>
-                      <EmptyDescription>
-                        {skillsQuery.isLoading
-                          ? t('The Skill control-plane slice is fetching the current registry view.')
-                          : t(
-                              'Create the first Skill in the Agent Platform control plane to turn this shell into a live management surface.'
-                            )}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                      <Button
-                        variant='outline'
-                        render={
-                          <Link to='/enterprise-alerts'>
-                            {t('Review existing diagnostics patterns')}
-                          </Link>
-                        }
-                      />
-                    </EmptyContent>
-                  </Empty>
-                )}
-              </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
 
-              <div className='border-border/60 bg-muted/20 rounded-2xl border p-4'>
-                <div className='mb-3 flex items-center justify-between gap-3'>
-                  <div>
-                    <p className='text-sm font-medium'>{t('Knowledge management')}</p>
-                    <p className='text-muted-foreground text-sm'>
+                <Card>
+                  <CardHeader className='gap-3 border-b'>
+                    <CardTitle>{t('Current implementation focus')}</CardTitle>
+                    <CardDescription>
                       {t(
-                        'Provider-backed Knowledge resources now surface here without turning the platform into a retrieval runtime.'
+                        'This stabilization pass closes the gap between planned control-plane capabilities and the live web/default admin experience.'
                       )}
-                    </p>
-                  </div>
-                  <Badge
-                    variant='outline'
-                    className='border-sky-300 bg-sky-50 text-sky-700'
-                  >
-                    {t('Epic 4 active')}
-                  </Badge>
-                </div>
-
-                {knowledgeQuery.data?.success &&
-                Array.isArray(knowledgeQuery.data?.data?.items) &&
-                knowledgeQuery.data.data.items.length > 0 ? (
-                  <div className='space-y-3'>
-                    {knowledgeQuery.data.data.items.map((knowledge: any) => (
-                      <div
-                        key={knowledge.resource_id}
-                        className='border-border/60 bg-background/80 rounded-2xl border px-4 py-3'
-                      >
-                        <div className='flex items-start justify-between gap-3'>
-                          <div className='space-y-1'>
-                            <p className='font-medium'>{knowledge.display_name}</p>
-                            <p className='text-muted-foreground text-xs'>
-                              {knowledge.resource_id}
-                            </p>
-                          </div>
-                          <Badge variant='outline'>
-                            {knowledge.status || t('draft')}
-                          </Badge>
-                        </div>
-                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
-                          <span>{t('Owner')}: {knowledge.owner_user_id}</span>
-                          <span>
-                            {t('Latest version')}: {knowledge.latest_version || t('Not versioned')}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className='text-muted-foreground text-sm'>
-                    {knowledgeQuery.isLoading
-                      ? t('Loading Knowledge resources')
-                      : t('Knowledge management is ready for the first provider-backed resource.')}
-                  </p>
-                )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className='space-y-3 pt-4'>
+                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
+                      <p className='font-medium'>{t('Live route surface')}</p>
+                      <p className='text-muted-foreground mt-1 text-sm'>
+                        {t(
+                          'The Agent Platform entry now needs to be validated against the generated router tree, not just local feature code.'
+                        )}
+                      </p>
+                    </div>
+                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
+                      <p className='font-medium'>{t('Control-plane API wiring')}</p>
+                      <p className='text-muted-foreground mt-1 text-sm'>
+                        {t(
+                          'Skill, Knowledge, and Agent data should come from live control-plane endpoints, with explicit compatibility fallback only when required.'
+                        )}
+                      </p>
+                    </div>
+                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
+                      <p className='font-medium'>{t('UI parity')}</p>
+                      <p className='text-muted-foreground mt-1 text-sm'>
+                        {t(
+                          'Agent Platform pages must use the same loading, empty, error, and status expression patterns as the existing enterprise admin surfaces.'
+                        )}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
+            </TabsContent>
 
-              <div className='border-border/60 bg-muted/20 rounded-2xl border p-4'>
-                <div className='mb-3 flex items-center justify-between gap-3'>
-                  <div>
-                    <p className='text-sm font-medium'>{t('Agent definitions')}</p>
-                    <p className='text-muted-foreground text-sm'>
-                      {t(
-                        'Agent resources now surface as managed definitions without implying any server-side runtime ownership.'
-                      )}
-                    </p>
-                  </div>
-                  <Badge
-                    variant='outline'
-                    className='border-rose-300 bg-rose-50 text-rose-700'
-                  >
-                    {t('Epic 5 active')}
-                  </Badge>
-                </div>
-
-                {agentsQuery.data?.success &&
-                Array.isArray(agentsQuery.data?.data?.items) &&
-                agentsQuery.data.data.items.length > 0 ? (
-                  <div className='space-y-3'>
-                    {agentsQuery.data.data.items.map((agent: any) => (
-                      <div
-                        key={agent.resource_id}
-                        className='border-border/60 bg-background/80 rounded-2xl border px-4 py-3'
-                      >
-                        <div className='flex items-start justify-between gap-3'>
-                          <div className='space-y-1'>
-                            <p className='font-medium'>{agent.display_name}</p>
-                            <p className='text-muted-foreground text-xs'>
-                              {agent.resource_id}
-                            </p>
-                          </div>
-                          <Badge variant='outline'>
-                            {agent.status || t('draft')}
-                          </Badge>
-                        </div>
-                        <div className='text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs'>
-                          <span>{t('Owner')}: {agent.owner_user_id}</span>
-                          <span>
-                            {t('Latest version')}: {agent.latest_version || t('Not versioned')}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className='text-muted-foreground text-sm'>
-                    {agentsQuery.isLoading
-                      ? t('Loading Agent definitions')
-                      : t('Agent definition management is ready for the first published template resource.')}
-                  </p>
+            <TabsContent value='skills'>
+              <ResourceListCard
+                title={t('Skill management')}
+                description={t(
+                  'Skill definitions exposed by the Agent Platform control plane.'
                 )}
-              </div>
-            </CardContent>
-          </Card>
+                badgeLabel={t('Epic 3 active')}
+                icon={Puzzle}
+                response={skillsQuery.data}
+                isLoading={skillsQuery.isLoading}
+                onRetry={() => void skillsQuery.refetch()}
+                errorPrefix={t('Skill API request failed')}
+                emptyDescription={t(
+                  'No Skill resources are currently available in the control plane.'
+                )}
+              />
+            </TabsContent>
+
+            <TabsContent value='knowledge'>
+              <ResourceListCard
+                title={t('Knowledge management')}
+                description={t(
+                  'Provider-backed retrieval resources managed by the Agent Platform control plane.'
+                )}
+                badgeLabel={t('Epic 4 active')}
+                icon={BookOpen}
+                response={knowledgeQuery.data}
+                isLoading={knowledgeQuery.isLoading}
+                onRetry={() => void knowledgeQuery.refetch()}
+                errorPrefix={t('Knowledge API request failed')}
+                emptyDescription={t(
+                  'No Knowledge resources are currently available in the control plane.'
+                )}
+              />
+            </TabsContent>
+
+            <TabsContent value='agents'>
+              <ResourceListCard
+                title={t('Agent definitions')}
+                description={t(
+                  'Agent definition templates managed by the control plane without implying server-side runtime ownership.'
+                )}
+                badgeLabel={t('Epic 5 active')}
+                icon={Bot}
+                response={agentsQuery.data}
+                isLoading={agentsQuery.isLoading}
+                onRetry={() => void agentsQuery.refetch()}
+                errorPrefix={t('Agent API request failed')}
+                emptyDescription={t(
+                  'No Agent definition resources are currently available in the control plane.'
+                )}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
-      </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

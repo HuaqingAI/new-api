@@ -16,12 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { AxiosError } from 'axios'
 import { api } from '@/lib/api'
 
-export type AgentPlatformSkillItem = {
+export type AgentPlatformResourceType = 'skill' | 'knowledge' | 'agent'
+
+export type AgentPlatformItem = {
   id: number
   resource_id: string
-  resource_type: string
+  resource_type: AgentPlatformResourceType
   display_name: string
   owner_user_id: number
   status: string
@@ -31,27 +34,81 @@ export type AgentPlatformSkillItem = {
   updated_at: number
 }
 
-export async function getAgentPlatformSkills() {
-  const res = await api.get('/api/agent-platform/skills', {
-    params: { page: 1, page_size: 12 },
-  })
-  return res.data
+export type AgentPlatformListPayload = {
+  items: AgentPlatformItem[]
+  total: number
+  page: number
+  page_size: number
 }
 
-export type AgentPlatformKnowledgeItem = AgentPlatformSkillItem
-
-export async function getAgentPlatformKnowledge() {
-  const res = await api.get('/api/agent-platform/knowledge-bases', {
-    params: { page: 1, page_size: 12 },
-  })
-  return res.data
+export type AgentPlatformListResponse = {
+  success: boolean
+  message?: string
+  data?: AgentPlatformListPayload
 }
 
-export type AgentPlatformAgentItem = AgentPlatformSkillItem
+type ResourceEndpointConfig = {
+  endpoint: string
+  resourceType: AgentPlatformResourceType
+}
 
-export async function getAgentPlatformAgents() {
-  const res = await api.get('/api/agent-platform/agents', {
-    params: { page: 1, page_size: 12 },
-  })
-  return res.data
+const RESOURCE_ENDPOINTS: Record<AgentPlatformResourceType, ResourceEndpointConfig> =
+  {
+    skill: {
+      endpoint: '/api/agent-platform/skills',
+      resourceType: 'skill',
+    },
+    knowledge: {
+      endpoint: '/api/agent-platform/knowledge-bases',
+      resourceType: 'knowledge',
+    },
+    agent: {
+      endpoint: '/api/agent-platform/agents',
+      resourceType: 'agent',
+    },
+  }
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof AxiosError && error.response?.status === 404
+}
+
+async function fetchResourceList(
+  resourceType: AgentPlatformResourceType
+): Promise<AgentPlatformListResponse> {
+  const config = RESOURCE_ENDPOINTS[resourceType]
+  const params = { page: 1, page_size: 12 }
+
+  try {
+    const res = await api.get<AgentPlatformListResponse>(config.endpoint, {
+      params,
+    })
+    return res.data
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      throw error
+    }
+  }
+
+  const fallback = await api.get<AgentPlatformListResponse>(
+    '/api/agent-platform/resources',
+    {
+      params: {
+        ...params,
+        resource_type: config.resourceType,
+      },
+    }
+  )
+  return fallback.data
+}
+
+export function getAgentPlatformSkills() {
+  return fetchResourceList('skill')
+}
+
+export function getAgentPlatformKnowledge() {
+  return fetchResourceList('knowledge')
+}
+
+export function getAgentPlatformAgents() {
+  return fetchResourceList('agent')
 }

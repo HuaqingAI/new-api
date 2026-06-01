@@ -87,6 +87,8 @@ import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import {
   addDepartmentMember,
+  budgetDelegationQueryKey,
+  createBudgetDelegation,
   createQuotaAllocation,
   deactivateDepartmentMember,
   createDepartmentBudget,
@@ -102,6 +104,7 @@ import {
   getDepartmentBudget,
   getDepartmentBudgetDetail,
   getDepartmentBudgets,
+  getBudgetDelegations,
   getDepartmentMembers,
   getQuotaAllocations,
   getUserDepartments,
@@ -113,6 +116,7 @@ import {
   revokeDepartmentOwnerDeny,
   revokeDepartmentOwnerGrant,
   revokeQuotaAllocation,
+  supersedeBudgetDelegation,
   userDepartmentsQueryKey,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
@@ -129,6 +133,7 @@ import {
 } from './lib/user-display'
 import type {
   ApiResponse,
+  BudgetDelegationItem,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
   DepartmentBudgetSortField,
@@ -330,6 +335,23 @@ export function createAllocationSchema(t: (key: string) => string) {
   })
 }
 
+export function createDelegationSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    source_department_id: z.coerce.number().int().positive(),
+    source_budget_id: z.coerce.number().int().positive(),
+    target_department_id: z.coerce.number().int().positive(),
+    target_budget_id: z.coerce.number().int().positive(),
+    committed_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Delegation quota must be greater than 0'),
+      }),
+    reason: z.string().trim().max(500).default(''),
+  })
+}
+
 export function __testRenderApiMessage(
   result: { message?: string; data?: unknown } | null | undefined,
   translator: (key: string) => string
@@ -400,6 +422,8 @@ function enterpriseBudgetStatusLabel(
   if (status === 'paused') return t('Paused')
   if (status === 'revoked') return t('Revoked')
   if (status === 'expired') return t('Expired')
+  if (status === 'superseded') return t('Superseded')
+  if (status === 'closed') return t('Closed')
   return status || '-'
 }
 
@@ -407,6 +431,7 @@ function enterpriseBudgetStatusVariant(status: string) {
   if (status === 'active') return 'success' as const
   if (status === 'paused') return 'warning' as const
   if (status === 'revoked' || status === 'expired') return 'danger' as const
+  if (status === 'superseded' || status === 'closed') return 'neutral' as const
   return 'neutral' as const
 }
 
@@ -1754,8 +1779,10 @@ function DepartmentBudgetPanel({
     __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
+  const delegationSchema = createDelegationSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
   type AllocationFormValues = z.infer<typeof allocationSchema>
+  type DelegationFormValues = z.infer<typeof delegationSchema>
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(
@@ -1786,12 +1813,29 @@ function DepartmentBudgetPanel({
       reason: '',
     },
   })
+  const delegationForm = useForm<DelegationFormValues>({
+    resolver: zodResolver(
+      delegationSchema
+    ) as unknown as Resolver<DelegationFormValues>,
+    defaultValues: {
+      tenant_id: 0,
+      source_department_id: departmentId,
+      source_budget_id: 0,
+      target_department_id: 0,
+      target_budget_id: 0,
+      committed_quota: 0,
+      reason: '',
+    },
+  })
   const tenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
+  const [supersedeDrafts, setSupersedeDrafts] = useState<Record<number, string>>(
+    {}
+  )
   const normalizedTenantId = tenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
   const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
@@ -1834,6 +1878,34 @@ function DepartmentBudgetPanel({
           thresholds: { warning: 80, critical: 95 },
           scope_department_name: departmentName,
           include_descendants: includeDescendants,
+          scope_department_ids: [departmentId],
+        }
+      )
+    },
+  })
+  const descendantBudgetListQuery = useQuery({
+    queryKey: departmentBudgetListQueryKey(
+      departmentId,
+      normalizedTenantId,
+      true,
+      sortBy,
+      sortOrder
+    ),
+    queryFn: async () => {
+      const result = await getDepartmentBudgets(departmentId, {
+        tenant_id: tenantId || undefined,
+        include_descendants: true,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          items: [],
+          thresholds: { warning: 80, critical: 95 },
+          scope_department_name: departmentName,
+          include_descendants: true,
           scope_department_ids: [departmentId],
         }
       )
@@ -1903,6 +1975,19 @@ function DepartmentBudgetPanel({
     },
     enabled: Boolean(effectiveBudgetId),
   })
+  const delegationListQuery = useQuery({
+    queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getBudgetDelegations(departmentId, tenantId || undefined)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+
+  const descendantBudgetOptions = (
+    descendantBudgetListQuery.data?.items ?? []
+  ).filter((item) => item.department_id !== departmentId)
 
   const createMutation = useMutation({
     mutationFn: async (values: BudgetFormValues) => {
@@ -1995,6 +2080,67 @@ function DepartmentBudgetPanel({
       toast.success(t('Wallet allocation created'))
     },
   })
+  const delegationMutation = useMutation({
+    mutationFn: async (values: DelegationFormValues) =>
+      createBudgetDelegation({
+        tenant_id: Number(values.tenant_id),
+        source_department_id: departmentId,
+        source_budget_id: Number(values.source_budget_id),
+        target_department_id: Number(values.target_department_id),
+        target_budget_id: Number(values.target_budget_id),
+        committed_quota: Number(values.committed_quota),
+        reason: values.reason.trim() || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Budget delegation created'))
+    },
+  })
+  const supersedeMutation = useMutation({
+    mutationFn: async (params: {
+      delegationId: number
+      committedQuota: number
+    }) =>
+      supersedeBudgetDelegation(params.delegationId, {
+        tenant_id: tenantId || undefined,
+        source_department_id: departmentId,
+        new_committed_quota: params.committedQuota,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Budget delegation adjusted'))
+    },
+  })
 
   const revokeMutation = useMutation({
     mutationFn: async (allocationId: number) =>
@@ -2043,6 +2189,18 @@ function DepartmentBudgetPanel({
       allocationForm.setValue('tenant_id', tenantId)
     }
   }, [allocationForm, tenantId])
+
+  useEffect(() => {
+    if (delegationForm.getValues('tenant_id') !== tenantId) {
+      delegationForm.setValue('tenant_id', tenantId)
+    }
+    if (delegationForm.getValues('source_department_id') !== departmentId) {
+      delegationForm.setValue('source_department_id', departmentId)
+    }
+    if (effectiveBudgetId && delegationForm.getValues('source_budget_id') !== effectiveBudgetId) {
+      delegationForm.setValue('source_budget_id', effectiveBudgetId)
+    }
+  }, [delegationForm, departmentId, effectiveBudgetId, tenantId])
 
   useEffect(() => {
     if (previousDepartmentIdRef.current === departmentId) return
@@ -2306,6 +2464,137 @@ function DepartmentBudgetPanel({
       />
       <Card>
         <CardHeader>
+          <CardTitle>{t('Budget Delegation To Descendant Department')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Delegate from the current department budget pool to a descendant department budget pool, while keeping superseded history visible.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <Form {...delegationForm}>
+            <form
+              className='grid gap-4 md:grid-cols-2'
+              onSubmit={delegationForm.handleSubmit((values) =>
+                delegationMutation.mutate(values)
+              )}
+            >
+              <FormField
+                control={delegationForm.control}
+                name='target_budget_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Target Descendant Budget Pool')}</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : undefined}
+                      onValueChange={(value) => {
+                        const budgetId = Number(value)
+                        const budget = descendantBudgetOptions.find(
+                          (item) => item.id === budgetId
+                        )
+                        field.onChange(budgetId)
+                        delegationForm.setValue(
+                          'target_department_id',
+                          budget?.department_id ?? 0
+                        )
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={t('Choose a descendant budget pool')}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {descendantBudgetOptions.map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
+                              source: departmentName,
+                              target: item.department_name,
+                              budgetId: item.id,
+                            })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={delegationForm.control}
+                name='committed_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Delegation Quota')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={delegationForm.control}
+                name='reason'
+                render={({ field }) => (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Reason')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Optional delegation note')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className='md:col-span-2 flex justify-end'>
+                <Button
+                  type='submit'
+                  disabled={
+                    !effectiveBudgetId ||
+                    descendantBudgetOptions.length === 0 ||
+                    delegationMutation.isPending
+                  }
+                >
+                  <Coins data-icon='inline-start' />
+                  {t('Delegate to descendant department')}
+                </Button>
+              </div>
+            </form>
+          </Form>
+          <BudgetDelegationTable
+            items={delegationListQuery.data ?? []}
+            loading={delegationListQuery.isLoading}
+            supersedeDrafts={supersedeDrafts}
+            onSupersedeDraftChange={(delegationId, value) =>
+              setSupersedeDrafts((current) => ({
+                ...current,
+                [delegationId]: value,
+              }))
+            }
+            onSupersede={(delegation) =>
+              supersedeMutation.mutate({
+                delegationId: delegation.id,
+                committedQuota: Number(
+                  supersedeDrafts[delegation.id] || delegation.committed_quota
+                ),
+              })
+            }
+            supersedePendingId={
+              supersedeMutation.isPending
+                ? supersedeMutation.variables?.delegationId ?? null
+                : null
+            }
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
           <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
           <CardDescription>
             {t(
@@ -2526,6 +2815,111 @@ export function QuotaAllocationTable({
                   : t('Revoke allocation')}
               </Button>
             </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+export function BudgetDelegationTable({
+  items,
+  loading,
+  supersedeDrafts,
+  onSupersedeDraftChange,
+  onSupersede,
+  supersedePendingId,
+}: {
+  items: BudgetDelegationItem[]
+  loading: boolean
+  supersedeDrafts?: Record<number, string>
+  onSupersedeDraftChange?: (delegationId: number, value: string) => void
+  onSupersede?: (item: BudgetDelegationItem) => void
+  supersedePendingId?: number | null
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-32 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Coins className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No budget delegations yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t(
+              'Choose a descendant department budget pool to create the first delegation in this governance chain.'
+            )}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Delegation Route')}</TableHead>
+          <TableHead>{t('Delegation Quota')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Supersede')}</TableHead>
+          <TableHead>{t('Created At')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => (
+          <TableRow key={item.id}>
+            <TableCell>
+              {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
+                source: item.source_department_name || `#${item.source_department_id}`,
+                target: item.target_department_name || `#${item.target_department_id}`,
+                budgetId: item.target_budget_id,
+              })}
+            </TableCell>
+            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <Badge variant='secondary'>
+                {enterpriseBudgetStatusLabel(item.status, t)}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <div className='flex min-w-[260px] items-center gap-2'>
+                {item.status === 'active' ? (
+                  <Input
+                    inputMode='numeric'
+                    value={
+                      supersedeDrafts?.[item.id] ?? String(item.committed_quota)
+                    }
+                    onChange={(event) =>
+                      onSupersedeDraftChange?.(item.id, event.target.value)
+                    }
+                    aria-label={t('Delegation Quota')}
+                  />
+                ) : null}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onSupersede ||
+                    item.status !== 'active' ||
+                    supersedePendingId === item.id
+                  }
+                  onClick={() => onSupersede?.(item)}
+                >
+                  <RotateCcw data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Close old delegation and create a new one')
+                    : t('Historical delegation')}
+                </Button>
+              </div>
+            </TableCell>
+            <TableCell>{formatTimestamp(item.created_at)}</TableCell>
           </TableRow>
         ))}
       </TableBody>

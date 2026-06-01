@@ -45,6 +45,13 @@ auth.user_id_format_error: "無權進行此操作，New-Api-User 格式錯誤"
 auth.user_id_mismatch: "無權進行此操作，New-Api-User 與登入使用者不匹配"
 auth.user_banned: "使用者已被封禁"
 auth.insufficient_privilege: "無權進行此操作，權限不足"
+enterprise.organization.budget_delegation_rejected: "預算委派被拒絕"
+enterprise.organization.budget_delegation_not_found: "預算委派記錄不存在"
+enterprise.organization.budget_delegation_quota_invalid: "委派額度必須大於 0"
+enterprise.organization.budget_delegation_budget_inactive: "來源或目標預算池目前不是可委派狀態"
+enterprise.organization.budget_delegation_target_not_descendant: "目標部門必須是來源部門的後代部門"
+enterprise.organization.budget_delegation_permission_denied: "你沒有向該部門委派預算的治理權限"
+enterprise.organization.budget_delegation_budget_type_mismatch: "來源與目標預算池必須使用相同預算類型"
 
 # Token messages
 token.name_too_long: "令牌名稱過長"

@@ -78,3 +78,22 @@ func ResolveDepartmentScope(db *gorm.DB, tenantId int, departmentId *int, includ
 		ScopeDepartmentIds: append([]int{}, ids...),
 	}, nil
 }
+
+func IsDepartmentAncestor(db *gorm.DB, tenantId int, ancestorDepartmentId int, targetDepartmentId int) (bool, error) {
+	if db == nil {
+		return false, gorm.ErrInvalidDB
+	}
+	if ancestorDepartmentId <= 0 || targetDepartmentId <= 0 || ancestorDepartmentId == targetDepartmentId {
+		return false, nil
+	}
+	scope, err := ResolveDepartmentScope(db, tenantId, &ancestorDepartmentId, true)
+	if err != nil {
+		return false, err
+	}
+	for _, departmentId := range scope.DepartmentIds {
+		if departmentId == targetDepartmentId {
+			return true, nil
+		}
+	}
+	return false, nil
+}

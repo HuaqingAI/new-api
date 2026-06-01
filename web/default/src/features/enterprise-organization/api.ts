@@ -20,6 +20,9 @@ import { api } from '@/lib/api'
 import type {
   AddDepartmentMemberPayload,
   ApiResponse,
+  BudgetDelegationListResponse,
+  BudgetDelegationResponse,
+  CreateBudgetDelegationPayload,
   CreateDepartmentBudgetPayload,
   CreateQuotaAllocationPayload,
   DepartmentBudgetDetailResponse,
@@ -36,6 +39,7 @@ import type {
   RenameDepartmentMemberPayload,
   RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
+  SupersedeBudgetDelegationPayload,
   UserDepartmentsResponse,
 } from './types'
 
@@ -76,6 +80,18 @@ export function quotaAllocationQueryKey(
   return [
     ...quotaAllocationQueryScopeKey(departmentId, tenantId),
     budgetId,
+  ] as const
+}
+
+export function budgetDelegationQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'budget-delegation',
+    departmentId,
+    tenantId,
   ] as const
 }
 
@@ -331,6 +347,37 @@ export async function revokeQuotaAllocation(
 ): Promise<ApiResponse<QuotaAllocationResponse>> {
   const res = await api.post(
     `/api/enterprise/quota-allocations/${allocationId}/revoke`,
+    payload
+  )
+  return res.data
+}
+
+export async function getBudgetDelegations(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<BudgetDelegationListResponse>> {
+  const res = await api.get('/api/enterprise/budget-delegations', {
+    params: {
+      department_id: departmentId,
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function createBudgetDelegation(
+  payload: CreateBudgetDelegationPayload
+): Promise<ApiResponse<BudgetDelegationResponse>> {
+  const res = await api.post('/api/enterprise/budget-delegations', payload)
+  return res.data
+}
+
+export async function supersedeBudgetDelegation(
+  delegationId: number,
+  payload: SupersedeBudgetDelegationPayload
+): Promise<ApiResponse<BudgetDelegationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/budget-delegations/${delegationId}/supersede`,
     payload
   )
   return res.data

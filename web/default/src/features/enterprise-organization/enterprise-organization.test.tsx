@@ -12,6 +12,7 @@ import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
+  BudgetDelegationTable,
   __testRenderApiMessage,
   __testRenderUsernameMutationMessage,
   DepartmentMemberContextCard,
@@ -26,6 +27,7 @@ import {
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
+  createDelegationSchema,
   createRenameUsernameSchema,
   normalizeEnterpriseOrganizationSearch,
   resolveDepartmentMemberSelection,
@@ -42,6 +44,7 @@ import {
 import { departmentOwnersQueryKey } from './api'
 import type {
   ApiResponse,
+  BudgetDelegationItem,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
   DepartmentMemberItem,
@@ -586,6 +589,32 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(valid.success, true)
   })
 
+  test('delegation schema rejects missing descendant target and quota, then accepts valid input', () => {
+    const schema = createDelegationSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      source_department_id: 1,
+      source_budget_id: 11,
+      target_department_id: 0,
+      target_budget_id: 0,
+      committed_quota: 0,
+      reason: '',
+    })
+    assert.equal(invalid.success, false)
+
+    const valid = schema.safeParse({
+      tenant_id: 0,
+      source_department_id: 1,
+      source_budget_id: 11,
+      target_department_id: 3,
+      target_budget_id: 21,
+      committed_quota: 400,
+      reason: 'delegate',
+    })
+    assert.equal(valid.success, true)
+  })
+
   test('rename username schema rejects invalid values and accepts readable usernames', () => {
     const schema = createRenameUsernameSchema((key) => key)
 
@@ -900,6 +929,61 @@ describe('Enterprise organization department tree workflow', () => {
     )
   })
 
+  test('renders budget delegation empty state with descendant guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <BudgetDelegationTable items={[]} loading={false} />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /No budget delegations yet/)
+    assert.match(
+      html,
+      /Choose a descendant department budget pool to create the first delegation in this governance chain\./
+    )
+  })
+
+  test('renders budget delegation rows with route, quota, status, and supersede guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <BudgetDelegationTable
+          loading={false}
+          items={[
+            budgetDelegation({
+              id: 41,
+              source_department_name: 'Engineering',
+              target_department_name: 'Platform',
+              target_budget_id: 23,
+              committed_quota: 450,
+              status: 'active',
+            }),
+            budgetDelegation({
+              id: 42,
+              source_department_name: 'Engineering',
+              target_department_name: 'Platform',
+              target_budget_id: 24,
+              committed_quota: 300,
+              status: 'superseded',
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Delegation Route',
+      'Delegation Quota',
+      'Engineering -&gt; Platform -&gt; Budget #23',
+      '450',
+      'Active',
+      'Close old delegation and create a new one',
+      'Superseded',
+      'Historical delegation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
   test('renders quota allocation rows with committed quota, wallet id, and status', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -1184,6 +1268,39 @@ function quotaAllocation(
     reason: overrides.reason ?? '',
     status: overrides.status ?? 'active',
     processed_at: overrides.processed_at ?? 0,
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function budgetDelegation(
+  overrides: Partial<BudgetDelegationItem> = {}
+): BudgetDelegationItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    source_department_id: overrides.source_department_id ?? 1,
+    source_department_name: overrides.source_department_name ?? 'HQ',
+    source_budget_id: overrides.source_budget_id ?? 11,
+    target_department_id: overrides.target_department_id ?? 3,
+    target_department_name: overrides.target_department_name ?? 'Platform',
+    target_budget_id: overrides.target_budget_id ?? 21,
+    actor_id: overrides.actor_id ?? 1001,
+    committed_quota: overrides.committed_quota ?? 300,
+    budget_type_snapshot: overrides.budget_type_snapshot ?? 'balance',
+    cycle_type_snapshot: overrides.cycle_type_snapshot ?? 'never',
+    before_source_budget_snapshot:
+      overrides.before_source_budget_snapshot ?? '{}',
+    after_source_budget_snapshot:
+      overrides.after_source_budget_snapshot ?? '{}',
+    before_target_budget_snapshot:
+      overrides.before_target_budget_snapshot ?? '{}',
+    after_target_budget_snapshot:
+      overrides.after_target_budget_snapshot ?? '{}',
+    status: overrides.status ?? 'active',
+    superseded_by_id: overrides.superseded_by_id ?? 0,
+    processed_at: overrides.processed_at ?? 0,
+    reason: overrides.reason ?? '',
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

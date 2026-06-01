@@ -15,6 +15,7 @@ func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
+		&BudgetDelegation{},
 		&QuotaAllocation{},
 		&UserDepartment{},
 		&DepartmentRole{},

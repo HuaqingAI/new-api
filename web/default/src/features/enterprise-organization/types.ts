@@ -246,6 +246,39 @@ export type QuotaAllocationListResponse = {
   items: QuotaAllocationItem[]
 }
 
+export type BudgetDelegationItem = {
+  id: number
+  tenant_id: number
+  source_department_id: number
+  source_department_name: string
+  source_budget_id: number
+  target_department_id: number
+  target_department_name: string
+  target_budget_id: number
+  actor_id: number
+  committed_quota: number
+  budget_type_snapshot: string
+  cycle_type_snapshot: string
+  before_source_budget_snapshot: string
+  after_source_budget_snapshot: string
+  before_target_budget_snapshot: string
+  after_target_budget_snapshot: string
+  status: string
+  superseded_by_id: number
+  processed_at: number
+  reason: string
+  created_at: number
+  updated_at: number
+}
+
+export type BudgetDelegationResponse = {
+  item: BudgetDelegationItem | null
+}
+
+export type BudgetDelegationListResponse = {
+  items: BudgetDelegationItem[]
+}
+
 export type CreateDepartmentBudgetPayload = {
   tenant_id?: number
   type: DepartmentBudgetType
@@ -263,6 +296,23 @@ export type CreateQuotaAllocationPayload = {
   department_id: number
   target_user_id: number
   committed_quota?: number
+  reason?: string
+}
+
+export type CreateBudgetDelegationPayload = {
+  tenant_id?: number
+  source_department_id: number
+  source_budget_id: number
+  target_department_id: number
+  target_budget_id: number
+  committed_quota?: number
+  reason?: string
+}
+
+export type SupersedeBudgetDelegationPayload = {
+  tenant_id?: number
+  source_department_id: number
+  new_committed_quota?: number
   reason?: string
 }
 

@@ -31,6 +31,10 @@ const (
 	AdminActionUsageReportSet                = "enterprise.usage.report.set"
 	AdminActionDepartmentBudgetCreate        = "enterprise.organization.department_budget.create"
 	AdminActionDepartmentBudgetReject        = "enterprise.organization.department_budget.reject"
+	AdminActionBudgetDelegationCreate        = "enterprise.organization.budget_delegation.create"
+	AdminActionBudgetDelegationSupersede     = "enterprise.organization.budget_delegation.supersede"
+	AdminActionBudgetDelegationRevoke        = "enterprise.organization.budget_delegation.revoke"
+	AdminActionBudgetDelegationReject        = "enterprise.organization.budget_delegation.reject"
 	AdminActionAlertRuleSave                 = "enterprise.alert.rule.save"
 	AdminActionAlertRuleDelete               = "enterprise.alert.rule.delete"
 	AdminActionAlertDeliveryResend           = "enterprise.alert.delivery.resend"
@@ -43,6 +47,7 @@ const (
 	AdminObjectDingTalkSyncConflict = "enterprise_dingtalk_sync_conflict"
 	AdminObjectUsageReportJob       = "enterprise_usage_report_job"
 	AdminObjectDepartmentBudget     = "enterprise_department_budget"
+	AdminObjectBudgetDelegation     = "enterprise_budget_delegation"
 	AdminObjectAlertRule            = "enterprise_alert_rule"
 	AdminObjectAlertDelivery        = "enterprise_alert_delivery"
 )

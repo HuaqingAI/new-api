@@ -99,7 +99,7 @@ development_status:
   ap-1-6-deliver-web-default-control-plane-shell: done
   agent-platform-epic-1-retrospective: done
 
-  agent-platform-epic-2: backlog
+  agent-platform-epic-2: done
   ap-2-1-register-clients-and-capability-declarations: done
   ap-2-2-implement-browser-delegated-auth-main-flow: done
   ap-2-3-implement-token-lifecycle-and-revocation: done
@@ -107,20 +107,20 @@ development_status:
   ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: done
   agent-platform-epic-2-retrospective: optional
 
-  agent-platform-epic-3: backlog
+  agent-platform-epic-3: done
   ap-3-1-provide-skill-management-in-control-plane: done
   ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
   ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: done
   agent-platform-epic-3-retrospective: optional
 
-  agent-platform-epic-4: backlog
+  agent-platform-epic-4: done
   ap-4-1-manage-knowledge-resources-with-provider-metadata: done
   ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: done
   ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: done
   ap-4-4-integrate-first-http-retrieval-provider-adapter: done
   agent-platform-epic-4-retrospective: optional
 
-  agent-platform-epic-5: backlog
+  agent-platform-epic-5: done
   ap-5-1-provide-agent-definition-management-in-control-plane: done
   ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done

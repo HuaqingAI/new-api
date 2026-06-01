@@ -1,9 +1,9 @@
 {
-  "base": "en.json",
+  "base": "fr.json",
   "locales": {
     "en": {
       "file": "en.json",
-      "missingCount": 0,
+      "missingCount": 28,
       "extrasCount": 0,
       "untranslatedCount": 0
     },

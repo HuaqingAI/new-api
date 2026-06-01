@@ -23,7 +23,7 @@ def cmd_validate_story_creation(args: list[str]) -> int:
 
     def create_check_payload(story_id: str, state_file: str) -> dict[str, object]:
         contract = resolve_success_contract(project_root, "create", state_file=state_file or None)
-        return create_story_artifact(project_root=project_root, story_key=story_id, contract=contract)
+        return create_story_artifact(project_root=project_root, story_key=story_id, contract=contract, state_file=state_file or None)
 
     def expected_matches(payload: dict[str, object] | None) -> int:
         if payload is None:

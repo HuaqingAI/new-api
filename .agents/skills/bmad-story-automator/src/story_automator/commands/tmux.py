@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 import time
 from pathlib import Path
 
 from story_automator.core.runtime_layout import runtime_provider
 from story_automator.core.runtime_policy import PolicyError, load_runtime_policy, step_contract
 from story_automator.core.success_verifiers import resolve_success_contract, run_success_verifier
+from story_automator.core.story_keys import normalize_story_key
 from story_automator.core.tmux_runtime import (
     agent_cli,
     agent_type,
@@ -189,13 +191,21 @@ def _build_cmd(args: list[str]) -> int:
         print(str(exc), file=__import__("sys").stderr)
         return 1
     agent = agent or _raw_agent_selection()
-    story_prefix = story_id.replace(".", "-")
     root = get_project_root()
     agent = _resolve_agent_selection(agent, root)
+    story = normalize_story_key(root, story_id, state_file=state_file or None)
+    story_prefix = story.prefix if story is not None else story_id.replace(".", "-")
     try:
         policy = load_runtime_policy(root, state_file=state_file)
         contract = step_contract(policy, step)
-        prompt = _render_step_prompt(contract, story_id, story_prefix, extra)
+        prompt = _render_step_prompt(
+            contract,
+            story_id,
+            story_prefix,
+            story.key if story is not None else story_prefix,
+            _state_epic_source(state_file),
+            extra,
+        )
     except (OSError, PolicyError) as exc:
         print(str(exc), file=__import__("sys").stderr)
         return 1
@@ -212,10 +222,13 @@ def _build_cmd(args: list[str]) -> int:
         auth_src = os.path.expanduser("~/.codex/auth.json")
         config_src = os.path.expanduser("~/.codex/config.toml")
         model_flag = f" --model {shlex.quote(model)}" if model else ""
+        python_bin = str(Path(sys.executable).resolve())
+        python_dir = str(Path(python_bin).parent)
         print(
             f'mkdir -p "{codex_home}"'
             + f' && if [ -f "{auth_src}" ]; then ln -sf "{auth_src}" "{codex_home}/auth.json"; fi'
             + f' && if [ -f "{config_src}" ]; then ln -sf "{config_src}" "{codex_home}/config.toml"; fi'
+            + f' && export PATH="{python_dir}:$PATH" BMAD_STORY_AUTOMATOR_PYTHON="{python_bin}"'
             + f' && CODEX_HOME="{codex_home}" codex exec -s workspace-write -c \'approval_policy="never"\''
             + f' -c \'model_reasoning_effort="high"\'{model_flag}'
             + f" --disable plugins --disable sqlite --disable shell_snapshot {quoted_prompt}"
@@ -225,13 +238,22 @@ def _build_cmd(args: list[str]) -> int:
     return 0
 
 
-def _render_step_prompt(contract: dict[str, object], story_id: str, story_prefix: str, extra_instruction: str) -> str:
+def _render_step_prompt(
+    contract: dict[str, object],
+    story_id: str,
+    story_prefix: str,
+    story_key: str,
+    epic_source: str,
+    extra_instruction: str,
+) -> str:
     prompt_cfg = contract.get("prompt") or {}
     assets = (contract.get("assets") or {}).get("files") or {}
     template = read_text(str(prompt_cfg.get("templatePath") or ""))
     replacements = {
         "{{story_id}}": story_id,
         "{{story_prefix}}": story_prefix,
+        "{{story_key}}": story_key,
+        "{{epic_source}}": epic_source,
         "{{label}}": str(contract.get("label") or ""),
         "{{skill_line}}": _prompt_line("READ this skill first", str(assets.get("skill") or "")),
         "{{workflow_line}}": _prompt_line("READ this workflow file next", str(assets.get("workflow") or "")),
@@ -247,6 +269,18 @@ def _render_step_prompt(contract: dict[str, object], story_id: str, story_prefix
 
 def _prompt_line(prefix: str, value: str) -> str:
     return f"{prefix}: {value}\n" if value else ""
+
+
+def _state_epic_source(state_file: str) -> str:
+    if not state_file:
+        return ""
+    try:
+        from story_automator.core.frontmatter import parse_simple_frontmatter
+
+        fields = parse_simple_frontmatter(read_text(state_file))
+    except OSError:
+        return ""
+    return str(fields.get("epicSource") or "").strip()
 
 
 def cmd_heartbeat_check(args: list[str]) -> int:
@@ -469,6 +503,7 @@ def _verify_monitor_completion(
             story_key=story_key,
             output_file=output_file,
             contract=contract,
+            state_file=state_file,
         )
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PolicyError):
         return ({"verified": False, "reason": "verifier_contract_invalid"}, verifier_name)

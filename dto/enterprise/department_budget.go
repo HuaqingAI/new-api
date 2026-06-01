@@ -12,9 +12,10 @@ type CreateDepartmentBudgetRequest struct {
 }
 
 type DepartmentBudgetListQuery struct {
-	TenantId  *int   `form:"tenant_id"`
-	SortBy    string `form:"sort_by"`
-	SortOrder string `form:"sort_order"`
+	TenantId           *int   `form:"tenant_id"`
+	SortBy             string `form:"sort_by"`
+	SortOrder          string `form:"sort_order"`
+	IncludeDescendants *bool  `form:"include_descendants,omitempty"`
 }
 
 type DepartmentBudgetThresholds struct {
@@ -26,6 +27,7 @@ type DepartmentBudgetItem struct {
 	Id             int     `json:"id"`
 	TenantId       int     `json:"tenant_id"`
 	DepartmentId   int     `json:"department_id"`
+	DepartmentName string  `json:"department_name"`
 	Type           string  `json:"type"`
 	Status         string  `json:"status"`
 	TotalQuota     int64   `json:"total_quota"`
@@ -73,8 +75,12 @@ type DepartmentBudgetResponse struct {
 }
 
 type DepartmentBudgetListResponse struct {
-	Items      []DepartmentBudgetItem     `json:"items"`
-	Thresholds DepartmentBudgetThresholds `json:"thresholds"`
+	Items               []DepartmentBudgetItem     `json:"items"`
+	Thresholds          DepartmentBudgetThresholds `json:"thresholds"`
+	ScopeDepartmentId   *int                       `json:"scope_department_id,omitempty"`
+	ScopeDepartmentName string                     `json:"scope_department_name"`
+	IncludeDescendants  bool                       `json:"include_descendants"`
+	ScopeDepartmentIds  []int                      `json:"scope_department_ids"`
 }
 
 type DepartmentBudgetDetailResponse struct {

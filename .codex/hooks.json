@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "env PROJECT_ROOT=/Users/hq-it/.codex/worktrees/6b94/new-api /Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/scripts/story-automator stop-hook",
+            "command": "env PROJECT_ROOT=/Users/hq-it/.codex/worktrees/ab4c/new-api /Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/scripts/story-automator stop-hook",
             "timeout": 10,
             "statusMessage": "Checking story automator state"
           }

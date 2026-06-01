@@ -153,6 +153,7 @@ export type DepartmentBudgetItem = {
   id: number
   tenant_id: number
   department_id: number
+  department_name: string
   type: DepartmentBudgetType
   status: DepartmentBudgetStatus | string
   total_quota: number
@@ -177,6 +178,10 @@ export type DepartmentBudgetResponse = {
 export type DepartmentBudgetListResponse = {
   items: DepartmentBudgetItem[]
   thresholds: DepartmentBudgetThresholds
+  scope_department_id?: number | null
+  scope_department_name: string
+  include_descendants: boolean
+  scope_department_ids: number[]
 }
 
 export type DepartmentBudgetWalletDetail = {

@@ -158,6 +158,33 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(invalid.budget_id, undefined)
   })
 
+  test('budget list card exposes descendant scope toggle and department labels', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+          <DepartmentBudgetListCard
+            items={[
+            departmentBudget({ id: 1, department_name: 'Engineering' }),
+            departmentBudget({ id: 2, department_name: 'Platform' }),
+            ]}
+          loading={false}
+          selectedBudgetId={1}
+          includeDescendants={true}
+          scopeDepartmentName='Engineering'
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onIncludeDescendantsChange={() => {}}
+          onSelectBudget={() => {}}
+          onSortByChange={() => {}}
+          onSortOrderChange={() => {}}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Include descendants/)
+    assert.match(html, /Engineering and all descendant departments/)
+    assert.match(html, /Platform/)
+  })
+
   test('normalizes stale search state for empty trees and invalid department ids', () => {
     assert.deepEqual(
       normalizeEnterpriseOrganizationSearch({
@@ -1095,6 +1122,7 @@ function departmentBudget(
     id: overrides.id ?? 1,
     tenant_id: overrides.tenant_id ?? 0,
     department_id: overrides.department_id ?? 2,
+    department_name: overrides.department_name ?? 'Engineering',
     type: overrides.type ?? 'subscription',
     status: overrides.status ?? 'active',
     total_quota: overrides.total_quota ?? 0,

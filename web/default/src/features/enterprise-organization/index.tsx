@@ -73,6 +73,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -1790,6 +1791,7 @@ function DepartmentBudgetPanel({
   const cycleType = form.watch('cycle_type')
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [includeDescendants, setIncludeDescendants] = useState(false)
   const normalizedTenantId = tenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
   const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
@@ -1813,12 +1815,14 @@ function DepartmentBudgetPanel({
     queryKey: departmentBudgetListQueryKey(
       departmentId,
       normalizedTenantId,
+      includeDescendants,
       sortBy,
       sortOrder
     ),
     queryFn: async () => {
       const result = await getDepartmentBudgets(departmentId, {
         tenant_id: tenantId || undefined,
+        include_descendants: includeDescendants,
         sort_by: sortBy,
         sort_order: sortOrder,
       })
@@ -1828,6 +1832,9 @@ function DepartmentBudgetPanel({
         result.data ?? {
           items: [],
           thresholds: { warning: 80, critical: 95 },
+          scope_department_name: departmentName,
+          include_descendants: includeDescendants,
+          scope_department_ids: [departmentId],
         }
       )
     },
@@ -2286,8 +2293,13 @@ function DepartmentBudgetPanel({
         items={budgetListQuery.data?.items ?? []}
         loading={budgetListQuery.isLoading}
         selectedBudgetId={effectiveBudgetId}
+        includeDescendants={includeDescendants}
+        scopeDepartmentName={
+          budgetListQuery.data?.scope_department_name ?? departmentName
+        }
         sortBy={sortBy}
         sortOrder={sortOrder}
+        onIncludeDescendantsChange={setIncludeDescendants}
         onSelectBudget={onSelectedBudgetIdChange}
         onSortByChange={setSortBy}
         onSortOrderChange={setSortOrder}
@@ -2525,8 +2537,11 @@ export function DepartmentBudgetListCard({
   items,
   loading,
   selectedBudgetId,
+  includeDescendants = false,
+  scopeDepartmentName = '',
   sortBy,
   sortOrder,
+  onIncludeDescendantsChange = () => {},
   onSelectBudget,
   onSortByChange,
   onSortOrderChange,
@@ -2534,8 +2549,11 @@ export function DepartmentBudgetListCard({
   items: DepartmentBudgetItem[]
   loading: boolean
   selectedBudgetId: number | null
+  includeDescendants?: boolean
+  scopeDepartmentName?: string
   sortBy: DepartmentBudgetSortField
   sortOrder: 'asc' | 'desc'
+  onIncludeDescendantsChange?: (value: boolean) => void
   onSelectBudget: (budgetId: number | null) => void
   onSortByChange: (field: DepartmentBudgetSortField) => void
   onSortOrderChange: (order: 'asc' | 'desc') => void
@@ -2551,6 +2569,24 @@ export function DepartmentBudgetListCard({
             'Sort budget pools by usage, remaining quota, type, or status and open one detail view at a time.'
           )}
         </CardDescription>
+        <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
+          <div className='space-y-1'>
+            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-muted-foreground text-xs'>
+              {includeDescendants
+                ? t('Current scope: {{department}} and all descendant departments', {
+                    department: scopeDepartmentName || t('Current department'),
+                  })
+                : t('Current scope: {{department}} only', {
+                    department: scopeDepartmentName || t('Current department'),
+                  })}
+            </div>
+          </div>
+          <Switch
+            checked={includeDescendants}
+            onCheckedChange={onIncludeDescendantsChange}
+          />
+        </div>
       </CardHeader>
       <CardContent className='space-y-4'>
         <div className='grid gap-3 md:grid-cols-2'>
@@ -2635,6 +2671,9 @@ export function DepartmentBudgetListCard({
                       <div className='flex min-w-[160px] flex-col gap-1'>
                         <span className='font-medium'>
                           {formatBudgetType(item.type, t)}
+                        </span>
+                        <span className='text-muted-foreground text-xs'>
+                          {item.department_name || t('Current department')}
                         </span>
                         <span className='text-muted-foreground text-xs'>
                           #{item.id}

@@ -97,6 +97,10 @@ export type DepartmentRiskSummaryResponse = {
   unassigned: DepartmentRiskSummaryItem
   formula: DepartmentRiskFormula
   disclaimer_key: string
+  scope_department_id?: number | null
+  scope_department_name: string
+  include_descendants: boolean
+  scope_department_ids: number[]
 }
 
 export type AlertDeliveryStatus =
@@ -225,6 +229,7 @@ export type EnterpriseAlertsSearch = {
   tenant_id?: number
   event_id?: number
   department_id?: number
+  include_descendants?: boolean
   unassigned_only?: boolean
   user_id?: number
   username?: string

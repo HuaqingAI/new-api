@@ -3746,7 +3746,7 @@
     "Scheduled Usage Reports": "Rapports d'utilisation planifiés",
     "scheduling controls": "contrôles d'ordonnancement",
     "Science": "Science",
-    "Scope": "Portée",
+    "Scope": "Périmètre",
     "Scopes": "Portées",
     "Search": "Rechercher",
     "Search by name or URL...": "Rechercher par nom ou URL...",
@@ -4873,6 +4873,12 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Include descendants": "Inclure les départements descendants",
+    "Current scope: {{department}} and all descendant departments": "Périmètre actuel : {{department}} et tous ses départements descendants",
+    "Current scope: {{department}} only": "Périmètre actuel : {{department}} uniquement",
+    "Current department": "Département actuel",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Le classement détaillé et les journaux récents restent limités au département actuel et n'étendent pas automatiquement tout l'arbre descendant.",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Les listes détaillées d'événements de risque restent sur des filtres d'événements directs et n'étendent pas automatiquement tout l'arbre descendant."
   }
 }

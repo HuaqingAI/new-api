@@ -94,11 +94,13 @@ export function departmentBudgetListQueryScopeKey(
 export function departmentBudgetListQueryKey(
   departmentId: number,
   tenantId: number,
+  includeDescendants: boolean,
   sortBy?: DepartmentBudgetSortField,
   sortOrder?: 'asc' | 'desc'
 ) {
   return [
     ...departmentBudgetListQueryScopeKey(departmentId, tenantId),
+    includeDescendants,
     sortBy,
     sortOrder,
   ] as const
@@ -262,6 +264,7 @@ export async function getDepartmentBudgets(
   departmentId: number,
   params?: {
     tenant_id?: number
+    include_descendants?: boolean
     sort_by?: DepartmentBudgetSortField
     sort_order?: 'asc' | 'desc'
   }

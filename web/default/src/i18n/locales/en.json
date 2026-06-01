@@ -4873,6 +4873,12 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Include descendants": "Include descendants",
+    "Current scope: {{department}} and all descendant departments": "Current scope: {{department}} and all descendant departments",
+    "Current scope: {{department}} only": "Current scope: {{department}} only",
+    "Current department": "Current department",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree."
   }
 }

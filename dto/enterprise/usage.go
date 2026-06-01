@@ -1,19 +1,23 @@
 package enterprise
 
 type DepartmentUsageSummaryQuery struct {
-	TenantId     *int    `form:"tenant_id"`
-	From         int64   `form:"from"`
-	To           int64   `form:"to"`
-	SummarySort  *string `form:"summary_sort,omitempty"`
-	SummaryOrder *string `form:"summary_order,omitempty"`
+	TenantId           *int    `form:"tenant_id"`
+	DepartmentId       *int    `form:"department_id,omitempty"`
+	From               int64   `form:"from"`
+	To                 int64   `form:"to"`
+	SummarySort        *string `form:"summary_sort,omitempty"`
+	SummaryOrder       *string `form:"summary_order,omitempty"`
+	IncludeDescendants *bool   `form:"include_descendants,omitempty"`
 }
 
 type DepartmentUsageExportQuery struct {
-	TenantId     *int    `form:"tenant_id"`
-	From         int64   `form:"from"`
-	To           int64   `form:"to"`
-	SummarySort  *string `form:"summary_sort,omitempty"`
-	SummaryOrder *string `form:"summary_order,omitempty"`
+	TenantId           *int    `form:"tenant_id"`
+	DepartmentId       *int    `form:"department_id,omitempty"`
+	From               int64   `form:"from"`
+	To                 int64   `form:"to"`
+	SummarySort        *string `form:"summary_sort,omitempty"`
+	SummaryOrder       *string `form:"summary_order,omitempty"`
+	IncludeDescendants *bool   `form:"include_descendants,omitempty"`
 }
 
 type DepartmentUsageDetailQuery struct {
@@ -122,8 +126,21 @@ type DepartmentUsageSummaryItem struct {
 	ModelDistribution []UsageModelDistributionItem `json:"model_distribution"`
 }
 
+type DepartmentUsageSummaryScope struct {
+	DepartmentId       *int   `json:"department_id,omitempty"`
+	DepartmentName     string `json:"department_name"`
+	IncludeDescendants bool   `json:"include_descendants"`
+	DepartmentIds      []int  `json:"department_ids"`
+	RequestCount       int64  `json:"request_count"`
+	PromptTokens       int64  `json:"prompt_tokens"`
+	CompletionTokens   int64  `json:"completion_tokens"`
+	Quota              int64  `json:"quota"`
+	UserCount          int64  `json:"user_count"`
+}
+
 type DepartmentUsageSummaryResponse struct {
-	Items []DepartmentUsageSummaryItem `json:"items"`
+	Items []DepartmentUsageSummaryItem  `json:"items"`
+	Scope DepartmentUsageSummaryScope   `json:"scope"`
 }
 
 type DepartmentUsageUserRankItem struct {

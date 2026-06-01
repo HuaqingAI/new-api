@@ -4873,6 +4873,12 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Include descendants": "Bao gồm phòng ban con",
+    "Current scope: {{department}} and all descendant departments": "Phạm vi hiện tại: {{department}} và tất cả phòng ban con",
+    "Current scope: {{department}} only": "Phạm vi hiện tại: chỉ {{department}}",
+    "Current department": "Phòng ban hiện tại",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Bảng xếp hạng chi tiết và nhật ký gần đây vẫn giữ trong phòng ban hiện tại và không tự động mở rộng toàn bộ cây phòng ban con.",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Danh sách chi tiết sự kiện rủi ro vẫn giữ ở bộ lọc sự kiện trực tiếp và không tự động mở rộng toàn bộ cây phòng ban con."
   }
 }

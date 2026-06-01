@@ -592,6 +592,91 @@ func TestUsageSummaryCountsDistinctUsersAcrossWindows(t *testing.T) {
 	require.Equal(t, int64(3), rows.Items[0].RequestCount)
 }
 
+func TestUsageSummarySupportsScopedDescendantAggregation(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	rootID := 1
+	childID := 2
+	require.NoError(t, db.Create(&[]entmodel.Department{
+		{
+			Id:          rootID,
+			TenantId:    0,
+			Name:        "Engineering",
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+		{
+			Id:          childID,
+			TenantId:    0,
+			Name:        "Platform",
+			ParentId:    &rootID,
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+	}).Error)
+
+	rootSnapshot := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &rootID,
+		DeptName:         "Engineering",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     1,
+		PromptTokens:     10,
+		CompletionTokens: 5,
+		Quota:            20,
+	}
+	require.NoError(t, rootSnapshot.SetModelDistribution(nil))
+	require.NoError(t, rootSnapshot.SetUserIds([]int{101}))
+	childSnapshot := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &childID,
+		DeptName:         "Platform",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     2,
+		PromptTokens:     20,
+		CompletionTokens: 10,
+		Quota:            40,
+	}
+	require.NoError(t, childSnapshot.SetModelDistribution(nil))
+	require.NoError(t, childSnapshot.SetUserIds([]int{101, 102}))
+	unassignedSnapshot := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           nil,
+		DeptName:         "",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     7,
+		PromptTokens:     70,
+		CompletionTokens: 30,
+		Quota:            90,
+	}
+	require.NoError(t, unassignedSnapshot.SetModelDistribution(nil))
+	require.NoError(t, unassignedSnapshot.SetUserIds([]int{999}))
+	require.NoError(t, db.Create(&rootSnapshot).Error)
+	require.NoError(t, db.Create(&childSnapshot).Error)
+	require.NoError(t, db.Create(&unassignedSnapshot).Error)
+
+	result, err := NewUsageAggregationService(db).GetDepartmentSummary(UsageSummaryQuery{
+		TenantId:           0,
+		DeptId:             &rootID,
+		From:               1700000000,
+		To:                 1700003600,
+		Sort:               DefaultUsageSummarySort(),
+		IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Items, 2)
+	require.Equal(t, "Engineering", result.Scope.DepartmentName)
+	require.Equal(t, []int{1, 2}, result.Scope.DepartmentIds)
+	require.Equal(t, int64(3), result.Scope.RequestCount)
+	require.Equal(t, int64(2), result.Scope.UserCount)
+}
+
 func TestUsageDetailBuildsRankingTrendAndAllowsMultiDepartmentDuplication(t *testing.T) {
 	db := newUsageAggregationTestDB(t)
 	seedUsageTestUser(t, db, 101, "alice")

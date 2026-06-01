@@ -4873,6 +4873,12 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Include descendants": "包含子部门",
+    "Current scope: {{department}} and all descendant departments": "当前作用域：{{department}} 及其所有子部门",
+    "Current scope: {{department}} only": "当前作用域：仅 {{department}}",
+    "Current department": "当前部门",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "明细排行和最近日志仍保持在当前部门范围内，不会自动展开整棵子树。",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "风险事件明细列表仍保持直接事件筛选，不会自动展开整棵子树。"
   }
 }

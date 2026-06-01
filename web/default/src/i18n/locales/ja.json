@@ -3746,7 +3746,7 @@
     "Scheduled Usage Reports": "定期利用レポート",
     "scheduling controls": "スケジューリング制御",
     "Science": "科学",
-    "Scope": "スコープ",
+    "Scope": "範囲",
     "Scopes": "スコープ",
     "Search": "検索",
     "Search by name or URL...": "名前またはURLで検索...",
@@ -4873,6 +4873,12 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Include descendants": "子部門を含む",
+    "Current scope: {{department}} and all descendant departments": "現在の範囲: {{department}} とそのすべての子部門",
+    "Current scope: {{department}} only": "現在の範囲: {{department}} のみ",
+    "Current department": "現在の部門",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "詳細ランキングと最近のログは現在の部門のままで、子孫ツリー全体には自動展開されません。",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "リスクイベント詳細リストは直接のイベントフィルタのままで、子孫ツリー全体には自動展開されません。"
   }
 }

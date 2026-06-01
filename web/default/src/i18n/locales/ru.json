@@ -4873,6 +4873,12 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Include descendants": "Включать дочерние отделы",
+    "Current scope: {{department}} and all descendant departments": "Текущая область: {{department}} и все дочерние отделы",
+    "Current scope: {{department}} only": "Текущая область: только {{department}}",
+    "Current department": "Текущий отдел",
+    "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Детальный рейтинг и последние журналы остаются в рамках текущего отдела и не раскрывают автоматически всё дочернее дерево.",
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Списки деталей рисковых событий остаются на прямых фильтрах событий и не раскрывают автоматически всё дочернее дерево."
   }
 }

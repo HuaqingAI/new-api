@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-01 16:56:08 +0800
+# last_updated: 2026-06-01 17:17:51 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-01 16:56:08 +0800
+last_updated: 2026-06-01 17:17:51 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -92,7 +92,7 @@ development_status:
 
   epic-7: in-progress
   7-1-establish-department-owner-role-model-and-precedence: done
-  7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: backlog
+  7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: ready-for-dev
   7-3-delegate-ancestor-budget-pools-to-descendant-department-pools: backlog
   7-4-govern-member-allocations-with-adjust-cancel-and-reclaim: backlog
   7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: backlog

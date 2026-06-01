@@ -18,16 +18,9 @@ class SprintStatus:
 
 def sprint_status_get(project_root: str, story_key: str) -> SprintStatus:
     status_file = sprint_status_file(project_root)
-    return sprint_status_get_from_file(status_file, story_key)
-
-
-def sprint_status_get_from_file(status_file: str, story_key: str) -> SprintStatus:
     if not file_exists(status_file):
         return SprintStatus(False, story_key, "unknown", False, "sprint-status.yaml not found")
-    return sprint_status_get_from_text(read_text(status_file), story_key)
-
-
-def sprint_status_get_from_text(content: str, story_key: str) -> SprintStatus:
+    content = read_text(status_file)
     match = re.search(rf"(?m)^\s*{re.escape(story_key)}:\s*(\S+)", content)
     if match:
         status = match.group(1).strip()

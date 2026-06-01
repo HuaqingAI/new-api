@@ -7,13 +7,4 @@ WORKFLOW_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export PYTHONPATH="$WORKFLOW_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
-PYTHON_BIN="${BMAD_STORY_AUTOMATOR_PYTHON:-python3}"
-BUNDLED_PYTHON="/Users/hq-it/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
-
-if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
-  if [ -x "$BUNDLED_PYTHON" ]; then
-    PYTHON_BIN="$BUNDLED_PYTHON"
-  fi
-fi
-
-exec "$PYTHON_BIN" -m story_automator "$@"
+exec python3 -m story_automator "$@"

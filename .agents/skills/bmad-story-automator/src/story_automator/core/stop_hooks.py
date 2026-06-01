@@ -348,29 +348,29 @@ def _parse_toml(text: str, path: Path) -> dict[str, Any]:
 
 
 def _codex_project_is_trusted(config_path: Path, project_root: Path) -> bool:
-    config_paths = [config_path, Path.home() / ".codex" / "config.toml"]
-    seen: set[Path] = set()
-    for candidate in config_paths:
-        try:
-            resolved = candidate.expanduser().resolve()
-        except OSError:
-            resolved = candidate.expanduser()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        if _codex_project_is_trusted_in_config(resolved, project_root):
-            return True
-    return False
+    resolved_root = project_root.resolve()
+    return (
+        _config_trusts_project(config_path, resolved_root, ignore_errors=False)
+        or _config_trusts_project(_codex_global_config_path(), resolved_root, ignore_errors=True)
+    )
 
 
-def _codex_project_is_trusted_in_config(config_path: Path, project_root: Path) -> bool:
+def _codex_global_config_path() -> Path:
+    return Path.home() / ".codex" / "config.toml"
+
+
+def _config_trusts_project(config_path: Path, resolved_root: Path, *, ignore_errors: bool) -> bool:
     if not config_path.exists():
         return False
-    parsed = _parse_toml(config_path.read_text(encoding="utf-8"), config_path)
+    try:
+        parsed = _parse_toml(config_path.read_text(encoding="utf-8"), config_path)
+    except (HookConfigError, OSError):
+        if ignore_errors:
+            return False
+        raise
     projects = parsed.get("projects", {})
     if not isinstance(projects, dict):
         return False
-    resolved_root = project_root.resolve()
     for raw_key, raw_config in projects.items():
         if not isinstance(raw_key, str) or not isinstance(raw_config, dict):
             continue

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from ..core.frontmatter import extract_frontmatter, parse_simple_frontmatter
-from ..core.sprint import sprint_status_get_from_file
 from ..core.runtime_policy import PolicyError, load_policy_for_state, snapshot_effective_policy
 from ..core.agent_config import normalize_model as _model_or_none
 from ..core.utils import count_matches, ensure_dir, file_exists, get_project_root, now_utc, now_utc_z, read_text, write_json
@@ -192,10 +191,11 @@ def cmd_sprint_compare(args: list[str]) -> int:
     before = list(story_range)
     if isinstance(current_story, str) and current_story in story_range:
         before = story_range[: story_range.index(current_story)]
+    sprint_text = read_text(sprint)
     incomplete = []
     for story_id in before:
-        status = sprint_status_get_from_file(sprint, story_id)
-        if not status.done:
+        match = re.search(rf"(?m)^\s*{re.escape(story_id)}:\s*(\S+)", sprint_text)
+        if not match or match.group(1) != "done":
             incomplete.append(story_id)
     write_json({"ok": True, "incomplete": incomplete, "checked": before})
     return 0

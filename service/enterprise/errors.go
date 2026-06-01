@@ -13,6 +13,8 @@ var (
 	ErrEnterpriseUsernameInvalid                         = errors.New("enterprise username invalid")
 	ErrEnterpriseUsernameExists                          = errors.New("enterprise username already exists")
 	ErrDepartmentAdminRequired                           = errors.New("enterprise department admin permission required")
+	ErrDepartmentOwnerDeniedByLocalRule                  = errors.New("enterprise department owner denied by local override")
+	ErrDepartmentOwnerNotFound                           = errors.New("enterprise department owner not found")
 	ErrEnterpriseAdminRequired                           = errors.New("enterprise admin permission required")
 	ErrInvalidAdminActionInput                           = errors.New("invalid enterprise admin action input")
 	ErrAdminActionNotFound                               = errors.New("enterprise admin action not found")

@@ -3,3 +3,6 @@ hooks = true
 
 [projects."/Users/hq-it/repository/github/huaqingai/new-api"]
 trust_level = "trusted"
+
+[projects."/Users/hq-it/.codex/worktrees/6b94/new-api"]
+trust_level = "trusted"

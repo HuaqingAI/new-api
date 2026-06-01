@@ -54,6 +54,8 @@ enterprise.alert.rule_invalid_webhook: "Alert rule webhook URL is invalid"
 enterprise.alert.delivery_not_found: "Alert delivery does not exist"
 enterprise.alert.delivery_resend_not_allowed: "Only final failed alert deliveries can be resent manually"
 error.enterprise.permission.dept_admin_required: "Department administrator permission is required"
+error.enterprise.permission.department_owner_denied_by_local_rule: "Department owner permission is blocked by a local override"
+error.enterprise.permission.department_owner_not_found: "No effective department owner is available"
 error.enterprise.permission.admin_required: "Enterprise administrator permission is required"
 
 # Auth middleware messages

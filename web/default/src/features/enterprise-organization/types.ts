@@ -97,6 +97,42 @@ export type DepartmentMembersResponse = {
   total: number
 }
 
+export type DepartmentOwnerFactItem = {
+  id: number
+  tenant_id: number
+  user_id: number
+  department_id: number
+  role: number
+  source: string
+  effect: string
+  external_source: string
+  status: number
+  inherited_from_department_id: number
+  created_at: number
+  updated_at: number
+}
+
+export type EffectiveDepartmentOwnerItem = {
+  user_id: number
+  department_id: number
+  source: string
+  effect: string
+  inherited_from_department_id: number
+  role_fact_id: number
+}
+
+export type DepartmentOwnersResponse = {
+  facts: DepartmentOwnerFactItem[]
+  effective_owners: EffectiveDepartmentOwnerItem[]
+  owner_count: number
+  fallback: string
+}
+
+export type DepartmentOwnerMutationPayload = {
+  tenant_id?: number
+  user_id: number
+}
+
 export type DepartmentBudgetType = 'balance' | 'subscription'
 export type DepartmentBudgetStatus = 'active' | 'paused' | 'revoked' | 'expired'
 

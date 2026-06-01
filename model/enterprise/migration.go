@@ -3,6 +3,9 @@ package enterprise
 import "gorm.io/gorm"
 
 func Migrate(db *gorm.DB) error {
+	if err := ensureDepartmentRoleOwnerColumnsAndIndexes(db); err != nil {
+		return err
+	}
 	if err := ensureAlertEventDepartmentTokensColumn(db); err != nil {
 		return err
 	}
@@ -34,6 +37,35 @@ func Migrate(db *gorm.DB) error {
 
 func AutoMigrate(db *gorm.DB) error {
 	return Migrate(db)
+}
+
+func ensureDepartmentRoleOwnerColumnsAndIndexes(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&DepartmentRole{}) {
+		return nil
+	}
+	for _, column := range []string{"source", "effect", "external_source"} {
+		if db.Migrator().HasColumn(&DepartmentRole{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&DepartmentRole{}, column); err != nil {
+			return err
+		}
+	}
+	if err := db.Model(&DepartmentRole{}).
+		Where("source = '' OR source IS NULL").
+		Updates(map[string]any{
+			"source":          "manual_grant",
+			"effect":          "allow",
+			"external_source": "",
+		}).Error; err != nil {
+		return err
+	}
+	if db.Migrator().HasIndex(&DepartmentRole{}, "uq_ent_dept_roles_role") {
+		if err := db.Migrator().DropIndex(&DepartmentRole{}, "uq_ent_dept_roles_role"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureAlertEventDepartmentTokensColumn(db *gorm.DB) error {

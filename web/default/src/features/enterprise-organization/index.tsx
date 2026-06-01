@@ -27,6 +27,7 @@ import {
   CalendarClock,
   Coins,
   CreditCard,
+  ShieldCheck,
   RefreshCw,
   RotateCcw,
   Settings,
@@ -88,22 +89,28 @@ import {
   createQuotaAllocation,
   deactivateDepartmentMember,
   createDepartmentBudget,
+  denyDepartmentOwner,
   departmentBudgetDetailQueryScopeKey,
   departmentBudgetDetailQueryKey,
   departmentBudgetListQueryScopeKey,
   departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
   departmentMembersQueryKey,
+  departmentOwnersQueryKey,
+  getDepartmentOwners,
   getDepartmentBudget,
   getDepartmentBudgetDetail,
   getDepartmentBudgets,
   getDepartmentMembers,
   getQuotaAllocations,
   getUserDepartments,
+  grantDepartmentOwner,
   quotaAllocationQueryKey,
   quotaAllocationQueryScopeKey,
   renameDepartmentMember,
   restoreDepartmentMember,
+  revokeDepartmentOwnerDeny,
+  revokeDepartmentOwnerGrant,
   revokeQuotaAllocation,
   userDepartmentsQueryKey,
 } from './api'
@@ -126,6 +133,9 @@ import type {
   DepartmentBudgetSortField,
   DepartmentBudgetWalletDetail,
   DepartmentMemberItem,
+  DepartmentOwnersResponse,
+  EffectiveDepartmentOwnerItem,
+  DepartmentOwnerFactItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
   MembershipStatus,
@@ -671,6 +681,11 @@ export function EnterpriseOrganizationWorkspace(props: {
         onSelectedMemberChange={setSelectedMemberUserId}
         onMembersChange={setDepartmentMembers}
       />
+      <DepartmentOwnersPanel
+        departmentId={props.currentDepartment.id}
+        departmentName={props.currentDepartment.name}
+        members={departmentMembers}
+      />
       <DepartmentMemberContextCard
         currentDepartment={props.currentDepartment}
         selectedMember={selectedMember}
@@ -1030,6 +1045,346 @@ function DepartmentMembersPanel({
       </CardContent>
     </Card>
   )
+}
+
+function DepartmentOwnersPanel({
+  departmentId,
+  departmentName,
+  members,
+}: {
+  departmentId: number
+  departmentName: string
+  members: DepartmentMemberItem[]
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [ownerUserIdText, setOwnerUserIdText] = useState('')
+  const tenantId = 0
+
+  const ownersQuery = useQuery({
+    queryKey: departmentOwnersQueryKey(departmentId, tenantId),
+    queryFn: async () => {
+      const result = await getDepartmentOwners(departmentId, tenantId)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          facts: [],
+          effective_owners: [],
+          owner_count: 0,
+          fallback: 'admin',
+        }
+      )
+    },
+  })
+
+  const invalidateOwners = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: departmentOwnersQueryKey(departmentId, tenantId),
+    })
+  }
+
+  const grantMutation = useMutation({
+    mutationFn: (userId: number) =>
+      grantDepartmentOwner(departmentId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      setOwnerUserIdText('')
+      await invalidateOwners()
+      toast.success(t('Department owner granted'))
+    },
+  })
+  const denyMutation = useMutation({
+    mutationFn: (userId: number) =>
+      denyDepartmentOwner(departmentId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      setOwnerUserIdText('')
+      await invalidateOwners()
+      toast.success(t('Local deny override applied'))
+    },
+  })
+  const revokeGrantMutation = useMutation({
+    mutationFn: (userId: number) =>
+      revokeDepartmentOwnerGrant(departmentId, userId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await invalidateOwners()
+      toast.success(t('Manual grant revoked'))
+    },
+  })
+  const revokeDenyMutation = useMutation({
+    mutationFn: (userId: number) =>
+      revokeDepartmentOwnerDeny(departmentId, userId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await invalidateOwners()
+      toast.success(t('Local deny override revoked'))
+    },
+  })
+
+  const ownerUserId = parsePositiveInt(ownerUserIdText)
+  const data = ownersQuery.data
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div>
+            <CardTitle>{t('Department Owners')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Review effective owners and source facts for {{department}}.',
+                { department: departmentName }
+              )}
+            </CardDescription>
+          </div>
+          <OwnerResolutionBadge data={data} />
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='flex flex-col gap-2 sm:flex-row'>
+          <Input
+            inputMode='numeric'
+            value={ownerUserIdText}
+            onChange={(event) => setOwnerUserIdText(event.target.value)}
+            placeholder={t('User ID')}
+          />
+          <Button
+            variant='outline'
+            onClick={() => ownerUserId && grantMutation.mutate(ownerUserId)}
+            disabled={!ownerUserId || grantMutation.isPending}
+          >
+            <ShieldCheck data-icon='inline-start' />
+            {t('Manual Grant')}
+          </Button>
+          <Button
+            variant='outline'
+            onClick={() => ownerUserId && denyMutation.mutate(ownerUserId)}
+            disabled={!ownerUserId || denyMutation.isPending}
+          >
+            <ShieldX data-icon='inline-start' />
+            {t('Local Deny')}
+          </Button>
+        </div>
+        <DepartmentOwnersEffectiveList
+          owners={data?.effective_owners ?? []}
+          members={members}
+        />
+        <DepartmentOwnerFactsTable
+          facts={data?.facts ?? []}
+          members={members}
+          onRevokeGrant={(userId) => revokeGrantMutation.mutate(userId)}
+          onRevokeDeny={(userId) => revokeDenyMutation.mutate(userId)}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function OwnerResolutionBadge({
+  data,
+}: {
+  data: DepartmentOwnersResponse | undefined
+}) {
+  const { t } = useTranslation()
+  if (!data) {
+    return <Badge variant='outline'>{t('Loading')}</Badge>
+  }
+  if (data.owner_count === 0) {
+    return (
+      <StatusBadge
+        label={`${t('No effective owner')} · ${t('Admin fallback')}`}
+        variant='warning'
+        copyable={false}
+      />
+    )
+  }
+  return (
+    <StatusBadge
+      label={t('{{count}} effective owner(s)', { count: data.owner_count })}
+      variant='success'
+      copyable={false}
+    />
+  )
+}
+
+function DepartmentOwnersEffectiveList({
+  owners,
+  members,
+}: {
+  owners: EffectiveDepartmentOwnerItem[]
+  members: DepartmentMemberItem[]
+}) {
+  const { t } = useTranslation()
+
+  if (owners.length === 0) {
+    return (
+      <Empty className='min-h-[180px]'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <ShieldX />
+          </EmptyMedia>
+          <EmptyTitle>{t('No effective owner')}</EmptyTitle>
+          <EmptyDescription>
+            {t('Admin fallback will handle owner-required actions.')}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <div className='grid gap-2 md:grid-cols-2'>
+      {owners.map((owner) => (
+        <div
+          key={`${owner.user_id}-${owner.role_fact_id}`}
+          className='rounded-lg border p-3'
+        >
+          <div className='font-medium'>
+            {formatOwnerUser(owner.user_id, members, t)}
+          </div>
+          <div className='mt-2 flex flex-wrap gap-2'>
+            <Badge variant='secondary'>
+              {ownerSourceLabel(owner.source, t)}
+            </Badge>
+            <Badge variant='outline'>
+              {t('Inherited from department #{{id}}', {
+                id: owner.inherited_from_department_id,
+              })}
+            </Badge>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DepartmentOwnerFactsTable({
+  facts,
+  members,
+  onRevokeGrant,
+  onRevokeDeny,
+}: {
+  facts: DepartmentOwnerFactItem[]
+  members: DepartmentMemberItem[]
+  onRevokeGrant: (userId: number) => void
+  onRevokeDeny: (userId: number) => void
+}) {
+  const { t } = useTranslation()
+
+  if (facts.length === 0) {
+    return (
+      <div className='text-muted-foreground rounded-lg border p-3 text-sm'>
+        {t('No owner source facts recorded')}
+      </div>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('User')}</TableHead>
+          <TableHead>{t('Source Fact')}</TableHead>
+          <TableHead>{t('Effect')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead className='text-right'>{t('Actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {facts.map((fact) => (
+          <TableRow key={fact.id}>
+            <TableCell>{formatOwnerUser(fact.user_id, members, t)}</TableCell>
+            <TableCell>{ownerSourceLabel(fact.source, t)}</TableCell>
+            <TableCell>{ownerEffectLabel(fact.effect, t)}</TableCell>
+            <TableCell>
+              <StatusBadge
+                label={
+                  fact.status === 1
+                    ? t('Active')
+                    : t('Fact inactive or revoked')
+                }
+                variant={fact.status === 1 ? 'success' : 'neutral'}
+                copyable={false}
+              />
+            </TableCell>
+            <TableCell className='text-right'>
+              {fact.source === 'manual_grant' && fact.status === 1 ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => onRevokeGrant(fact.user_id)}
+                >
+                  {t('Revoke Grant')}
+                </Button>
+              ) : null}
+              {fact.source === 'manual_deny_override' && fact.status === 1 ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => onRevokeDeny(fact.user_id)}
+                >
+                  {t('Revoke Local Deny')}
+                </Button>
+              ) : null}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function formatOwnerUser(
+  userId: number,
+  members: DepartmentMemberItem[],
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  const member = members.find((item) => item.user_id === userId)
+  if (!member) return t('User #{{id}}', { id: userId })
+  return formatEnterpriseUserPrimary({
+    displayName: member.display_name,
+    username: member.username,
+    userId,
+  })
+}
+
+function ownerSourceLabel(source: string, t: (key: string) => string) {
+  if (source === 'manual_deny_override') return t('Local deny override')
+  if (source === 'manual_grant') return t('Manual grant')
+  if (source === 'dingtalk_synced_owner') return t('DingTalk synced owner')
+  return source
+}
+
+function ownerEffectLabel(effect: string, t: (key: string) => string) {
+  if (effect === 'deny') return t('Deny')
+  if (effect === 'allow') return t('Allow')
+  return effect
 }
 
 function DepartmentMembersTable({

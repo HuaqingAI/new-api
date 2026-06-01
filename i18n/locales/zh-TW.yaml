@@ -32,6 +32,8 @@ enterprise.organization.duplicate_department: "部門 ID 重複"
 enterprise.organization.admin_action_not_found: "企業管理操作記錄不存在"
 enterprise.organization.department_role_not_found: "部門管理員角色不存在"
 error.enterprise.permission.dept_admin_required: "需要部門管理員權限"
+error.enterprise.permission.department_owner_denied_by_local_rule: "部門負責人權限已被本地覆蓋規則阻斷"
+error.enterprise.permission.department_owner_not_found: "無有效負責人"
 error.enterprise.permission.admin_required: "需要企業管理員權限"
 
 # Auth middleware messages

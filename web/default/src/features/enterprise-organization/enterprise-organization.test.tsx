@@ -39,6 +39,7 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
+import { departmentOwnersQueryKey } from './api'
 import type {
   ApiResponse,
   DepartmentBudgetDetailResponse,
@@ -411,6 +412,9 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Department Members',
+      'Department Owners',
+      'No effective owner',
+      'Admin fallback',
       'Department Budget',
       'Current Member Governance',
       'Current Member Wallet Allocation',
@@ -419,6 +423,16 @@ describe('Enterprise organization department tree workflow', () => {
     }
 
     assert.doesNotMatch(html, /Membership Lookup/)
+  })
+
+  test('department owner query key stays scoped to enterprise organization namespace', () => {
+    assert.deepEqual(departmentOwnersQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'department-owners',
+      7,
+      0,
+    ])
   })
 
   test('renders department budget empty state and latest budget details', () => {

@@ -346,6 +346,8 @@ const (
 	MsgEnterpriseUsernameInvalid                       = "enterprise.organization.username_invalid"
 	MsgEnterpriseUsernameExists                        = "enterprise.organization.username_exists"
 	MsgEnterprisePermissionDeptAdminRequired           = "error.enterprise.permission.dept_admin_required"
+	MsgEnterpriseDepartmentOwnerDeniedByLocalRule      = "error.enterprise.permission.department_owner_denied_by_local_rule"
+	MsgEnterpriseDepartmentOwnerNotFound               = "error.enterprise.permission.department_owner_not_found"
 	MsgEnterprisePermissionAdminRequired               = "error.enterprise.permission.admin_required"
 	MsgEnterpriseAdminActionNotFound                   = "enterprise.organization.admin_action_not_found"
 	MsgEnterpriseDepartmentRoleNotFound                = "enterprise.organization.department_role_not_found"

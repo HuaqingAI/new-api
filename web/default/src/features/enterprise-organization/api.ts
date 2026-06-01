@@ -28,6 +28,8 @@ import type {
   DepartmentBudgetResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
+  DepartmentOwnerMutationPayload,
+  DepartmentOwnersResponse,
   DepartmentTreeNode,
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
@@ -133,6 +135,15 @@ export function departmentMembersQueryKey(departmentId: number) {
   ] as const
 }
 
+export function departmentOwnersQueryKey(departmentId: number, tenantId = 0) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-owners',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
 export function userDepartmentsQueryKey(userId: number | null) {
   return [
     ...enterpriseOrganizationQueryKey,
@@ -171,6 +182,65 @@ export async function getDepartmentMembers(
 ): Promise<ApiResponse<DepartmentMembersResponse>> {
   const res = await api.get(
     `/api/enterprise/departments/${departmentId}/members`
+  )
+  return res.data
+}
+
+export async function getDepartmentOwners(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<DepartmentOwnersResponse>> {
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/owners`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
+  return res.data
+}
+
+export async function grantDepartmentOwner(
+  departmentId: number,
+  payload: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/owners/grants`,
+    payload
+  )
+  return res.data
+}
+
+export async function denyDepartmentOwner(
+  departmentId: number,
+  payload: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/owners/denies`,
+    payload
+  )
+  return res.data
+}
+
+export async function revokeDepartmentOwnerGrant(
+  departmentId: number,
+  userId: number,
+  payload?: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/enterprise/departments/${departmentId}/owners/grants/${userId}`,
+    { data: payload }
+  )
+  return res.data
+}
+
+export async function revokeDepartmentOwnerDeny(
+  departmentId: number,
+  userId: number,
+  payload?: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/enterprise/departments/${departmentId}/owners/denies/${userId}`,
+    { data: payload }
   )
   return res.data
 }

@@ -46,6 +46,17 @@ const (
 )
 
 const (
+	EnterpriseDepartmentRoleSourceManualGrant        = "manual_grant"
+	EnterpriseDepartmentRoleSourceManualDenyOverride = "manual_deny_override"
+	EnterpriseDepartmentRoleSourceDingTalkOwner      = "dingtalk_synced_owner"
+)
+
+const (
+	EnterpriseDepartmentRoleEffectAllow = "allow"
+	EnterpriseDepartmentRoleEffectDeny  = "deny"
+)
+
+const (
 	DingTalkSyncTaskModeFull = "full"
 
 	DingTalkSyncTaskStatusPending   = "pending"
@@ -56,6 +67,7 @@ const (
 	DingTalkSyncObjectDepartment = "department"
 	DingTalkSyncObjectUser       = "user"
 	DingTalkSyncObjectMembership = "membership"
+	DingTalkSyncObjectOwner      = "owner"
 	DingTalkSyncObjectConflict   = "conflict"
 
 	DingTalkSyncLogActionCreated         = "created"

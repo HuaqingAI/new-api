@@ -46,6 +46,8 @@ enterprise.organization.enterprise_budget_insufficient: "部门预算不足"
 enterprise.organization.balance_remaining_insufficient: "分配额度超过一次性预算池剩余额度"
 enterprise.organization.subscription_cycle_allocated_exceeded: "分配额度超过周期预算池本周期可承诺额度"
 error.enterprise.permission.dept_admin_required: "需要部门管理员权限"
+error.enterprise.permission.department_owner_denied_by_local_rule: "部门负责人权限已被本地覆盖规则阻断"
+error.enterprise.permission.department_owner_not_found: "无有效负责人"
 error.enterprise.permission.admin_required: "需要企业管理员权限"
 
 # Auth middleware messages

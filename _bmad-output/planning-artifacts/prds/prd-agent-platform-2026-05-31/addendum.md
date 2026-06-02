@@ -2,7 +2,9 @@
 title: "Agent Platform PRD Addendum"
 status: draft
 created: 2026-05-31
-updated: 2026-05-31
+updated: 2026-06-02
+revision_notes:
+  - "V1.4 (2026-06-02): Correct Course 重处理后，AP-6 从早期“标准层定位说明”收敛为 AP-1 到 AP-5 完成后的 follow-up epic：下游公共契约冻结与接入签核。AP-6 成为 Cherry Studio / Codex 正式接入前的 MVP exit gate。"
 ---
 
 # Addendum: 通用 Agent 能力平台技术与规划上下文
@@ -66,18 +68,35 @@ updated: 2026-05-31
 
 ## 5. AP-6 的具体定位
 
-AP-6 不是“做 Cherry Studio 适配器”，而是：
+### 5.1 2026-05-31 原始定位
 
-- 在现有 OpenAPI / open 能力体系上扩出统一标准层
-- 定义消费者侧通用契约：
-  - discovery
-  - get detail
-  - invoke / execute
-  - refresh
-  - revoke / offline handling
-  - error/status mapping
-- 用 Cherry Studio 先验证这套标准
-- 为 Codex / cc switch / 其它 agent 工具保留同一接入面
+AP-6 最初用于强调：它不是“做 Cherry Studio 适配器”，而是在既有 OpenAPI / open 能力体系上扩出统一标准层，定义 discovery、detail、invoke / execute、refresh、revoke / offline handling、error/status mapping 等消费者侧通用契约，并用 Cherry Studio 先验证这套标准。
+
+### 5.2 2026-06-02 Correct Course 重处理后的定位
+
+AP-1 到 AP-5 已经完成资源治理、客户端接入、开放能力、Skill、Knowledge 与 Agent 的 MVP 基线。因此 AP-6 的当前定位不再是“是否要建设标准层”，而是：
+
+- 将 AP-1 到 AP-5 已实现能力冻结成下游可签核公共契约。
+- 补齐 enterprise model discovery / default model / model status 公共契约。
+- 冻结 OAuth / token / revoke / callback / allowlist wire contract。
+- 冻结 discovery / detail / refresh 公共字段集。
+- 冻结 Skill invoke 与 Knowledge query request / response。
+- 冻结统一错误码矩阵与客户端状态矩阵。
+- 提供 mock / fixture / contract conformance 套件。
+- 明确 Cherry Studio first consumer 与 Codex second consumer 的签核路径。
+
+### 5.3 AP-6 MVP Exit Gate
+
+Cherry Studio 或 Codex 进入正式接入签核前，至少需要满足：
+
+1. AP-6 公共契约文档完成，并标注 MUST / SHOULD / MAY 字段。
+2. Enterprise model discovery 契约完成，不能用现有 `/api/models`、`/api/user/models` 或 `/v1/models` 模糊替代。
+3. OAuth / token / revoke / callback / allowlist 行为完成签核。
+4. Discovery / detail / refresh、Skill invoke、Knowledge query 示例 payload 完成。
+5. 错误码矩阵和客户端状态矩阵完成。
+6. Mock / fixture / conformance tests 可供下游验证。
+7. Cherry Studio 专属字段只通过 namespaced extensions 承载。
+8. Codex 作为第二消费者评审时，不需要平行资源模型或核心协议主干。
 
 ## 6. 暂不进入 MVP 的内容
 

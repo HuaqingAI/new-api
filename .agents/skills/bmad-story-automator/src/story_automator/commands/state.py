@@ -53,6 +53,7 @@ def cmd_build_state_doc(args: list[str]) -> int:
     replacements: dict[str, Any] = {
         "epic": config.get("epic", ""),
         "epicName": config.get("epicName", ""),
+        "epicSource": config.get("epicSource", ""),
         "storyRange": config.get("storyRange", []),
         "status": config.get("status", "READY"),
         "currentStory": config.get("currentStory"),

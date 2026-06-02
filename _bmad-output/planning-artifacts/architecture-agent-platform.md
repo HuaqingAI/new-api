@@ -1506,6 +1506,112 @@ Consistency rules are explicit for:
 
 Scaffold the core AP bounded context first: resource registry, client, delegated-auth token flow, bearer validation middleware, and discovery/detail. Do not start with UI-only work or provider-specific retrieval-provider wiring before the core control-plane and token model exists.
 
+## V1.4 Architecture Amendment: AP-6 Public Contract Freeze
+
+### Amendment Context
+
+2026-06-02 Correct Course 重处理后，AP-1 到 AP-5 已完成 MVP 基线。AP-6 的架构目标不是重建 control plane / auth plane / open capability plane，而是冻结下游公共契约，并补齐当前签核缺口：enterprise model discovery、错误/状态矩阵、mock fixture、conformance tests 与 onboarding 最小闭环。
+
+### AP-6 Architectural Decisions
+
+**AP6-AD-1: AP-6 is a contract/signoff layer, not a new runtime plane.**
+
+AP-6 不新增第四个 runtime plane。它复用既有：
+
+- control plane: `/api/agent-platform/**`
+- auth plane: `/api/agent-platform/oauth/**`
+- open capability plane: `/api/open-capabilities/**`
+
+任何新增 API 必须归属到上述平面之一，并说明鉴权方式。
+
+**AP6-AD-2: Enterprise model discovery must be a downstream public projection.**
+
+Enterprise model discovery 不能直接等同于现有 `/api/models`、`/api/user/models` 或 `/v1/models`。
+
+AP-6 必须定义一个面向下游消费者的模型投影契约，至少冻结：
+
+- `modelId`
+- `providerStableId`
+- `displayName`
+- `isDefault`
+- `status`
+- `disabledReason`
+- `capabilities`
+- `accountId` / `tenantId` 来源语义
+
+该契约可以复用现有模型元数据、用户可用模型和 channel 状态作为数据来源，但对外必须是 Agent Platform 下游公共契约，而不是 dashboard 管理接口或 relay 兼容接口的直接暴露。
+
+**AP6-AD-3: Public contract source of truth is docs + OpenAPI + fixtures.**
+
+AP-6 签核不得只依赖 markdown 说明。公共契约的 source of truth 为三件套：
+
+1. `docs/agent-platform-downstream-contract-spec.md`
+2. `docs/openapi/api.json`
+3. mock / fixture / conformance test artifacts
+
+三者不一致时，AP-6 story 不得标记为 done。
+
+**AP6-AD-4: Error and client-state matrices are contract artifacts.**
+
+当前 open capability error envelope 继续保留，但 AP-6 必须冻结平台错误码到客户端状态的映射矩阵。
+
+至少覆盖平台错误：
+
+- `permissionDenied`
+- `resourceRevoked`
+- `resourceOffline`
+- `quotaOrRateLimited`
+- `timeout`
+- `upstreamFailed`
+- `contractInvalid`
+
+至少覆盖客户端状态：
+
+- `loginExpired`
+- `empty`
+- `loadFailed`
+- `networkFailed`
+- `noAssignedResource`
+- `visibleButNotCallable`
+- `stale`
+- `revoked`
+- `offline`
+
+**AP6-AD-5: Mock / fixture artifacts must not contain secrets or tenant data.**
+
+Fixture 可以包含代表性 payload，但不得包含真实 token、provider secret、tenant secret、真实用户信息或真实企业数据。所有 fixture 必须使用 synthetic IDs。
+
+**AP6-AD-6: Cherry Studio and Codex validate contract reuse.**
+
+Cherry Studio 作为 first consumer，可以通过 `extensions.cherry_studio` 承载私有展示提示，但不得修改核心字段语义。
+
+Codex 作为 second consumer，必须验证不需要新建平行协议主干。若 Codex 需要扩展，应通过：
+
+- `contract_version`
+- backward-compatible optional fields
+- `extensions.codex`
+
+完成治理。
+
+### AP-6 Implementation Handoff
+
+AP-6 实施顺序：
+
+1. 冻结 downstream contract spec。
+2. 更新 OpenAPI。
+3. 生成 mock / fixture。
+4. 增加 conformance tests。
+5. 根据规格缺口最小化补代码。
+6. 完成 Cherry Studio signoff。
+7. 完成 Codex second-consumer review。
+
+AP-6 不得修改：
+
+- `relay/**`
+- `/v1/**`
+- `docs/openapi/relay.json`
+- AP-1 到 AP-5 的完成状态
+
 ## Workflow Completion
 
 ### Workflow Status

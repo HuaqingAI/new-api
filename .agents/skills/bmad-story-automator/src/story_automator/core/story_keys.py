@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .frontmatter import parse_simple_frontmatter
+from .runtime_layout import active_marker_path
 from .utils import file_exists, read_text
 
 
@@ -24,7 +28,7 @@ def sprint_status_file(project_root: str) -> str:
     return str(preferred)
 
 
-def normalize_story_key(project_root: str, value: str) -> StoryKey | None:
+def normalize_story_key(project_root: str, value: str, state_file: str | Path | None = None) -> StoryKey | None:
     if re.fullmatch(r"\d+\.\d+", value):
         story_id = value
         prefix = value.replace(".", "-")
@@ -101,6 +105,7 @@ def _complete_story_key(project_root: str, story_id: str, prefix: str, key: str)
                     break
     if not key:
         key = prefix
+    prefix = _story_prefix_from_key(key, prefix)
     return StoryKey(id=story_id, prefix=prefix, key=key)
 
 

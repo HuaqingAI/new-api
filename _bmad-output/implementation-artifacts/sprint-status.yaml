@@ -98,11 +98,11 @@ development_status:
   7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
   7-6-audit-governance-actions-and-send-dingtalk-notifications: done
   epic-7-retrospective: done
-  epic-7a: in-progress
+  epic-7a: done
   7a-1-complete-enterprise-governance-i18n-and-action-label-mapping: done
   7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: done
   7a-3-relax-budget-pool-type-locking-to-per-budget-invariance: done
-  epic-7a-retrospective: optional
+  epic-7a-retrospective: done
 
   agent-platform-epic-1: backlog
   ap-1-1-establish-shared-resource-registry-and-stable-identity: backlog

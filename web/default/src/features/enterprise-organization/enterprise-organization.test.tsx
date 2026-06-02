@@ -314,6 +314,61 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(resolveBudgetSelection([], 99, 98), null)
   })
 
+  test('resolves and renders same-department mixed budget pools without type filtering', () => {
+    const mixedBudgets = [
+      departmentBudget({
+        id: 21,
+        type: 'balance',
+        department_id: 2,
+        department_name: 'Engineering',
+        total_quota: 1000,
+        remaining: 800,
+        cycle_quota: 0,
+        usage_ratio: 20,
+      }),
+      departmentBudget({
+        id: 22,
+        type: 'subscription',
+        department_id: 2,
+        department_name: 'Engineering',
+        cycle_quota: 500,
+        remaining: 300,
+        allocated_total: 200,
+        usage_ratio: 40,
+      }),
+    ]
+
+    assert.equal(
+      resolveBudgetSelection(
+        mixedBudgets.map((budget) => budget.id),
+        22,
+        21
+      ),
+      22
+    )
+
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          loading={false}
+          selectedBudgetId={22}
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onSelectBudget={() => undefined}
+          onSortByChange={() => undefined}
+          onSortOrderChange={() => undefined}
+          items={mixedBudgets}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, />#21</)
+    assert.match(html, />#22</)
+    assert.match(html, /Balance Budget/)
+    assert.match(html, /Subscription Budget/)
+    assert.match(html, /Engineering/)
+  })
+
   test('clears stale selected members when the current department member list changes', () => {
     const engineeringMembers = [
       departmentMember({

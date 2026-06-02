@@ -195,6 +195,54 @@ func TestCreateBudgetDelegationRejectsTypeMismatch(t *testing.T) {
 	require.ErrorIs(t, err, entservice.ErrBudgetDelegationBudgetTypeMismatch)
 }
 
+func TestCreateBudgetDelegationRejectsSelectedBudgetTypeMismatchDespiteOtherSameDepartmentPools(t *testing.T) {
+	svc, db := newBudgetDelegationTestService(t)
+	now := time.Now().Unix()
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:             15,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		Status:         entmodel.DepartmentBudgetStatusActive,
+		Remaining:      500,
+		AllocatedTotal: 0,
+		CycleQuota:     500,
+		CycleType:      "monthly",
+		CycleStartedAt: now,
+	}).Error)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 12).Updates(map[string]any{
+		"type":             entmodel.DepartmentBudgetTypeSubscription,
+		"remaining":        int64(200),
+		"allocated_total":  int64(0),
+		"cycle_quota":      int64(200),
+		"cycle_type":       "monthly",
+		"cycle_started_at": now,
+	}).Error)
+
+	_, err := svc.Create(entservice.CreateBudgetDelegationInput{
+		TenantId:           0,
+		SourceDepartmentId: 1,
+		SourceBudgetId:     11,
+		TargetDepartmentId: 3,
+		TargetBudgetId:     12,
+		ActorId:            1001,
+		CommittedQuota:     100,
+	})
+	require.ErrorIs(t, err, entservice.ErrBudgetDelegationBudgetTypeMismatch)
+
+	item, err := svc.Create(entservice.CreateBudgetDelegationInput{
+		TenantId:           0,
+		SourceDepartmentId: 1,
+		SourceBudgetId:     15,
+		TargetDepartmentId: 3,
+		TargetBudgetId:     12,
+		ActorId:            1001,
+		CommittedQuota:     100,
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, item.BudgetTypeSnapshot)
+}
+
 func TestCreateBudgetDelegationRejectsBudgetInsufficiency(t *testing.T) {
 	svc, _ := newBudgetDelegationTestService(t)
 

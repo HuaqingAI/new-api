@@ -246,6 +246,45 @@ func TestQuotaRequestIdempotencyScopedByTenantRequesterAndKey(t *testing.T) {
 	require.NotEqual(t, first.Id, secondUser.Id)
 }
 
+func TestQuotaRequestCapabilityReturnsMixedActiveBudgetPools(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	startedAt := int64(1700000000)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:             2,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		Status:         entmodel.DepartmentBudgetStatusActive,
+		Remaining:      300,
+		AllocatedTotal: 0,
+		CycleQuota:     300,
+		CycleType:      "monthly",
+		CycleStartedAt: startedAt,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           3,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusPaused,
+		TotalQuota:   100,
+		Remaining:    100,
+	}).Error)
+
+	capability, err := entservice.NewQuotaRequestService(db).GetCapability(0, 1, 2001)
+	require.NoError(t, err)
+	require.True(t, capability.CanSubmit)
+	require.Len(t, capability.Budgets, 2)
+
+	byID := map[int]string{}
+	for _, budget := range capability.Budgets {
+		byID[budget.Id] = budget.Type
+	}
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, byID[1])
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, byID[2])
+	require.NotContains(t, byID, 3)
+}
+
 func init() {
 	common.RedisEnabled = false
 }

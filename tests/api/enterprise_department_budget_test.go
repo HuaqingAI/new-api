@@ -151,7 +151,7 @@ func TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow(t *testing
 	require.Contains(t, string(getPayload.Data), `"department_id":101`)
 }
 
-func TestEnterpriseDepartmentBudgetAPIRejectsBudgetTypeSwitchForDepartment(t *testing.T) {
+func TestEnterpriseDepartmentBudgetAPIAllowsMixedTypeCreatesForDepartment(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
 		UserId:       1001,
@@ -177,18 +177,31 @@ func TestEnterpriseDepartmentBudgetAPIRejectsBudgetTypeSwitchForDepartment(t *te
 	})
 	firstPayload := decodeDepartmentMembersAPIResponse(t, firstCreate)
 	require.True(t, firstPayload.Success, firstPayload.Message)
+	require.Contains(t, string(firstPayload.Data), `"type":"balance"`)
 
 	cycleQuota := int64(200)
 	startedAt := int64(1700000000)
-	typeSwitch := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budget", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
+	secondCreate := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budget", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
 		Type:           modelenterprise.DepartmentBudgetTypeSubscription,
 		CycleQuota:     &cycleQuota,
 		CycleType:      "monthly",
 		CycleStartedAt: &startedAt,
 	})
-	switchPayload := decodeDepartmentMembersAPIResponse(t, typeSwitch)
-	require.False(t, switchPayload.Success)
-	require.Contains(t, switchPayload.Message, "enterprise.organization.department_budget_type_immutable")
+	secondPayload := decodeDepartmentMembersAPIResponse(t, secondCreate)
+	require.True(t, secondPayload.Success, secondPayload.Message)
+	require.Contains(t, string(secondPayload.Data), `"type":"subscription"`)
+
+	list := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/budgets?sort_by=type&sort_order=asc", cookies)
+	listPayload := decodeDepartmentMembersAPIResponse(t, list)
+	require.True(t, listPayload.Success, listPayload.Message)
+	require.Contains(t, string(listPayload.Data), `"type":"balance"`)
+	require.Contains(t, string(listPayload.Data), `"type":"subscription"`)
+
+	actions := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20&object_type=enterprise_department_budget", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	actionsPayload := decodeAdminActionsAPIResponse(t, actions)
+	require.True(t, actionsPayload.Success, actionsPayload.Message)
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_budget.create")
+	require.NotContains(t, string(actionsPayload.Data), "enterprise.organization.department_budget_type_immutable")
 }
 
 func TestEnterpriseDepartmentBudgetListAndDetailAPI(t *testing.T) {

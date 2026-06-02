@@ -91,24 +91,62 @@ func TestCreateDepartmentBudgetRejectsInvalidInputs(t *testing.T) {
 	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetInvalidCustomSeconds)
 }
 
-func TestCreateDepartmentBudgetKeepsExistingTypeImmutable(t *testing.T) {
-	svc, _ := newDepartmentBudgetTestService(t)
+func TestCreateDepartmentBudgetAllowsMixedTypesInSameDepartment(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
 	total := int64(1000)
-	_, err := svc.Create(1, entservice.CreateDepartmentBudgetInput{
+	balance, err := svc.Create(1, entservice.CreateDepartmentBudgetInput{
 		Type:       entmodel.DepartmentBudgetTypeBalance,
 		TotalQuota: &total,
 	})
 	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, balance.Type)
 
 	cycleQuota := int64(200)
 	startedAt := int64(1700000000)
-	_, err = svc.Create(1, entservice.CreateDepartmentBudgetInput{
+	subscription, err := svc.Create(1, entservice.CreateDepartmentBudgetInput{
 		Type:           entmodel.DepartmentBudgetTypeSubscription,
 		CycleQuota:     &cycleQuota,
 		CycleType:      "monthly",
 		CycleStartedAt: &startedAt,
 	})
-	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetTypeImmutable)
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, subscription.Type)
+	require.NotEqual(t, balance.Id, subscription.Id)
+
+	var budgets []entmodel.DepartmentBudget
+	require.NoError(t, db.Where("department_id = ?", 1).Order("id ASC").Find(&budgets).Error)
+	require.Len(t, budgets, 2)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, budgets[0].Type)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, budgets[1].Type)
+}
+
+func TestCreateDepartmentBudgetAllowsSubscriptionThenBalanceInSameDepartment(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	cycleQuota := int64(200)
+	startedAt := int64(1700000000)
+	subscription, err := svc.Create(1, entservice.CreateDepartmentBudgetInput{
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		CycleQuota:     &cycleQuota,
+		CycleType:      "monthly",
+		CycleStartedAt: &startedAt,
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, subscription.Type)
+
+	total := int64(1000)
+	balance, err := svc.Create(1, entservice.CreateDepartmentBudgetInput{
+		Type:       entmodel.DepartmentBudgetTypeBalance,
+		TotalQuota: &total,
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, balance.Type)
+	require.NotEqual(t, subscription.Id, balance.Id)
+
+	var budgets []entmodel.DepartmentBudget
+	require.NoError(t, db.Where("department_id = ?", 1).Order("id ASC").Find(&budgets).Error)
+	require.Len(t, budgets, 2)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, budgets[0].Type)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, budgets[1].Type)
 }
 
 func TestGetDepartmentBudgetReturnsLatest(t *testing.T) {

@@ -106,6 +106,7 @@ GPT-5 Codex
 - 已实现 Knowledge 的列表、读取、创建、更新基础入口，并确保只返回 `resource_type=knowledge`。
 - 已把 Agent Platform shell 中的 Knowledge 区域升级为真实列表承接面，开始展示 live Knowledge 管理入口而非纯静态占位。
 - 已通过 `GOCACHE=/private/tmp/go-build-cache go test ./service/agentplatform ./controller/agentplatform`、`bun test src/features/agent-platform/agent-platform.test.tsx`、`bun run typecheck` 验证。
+- 轻量 CC 复盘后确认：本 story 的 `done` 表示 Knowledge 控制面能力与最小前端承接已落地，不等于 Agent Platform 控制面真实 route/API/i18n/UI parity 已全部收口；这些跨域集成项由后续 stabilization story 统一补齐。
 
 ### File List
 
@@ -122,3 +123,4 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-06-01: 完成 Knowledge 控制面基础管理入口、最小前端承接面与定向测试，并将故事推进为 done。
+- 2026-06-01: 轻量 CC 复盘补充完成口径说明，明确跨 story 的前端集成收口留给后续 stabilization story。

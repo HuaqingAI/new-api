@@ -7,8 +7,8 @@ func Migrate(db *gorm.DB) error {
 		return nil
 	}
 	return db.AutoMigrate(
-		&Resource{},
 		&ResourceVersion{},
+		&Resource{},
 		&SkillDef{},
 		&KnowledgeDef{},
 		&AgentDef{},

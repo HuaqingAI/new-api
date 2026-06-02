@@ -21,7 +21,7 @@ import { AgentPlatformShell } from '@/features/agent-platform'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/agent-platform/' as never)({
+export const Route = createFileRoute('/_authenticated/agent-platform/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 

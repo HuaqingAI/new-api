@@ -384,6 +384,7 @@ func (s *DingTalkOAuthService) availableDingTalkUsername(identity DingTalkOAuthI
 		identity.OpenId,
 	)
 	return resolveAvailableEnterpriseUsername(
+		s.db,
 		base,
 		identity.ExternalUserId,
 		identity.UnionId,

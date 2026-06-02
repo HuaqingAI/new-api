@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -196,7 +195,7 @@ func TestDingTalkOAuthBindIdentityToCurrentUser(t *testing.T) {
 
 func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.T) {
 	_, db := newDingTalkOAuthTestService(t)
-	openAPIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAPIHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gettoken":
 			_, _ = w.Write([]byte(`{"errcode":0,"access_token":"app-token"}`))
@@ -205,9 +204,8 @@ func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	t.Cleanup(openAPIServer.Close)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	})
+	apiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1.0/oauth2/userAccessToken":
 			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-1","unionId":"union-1"}`))
@@ -216,12 +214,23 @@ func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	t.Cleanup(apiServer.Close)
+	})
+	httpClient := dingTalkHTTPClientFunc(func(r *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		switch r.URL.Host {
+		case "open.local":
+			openAPIHandler.ServeHTTP(recorder, r)
+		case "api.local":
+			apiHandler.ServeHTTP(recorder, r)
+		default:
+			recorder.WriteHeader(http.StatusNotFound)
+		}
+		return recorder.Result(), nil
+	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL(openAPIServer.URL),
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkOpenAPIBaseURL("https://open.local"),
+		entservice.WithDingTalkAPIBaseURL("https://api.local"),
+		entservice.WithDingTalkHTTPClient(httpClient),
 	)
 	svc := entservice.NewDingTalkOAuthService(db, client)
 
@@ -235,7 +244,7 @@ func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.
 
 func TestDingTalkOAuthResolveIdentityUsesTokenIdentityWhenUserInfoFails(t *testing.T) {
 	_, db := newDingTalkOAuthTestService(t)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1.0/oauth2/userAccessToken":
 			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-token","unionId":"union-token"}`))
@@ -245,11 +254,15 @@ func TestDingTalkOAuthResolveIdentityUsesTokenIdentityWhenUserInfoFails(t *testi
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
-	t.Cleanup(apiServer.Close)
+	})
+	httpClient := dingTalkHTTPClientFunc(func(r *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		apiHandler.ServeHTTP(recorder, r)
+		return recorder.Result(), nil
+	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkAPIBaseURL("https://api.local"),
+		entservice.WithDingTalkHTTPClient(httpClient),
 	)
 	svc := entservice.NewDingTalkOAuthService(db, client)
 

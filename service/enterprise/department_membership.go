@@ -344,59 +344,48 @@ func (s *DepartmentMembershipService) RenameDepartmentMember(departmentId int, u
 		return DepartmentMemberItem{}, "", err
 	}
 
-	now := input.ChangedAt
-	if now == 0 {
-		now = time.Now().Unix()
+	var membership entmodel.UserDepartment
+	if err := s.db.Where(
+		"tenant_id = ? AND user_id = ? AND department_id = ? AND status = ?",
+		input.TenantId,
+		userId,
+		departmentId,
+		constant.EnterpriseMembershipStatusActive,
+	).First(&membership).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return DepartmentMemberItem{}, "", ErrMembershipNotFound
+		}
+		return DepartmentMemberItem{}, "", err
 	}
 
-	var previousUsername string
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var membership entmodel.UserDepartment
-		if err := tx.Where(
-			"tenant_id = ? AND user_id = ? AND department_id = ? AND status = ?",
-			input.TenantId,
-			userId,
-			departmentId,
-			constant.EnterpriseMembershipStatusActive,
-		).First(&membership).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrMembershipNotFound
-			}
-			return err
+	var user model.User
+	if err := s.db.Where("id = ?", userId).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return DepartmentMemberItem{}, "", ErrUserNotFound
 		}
+		return DepartmentMemberItem{}, "", err
+	}
 
-		var user model.User
-		if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrUserNotFound
-			}
-			return err
-		}
-
-		previousUsername = user.Username
-		if previousUsername == username {
-			return nil
-		}
-
+	previousUsername := user.Username
+	if previousUsername != username {
 		var duplicateCount int64
-		if err := tx.Model(&model.User{}).
+		if err := s.db.Model(&model.User{}).
 			Where("username = ? AND id <> ?", username, userId).
 			Count(&duplicateCount).Error; err != nil {
-			return err
+			return DepartmentMemberItem{}, previousUsername, err
 		}
 		if duplicateCount > 0 {
-			return ErrEnterpriseUsernameExists
+			return DepartmentMemberItem{}, previousUsername, ErrEnterpriseUsernameExists
 		}
 
-		if err := tx.Model(&user).Updates(map[string]any{
+		if err := s.db.Model(&user).Updates(map[string]any{
 			"username": username,
 		}).Error; err != nil {
-			return err
+			return DepartmentMemberItem{}, previousUsername, err
 		}
-		return model.InvalidateUserCache(userId)
-	})
-	if err != nil {
-		return DepartmentMemberItem{}, previousUsername, err
+		if err := model.InvalidateUserCache(userId); err != nil {
+			return DepartmentMemberItem{}, previousUsername, err
+		}
 	}
 
 	item, err := s.getDepartmentMemberItem(departmentId, userId, input.TenantId)

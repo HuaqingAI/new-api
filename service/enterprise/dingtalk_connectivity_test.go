@@ -2,10 +2,10 @@ package enterprise_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
@@ -68,10 +68,9 @@ func TestDingTalkConnectivityMapsPermissionInsufficient(t *testing.T) {
 }
 
 func TestDingTalkConnectivityMapsNetworkFailure(t *testing.T) {
-	svc, server := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"errcode":0,"access_token":"token-secret"}`))
+	svc, _ := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		panic("network failure")
 	})
-	server.Close()
 
 	result, err := svc.Test(context.Background(), 0)
 	require.NoError(t, err)
@@ -112,11 +111,19 @@ func newDingTalkConnectivityTestService(t *testing.T, handler http.HandlerFunc) 
 		SyncEnabled:  true,
 	}).Error)
 
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
+	httpClient := dingTalkHTTPClientFunc(func(r *http.Request) (resp *http.Response, err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = errors.New("network down")
+			}
+		}()
+		recorder := httptest.NewRecorder()
+		handler(recorder, r)
+		return recorder.Result(), nil
+	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL(server.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkOpenAPIBaseURL("https://open.local"),
+		entservice.WithDingTalkHTTPClient(httpClient),
 	)
-	return entservice.NewDingTalkConnectivityService(db, client), server
+	return entservice.NewDingTalkConnectivityService(db, client), nil
 }

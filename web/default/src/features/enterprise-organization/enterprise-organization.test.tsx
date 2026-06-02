@@ -23,6 +23,7 @@ import {
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
   quotaRequestQueryKey,
+  renameDepartmentMember,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
 import {
@@ -686,6 +687,47 @@ describe('Enterprise organization department tree workflow', () => {
       ])
     } finally {
       api.post = originalPost
+    }
+  })
+
+  test('username rename posts the current department member context and tenant payload', async () => {
+    const originalPut = api.put
+    const calls: Array<{ url: string; payload?: unknown }> = []
+
+    api.put = (async (url: string, payload?: unknown) => {
+      calls.push({ url, payload })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: departmentMember({
+            department_id: 7,
+            user_id: 2001,
+            username: 'alice_ops',
+          }),
+        },
+      }
+    }) as typeof api.put
+
+    try {
+      const result = await renameDepartmentMember(7, 2001, {
+        tenant_id: 2,
+        new_username: 'alice_ops',
+      })
+
+      assert.equal(result.success, true)
+      assert.equal(result.data?.username, 'alice_ops')
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/departments/7/members/2001/username',
+          payload: {
+            tenant_id: 2,
+            new_username: 'alice_ops',
+          },
+        },
+      ])
+    } finally {
+      api.put = originalPut
     }
   })
 
@@ -1545,6 +1587,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Current department member',
       'Selected from Security',
       'Rename Username',
+      'Keep history logs and risk events on their original username snapshots. Current governance views switch to the updated username after refresh.',
       'Readable Username',
       'Update Username',
       'Department',

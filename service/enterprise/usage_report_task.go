@@ -165,9 +165,9 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 		enabled = *input.Enabled
 	}
 	updates := map[string]any{
-		"frequency":   input.Frequency,
-		"range_type":  input.RangeType,
-		"enabled":     enabled,
+		"frequency":  input.Frequency,
+		"range_type": input.RangeType,
+		"enabled":    enabled,
 	}
 	if err := existing.SetReceivers(input.Receivers); err != nil {
 		return UsageReportJobResult{}, err
@@ -240,15 +240,24 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 		},
 	})
 	if err != nil {
-		return s.markJobFailure(job, now, err)
+		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+			return markErr
+		}
+		return err
 	}
 
 	receivers, err := job.ParsedReceivers()
 	if err != nil {
-		return s.markJobFailure(job, now, err)
+		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+			return markErr
+		}
+		return err
 	}
 	if len(receivers) == 0 {
-		return s.markJobFailure(job, now, ErrUsageReportNotConfigured)
+		if markErr := s.markJobFailure(job, now, ErrUsageReportNotConfigured); markErr != nil {
+			return markErr
+		}
+		return ErrUsageReportNotConfigured
 	}
 
 	previousStart, previousEnd := previousUsageReportWindow(windowStart, windowEnd)
@@ -262,18 +271,27 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 		},
 	})
 	if err != nil {
-		return s.markJobFailure(job, now, err)
+		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+			return markErr
+		}
+		return err
 	}
 
 	snapshot := buildUsageReportSnapshot(summary.Items, previousSummary.Items, windowStart, windowEnd, previousStart, previousEnd)
 	subject := buildUsageReportSubject(job.RangeType, windowStart, windowEnd)
 	content := buildUsageReportHTML(snapshot)
 	if err := s.sendEmail(subject, strings.Join(receivers, ";"), content); err != nil {
-		return s.markJobFailure(job, now, err)
+		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+			return markErr
+		}
+		return err
 	}
 
 	if err := job.SetLastSnapshot(snapshot); err != nil {
-		return s.markJobFailure(job, now, err)
+		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+			return markErr
+		}
+		return err
 	}
 	job.Status = entmodel.UsageReportStatusSuccess
 	job.ErrorReason = ""

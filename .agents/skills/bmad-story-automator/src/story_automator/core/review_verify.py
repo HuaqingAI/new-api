@@ -16,6 +16,6 @@ def verify_code_review_completion(
 ) -> dict[str, object]:
     try:
         contract = resolve_success_contract(project_root, "review", state_file=state_file) if success_contract is None else success_contract
-        return review_completion(project_root=project_root, story_key=story_key, contract=contract)
+        return review_completion(project_root=project_root, story_key=story_key, contract=contract, state_file=state_file)
     except (FileNotFoundError, ValueError, PolicyError) as exc:
         return {"verified": False, "reason": "review_contract_invalid", "input": story_key, "error": str(exc)}

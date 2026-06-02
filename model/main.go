@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	modelagentplatform "github.com/QuantumNous/new-api/model/agentplatform"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 
 	"github.com/glebarez/sqlite"
@@ -286,6 +287,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := modelagentplatform.Migrate(DB); err != nil {
+		return err
+	}
 	if err := modelenterprise.Migrate(DB); err != nil {
 		return err
 	}
@@ -366,6 +370,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := modelagentplatform.Migrate(DB); err != nil {
+		return err
 	}
 	if err := modelenterprise.Migrate(DB); err != nil {
 		return err

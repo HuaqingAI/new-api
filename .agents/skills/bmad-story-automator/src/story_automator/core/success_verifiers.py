@@ -37,11 +37,18 @@ def run_success_verifier(
     story_key: str = "",
     output_file: str = "",
     contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
 ) -> dict[str, object]:
     verifier = VERIFIERS.get(name)
     if verifier is None:
         raise PolicyError(f"unknown success verifier: {name}")
-    return verifier(project_root=project_root, story_key=story_key, output_file=output_file, contract=contract or {})
+    return verifier(
+        project_root=project_root,
+        story_key=story_key,
+        output_file=output_file,
+        contract=contract or {},
+        state_file=state_file,
+    )
 
 
 def session_exit(
@@ -50,6 +57,7 @@ def session_exit(
     story_key: str = "",
     output_file: str = "",
     contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"verified": True, "source": "session_exit"}
     if story_key:
@@ -65,8 +73,9 @@ def create_story_artifact(
     story_key: str,
     output_file: str = "",
     contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
 ) -> dict[str, object]:
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is None:
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     config = _success_config(contract)
@@ -95,13 +104,14 @@ def review_completion(
     story_key: str,
     output_file: str = "",
     contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
 ) -> dict[str, object]:
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is None:
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     review_contract = _load_review_contract(project_root, contract or {})
     done_values = {value.lower() for value in review_contract["doneValues"]}
-    sprint = sprint_status_get(project_root, norm.id)
+    sprint = sprint_status_get(project_root, norm.key, state_file=str(state_file) if state_file else None)
     story_file = _story_artifact_path(project_root, norm.prefix)
     story_status = find_frontmatter_value_case(story_file, "Status") if story_file else ""
     for source in review_contract["sourceOrder"]:
@@ -139,11 +149,12 @@ def epic_complete(
     story_key: str,
     output_file: str = "",
     contract: dict[str, Any] | None = None,
+    state_file: str | Path | None = None,
 ) -> dict[str, object]:
-    epic = _epic_identifier(project_root, story_key)
+    epic = _epic_identifier(project_root, story_key, state_file=state_file)
     if not epic:
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
-    stories, done = sprint_status_epic(project_root, epic)
+    stories, done = sprint_status_epic(project_root, epic, state_file=str(state_file) if state_file else None)
     if not stories:
         return {"verified": False, "epic": epic, "reason": "no_stories_found", "source": "sprint-status.yaml"}
     return {
@@ -260,10 +271,10 @@ def _parse_int(value: Any, field: str, *, minimum: int | None = None) -> int:
     return parsed
 
 
-def _epic_identifier(project_root: str, story_key: str) -> str:
+def _epic_identifier(project_root: str, story_key: str, state_file: str | Path | None = None) -> str:
     if re.fullmatch(r"\d+", story_key):
         return story_key
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is None:
         return ""
     return norm.id.split(".", 1)[0]

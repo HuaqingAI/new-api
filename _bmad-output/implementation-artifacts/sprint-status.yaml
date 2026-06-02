@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-05-31 17:46:01 +08:00
+# last_updated: 2026-06-01 00:36:25 +08:00
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -89,7 +89,7 @@ development_status:
   6-4-fix-dingtalk-username-strategy-and-controlled-rename: done
   6-5-unify-enterprise-user-display-rules: done
   epic-6-retrospective: optional
-
+ 
   epic-7: backlog
   7-1-establish-department-owner-role-model-and-precedence: backlog
   7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: backlog
@@ -99,38 +99,38 @@ development_status:
   7-6-audit-governance-actions-and-send-dingtalk-notifications: backlog
   epic-7-retrospective: optional
 
-  agent-platform-epic-1: backlog
-  ap-1-1-establish-shared-resource-registry-and-stable-identity: backlog
-  ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: backlog
-  ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: backlog
-  ap-1-4-establish-projection-baseline-decoupled-from-client-registration: backlog
-  ap-1-5-build-publication-projection-and-exposure-model: backlog
-  ap-1-6-deliver-web-default-control-plane-shell: backlog
-  agent-platform-epic-1-retrospective: optional
+  agent-platform-epic-1: done
+  ap-1-1-establish-shared-resource-registry-and-stable-identity: done
+  ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
+  ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: done
+  ap-1-4-establish-projection-baseline-decoupled-from-client-registration: done
+  ap-1-5-build-publication-projection-and-exposure-model: done
+  ap-1-6-deliver-web-default-control-plane-shell: done
+  agent-platform-epic-1-retrospective: done
 
-  agent-platform-epic-2: backlog
-  ap-2-1-register-clients-and-capability-declarations: backlog
-  ap-2-2-implement-browser-delegated-auth-main-flow: backlog
-  ap-2-3-implement-token-lifecycle-and-revocation: backlog
-  ap-2-4-publish-open-capability-standard-apis-and-error-envelope: backlog
-  ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: backlog
+  agent-platform-epic-2: done
+  ap-2-1-register-clients-and-capability-declarations: done
+  ap-2-2-implement-browser-delegated-auth-main-flow: done
+  ap-2-3-implement-token-lifecycle-and-revocation: done
+  ap-2-4-publish-open-capability-standard-apis-and-error-envelope: done
+  ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: done
   agent-platform-epic-2-retrospective: optional
 
-  agent-platform-epic-3: backlog
-  ap-3-1-provide-skill-management-in-control-plane: backlog
-  ap-3-2-define-skill-detail-schema-and-invoke-readiness: backlog
-  ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: backlog
+  agent-platform-epic-3: done
+  ap-3-1-provide-skill-management-in-control-plane: done
+  ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
+  ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: done
   agent-platform-epic-3-retrospective: optional
 
-  agent-platform-epic-4: backlog
-  ap-4-1-manage-knowledge-resources-with-provider-metadata: backlog
-  ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: backlog
-  ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: backlog
-  ap-4-4-integrate-first-http-retrieval-provider-adapter: backlog
+  agent-platform-epic-4: done
+  ap-4-1-manage-knowledge-resources-with-provider-metadata: done
+  ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: done
+  ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: done
+  ap-4-4-integrate-first-http-retrieval-provider-adapter: done
   agent-platform-epic-4-retrospective: optional
 
-  agent-platform-epic-5: backlog
-  ap-5-1-provide-agent-definition-management-in-control-plane: backlog
-  ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: backlog
-  ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: backlog
+  agent-platform-epic-5: done
+  ap-5-1-provide-agent-definition-management-in-control-plane: done
+  ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
+  ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
   agent-platform-epic-5-retrospective: optional

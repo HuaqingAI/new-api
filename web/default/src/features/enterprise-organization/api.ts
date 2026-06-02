@@ -203,11 +203,12 @@ export function departmentBudgetDetailQueryKey(
   ] as const
 }
 
-export function departmentMembersQueryKey(departmentId: number) {
+export function departmentMembersQueryKey(departmentId: number, tenantId = 0) {
   return [
     ...enterpriseOrganizationQueryKey,
     'department-members',
     departmentId,
+    tenantId,
   ] as const
 }
 
@@ -254,10 +255,14 @@ export async function replaceUserDepartments(
 }
 
 export async function getDepartmentMembers(
-  departmentId: number
+  departmentId: number,
+  tenantId?: number
 ): Promise<ApiResponse<DepartmentMembersResponse>> {
   const res = await api.get(
-    `/api/enterprise/departments/${departmentId}/members`
+    `/api/enterprise/departments/${departmentId}/members`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
   )
   return res.data
 }
@@ -575,20 +580,29 @@ export async function addDepartmentMember(
 
 export async function deactivateDepartmentMember(
   departmentId: number,
-  userId: number
+  userId: number,
+  tenantId?: number
 ): Promise<ApiResponse> {
   const res = await api.delete(
-    `/api/enterprise/departments/${departmentId}/members/${userId}`
+    `/api/enterprise/departments/${departmentId}/members/${userId}`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
   )
   return res.data
 }
 
 export async function restoreDepartmentMember(
   departmentId: number,
-  userId: number
+  userId: number,
+  tenantId?: number
 ): Promise<ApiResponse<DepartmentMemberItem>> {
   const res = await api.post(
-    `/api/enterprise/departments/${departmentId}/members/${userId}/restore`
+    `/api/enterprise/departments/${departmentId}/members/${userId}/restore`,
+    undefined,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
   )
   return res.data
 }

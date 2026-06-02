@@ -210,10 +210,12 @@ def _build_cmd(args: list[str]) -> int:
     if agent == "codex" and not ai_command:
         codex_home = f"/tmp/sa-codex-home-{project_hash(root)}"
         auth_src = os.path.expanduser("~/.codex/auth.json")
+        config_src = os.path.expanduser("~/.codex/config.toml")
         model_flag = f" --model {shlex.quote(model)}" if model else ""
         print(
             f'mkdir -p "{codex_home}"'
             + f' && if [ -f "{auth_src}" ]; then ln -sf "{auth_src}" "{codex_home}/auth.json"; fi'
+            + f' && if [ -f "{config_src}" ]; then ln -sf "{config_src}" "{codex_home}/config.toml"; fi'
             + f' && CODEX_HOME="{codex_home}" codex exec -s workspace-write -c \'approval_policy="never"\''
             + f' -c \'model_reasoning_effort="high"\'{model_flag}'
             + f" --disable plugins --disable sqlite --disable shell_snapshot {quoted_prompt}"

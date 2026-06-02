@@ -39,3 +39,4 @@ skills-lock.json
 .tmp/
 
 __pycache__
+.claude/.story-automator-active

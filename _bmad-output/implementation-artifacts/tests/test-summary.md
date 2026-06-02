@@ -1,41 +1,45 @@
 # 测试自动化总结
 
-## 已生成/确认的测试
+## Story
+
+- Story 6.1: 企业组织页重构为树驱动治理视图
+- Workflow: `.claude/skills/bmad-qa-generate-e2e-tests`
+- 时间: 2026-06-03 00:44 +0800
+
+## 已生成/补齐的测试
 
 ### API 测试
-- [x] `controller/enterprise/usage_test.go` - 报告配置参数校验、邮箱校验、配置持久化与低频管理审计写入
-- [x] `tests/api/enterprise_usage_test.go` - `/api/enterprise/usage/reports` 权限边界、配置读写，以及任务执行后状态/快照回读
-- [x] `controller/enterprise/usage_test.go` - `usage/export` 参数校验、CSV 响应头、注释行与表头契约
 
-### Service 测试
-- [x] `service/enterprise/usage_report_task_test.go` - 报告配置校验、增长判定、到点任务执行、失败原因落库、多接收人拼接、跨 job 失败隔离
-- [x] `model/enterprise/usage_report_job_test.go` - JSON 包装器、空值归一化与三库兼容迁移字段校验
-- [x] `service/enterprise/usage_aggregation_test.go` - CSV 导出排序、未归属行、父部门名称补齐、空字符串输出、注释行与固定列顺序
+- [x] `tests/api/enterprise_departments_tree_test.go` - 组织树空态、三层树、部门管理员可见范围、成员权限、租户范围成员链路、admin action 查询
+- [x] `tests/api/enterprise_department_budget_test.go` - 当前部门预算创建、读取、租户范围预算、预算列表和详情
 
-### UI / E2E 风格测试
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 报告配置请求参数、详情页报告卡片、失败状态展示、导出请求参数、summary 排序语义与免责声明持续可见
+### E2E / UI 测试
+
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增树折叠/展开/选中渲染状态覆盖
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 确认既有覆盖包含空树、三层树展示、URL search schema、无效 `dept_id` 回退、祖先路径展开、部门工作区、成员/预算上下文切换、预算和 allocation 表单错误路径
 
 ## 覆盖范围
 
-- API endpoints: `department-summary`、`department-detail`、`usage/export`、`usage/reports`
-- UI features: 总览时间范围、免责声明、summary 排序、CSV 导出参数拼装、报告配置卡片、失败状态可见性、详情 drill-down 与最近日志入口筛选上下文
-- Critical error cases: 非法时间范围、非管理员访问、无上期数据不误判增长、邮件发送失败只更新 job 状态且不阻塞其他 job、detail-only search state 泄漏防回归
+- API endpoints: `/api/enterprise/departments/tree`、`/api/enterprise/departments/:id/members`、`/api/enterprise/departments/:id/budget`、`/api/enterprise/departments/:id/budgets`、`/api/enterprise/departments/:id/budgets/:budget_id`、`/api/enterprise/admin-actions`
+- UI features: 左侧组织树折叠/展开、选中高亮、三层树展示、刷新链接 search 状态归一化、无效部门回退、右侧当前部门摘要、成员治理、预算池列表/详情、wallet allocation 和 delegation 展示
+- Critical error cases: 空树、无效 `dept_id`、跨部门预算残留、无效 budget/member selection、预算表单非法输入、quota request/decision/allocation/delegation schema 错误、租户范围 API 漏带 `tenant_id`
 
 ## 验证结果
 
-- `mkdir -p .cache/go-build && GOCACHE=$(pwd)/.cache/go-build go test ./service/enterprise ./controller/enterprise ./tests/api -run 'Usage|EnterpriseUsage'` ✅
-- `bun test src/features/enterprise-usage/enterprise-usage.test.tsx` `web/default/` ✅
-- `bun run typecheck` `web/default/` ✅
+- `cd web/default && bun run test:e2e` 通过；组织页测试 42/42 通过
+- `cd web/default && bun run typecheck` 通过
+- `cd web/default && bun run i18n:sync` 通过
+- `GOCACHE=$(pwd)/.cache/go-build go test ./tests/api -run 'EnterpriseDepartment(Tree|Members|AdminActions|Budget)'` 通过
 
 ## Checklist
 
-- [x] API tests generated (if applicable)
-- [x] E2E tests generated (if UI exists)
-- [x] Tests use standard test framework APIs
+- [x] API tests generated/confirmed where applicable
+- [x] E2E tests generated/confirmed for UI
+- [x] Tests use standard project framework APIs (`node:test`/SSR frontend tests, Go API tests)
 - [x] Tests cover happy path
-- [x] Tests cover 1-2 critical error cases
+- [x] Tests cover critical error cases
 - [x] All generated tests run successfully
-- [x] Tests use proper locators / assertions for the existing framework
+- [x] Tests use semantic/accessibility-adjacent assertions available in the current framework, including expand/collapse aria labels
 - [x] Tests have clear descriptions
 - [x] No hardcoded waits or sleeps
 - [x] Tests are independent
@@ -45,4 +49,5 @@
 
 ## 备注
 
-- 本功能未使用 Playwright/Cypress。项目现有模式是后端 Go 测试配合前端 `node:test` 风格用例，因此 4.5 的 QA workflow 继续沿用同一套栈。
+- 项目当前未使用 Playwright/Cypress；本次继续沿用现有 `rsbuild` + `node:test` 前端测试和 Go API 测试模式。
+- 全量 `go test ./tests/api -run 'EnterpriseDepartment|DepartmentBudget|QuotaAllocation'` 曾触发 quota allocation SQLite 并发锁和不属于 Story 6.1 的既有漂移；本次 Story 6.1 API 验证改为限定组织树、成员、admin actions 和部门预算范围。

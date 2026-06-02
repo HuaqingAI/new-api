@@ -195,7 +195,12 @@ export function normalizeMemberSelection(params: {
 export function normalizeEnterpriseOrganizationSearch(params: {
   departments: DepartmentTreeNode[]
   search: EnterpriseOrganizationSearch
+  treeLoaded?: boolean
 }) {
+  if (!params.treeLoaded) {
+    return params.search
+  }
+
   if (params.departments.length === 0) {
     return {
       ...params.search,
@@ -584,8 +589,13 @@ export function EnterpriseOrganization() {
     [departments, search.dept_id]
   )
   const normalizedSearch = useMemo(
-    () => normalizeEnterpriseOrganizationSearch({ departments, search }),
-    [departments, search]
+    () =>
+      normalizeEnterpriseOrganizationSearch({
+        departments,
+        search,
+        treeLoaded: !isLoading,
+      }),
+    [departments, isLoading, search]
   )
   const [expandedIds, setExpandedIds] = useState<number[]>([])
 
@@ -775,6 +785,7 @@ export function EnterpriseOrganizationWorkspace(props: {
       />
       <DepartmentMembersPanel
         departmentId={props.currentDepartment.id}
+        tenantId={props.currentDepartment.tenant_id ?? 0}
         departmentName={props.currentDepartment.name}
         selectedMemberUserId={selectedMemberUserId}
         onSelectedMemberChange={setSelectedMemberUserId}
@@ -782,6 +793,7 @@ export function EnterpriseOrganizationWorkspace(props: {
       />
       <DepartmentOwnersPanel
         departmentId={props.currentDepartment.id}
+        tenantId={props.currentDepartment.tenant_id ?? 0}
         departmentName={props.currentDepartment.name}
         members={departmentMembers}
       />
@@ -794,6 +806,7 @@ export function EnterpriseOrganizationWorkspace(props: {
       />
       <DepartmentBudgetPanel
         departmentId={props.currentDepartment.id}
+        tenantId={props.currentDepartment.tenant_id ?? 0}
         departmentName={props.currentDepartment.name}
         selectedBudgetId={props.selectedBudgetId}
         onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
@@ -1057,12 +1070,14 @@ function UserDepartmentsTable({
 
 function DepartmentMembersPanel({
   departmentId,
+  tenantId,
   departmentName,
   selectedMemberUserId,
   onSelectedMemberChange,
   onMembersChange,
 }: {
   departmentId: number
+  tenantId: number
   departmentName: string
   selectedMemberUserId: number | null
   onSelectedMemberChange: (userId: number | null) => void
@@ -1073,9 +1088,9 @@ function DepartmentMembersPanel({
   const [memberUserIdText, setMemberUserIdText] = useState('')
 
   const departmentMembersQuery = useQuery({
-    queryKey: departmentMembersQueryKey(departmentId),
+    queryKey: departmentMembersQueryKey(departmentId, tenantId),
     queryFn: async () => {
-      const result = await getDepartmentMembers(departmentId)
+      const result = await getDepartmentMembers(departmentId, tenantId)
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data ?? { items: [], total: 0 }
@@ -1090,7 +1105,10 @@ function DepartmentMembersPanel({
     mutationFn: () => {
       const memberUserId = parsePositiveInt(memberUserIdText)
       if (!memberUserId) throw new Error('missing ids')
-      return addDepartmentMember(departmentId, { user_id: memberUserId })
+      return addDepartmentMember(departmentId, {
+        tenant_id: tenantId,
+        user_id: memberUserId,
+      })
     },
     onSuccess: async (result) => {
       if (!result.success) {
@@ -1099,7 +1117,7 @@ function DepartmentMembersPanel({
       }
       setMemberUserIdText('')
       await queryClient.invalidateQueries({
-        queryKey: departmentMembersQueryKey(departmentId),
+        queryKey: departmentMembersQueryKey(departmentId, tenantId),
       })
       toast.success(t('Department member added'))
     },
@@ -1138,6 +1156,7 @@ function DepartmentMembersPanel({
         </div>
         <DepartmentMembersTable
           departmentId={departmentId}
+          tenantId={tenantId}
           items={departmentMembersQuery.data?.items ?? []}
           selectedMemberUserId={selectedMemberUserId}
           onSelectMember={onSelectedMemberChange}
@@ -1149,17 +1168,18 @@ function DepartmentMembersPanel({
 
 function DepartmentOwnersPanel({
   departmentId,
+  tenantId,
   departmentName,
   members,
 }: {
   departmentId: number
+  tenantId: number
   departmentName: string
   members: DepartmentMemberItem[]
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [ownerUserIdText, setOwnerUserIdText] = useState('')
-  const tenantId = 0
 
   const ownersQuery = useQuery({
     queryKey: departmentOwnersQueryKey(departmentId, tenantId),
@@ -1490,11 +1510,13 @@ function ownerEffectLabel(effect: string, t: (key: string) => string) {
 function DepartmentMembersTable({
   items,
   departmentId,
+  tenantId,
   selectedMemberUserId,
   onSelectMember,
 }: {
   items: DepartmentMemberItem[]
   departmentId: number
+  tenantId: number
   selectedMemberUserId: number | null
   onSelectMember: (userId: number | null) => void
 }) {
@@ -1503,27 +1525,27 @@ function DepartmentMembersTable({
 
   const deactivateMutation = useMutation({
     mutationFn: (userId: number) =>
-      deactivateDepartmentMember(departmentId, userId),
+      deactivateDepartmentMember(departmentId, userId, tenantId),
     onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
       await queryClient.invalidateQueries({
-        queryKey: departmentMembersQueryKey(departmentId),
+        queryKey: departmentMembersQueryKey(departmentId, tenantId),
       })
     },
   })
   const restoreMutation = useMutation({
     mutationFn: (userId: number) =>
-      restoreDepartmentMember(departmentId, userId),
+      restoreDepartmentMember(departmentId, userId, tenantId),
     onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
       await queryClient.invalidateQueries({
-        queryKey: departmentMembersQueryKey(departmentId),
+        queryKey: departmentMembersQueryKey(departmentId, tenantId),
       })
     },
   })
@@ -1693,7 +1715,10 @@ export function DepartmentMemberContextCard({
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: departmentMembersQueryKey(currentDepartment.id),
+          queryKey: departmentMembersQueryKey(
+            currentDepartment.id,
+            currentDepartment.tenant_id ?? 0
+          ),
         }),
         queryClient.invalidateQueries({
           queryKey: userDepartmentsQueryKey(selectedMember.user_id),
@@ -1836,12 +1861,14 @@ export function DepartmentMemberContextCard({
 
 function DepartmentBudgetPanel({
   departmentId,
+  tenantId,
   departmentName,
   selectedBudgetId,
   onSelectedBudgetIdChange,
   selectedMember,
 }: {
   departmentId: number
+  tenantId: number
   departmentName: string
   selectedBudgetId: number | null
   onSelectedBudgetIdChange: (budgetId: number | null) => void
@@ -1866,7 +1893,7 @@ function DepartmentBudgetPanel({
       budgetSchema
     ) as unknown as Resolver<BudgetFormValues>,
     defaultValues: {
-      tenant_id: 0,
+      tenant_id: tenantId,
       department_id: departmentId,
       type: 'balance',
       total_quota: 0,
@@ -1882,7 +1909,7 @@ function DepartmentBudgetPanel({
       allocationSchema
     ) as unknown as Resolver<AllocationFormValues>,
     defaultValues: {
-      tenant_id: 0,
+      tenant_id: tenantId,
       department_id: departmentId,
       department_budget_id: 0,
       target_user_id: 0,
@@ -1895,7 +1922,7 @@ function DepartmentBudgetPanel({
       delegationSchema
     ) as unknown as Resolver<DelegationFormValues>,
     defaultValues: {
-      tenant_id: 0,
+      tenant_id: tenantId,
       source_department_id: departmentId,
       source_budget_id: 0,
       target_department_id: 0,
@@ -1909,7 +1936,7 @@ function DepartmentBudgetPanel({
       quotaRequestSchema
     ) as unknown as Resolver<QuotaRequestFormValues>,
     defaultValues: {
-      tenant_id: 0,
+      tenant_id: tenantId,
       department_id: departmentId,
       department_budget_id: 0,
       budget_mode: 'department_budget',
@@ -1917,7 +1944,7 @@ function DepartmentBudgetPanel({
       request_reason: '',
     },
   })
-  const tenantId = form.watch('tenant_id')
+  const formTenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
@@ -1939,7 +1966,7 @@ function DepartmentBudgetPanel({
       }
     >
   >({})
-  const normalizedTenantId = tenantId || 0
+  const normalizedTenantId = formTenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
   const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
   const previousSelectedMemberIdRef = useRef<number | null>(
@@ -1949,7 +1976,7 @@ function DepartmentBudgetPanel({
   const budgetQuery = useQuery({
     queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
-      const result = await getDepartmentBudget(departmentId, tenantId)
+      const result = await getDepartmentBudget(departmentId, formTenantId)
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data?.item ?? null
@@ -1962,7 +1989,7 @@ function DepartmentBudgetPanel({
     queryFn: async () => {
       const result = await getQuotaRequestCapability(
         departmentId,
-        tenantId || undefined
+        formTenantId || undefined
       )
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
@@ -1986,7 +2013,7 @@ function DepartmentBudgetPanel({
     ),
     queryFn: async () => {
       const result = await getDepartmentBudgets(departmentId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         include_descendants: includeDescendants,
         sort_by: sortBy,
         sort_order: sortOrder,
@@ -2014,7 +2041,7 @@ function DepartmentBudgetPanel({
     ),
     queryFn: async () => {
       const result = await getDepartmentBudgets(departmentId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         include_descendants: true,
         sort_by: sortBy,
         sort_order: sortOrder,
@@ -2059,7 +2086,7 @@ function DepartmentBudgetPanel({
       const result = await getDepartmentBudgetDetail(
         departmentId,
         effectiveBudgetId,
-        tenantId || undefined
+        formTenantId || undefined
       )
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
@@ -2087,7 +2114,7 @@ function DepartmentBudgetPanel({
       if (!effectiveBudgetId) return []
       const result = await getQuotaAllocations(
         effectiveBudgetId,
-        tenantId,
+        formTenantId,
         departmentId
       )
       if (!result.success)
@@ -2100,7 +2127,7 @@ function DepartmentBudgetPanel({
     queryKey: quotaRequestQueryKey(departmentId, normalizedTenantId, null),
     queryFn: async () => {
       const result = await getQuotaRequests({
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
         include_pending: true,
         limit: 100,
@@ -2113,7 +2140,7 @@ function DepartmentBudgetPanel({
   const delegationListQuery = useQuery({
     queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
-      const result = await getBudgetDelegations(departmentId, tenantId || undefined)
+      const result = await getBudgetDelegations(departmentId, formTenantId || undefined)
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
@@ -2123,7 +2150,7 @@ function DepartmentBudgetPanel({
     queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
       const result = await getGovernanceTimeline({
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
         page: 1,
         page_size: 20,
@@ -2137,7 +2164,7 @@ function DepartmentBudgetPanel({
     queryKey: governanceNotificationQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
       const result = await getGovernanceNotifications({
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
         page: 1,
         page_size: 20,
@@ -2277,7 +2304,7 @@ function DepartmentBudgetPanel({
       }
     }) =>
       decideQuotaRequest(params.requestId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         ...params.payload,
       }),
     onSuccess: async (result) => {
@@ -2350,7 +2377,7 @@ function DepartmentBudgetPanel({
       committedQuota: number
     }) =>
       supersedeBudgetDelegation(params.delegationId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         source_department_id: departmentId,
         new_committed_quota: params.committedQuota,
       }),
@@ -2381,7 +2408,7 @@ function DepartmentBudgetPanel({
   const allocationSupersedeMutation = useMutation({
     mutationFn: async (params: { allocationId: number; committedQuota: number }) =>
       supersedeQuotaAllocation(params.allocationId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
         new_committed_quota: params.committedQuota,
       }),
@@ -2419,7 +2446,7 @@ function DepartmentBudgetPanel({
   const allocationCancelMutation = useMutation({
     mutationFn: async (allocationId: number) =>
       cancelQuotaAllocation(allocationId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
       }),
     onSuccess: async (result) => {
@@ -2456,7 +2483,7 @@ function DepartmentBudgetPanel({
   const allocationReclaimMutation = useMutation({
     mutationFn: async (allocationId: number) =>
       reclaimQuotaAllocation(allocationId, {
-        tenant_id: tenantId || undefined,
+        tenant_id: formTenantId || undefined,
         department_id: departmentId,
       }),
     onSuccess: async (result) => {
@@ -2492,7 +2519,7 @@ function DepartmentBudgetPanel({
 
   const governanceResendMutation = useMutation({
     mutationFn: (deliveryId: number) =>
-      resendGovernanceNotification(deliveryId, tenantId || undefined),
+      resendGovernanceNotification(deliveryId, formTenantId || undefined),
     onSuccess: async (result) => {
       if (!result.success) {
         toast.error(renderApiMessage(result))
@@ -2512,17 +2539,20 @@ function DepartmentBudgetPanel({
     if (form.getValues('department_id') !== departmentId) {
       form.setValue('department_id', departmentId)
     }
-  }, [allocationForm, departmentId, form])
-
-  useEffect(() => {
-    if (allocationForm.getValues('tenant_id') !== tenantId) {
-      allocationForm.setValue('tenant_id', tenantId)
+    if (form.getValues('tenant_id') !== tenantId) {
+      form.setValue('tenant_id', tenantId)
     }
-  }, [allocationForm, tenantId])
+  }, [departmentId, form, tenantId])
 
   useEffect(() => {
-    if (delegationForm.getValues('tenant_id') !== tenantId) {
-      delegationForm.setValue('tenant_id', tenantId)
+    if (allocationForm.getValues('tenant_id') !== formTenantId) {
+      allocationForm.setValue('tenant_id', formTenantId)
+    }
+  }, [allocationForm, formTenantId])
+
+  useEffect(() => {
+    if (delegationForm.getValues('tenant_id') !== formTenantId) {
+      delegationForm.setValue('tenant_id', formTenantId)
     }
     if (delegationForm.getValues('source_department_id') !== departmentId) {
       delegationForm.setValue('source_department_id', departmentId)
@@ -2530,11 +2560,11 @@ function DepartmentBudgetPanel({
     if (effectiveBudgetId && delegationForm.getValues('source_budget_id') !== effectiveBudgetId) {
       delegationForm.setValue('source_budget_id', effectiveBudgetId)
     }
-  }, [delegationForm, departmentId, effectiveBudgetId, tenantId])
+  }, [delegationForm, departmentId, effectiveBudgetId, formTenantId])
 
   useEffect(() => {
-    if (quotaRequestForm.getValues('tenant_id') !== tenantId) {
-      quotaRequestForm.setValue('tenant_id', tenantId)
+    if (quotaRequestForm.getValues('tenant_id') !== formTenantId) {
+      quotaRequestForm.setValue('tenant_id', formTenantId)
     }
     if (quotaRequestForm.getValues('department_id') !== departmentId) {
       quotaRequestForm.setValue('department_id', departmentId)
@@ -2545,7 +2575,7 @@ function DepartmentBudgetPanel({
     ) {
       quotaRequestForm.setValue('department_budget_id', effectiveBudgetId)
     }
-  }, [departmentId, effectiveBudgetId, quotaRequestForm, tenantId])
+  }, [departmentId, effectiveBudgetId, quotaRequestForm, formTenantId])
 
   useEffect(() => {
     if (previousDepartmentIdRef.current === departmentId) return

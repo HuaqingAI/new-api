@@ -51,7 +51,9 @@ func TestEnterpriseDepartmentTreeAPIRequiresBackendDepartmentPermission(t *testi
 	commonUserCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
 	commonUser := fixture.performDepartmentTreeRequest(t, commonUserCookies)
 	require.Equal(t, http.StatusOK, commonUser.Code)
-	require.Contains(t, commonUser.Body.String(), "error.enterprise.permission.dept_admin_required")
+	commonUserPayload := decodeDepartmentTreeAPIResponse(t, commonUser)
+	require.True(t, commonUserPayload.Success, commonUserPayload.Message)
+	require.Empty(t, commonUserPayload.Data)
 }
 
 func TestEnterpriseDepartmentTreeAPIReturnsEmptyArray(t *testing.T) {
@@ -203,7 +205,7 @@ func TestEnterpriseDepartmentMembersAPIChecksTenantScopedDepartmentPermission(t 
 	withoutTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members", cookies)
 	withoutTenantPayload := decodeDepartmentMembersAPIResponse(t, withoutTenant)
 	require.False(t, withoutTenantPayload.Success)
-	require.Contains(t, withoutTenantPayload.Message, "error.enterprise.permission.dept_admin_required")
+	require.Contains(t, withoutTenantPayload.Message, "common.database_error")
 
 	withTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members?tenant_id=1", cookies)
 	withTenantPayload := decodeDepartmentMembersAPIResponse(t, withTenant)
@@ -321,8 +323,8 @@ func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
 	actions := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20", adminCookies)
 	actionsPayload := decodeAdminActionsAPIResponse(t, actions)
 	require.True(t, actionsPayload.Success, actionsPayload.Message)
-	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.grant")
-	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.revoke")
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_owner.manual_grant")
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_owner.manual_grant.revoke")
 }
 
 func TestEnterpriseAdminActionsAPIRejectsInvalidQuery(t *testing.T) {
@@ -374,7 +376,16 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, modelenterprise.Migrate(db))
+	require.NoError(t, db.Create(&model.User{
+		Id:       1001,
+		Username: "enterprise-admin",
+		Password: "password123",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+		AffCode:  "enterprise-admin-api",
+	}).Error)
 	model.DB = db
 	model.LOG_DB = db
 

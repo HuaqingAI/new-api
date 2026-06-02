@@ -73,7 +73,7 @@ so that 我可以围绕当前部门连续完成成员、预算和治理操作。
 
 - 已加载 `{epics_content}`：`_bmad-output/planning-artifacts/epics.md`。
 - 已加载 `{architecture_content}`：`_bmad-output/planning-artifacts/architecture.md`。
-- 已加载 `sprint-status.yaml`，确认目标 story key 为 `6-1-rebuild-enterprise-organization-as-tree-driven-governance-view`，原状态为 `backlog`。
+- 已加载 `sprint-status.yaml`，确认目标 story key 为 `6-1-rebuild-enterprise-organization-as-tree-driven-governance-view`；当前 sprint 状态已是 `done`，因此本次 create-story 复核不降级故事状态。
 - 未发现独立 UX 文档；当前 UX 约束来自 Epic 6、Architecture 与既有企业功能实现。
 - 未发现 `project-context.md` 持久事实文件，因此本故事以 AGENTS.md、规划文档、既有故事与当前真实代码为准。
 
@@ -176,14 +176,17 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- 已按要求先读取 `.agents/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
-- `_bmad/scripts/resolve_customization.py` 受当前 Python 版本限制无法运行，已按 skill fallback 手工解析 `.agents/skills/bmad-create-story/customize.toml` 与 `_bmad/bmm/config.yaml`。
-- 已完整读取 `_bmad-output/implementation-artifacts/sprint-status.yaml`，确认目标 story key 为 `6-1-rebuild-enterprise-organization-as-tree-driven-governance-view`，并确认本次需把 `epic-6` 从 `backlog` 调整为 `in-progress`。
+- 已按要求先读取 `.claude/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
+- `_bmad/scripts/resolve_customization.py` 受当前 Python 版本限制无法运行，已按 skill fallback 手工解析 `.claude/skills/bmad-create-story/customize.toml` 与 `_bmad/bmm/config.yaml`。
+- 已完整读取 `_bmad-output/implementation-artifacts/sprint-status.yaml`，确认目标 story key 为 `6-1-rebuild-enterprise-organization-as-tree-driven-governance-view`，且当前 sprint/story 状态均已完成；本次未把 `done` 降级为 `ready-for-dev`。
 - 已选择性加载并分析 `epics.md`、`architecture.md`、`docs/api-contracts-server.md`、既有实现文件和相关已完成故事（1.1、3.5、4.2）。
 - 已检查当前真实实现，确认组织页的主要差距是静态树 + tab 分裂 + 手工 ID 输入，而不是后端能力缺失。
 - 按 `bmad-dev-story` workflow 补齐前端实现与回归：完成路由 search schema、树驱动双栏工作区、树工具、精确 query key 和预算上下文联动。
 - 执行 `cd web/default && bun run typecheck`、`bun run test:e2e`、`bun run i18n:sync`，全部通过；`i18n` 报告显示 `en/zh/fr/ru/ja/vi` 缺失数均为 `0`。
 - 为恢复全量前端回归，顺手校正了既有 `enterprise-alerts` 与 `enterprise-usage` 测试中的 search/time-window 断言，使其与当前实现保持一致。
+- 2026-06-03 按 `.claude/skills/bmad-dev-story/SKILL.md` 与 `checklist.md` 复核 Story 6.1；未发现剩余 `[ ]` 任务或未完成 review follow-up，重新执行 `bun run typecheck`、`bun run test:e2e`、`bun run i18n:sync`，全部通过。
+- 2026-06-03 按 `.claude/skills/bmad-qa-generate-e2e-tests/SKILL.md` 与 `checklist.md` 执行 QA E2E workflow；补齐组织树折叠/展开/选中渲染测试，校正组织页相关 API 测试 fixture/断言与当前契约一致，并写入 `_bmad-output/implementation-artifacts/tests/test-summary.md`。
+- 2026-06-03 按 `.claude/skills/bmad-story-automator-review/SKILL.md`、`workflow.yaml`、`instructions.xml` 与 `checklist.md` 对 Story 6.1 执行复审；自动修复刷新恢复与跨租户部门上下文问题，并验证 `bun run typecheck`、`bun run test:e2e`、`bun run i18n:sync`、限定 API 回归均通过。
 
 ### Completion Notes List
 
@@ -192,11 +195,17 @@ GPT-5 Codex
 - 已把成员、预算、预算详情和 allocation 查询收紧为按部门上下文组织的精确 query key，同时修复预算选择在部门切换时的跨部门残留问题。
 - 已扩展组织页前端测试，覆盖 search schema、树恢复/回退、展开状态同步、预算选择归一化和工作区上下文渲染。
 - 已完成前端验证：`bun run typecheck`、`bun run test:e2e`、`bun run i18n:sync` 全部通过；本故事未改动企业后端树接口，因此未补充 Go API 回归。
+- 本次 dev-story 复核未发现待实现任务；Story 与 sprint 状态已是 `done`，未做状态降级。
+- 本次 QA workflow 新增树组件折叠/展开/选中状态测试，并完成组织页相关 API 验证：`GOCACHE=$(pwd)/.cache/go-build go test ./tests/api -run 'EnterpriseDepartment(Tree|Members|AdminActions|Budget)'` 通过。
+- 本次 story-automator review 复审修复了树数据加载前误清理 URL `dept_id` / `budget_id` 的刷新恢复缺陷，并补齐成员、负责人、预算工作区对当前部门 `tenant_id` 的继承，避免 tenant 1 部门落回 tenant 0 查询/缓存。
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/6-1-rebuild-enterprise-organization-as-tree-driven-governance-view.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- `tests/api/enterprise_department_budget_test.go`
+- `tests/api/enterprise_departments_tree_test.go`
 - `web/default/src/features/enterprise-alerts/enterprise-alerts.test.tsx`
 - `web/default/src/features/enterprise-organization/api.ts`
 - `web/default/src/features/enterprise-organization/components/DepartmentTree.tsx`
@@ -220,7 +229,20 @@ GPT-5 Codex
 - 针对 `enterprise-alerts` 与 `enterprise-usage` 测试改动做了范围审查：这些断言修正对应的是各自 feature 既有实现与旧测试之间的偏差，基线提交中实现已包含相关行为，因此它们不是由 6.1 组织页重构直接引起的必要 fallout，更接近顺带修复的既有测试漂移。
 - 未发现剩余 CRITICAL 问题；Acceptance Criteria 1/2/3 与组织页当前实现一致，故事可标记为 `done`。
 
+### Senior Developer Review (AI) - 2026-06-03 00:53 +0800
+
+- 自动修复 2 个复审发现的问题：
+  - **HIGH**：`normalizeEnterpriseOrganizationSearch` 在部门树 query 初始加载阶段把空数组当成“真实空树”，会提前清掉 URL 中的 `dept_id` / `budget_id`；带部门链接刷新时可能丢失当前部门恢复状态，违反 AC3。现已增加 `treeLoaded` 判断，加载完成前保留 search，并补充测试覆盖。
+  - **HIGH**：右侧工作区的成员、负责人、预算查询和 mutation 没有统一继承当前部门 `tenant_id`，tenant 1 部门会落回 tenant 0 查询或复用 tenant 0 成员缓存；这会导致当前部门上下文不完整，影响 AC2。现已把 `currentDepartment.tenant_id` 透传到成员/负责人/预算面板、API 参数和成员 query key，并补充 tenant-aware query key 测试。
+- Git vs Story File List 复核：当前工作区仍有与 Story 6.1 相关的测试/API 文件改动，另有 `.claude/skills/bmad-story-automator/**`、`.gitignore`、story-automator 输出文件等非应用源码改动；按 workflow 规则未审查非应用源码。
+- 验证结果：`cd web/default && bun run typecheck` 通过；`cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` 通过；`cd web/default && bun run test:e2e` 通过；`cd web/default && bun run i18n:sync` 通过；`GOCACHE=$(pwd)/.cache/go-build go test ./tests/api -run 'EnterpriseDepartment(Tree|Members|AdminActions|Budget)'` 通过（cached）。
+- 未发现剩余 CRITICAL 问题；Story 与 sprint 状态保持 `done`。
+
 ### Change Log
 
+- 2026-06-03 00:00 +0800: 按 `.claude/skills/bmad-create-story` workflow 重新复核 Story 6.1 输入、模板和 checklist；确认现有 story 已完成且 sprint 状态为 `done`，仅校正 create-story provenance 与状态说明，不覆盖既有实现记录。
+- 2026-06-03 00:00 +0800: 按 `.claude/skills/bmad-dev-story` workflow 复核 Story 6.1；确认无剩余未勾选任务，重新执行 `typecheck`、`test:e2e`、`i18n:sync` 并全部通过，保持 story/sprint `done` 状态。
+- 2026-06-03 00:44 +0800: 执行 `bmad-qa-generate-e2e-tests` workflow；补齐组织树折叠/展开/选中 E2E 风格测试，校正组织页相关 API 测试漂移，验证 `test:e2e`、`typecheck`、`i18n:sync` 和限定 API 回归均通过。
+- 2026-06-03 00:53 +0800: 执行 story-automator review 复审；修复树数据加载前误清理 URL search 导致刷新恢复不稳的问题，以及当前部门工作区未继承 `tenant_id` 导致跨租户查询/缓存漂移的问题；重新验证 `typecheck`、组织页测试、`test:e2e`、`i18n:sync` 和限定 API 回归。
 - 2026-05-31 15:38 +0800: 完成 Story 6.1 组织页树驱动重构、精确 query key/预算上下文联动、组织页测试扩展，并校正全量前端回归中的既有断言以恢复 `typecheck`/`test:e2e`/`i18n:sync` 绿灯。
 - 2026-05-31 15:51 +0800: 执行 story-automator review，修复空树 URL 残留状态与 6.1 漏同步 i18n 文案问题；确认 `enterprise-alerts` / `enterprise-usage` 测试调整属于独立测试修正而非组织页重构必然 fallout，并重新验证 `typecheck` / `test:e2e` / `i18n:sync`。

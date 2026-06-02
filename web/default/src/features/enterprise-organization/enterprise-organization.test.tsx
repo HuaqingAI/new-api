@@ -12,6 +12,7 @@ import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
+  departmentMembersQueryKey,
   departmentOwnersQueryKey,
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
@@ -50,6 +51,7 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
+import { DepartmentTree } from './components/DepartmentTree'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -156,6 +158,64 @@ describe('Enterprise organization department tree workflow', () => {
     }
   })
 
+  test('renders collapsed, expanded, and selected tree states', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({
+                id: 3,
+                parent_id: 2,
+                name: 'Platform',
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]
+
+    const collapsedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentTree
+          nodes={tree}
+          expandedIds={[1]}
+          selectedDepartmentId={2}
+          onToggleExpand={() => undefined}
+          onSelectDepartment={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(collapsedHtml, /Headquarters/)
+    assert.match(collapsedHtml, /Engineering/)
+    assert.doesNotMatch(collapsedHtml, /Platform/)
+    assert.match(collapsedHtml, /aria-label="Collapse department"/)
+    assert.match(collapsedHtml, /aria-label="Expand department"/)
+    assert.match(collapsedHtml, /bg-muted\/50/)
+
+    const expandedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentTree
+          nodes={tree}
+          expandedIds={[1, 2]}
+          selectedDepartmentId={3}
+          onToggleExpand={() => undefined}
+          onSelectDepartment={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(expandedHtml, /Platform/)
+    assert.match(expandedHtml, /Parent ID 2/)
+    assert.match(expandedHtml, /bg-muted\/50/)
+  })
+
   test('search schema accepts valid department and budget identifiers and drops invalid values', () => {
     const parsed = enterpriseOrganizationSearchSchema.parse({
       dept_id: '12',
@@ -207,6 +267,22 @@ describe('Enterprise organization department tree workflow', () => {
           dept_id: 7,
           budget_id: 12,
         },
+        treeLoaded: false,
+      }),
+      {
+        dept_id: 7,
+        budget_id: 12,
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments: [],
+        search: {
+          dept_id: 7,
+          budget_id: 12,
+        },
+        treeLoaded: true,
       }),
       {
         dept_id: undefined,
@@ -235,6 +311,7 @@ describe('Enterprise organization department tree workflow', () => {
           dept_id: 999,
           budget_id: 12,
         },
+        treeLoaded: true,
       }),
       {
         dept_id: 1,
@@ -473,6 +550,16 @@ describe('Enterprise organization department tree workflow', () => {
       'department-owners',
       7,
       0,
+    ])
+  })
+
+  test('department member query key includes tenant context', () => {
+    assert.deepEqual(departmentMembersQueryKey(7, 2), [
+      'enterprise',
+      'organization',
+      'department-members',
+      7,
+      2,
     ])
   })
 

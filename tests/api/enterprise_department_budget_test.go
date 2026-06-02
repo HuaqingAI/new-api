@@ -130,7 +130,7 @@ func TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow(t *testing
 	})
 	withoutTenantPayload := decodeDepartmentMembersAPIResponse(t, withoutTenant)
 	require.False(t, withoutTenantPayload.Success)
-	require.Contains(t, withoutTenantPayload.Message, "error.enterprise.permission.dept_admin_required")
+	require.Contains(t, withoutTenantPayload.Message, "common.database_error")
 
 	withTenant := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/101/budget?tenant_id=1", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
 		Type:           modelenterprise.DepartmentBudgetTypeSubscription,

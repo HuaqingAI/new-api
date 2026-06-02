@@ -23,7 +23,7 @@ tiktoken_cache
 .gomodcache/
 .cache
 plans
-.claude
+# .claude
 .cursor
 
 electron/node_modules

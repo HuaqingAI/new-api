@@ -97,7 +97,7 @@ func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) 
 		ResourceId:               knowledge.ResourceId,
 		ResourceVersion:          "1.0.0",
 		KnowledgeMode:            "retrieval",
-		ProviderType:             "http",
+		ProviderType:             "http_retrieval",
 		ProviderAdapterKey:       "http_retrieval",
 		ProviderConfigJSON:       "{\"endpoint\":\"https://example.com\"}",
 		QuerySchemaJSON:          "{\"type\":\"object\"}",

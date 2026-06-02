@@ -4,7 +4,7 @@ baseline_commit: ab9550a95e83569c20ea818aa2b3d8777c1ea8c2
 
 # Story 7.3: 支持上级预算池向后代部门预算池分配
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -179,6 +179,7 @@ GPT-5 Codex
 - 已补齐 service 覆盖缺口：新增“祖先 -> 直属子部门”与“subscription 并发下不突破 cycle_quota/allocated_total 铁律”测试，连同既有“祖先 -> 孙部门、非后代拒绝、manual deny、预算不足、类型不匹配、supersede”一起锁住委派 service 行为。
 - 已通过 story 相关验证：`go test ./service/enterprise -run 'Test(.*BudgetDelegation.*|.*Boundary.*)' -count=1`、`go test ./controller/enterprise -run 'Test.*BudgetDelegation.*' -count=1`、`go test ./model/enterprise -run 'Test.*BudgetDelegation.*|Test.*TextDefault.*' -count=1`、`bun test web/default/src/features/enterprise-organization/enterprise-organization.test.tsx`、`bun run build:check`。
 - 已额外执行 `go test ./model/enterprise ./controller/enterprise ./service/enterprise -count=1` 作为更大范围回归；其中 `model/enterprise` 与 `controller/enterprise` 通过，但 `service/enterprise` 仍存在与 Story 7.3 无关的既有失败（`usage_report_task` 断言、`dingtalk_client_test` 端口绑定受当前环境限制），因此该结果仅作为仓库现状记录，不阻断 7.3 本故事交付。
+- 已依据 commit、定向验证和 sprint-status 的 source-of-truth 收口将故事状态同步为 `done`，避免实现完成后文档仍停留在 `review`。
 
 ### File List
 
@@ -219,3 +220,4 @@ GPT-5 Codex
 - 2026-06-01 22:35:00 +0800: 创建 Story 7.3 上下文文档，准备进入开发。
 - 2026-06-02 00:35:00 +0800: 完成预算委派 ledger / service / controller / router / i18n / Default 前端工作区首版实现，并补充 focused Go/Bun 测试；由于 OpenAPI 与部分 service 覆盖未完成，故事状态保持 `in-progress`。
 - 2026-06-02 00:48:30 +0800: 补齐 Story 7.3 剩余 service 测试矩阵并完成 story 相关 Go/Bun 验证，故事状态更新为 `review`。
+- 2026-06-02 12:47:08 +0800: retrospective 收尾时按 source-of-truth 同步 story artifact 状态为 `done`。

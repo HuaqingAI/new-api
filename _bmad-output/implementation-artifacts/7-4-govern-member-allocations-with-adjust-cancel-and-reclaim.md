@@ -4,7 +4,7 @@ baseline_commit: 2f5f9451c8bb4ae5e4a1b7e8c14acddb66328434
 
 # Story 7.4: 补齐成员 allocation 的调整、取消与回收治理
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -137,6 +137,7 @@ GPT-5 Codex
 - 已在 `QuotaAllocationService` 中补齐 `Supersede`、`Cancel`、`Reclaim`，复用现有预算回补、wallet backfill invariant 与 SQLite 重试，并保证回收幂等。
 - 已扩展成员 allocation API、错误 message key 与 Default 企业组织页治理工作流，支持在当前部门上下文中直接调整、取消和回收 allocation。
 - 已补充后端与前端测试，覆盖 supersede 链路、取消/回收幂等、状态文案、lineage 展示与控制器回传字段。
+- 已依据 commit、定向验证和 sprint-status 的 source-of-truth 收口将故事状态同步为 `done`，避免实现完成后文档仍停留在 `review`。
 
 ### File List
 
@@ -166,3 +167,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-06-02: 新增成员 allocation 的 supersede / cancel / reclaim 治理链路，补齐后端状态机、API、前端操作入口与测试覆盖。
+- 2026-06-02 12:47:08 +0800: retrospective 收尾时按 source-of-truth 同步 story artifact 状态为 `done`。

@@ -1,9 +1,9 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-02 11:00:15 +0800
+# last_updated: 2026-06-02 12:47:08 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: /Users/hq-it/.codex/worktrees/6b94/new-api/_bmad-output/implementation-artifacts
+# story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
@@ -35,11 +35,11 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-02 11:00:15 +0800
+last_updated: 2026-06-02 12:47:08 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
-story_location: /Users/hq-it/.codex/worktrees/6b94/new-api/_bmad-output/implementation-artifacts
+story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
 
 development_status:
   epic-1: done
@@ -90,14 +90,14 @@ development_status:
   6-5-unify-enterprise-user-display-rules: done
   epic-6-retrospective: optional
 
-  epic-7: in-progress
+  epic-7: done
   7-1-establish-department-owner-role-model-and-precedence: done
   7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: done
-  7-3-delegate-ancestor-budget-pools-to-descendant-department-pools: review
-  7-4-govern-member-allocations-with-adjust-cancel-and-reclaim: review
+  7-3-delegate-ancestor-budget-pools-to-descendant-department-pools: done
+  7-4-govern-member-allocations-with-adjust-cancel-and-reclaim: done
   7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
-  7-6-audit-governance-actions-and-send-dingtalk-notifications: review
-  epic-7-retrospective: optional
+  7-6-audit-governance-actions-and-send-dingtalk-notifications: done
+  epic-7-retrospective: done
 
   agent-platform-epic-1: backlog
   ap-1-1-establish-shared-resource-registry-and-stable-identity: backlog

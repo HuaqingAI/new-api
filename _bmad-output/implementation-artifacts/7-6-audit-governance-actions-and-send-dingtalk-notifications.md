@@ -4,7 +4,7 @@ baseline_commit: 5d9df6cd40547f62ddf7cd5e3d879f2aed4dfb22
 
 # Story 7.6: 建立治理动作审计时间线与钉钉通知
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -194,6 +194,7 @@ GPT-5 Codex
 - 已创建 Story 7.6 故事文档，状态为 `ready-for-dev`。
 - 已将 FR26 拆成统一 timeline projection、治理通知 delivery、钉钉机器人投递、提交路径 hook、Default 当前部门工作区 UI 和测试/边界回归任务。
 - 已明确最关键防误点：不要新建万能审计表复制所有事实；不要把治理通知塞进风险告警专用 delivery；不要让通知失败回滚核心治理事务；不要复制 `service/webhook.go` 的直接 JSON marshal 写法。
+- 已依据 commit、定向验证和 sprint-status 的 source-of-truth 收口将故事状态同步为 `done`，避免实现完成后文档仍停留在 `review`。
 
 ### File List
 
@@ -234,3 +235,4 @@ GPT-5 Codex
 
 - 2026-06-02 11:00:15 +0800: 完成 Story 7.6 实现，新增治理时间线、治理通知 delivery/dispatch/API、组织页视图、测试与 i18n，并将状态更新为 review。
 - 2026-06-02 10:37:41 +0800: 创建 Story 7.6 上下文文档，准备进入开发。
+- 2026-06-02 12:47:08 +0800: retrospective 收尾时按 source-of-truth 同步 story artifact 状态为 `done`。

@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-02 16:50:16 +0800
+# last_updated: 2026-06-02 17:44:25 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-02 16:50:16 +0800
+last_updated: 2026-06-02 17:44:25 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -100,7 +100,7 @@ development_status:
   epic-7-retrospective: done
   epic-7a: in-progress
   7a-1-complete-enterprise-governance-i18n-and-action-label-mapping: done
-  7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: backlog
+  7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: done
   7a-3-relax-budget-pool-type-locking-to-per-budget-invariance: backlog
   epic-7a-retrospective: optional
 

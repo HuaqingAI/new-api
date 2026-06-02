@@ -19,6 +19,8 @@ export default defineConfig({
         './src/features/enterprise-usage/enterprise-usage.test.tsx',
       'subscription-plans-card':
         './src/features/wallet/components/subscription-plans-card.test.tsx',
+      'employee-quota-request-card':
+        './src/features/wallet/components/employee-quota-request-card.test.tsx',
       'user-subscriptions-dialog':
         './src/features/subscriptions/components/dialogs/user-subscriptions-dialog.test.tsx',
       'quota-settings-section':

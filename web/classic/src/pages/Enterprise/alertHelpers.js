@@ -22,11 +22,15 @@ export function formatClassicEnterpriseUserSecondary(
 ) {
   const displayName = input.display_name?.trim();
   const username = input.username?.trim();
+  const userId = input.user_id;
 
   if (displayName && username && displayName !== username) {
-    return `${username} · ${t('用户 ID')} #${input.user_id ?? '-'}`;
+    if (userId != null) {
+      return `${username} · ${t('用户 ID')} #${userId}`;
+    }
+    return username;
   }
   if (username) return `${t('用户名')}: ${username}`;
-  if (input.user_id != null) return `${t('用户 ID')} #${input.user_id}`;
+  if (userId != null) return `${t('用户 ID')} #${userId}`;
   return '-';
 }

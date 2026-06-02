@@ -2,7 +2,7 @@
 
 ## Story
 
-- Story 6.4: 钉钉账号 username 策略与受控修改
+- Story 6.5: 企业页面统一用户标识展示规则
 - Workflow: `.claude/skills/bmad-qa-generate-e2e-tests`
 - 时间: 2026-06-03 +0800
 
@@ -10,30 +10,35 @@
 
 ### API 测试
 
-- [x] `tests/api/enterprise_department_member_username_test.go` - 新增 rename API happy path，覆盖部门管理员在当前部门成员上下文中修改 username。
-- [x] `tests/api/enterprise_department_member_username_test.go` - 验证 rename 后当前成员列表与 `users.username` 读取新 username，同时历史 `logs.username` 继续保留原 username snapshot。
-- [x] `tests/api/enterprise_department_member_username_test.go` - 验证审计动作 `enterprise.organization.membership.rename` 写入，并包含 `previous_username` 与 `new_username` payload。
-- [x] `tests/api/enterprise_department_member_username_test.go` - 覆盖非法 username、重复 username、目标用户不属于当前部门三类关键错误。
-- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增 rename API 调用契约测试，验证请求路径继承当前部门和当前成员，并发送 tenant payload。
+- [x] `controller/enterprise/usage_test.go` - 新增 `TestUsageDetailAPIKeepsUsernameAndUserIDWhenDisplayNameMissing`，覆盖用量详情在用户缺少 `display_name` 时仍返回 `username`、`user_id` 和空 `display_name`，确保前端可按统一规则回退展示。
+- [x] `controller/enterprise/usage_test.go` - 验证 recent logs 用户筛选选项仍保留真实 `username`，避免把可读名误用为日志筛选值。
+- [x] 复跑现有 6.5 API 回归，覆盖用量详情、风险事件、风险投递 trace 与 quota allocation 的用户展示字段透传。
 
 ### E2E / UI 测试
 
-- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 扩展当前成员治理卡片测试，验证 `Rename Username` 入口位于当前部门成员上下文。
-- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 验证 UI 明确展示历史日志和风险事件保留原 username snapshot、当前治理视图刷新后切换新 username 的规则。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增共享企业用户展示 helper 断言，锁定“可读名称优先，username 次之，user ID 最后兜底”的统一规则。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 补充缺少 `user_id` 时的辅助标签断言，避免输出 `User ID #-`。
+- [x] `web/classic/src/pages/Enterprise/Department.smoke.test.js` - 新增 Classic 部门成员入口 smoke，验证成员表使用共享格式化器并按可读名优先展示，补齐 Classic 最小一致性缺口。
+- [x] `web/classic/src/pages/Enterprise/Alerts.smoke.test.js` / `Department.smoke.test.js` - 补充 Classic 缺少 `user_id` 时的辅助标签断言，避免输出 `用户 ID #-`。
+- [x] 复跑现有 Default 企业组织、用量和风险测试，覆盖成员、预算 wallet、用量排行、recent logs 用户 chips、风险事件与投递 trace 的展示规则。
 
 ## 覆盖范围
 
-- API endpoints: `PUT /api/enterprise/departments/:id/members/:user_id/username`、`GET /api/enterprise/departments/:id/members`
-- UI features: 当前成员治理卡片、受控 username 修改入口、历史 snapshot 规则说明、rename 请求契约
-- Critical error cases: `enterprise.organization.username_invalid`、`enterprise.organization.username_exists`、`enterprise.organization.membership_not_found`
-- Persistence rules: 当前用户表更新、成员列表联动读取、管理审计 payload、历史日志 username snapshot 不回写
+- API endpoints: `GET /api/enterprise/usage/department-detail`、`GET /api/enterprise/alerts/events`、`GET /api/enterprise/alerts/deliveries`、quota allocation workflow
+- UI features: Default 企业组织、预算 wallet、用量排行、最近日志入口、风险事件、风险投递 trace、Classic 部门成员表、Classic 风险事件表
+- Happy path: 有 `display_name` 时主展示可读名，并用 `username / user ID` 辅助消歧
+- Critical fallback cases: 无 `display_name` 时回退 `username`；无 `username` 时回退 `user ID`
+- Contract preservation: recent logs 筛选仍使用真实 `username`，风险历史 `username_snapshot` 不被当前可读名覆盖
 
 ## 验证结果
 
-- `GOCACHE=/private/tmp/new-api-go-build-cache go test ./tests/api -run 'TestEnterpriseDepartmentMemberUsernameRenameAPI'` 通过
-- `GOCACHE=/private/tmp/new-api-go-build-cache go test ./tests/api` 通过
-- `cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` 通过，49/49
+- `GOCACHE=/private/tmp/new-api-go-build-cache go test ./controller/enterprise -run 'TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays|TestUsageDetailAPIKeepsUsernameAndUserIDWhenDisplayNameMissing|TestAlertEventsAPIValidatesQueryAndReturnsPaginationEnvelope|TestAlertDeliveriesAPIValidatesQueryAndReturnsEnvelope|TestQuotaAllocationAPIWorkflow' -count=1` 通过
+- `cd web/default && bun test ./src/features/enterprise-organization/enterprise-organization.test.tsx ./src/features/enterprise-usage/enterprise-usage.test.tsx ./src/features/enterprise-alerts/enterprise-alerts.test.tsx` 通过，93/93
 - `cd web/default && bun run test:e2e` 通过
+- `cd web/classic && bun test ./src/pages/Enterprise/Alerts.smoke.test.js ./src/pages/Enterprise/Department.smoke.test.js` 通过，6/6
+- `cd web/classic && bun test ./src/pages/Enterprise/*.smoke.test.js` 通过，6/6
+- 2026-06-03 review 复跑：`cd web/default && bun test ./src/features/enterprise-organization/enterprise-organization.test.tsx ./src/features/enterprise-usage/enterprise-usage.test.tsx ./src/features/enterprise-alerts/enterprise-alerts.test.tsx` 通过，93/93
+- 2026-06-03 review 复跑：`cd web/classic && bun test ./src/pages/Enterprise/Alerts.smoke.test.js ./src/pages/Enterprise/Department.smoke.test.js` 通过，6/6
 
 ## Checklist
 
@@ -41,7 +46,7 @@
 - [x] E2E/UI tests generated for UI
 - [x] Tests use standard project framework APIs (`go test`, `bun test`, `rsbuild` + `node:test`)
 - [x] Tests cover happy path
-- [x] Tests cover critical error cases
+- [x] Tests cover critical error/fallback cases
 - [x] All generated tests run successfully
 - [x] Tests use existing semantic/static UI assertions available in the current framework
 - [x] Tests have clear descriptions
@@ -53,5 +58,6 @@
 
 ## 备注
 
-- 项目当前未使用 Playwright/Cypress；本次继续沿用现有 Go API 集成测试与 Default 前端 `rsbuild`/`node:test` 测试模式。
+- 项目当前未使用 Playwright/Cypress；本次继续沿用现有 Go API 集成测试、Default `rsbuild`/`node:test` E2E 构建脚本和 Classic Bun smoke 测试模式。
 - `bun run test:e2e` 构建阶段仍输出现有 `debug` 包可选依赖 `supports-color` warning；测试执行全部通过。
+- customization resolver 因当前 Python 缺少 `tomllib` 未能自动解析；已按 skill fallback 手工读取 `.claude/skills/bmad-qa-generate-e2e-tests/customize.toml`，无 team/user override，`on_complete` 为空。

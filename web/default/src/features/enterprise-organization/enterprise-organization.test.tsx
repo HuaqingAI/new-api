@@ -60,6 +60,10 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from './lib/user-display'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -87,6 +91,68 @@ const testRouter = createRouter({
 })
 
 describe('Enterprise organization department tree workflow', () => {
+  test('formats enterprise user labels with readable name, username, then user id fallback', () => {
+    const t = (value: string) => value
+
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: 'Alice Zhang',
+        username: 'alice_ops',
+        userId: 2001,
+      }),
+      'Alice Zhang'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+          userId: 2001,
+        },
+        t
+      ),
+      'alice_ops · User ID #2001'
+    )
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: '',
+        username: 'alice_ops',
+        userId: 2001,
+      }),
+      'alice_ops'
+    )
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: '',
+        username: '',
+        userId: 2001,
+      }),
+      '#2001'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: '',
+          username: '',
+          userId: 2001,
+        },
+        t
+      ),
+      'User ID #2001'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+          userId: null,
+        },
+        t
+      ),
+      'alice_ops'
+    )
+  })
+
   test('renders the empty state with actionable disabled next-step entries', () => {
     const html = renderEnterpriseOrganizationContent([])
 

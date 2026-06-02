@@ -19,11 +19,15 @@ export function formatEnterpriseUserSecondary(
 ) {
   const displayName = input.displayName?.trim()
   const username = input.username?.trim()
+  const userId = input.userId
 
   if (displayName && username && displayName !== username) {
-    return `${username} · ${t('User ID')} #${input.userId ?? '-'}`
+    if (userId != null) {
+      return `${username} · ${t('User ID')} #${userId}`
+    }
+    return username
   }
   if (username) return `${t('Username')}: ${username}`
-  if (input.userId != null) return `${t('User ID')} #${input.userId}`
+  if (userId != null) return `${t('User ID')} #${userId}`
   return '-'
 }

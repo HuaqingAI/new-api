@@ -1,5 +1,5 @@
 ---
-stateFile: "/Users/hq-it/.codex/worktrees/6b94/new-api/_bmad-output/story-automator/orchestration-7-20260601-075141.md"
+stateFile: "/Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/story-automator/orchestration-7-20260601-075141.md"
 createdAt: "2026-06-01T07:53:18Z"
 ---
 
@@ -8,7 +8,7 @@ createdAt: "2026-06-01T07:53:18Z"
 ```json
 {
   "version": "1.0.0",
-  "stateFile": "/Users/hq-it/.codex/worktrees/6b94/new-api/_bmad-output/story-automator/orchestration-7-20260601-075141.md",
+  "stateFile": "/Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/story-automator/orchestration-7-20260601-075141.md",
   "epic": "7",
   "epicName": "new-api - Epic Breakdown",
   "createdAt": "2026-06-01T07:53:18Z",

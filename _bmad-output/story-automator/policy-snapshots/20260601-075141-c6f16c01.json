@@ -39,13 +39,13 @@
       "parse": {
         "schemaFile": "data/parse/auto.json",
         "schemaHash": "c28f92c6",
-        "schemaPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/parse/auto.json"
+        "schemaPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/parse/auto.json"
       },
       "prompt": {
         "interactionMode": "autonomous",
         "templateFile": "data/prompts/auto.md",
         "templateHash": "ea2800d0",
-        "templatePath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/prompts/auto.md"
+        "templatePath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/prompts/auto.md"
       },
       "success": {
         "verifier": "session_exit"
@@ -82,13 +82,13 @@
       "parse": {
         "schemaFile": "data/parse/create.json",
         "schemaHash": "62942dd0",
-        "schemaPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/parse/create.json"
+        "schemaPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/parse/create.json"
       },
       "prompt": {
         "interactionMode": "autonomous",
         "templateFile": "data/prompts/create.md",
         "templateHash": "3237dfc2",
-        "templatePath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/prompts/create.md"
+        "templatePath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/prompts/create.md"
       },
       "success": {
         "config": {
@@ -125,13 +125,13 @@
       "parse": {
         "schemaFile": "data/parse/dev.json",
         "schemaHash": "c3ea8e93",
-        "schemaPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/parse/dev.json"
+        "schemaPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/parse/dev.json"
       },
       "prompt": {
         "interactionMode": "autonomous",
         "templateFile": "data/prompts/dev.md",
         "templateHash": "40b6bb3d",
-        "templatePath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/prompts/dev.md"
+        "templatePath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/prompts/dev.md"
       },
       "success": {
         "verifier": "session_exit"
@@ -162,13 +162,13 @@
       "parse": {
         "schemaFile": "data/parse/retro.json",
         "schemaHash": "c56d1f1b",
-        "schemaPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/parse/retro.json"
+        "schemaPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/parse/retro.json"
       },
       "prompt": {
         "interactionMode": "autonomous",
         "templateFile": "data/prompts/retro.md",
         "templateHash": "b55e13a5",
-        "templatePath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/prompts/retro.md"
+        "templatePath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/prompts/retro.md"
       },
       "success": {
         "verifier": "epic_complete"
@@ -203,7 +203,7 @@
       "parse": {
         "schemaFile": "data/parse/review.json",
         "schemaHash": "563493d5",
-        "schemaPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/parse/review.json"
+        "schemaPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/parse/review.json"
       },
       "prompt": {
         "acceptExtraInstruction": true,
@@ -211,12 +211,12 @@
         "interactionMode": "autonomous",
         "templateFile": "data/prompts/review.md",
         "templateHash": "ae574cd3",
-        "templatePath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator/data/prompts/review.md"
+        "templatePath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator/data/prompts/review.md"
       },
       "success": {
         "contractFile": "<skills-root>/bmad-story-automator-review/contract.json",
         "contractHash": "168addec",
-        "contractPath": "/Users/hq-it/.codex/worktrees/6b94/new-api/.agents/skills/bmad-story-automator-review/contract.json",
+        "contractPath": "/Users/hq-it/.codex/worktrees/ab4c/new-api/.agents/skills/bmad-story-automator-review/contract.json",
         "verifier": "review_completion"
       }
     }

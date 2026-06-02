@@ -242,6 +242,115 @@ func TestQuotaAllocationAPIRevokeWorkflow(t *testing.T) {
 	require.Contains(t, string(listResponse.Data), `"status":"revoked"`)
 }
 
+func TestQuotaAllocationAPISupersedeCancelAndReclaimWorkflow(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/quota-allocations", CreateQuotaAllocation)
+	router.GET("/api/enterprise/quota-allocations", ListQuotaAllocations)
+	router.POST("/api/enterprise/quota-allocations/:id/supersede", SupersedeQuotaAllocation)
+	router.POST("/api/enterprise/quota-allocations/:id/cancel", CancelQuotaAllocation)
+	router.POST("/api/enterprise/quota-allocations/:id/reclaim", ReclaimQuotaAllocation)
+
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           1,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:          2010,
+		Username:    "quota-member-ten",
+		DisplayName: "Quota Member Ten",
+		Password:    "pwd",
+		Group:       "default",
+		AffCode:     "quota-member-ten-aff",
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:          2011,
+		Username:    "quota-member-eleven",
+		DisplayName: "Quota Member Eleven",
+		Password:    "pwd",
+		Group:       "default",
+		AffCode:     "quota-member-eleven-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:     0,
+		UserId:       2010,
+		DepartmentId: 1,
+		Status:       1,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:     0,
+		UserId:       2011,
+		DepartmentId: 1,
+		Status:       1,
+	}).Error)
+
+	createA := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations", dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2010,
+		CommittedQuota:     int64Ptr(300),
+	})
+	createAResponse := decodeEnterpriseAPIResponse(t, createA)
+	require.True(t, createAResponse.Success, createAResponse.Message)
+
+	supersede := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations/1/supersede", dtoenterprise.SupersedeQuotaAllocationRequest{
+		DepartmentId:      1,
+		NewCommittedQuota: int64Ptr(240),
+		Reason:            "resize",
+	})
+	supersedeResponse := decodeEnterpriseAPIResponse(t, supersede)
+	require.True(t, supersedeResponse.Success, supersedeResponse.Message)
+	require.Contains(t, string(supersedeResponse.Data), `"status":"active"`)
+	require.Contains(t, string(supersedeResponse.Data), `"supersedes_allocation_id":1`)
+
+	createB := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations", dtoenterprise.CreateQuotaAllocationRequest{
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2011,
+		CommittedQuota:     int64Ptr(180),
+	})
+	createBResponse := decodeEnterpriseAPIResponse(t, createB)
+	require.True(t, createBResponse.Success, createBResponse.Message)
+
+	cancel := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations/3/cancel", dtoenterprise.CancelQuotaAllocationRequest{
+		DepartmentId: 1,
+		Reason:       "member moved",
+	})
+	cancelResponse := decodeEnterpriseAPIResponse(t, cancel)
+	require.True(t, cancelResponse.Success, cancelResponse.Message)
+	require.Contains(t, string(cancelResponse.Data), `"status":"revoked"`)
+	require.Contains(t, string(cancelResponse.Data), `"processed_at":`)
+
+	reclaim := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations/2/reclaim", dtoenterprise.ReclaimQuotaAllocationRequest{
+		DepartmentId: 1,
+		Reason:       "wallet cleanup",
+	})
+	reclaimResponse := decodeEnterpriseAPIResponse(t, reclaim)
+	require.True(t, reclaimResponse.Success, reclaimResponse.Message)
+	require.Contains(t, string(reclaimResponse.Data), `"status":"closed"`)
+	require.Contains(t, string(reclaimResponse.Data), `"reclaimed_quota":240`)
+
+	reclaimAgain := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/quota-allocations/2/reclaim", dtoenterprise.ReclaimQuotaAllocationRequest{
+		DepartmentId: 1,
+		Reason:       "retry",
+	})
+	reclaimAgainResponse := decodeEnterpriseAPIResponse(t, reclaimAgain)
+	require.True(t, reclaimAgainResponse.Success, reclaimAgainResponse.Message)
+	require.Contains(t, string(reclaimAgainResponse.Data), `"status":"closed"`)
+	require.Contains(t, string(reclaimAgainResponse.Data), `"reclaimed_quota":240`)
+
+	list := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/quota-allocations?department_budget_id=1&department_id=1", nil)
+	listResponse := decodeEnterpriseAPIResponse(t, list)
+	require.True(t, listResponse.Success, listResponse.Message)
+	require.Contains(t, string(listResponse.Data), `"status":"superseded"`)
+	require.Contains(t, string(listResponse.Data), `"status":"closed"`)
+	require.Contains(t, string(listResponse.Data), `"status":"revoked"`)
+}
+
 func int64Ptr(value int64) *int64 {
 	return &value
 }

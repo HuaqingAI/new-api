@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Buộc phản hồi JSON hợp lệ về cú pháp",
@@ -4903,5 +4903,17 @@
     "Current department": "Phòng ban hiện tại",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Bảng xếp hạng chi tiết và nhật ký gần đây vẫn giữ trong phòng ban hiện tại và không tự động mở rộng toàn bộ cây phòng ban con.",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Danh sách chi tiết sự kiện rủi ro vẫn giữ ở bộ lọc sự kiện trực tiếp và không tự động mở rộng toàn bộ cây phòng ban con."
-  }
+  },
+  "Close old allocation and create a new one": "Dong allocation cu va tao allocation moi",
+  "Historical allocation": "Allocation lich su",
+  "Cancel allocation": "Huy allocation",
+  "Reclaim allocation": "Thu hoi allocation",
+  "Reclaimed Quota": "Han muc da thu hoi",
+  "Lineage": "Chuoi nguon goc",
+  "Supersedes Allocation #{{id}}": "Thay the Allocation #{{id}}",
+  "Superseded By Allocation #{{id}}": "Bi Allocation #{{id}} thay the",
+  "Wallet allocation adjusted": "Da dieu chinh allocation vi",
+  "Wallet allocation cancelled": "Da huy allocation vi",
+  "Wallet allocation reclaimed": "Da thu hoi allocation vi",
+  "Cancelled": "Da huy"
 }

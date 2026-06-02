@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Force a syntactically valid JSON response",
@@ -4903,5 +4903,17 @@
     "Current department": "Current department",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree."
-  }
+  },
+  "Close old allocation and create a new one": "Close old allocation and create a new one",
+  "Historical allocation": "Historical allocation",
+  "Cancel allocation": "Cancel allocation",
+  "Reclaim allocation": "Reclaim allocation",
+  "Reclaimed Quota": "Reclaimed Quota",
+  "Lineage": "Lineage",
+  "Supersedes Allocation #{{id}}": "Supersedes Allocation #{{id}}",
+  "Superseded By Allocation #{{id}}": "Superseded By Allocation #{{id}}",
+  "Wallet allocation adjusted": "Wallet allocation adjusted",
+  "Wallet allocation cancelled": "Wallet allocation cancelled",
+  "Wallet allocation reclaimed": "Wallet allocation reclaimed",
+  "Cancelled": "Cancelled"
 }

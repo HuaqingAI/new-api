@@ -233,6 +233,11 @@ export type QuotaAllocationItem = {
   expires_at_snapshot: number
   reason: string
   status: string
+  superseded_by_id: number
+  supersedes_allocation_id: number
+  revoke_reason: string
+  reclaimed_quota: number
+  processed_source: string
   processed_at: number
   created_at: number
   updated_at: number
@@ -317,6 +322,25 @@ export type SupersedeBudgetDelegationPayload = {
 }
 
 export type RevokeQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  reason?: string
+}
+
+export type SupersedeQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  new_committed_quota?: number
+  reason?: string
+}
+
+export type CancelQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  reason?: string
+}
+
+export type ReclaimQuotaAllocationPayload = {
   tenant_id?: number
   department_id: number
   reason?: string

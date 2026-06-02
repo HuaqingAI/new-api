@@ -111,11 +111,13 @@ import {
   grantDepartmentOwner,
   quotaAllocationQueryKey,
   quotaAllocationQueryScopeKey,
+  reclaimQuotaAllocation,
   renameDepartmentMember,
   restoreDepartmentMember,
+  cancelQuotaAllocation,
   revokeDepartmentOwnerDeny,
   revokeDepartmentOwnerGrant,
-  revokeQuotaAllocation,
+  supersedeQuotaAllocation,
   supersedeBudgetDelegation,
   userDepartmentsQueryKey,
 } from './api'
@@ -424,6 +426,7 @@ function enterpriseBudgetStatusLabel(
   if (status === 'expired') return t('Expired')
   if (status === 'superseded') return t('Superseded')
   if (status === 'closed') return t('Closed')
+  if (status === 'cancelled') return t('Cancelled')
   return status || '-'
 }
 
@@ -1836,6 +1839,9 @@ function DepartmentBudgetPanel({
   const [supersedeDrafts, setSupersedeDrafts] = useState<Record<number, string>>(
     {}
   )
+  const [allocationSupersedeDrafts, setAllocationSupersedeDrafts] = useState<
+    Record<number, string>
+  >({})
   const normalizedTenantId = tenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
   const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
@@ -2142,9 +2148,46 @@ function DepartmentBudgetPanel({
     },
   })
 
-  const revokeMutation = useMutation({
+  const allocationSupersedeMutation = useMutation({
+    mutationFn: async (params: { allocationId: number; committedQuota: number }) =>
+      supersedeQuotaAllocation(params.allocationId, {
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        new_committed_quota: params.committedQuota,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      toast.success(t('Wallet allocation adjusted'))
+    },
+  })
+
+  const allocationCancelMutation = useMutation({
     mutationFn: async (allocationId: number) =>
-      revokeQuotaAllocation(allocationId, {
+      cancelQuotaAllocation(allocationId, {
         tenant_id: tenantId || undefined,
         department_id: departmentId,
       }),
@@ -2174,7 +2217,43 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      toast.success(t('Wallet allocation revoked'))
+      toast.success(t('Wallet allocation cancelled'))
+    },
+  })
+
+  const allocationReclaimMutation = useMutation({
+    mutationFn: async (allocationId: number) =>
+      reclaimQuotaAllocation(allocationId, {
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      toast.success(t('Wallet allocation reclaimed'))
     },
   })
 
@@ -2703,9 +2782,41 @@ function DepartmentBudgetPanel({
           <QuotaAllocationTable
             items={allocationListQuery.data ?? []}
             loading={allocationListQuery.isLoading}
-            onRevoke={(allocationId) => revokeMutation.mutate(allocationId)}
-            revokePendingId={
-              revokeMutation.isPending ? revokeMutation.variables : null
+            supersedeDrafts={allocationSupersedeDrafts}
+            onSupersedeDraftChange={(allocationId, value) =>
+              setAllocationSupersedeDrafts((current) => ({
+                ...current,
+                [allocationId]: value,
+              }))
+            }
+            onSupersede={(item) =>
+              allocationSupersedeMutation.mutate({
+                allocationId: item.id,
+                committedQuota: Number(
+                  allocationSupersedeDrafts[item.id] || item.committed_quota
+                ),
+              })
+            }
+            onCancel={(allocationId) =>
+              allocationCancelMutation.mutate(allocationId)
+            }
+            onReclaim={(allocationId) =>
+              allocationReclaimMutation.mutate(allocationId)
+            }
+            supersedePendingId={
+              allocationSupersedeMutation.isPending
+                ? allocationSupersedeMutation.variables?.allocationId ?? null
+                : null
+            }
+            cancelPendingId={
+              allocationCancelMutation.isPending
+                ? allocationCancelMutation.variables ?? null
+                : null
+            }
+            reclaimPendingId={
+              allocationReclaimMutation.isPending
+                ? allocationReclaimMutation.variables ?? null
+                : null
             }
           />
         </CardContent>
@@ -2717,13 +2828,25 @@ function DepartmentBudgetPanel({
 export function QuotaAllocationTable({
   items,
   loading,
-  onRevoke,
-  revokePendingId,
+  supersedeDrafts,
+  onSupersedeDraftChange,
+  onSupersede,
+  onCancel,
+  onReclaim,
+  supersedePendingId,
+  cancelPendingId,
+  reclaimPendingId,
 }: {
   items: QuotaAllocationItem[]
   loading: boolean
-  onRevoke?: (allocationId: number) => void
-  revokePendingId?: number | null
+  supersedeDrafts?: Record<number, string>
+  onSupersedeDraftChange?: (allocationId: number, value: string) => void
+  onSupersede?: (item: QuotaAllocationItem) => void
+  onCancel?: (allocationId: number) => void
+  onReclaim?: (allocationId: number) => void
+  supersedePendingId?: number | null
+  cancelPendingId?: number | null
+  reclaimPendingId?: number | null
 }) {
   const { t } = useTranslation()
 
@@ -2756,6 +2879,8 @@ export function QuotaAllocationTable({
           <TableHead>{t('Allocation Quota')}</TableHead>
           <TableHead>{t('Wallet ID')}</TableHead>
           <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Lineage')}</TableHead>
+          <TableHead>{t('Reclaimed Quota')}</TableHead>
           <TableHead>{t('Processed At')}</TableHead>
           <TableHead>{t('Created At')}</TableHead>
           <TableHead>{t('Actions')}</TableHead>
@@ -2793,27 +2918,91 @@ export function QuotaAllocationTable({
               </Badge>
             </TableCell>
             <TableCell>
+              <div className='flex min-w-[180px] flex-col gap-1 text-xs'>
+                <span>
+                  {item.supersedes_allocation_id
+                    ? t('Supersedes Allocation #{{id}}', {
+                        id: item.supersedes_allocation_id,
+                      })
+                    : '-'}
+                </span>
+                <span className='text-muted-foreground'>
+                  {item.superseded_by_id
+                    ? t('Superseded By Allocation #{{id}}', {
+                        id: item.superseded_by_id,
+                      })
+                    : '-'}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>{item.reclaimed_quota || 0}</TableCell>
+            <TableCell>
               {item.processed_at ? formatTimestamp(item.processed_at) : '-'}
             </TableCell>
             <TableCell>{formatTimestamp(item.created_at)}</TableCell>
             <TableCell>
-              <Button
-                type='button'
-                size='sm'
-                variant='outline'
-                disabled={
-                  !onRevoke ||
-                  item.status === 'revoked' ||
-                  item.status === 'expired' ||
-                  revokePendingId === item.id
-                }
-                onClick={() => onRevoke?.(item.id)}
-              >
-                <ShieldX data-icon='inline-start' />
-                {item.status === 'revoked' || item.status === 'expired'
-                  ? t('Already processed')
-                  : t('Revoke allocation')}
-              </Button>
+              <div className='flex min-w-[320px] items-center gap-2'>
+                {item.status === 'active' ? (
+                  <Input
+                    inputMode='numeric'
+                    value={
+                      supersedeDrafts?.[item.id] ?? String(item.committed_quota)
+                    }
+                    onChange={(event) =>
+                      onSupersedeDraftChange?.(item.id, event.target.value)
+                    }
+                    aria-label={t('Allocation Quota')}
+                  />
+                ) : null}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onSupersede ||
+                    item.status !== 'active' ||
+                    supersedePendingId === item.id
+                  }
+                  onClick={() => onSupersede?.(item)}
+                >
+                  <RotateCcw data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Close old allocation and create a new one')
+                    : t('Historical allocation')}
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onCancel ||
+                    item.status !== 'active' ||
+                    cancelPendingId === item.id
+                  }
+                  onClick={() => onCancel?.(item.id)}
+                >
+                  <ShieldX data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Cancel allocation')
+                    : t('Already processed')}
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onReclaim ||
+                    item.status !== 'active' ||
+                    reclaimPendingId === item.id
+                  }
+                  onClick={() => onReclaim?.(item.id)}
+                >
+                  <Coins data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Reclaim allocation')
+                    : t('Already processed')}
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}

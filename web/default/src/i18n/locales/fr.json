@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Pour les déploiements privés, format : https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Imposer une réponse JSON syntaxiquement valide",
@@ -4903,5 +4903,17 @@
     "Current department": "Département actuel",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Le classement détaillé et les journaux récents restent limités au département actuel et n'étendent pas automatiquement tout l'arbre descendant.",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Les listes détaillées d'événements de risque restent sur des filtres d'événements directs et n'étendent pas automatiquement tout l'arbre descendant."
-  }
+  },
+  "Close old allocation and create a new one": "Clore l allocation precedente et en creer une nouvelle",
+  "Historical allocation": "Allocation historique",
+  "Cancel allocation": "Annuler l allocation",
+  "Reclaim allocation": "Recuperer l allocation",
+  "Reclaimed Quota": "Quota recupere",
+  "Lineage": "Lignee",
+  "Supersedes Allocation #{{id}}": "Remplace l allocation #{{id}}",
+  "Superseded By Allocation #{{id}}": "Remplacee par l allocation #{{id}}",
+  "Wallet allocation adjusted": "Allocation du portefeuille ajustee",
+  "Wallet allocation cancelled": "Allocation du portefeuille annulee",
+  "Wallet allocation reclaimed": "Allocation du portefeuille recuperee",
+  "Cancelled": "Annule"
 }

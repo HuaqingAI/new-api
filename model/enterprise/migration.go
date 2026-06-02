@@ -12,6 +12,9 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureAlertDeliveryColumns(db); err != nil {
 		return err
 	}
+	if err := ensureQuotaAllocationLifecycleColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
@@ -135,6 +138,28 @@ func ensureAlertDeliveryColumns(db *gorm.DB) error {
 			continue
 		}
 		if err := db.Migrator().AddColumn(&AlertDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureQuotaAllocationLifecycleColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&QuotaAllocation{}) {
+		return nil
+	}
+	columns := []string{
+		"superseded_by_id",
+		"supersedes_allocation_id",
+		"revoke_reason",
+		"reclaimed_quota",
+		"processed_source",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&QuotaAllocation{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&QuotaAllocation{}, column); err != nil {
 			return err
 		}
 	}

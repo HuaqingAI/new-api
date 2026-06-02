@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Для частных развертываний, формат: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Принудительно возвращать синтаксически корректный JSON",
@@ -4903,5 +4903,17 @@
     "Current department": "Текущий отдел",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Детальный рейтинг и последние журналы остаются в рамках текущего отдела и не раскрывают автоматически всё дочернее дерево.",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Списки деталей рисковых событий остаются на прямых фильтрах событий и не раскрывают автоматически всё дочернее дерево."
-  }
+  },
+  "Close old allocation and create a new one": "Закрыть старое распределение и создать новое",
+  "Historical allocation": "Историческое распределение",
+  "Cancel allocation": "Отменить распределение",
+  "Reclaim allocation": "Вернуть распределение",
+  "Reclaimed Quota": "Возвращенная квота",
+  "Lineage": "Цепочка",
+  "Supersedes Allocation #{{id}}": "Заменяет распределение #{{id}}",
+  "Superseded By Allocation #{{id}}": "Заменено распределением #{{id}}",
+  "Wallet allocation adjusted": "Распределение кошелька скорректировано",
+  "Wallet allocation cancelled": "Распределение кошелька отменено",
+  "Wallet allocation reclaimed": "Распределение кошелька возвращено",
+  "Cancelled": "Отменено"
 }

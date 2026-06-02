@@ -110,6 +110,96 @@ func RevokeQuotaAllocation(c *gin.Context) {
 	})
 }
 
+func SupersedeQuotaAllocation(c *gin.Context) {
+	allocationId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || allocationId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req dtoenterprise.SupersedeQuotaAllocationRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	item, err := entservice.NewQuotaAllocationService(model.DB).Supersede(entservice.SupersedeQuotaAllocationInput{
+		TenantId:          tenantId,
+		DepartmentId:      req.DepartmentId,
+		AllocationId:      allocationId,
+		ActorId:           c.GetInt("id"),
+		NewCommittedQuota: int64Value(req.NewCommittedQuota),
+		Reason:            req.Reason,
+	})
+	if err != nil {
+		writeQuotaAllocationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.QuotaAllocationResponse{Item: mapQuotaAllocationItemDTO(item)})
+}
+
+func CancelQuotaAllocation(c *gin.Context) {
+	allocationId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || allocationId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req dtoenterprise.CancelQuotaAllocationRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	item, err := entservice.NewQuotaAllocationService(model.DB).Cancel(entservice.CancelQuotaAllocationInput{
+		TenantId:      tenantId,
+		DepartmentId:  req.DepartmentId,
+		AllocationId:  allocationId,
+		ActorId:       c.GetInt("id"),
+		Reason:        req.Reason,
+		ProcessedTime: common.GetTimestamp(),
+	})
+	if err != nil {
+		writeQuotaAllocationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.QuotaAllocationResponse{Item: mapQuotaAllocationItemDTO(item)})
+}
+
+func ReclaimQuotaAllocation(c *gin.Context) {
+	allocationId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || allocationId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req dtoenterprise.ReclaimQuotaAllocationRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	item, err := entservice.NewQuotaAllocationService(model.DB).Reclaim(entservice.ReclaimQuotaAllocationInput{
+		TenantId:      tenantId,
+		DepartmentId:  req.DepartmentId,
+		AllocationId:  allocationId,
+		ActorId:       c.GetInt("id"),
+		Reason:        req.Reason,
+		ProcessedTime: common.GetTimestamp(),
+	})
+	if err != nil {
+		writeQuotaAllocationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.QuotaAllocationResponse{Item: mapQuotaAllocationItemDTO(item)})
+}
+
 func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterprise.QuotaAllocationItem {
 	return &dtoenterprise.QuotaAllocationItem{
 		Id:                     item.Id,
@@ -129,6 +219,11 @@ func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterpri
 		ExpiresAtSnapshot:      item.ExpiresAtSnapshot,
 		Reason:                 item.Reason,
 		Status:                 item.Status,
+		SupersededById:         item.SupersededById,
+		SupersedesAllocationId: item.SupersedesAllocationId,
+		RevokeReason:           item.RevokeReason,
+		ReclaimedQuota:         item.ReclaimedQuota,
+		ProcessedSource:        item.ProcessedSource,
 		ProcessedAt:            item.ProcessedAt,
 		CreatedAt:              item.CreatedAt,
 		UpdatedAt:              item.UpdatedAt,
@@ -151,6 +246,12 @@ func writeQuotaAllocationError(c *gin.Context, err error) {
 		writeQuotaAllocationBudgetError(c, quotaAllocationBudgetReasonKey(err))
 	case errors.Is(err, entservice.ErrQuotaAllocationUserOutOfDepartment):
 		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationUserOutOfDepartment)
+	case errors.Is(err, entservice.ErrQuotaAllocationAlreadyProcessed):
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationAlreadyProcessed)
+	case errors.Is(err, entservice.ErrQuotaAllocationWalletProtected), errors.Is(err, entservice.ErrQuotaAllocationProtected):
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationProtected)
+	case errors.Is(err, entservice.ErrQuotaAllocationNotFound):
+		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationNotFound)
 	default:
 		common.ApiErrorMsg(c, i18n.MsgDatabaseError)
 	}

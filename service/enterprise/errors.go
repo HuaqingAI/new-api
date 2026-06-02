@@ -40,6 +40,8 @@ var (
 	ErrQuotaAllocationWalletNotFound                     = errors.New("enterprise quota allocation wallet not found")
 	ErrQuotaAllocationWalletOrderInvalid                 = errors.New("enterprise quota allocation wallet order invalid")
 	ErrQuotaAllocationAlreadyProcessed                   = errors.New("enterprise quota allocation already processed")
+	ErrQuotaAllocationProtected                          = errors.New("enterprise quota allocation protected")
+	ErrQuotaAllocationNotFound                           = errors.New("enterprise quota allocation not found")
 	ErrBudgetDelegationInvalidInput                      = errors.New("enterprise budget delegation input invalid")
 	ErrBudgetDelegationNotFound                          = errors.New("enterprise budget delegation not found")
 	ErrBudgetDelegationQuotaInvalid                      = errors.New("enterprise budget delegation quota invalid")

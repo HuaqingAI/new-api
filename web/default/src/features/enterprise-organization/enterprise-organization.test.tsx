@@ -1018,7 +1018,53 @@ describe('Enterprise organization department tree workflow', () => {
       '300',
       '301',
       'Active',
-      'Revoke allocation',
+      'Close old allocation and create a new one',
+      'Cancel allocation',
+      'Reclaim allocation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders quota allocation governance states with lineage and action guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable
+          loading={false}
+          items={[
+            quotaAllocation({
+              id: 10,
+              status: 'active',
+              supersedes_allocation_id: 7,
+              reclaimed_quota: 0,
+            }),
+            quotaAllocation({
+              id: 11,
+              status: 'superseded',
+              superseded_by_id: 10,
+              processed_at: 1700000450,
+            }),
+            quotaAllocation({
+              id: 12,
+              status: 'closed',
+              reclaimed_quota: 175,
+              processed_at: 1700000500,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Superseded',
+      'Closed',
+      'Supersedes Allocation #7',
+      'Superseded By Allocation #10',
+      'Reclaimed Quota',
+      '175',
+      'Close old allocation and create a new one',
+      'Historical allocation',
+      'Reclaim allocation',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -1267,6 +1313,11 @@ function quotaAllocation(
     expires_at_snapshot: overrides.expires_at_snapshot ?? 0,
     reason: overrides.reason ?? '',
     status: overrides.status ?? 'active',
+    superseded_by_id: overrides.superseded_by_id ?? 0,
+    supersedes_allocation_id: overrides.supersedes_allocation_id ?? 0,
+    revoke_reason: overrides.revoke_reason ?? '',
+    reclaimed_quota: overrides.reclaimed_quota ?? 0,
+    processed_source: overrides.processed_source ?? '',
     processed_at: overrides.processed_at ?? 0,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,

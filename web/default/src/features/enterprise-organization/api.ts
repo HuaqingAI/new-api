@@ -37,8 +37,11 @@ import type {
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
   RenameDepartmentMemberPayload,
+  ReclaimQuotaAllocationPayload,
   RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
+  CancelQuotaAllocationPayload,
+  SupersedeQuotaAllocationPayload,
   SupersedeBudgetDelegationPayload,
   UserDepartmentsResponse,
 } from './types'
@@ -347,6 +350,39 @@ export async function revokeQuotaAllocation(
 ): Promise<ApiResponse<QuotaAllocationResponse>> {
   const res = await api.post(
     `/api/enterprise/quota-allocations/${allocationId}/revoke`,
+    payload
+  )
+  return res.data
+}
+
+export async function supersedeQuotaAllocation(
+  allocationId: number,
+  payload: SupersedeQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/supersede`,
+    payload
+  )
+  return res.data
+}
+
+export async function cancelQuotaAllocation(
+  allocationId: number,
+  payload: CancelQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/cancel`,
+    payload
+  )
+  return res.data
+}
+
+export async function reclaimQuotaAllocation(
+  allocationId: number,
+  payload: ReclaimQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/reclaim`,
     payload
   )
   return res.data

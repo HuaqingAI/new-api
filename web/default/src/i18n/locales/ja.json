@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "1つのAPI",
     "footer.columns.related.title": "関連プロジェクト",
     "footer.defaultCopyright": "すべての権利を留保します。",
-    "footer.new\u0061pi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
+    "footer.newapi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "2025 年 5 月 10 日以降に追加されたチャネルの場合、デプロイ時にモデル名から「.」を削除する必要はありません",
     "For private deployments, format: https://fastgpt.run/api/openapi": "プライベートデプロイメントの場合、形式: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "構文的に有効な JSON 応答を強制",
@@ -4903,5 +4903,17 @@
     "Current department": "現在の部門",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "詳細ランキングと最近のログは現在の部門のままで、子孫ツリー全体には自動展開されません。",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "リスクイベント詳細リストは直接のイベントフィルタのままで、子孫ツリー全体には自動展開されません。"
-  }
+  },
+  "Close old allocation and create a new one": "古い allocation を閉じて新しい allocation を作成",
+  "Historical allocation": "履歴 allocation",
+  "Cancel allocation": "allocation を取消",
+  "Reclaim allocation": "allocation を回収",
+  "Reclaimed Quota": "回収済みクォータ",
+  "Lineage": "系譜",
+  "Supersedes Allocation #{{id}}": "Allocation #{{id}} を置換",
+  "Superseded By Allocation #{{id}}": "Allocation #{{id}} に置換済み",
+  "Wallet allocation adjusted": "ウォレット allocation を調整しました",
+  "Wallet allocation cancelled": "ウォレット allocation を取消しました",
+  "Wallet allocation reclaimed": "ウォレット allocation を回収しました",
+  "Cancelled": "取消済み"
 }

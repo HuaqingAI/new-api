@@ -1948,7 +1948,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -4903,5 +4903,17 @@
     "Current department": "当前部门",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "明细排行和最近日志仍保持在当前部门范围内，不会自动展开整棵子树。",
     "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "风险事件明细列表仍保持直接事件筛选，不会自动展开整棵子树。"
-  }
+  },
+  "Close old allocation and create a new one": "关闭旧 allocation 并新建新 allocation",
+  "Historical allocation": "历史 allocation",
+  "Cancel allocation": "取消 allocation",
+  "Reclaim allocation": "回收 allocation",
+  "Reclaimed Quota": "已回收额度",
+  "Lineage": "链路",
+  "Supersedes Allocation #{{id}}": "替代 Allocation #{{id}}",
+  "Superseded By Allocation #{{id}}": "被 Allocation #{{id}} 替代",
+  "Wallet allocation adjusted": "成员 allocation 已调整",
+  "Wallet allocation cancelled": "成员 allocation 已取消",
+  "Wallet allocation reclaimed": "成员 allocation 已回收",
+  "Cancelled": "已取消"
 }

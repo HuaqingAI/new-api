@@ -24,6 +24,8 @@ export function useDepartmentUsageSummary(params: {
   from: number
   to: number
   tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
   summarySort?: 'requests' | 'quota' | 'users' | 'dept_name'
   summaryOrder?: 'asc' | 'desc'
 }) {
@@ -32,6 +34,8 @@ export function useDepartmentUsageSummary(params: {
       params.from,
       params.to,
       params.tenantId,
+      params.departmentId,
+      params.includeDescendants,
       params.summarySort,
       params.summaryOrder
     ),
@@ -40,11 +44,26 @@ export function useDepartmentUsageSummary(params: {
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
       }
-      return normalizeDepartmentUsageItems(
-        response.data?.items ?? [],
-        params.summarySort,
-        params.summaryOrder
-      )
+      return {
+        ...(response.data ?? {
+          items: [],
+          scope: {
+            department_name: '',
+            include_descendants: false,
+            department_ids: [],
+            request_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            quota: 0,
+            user_count: 0,
+          },
+        }),
+        items: normalizeDepartmentUsageItems(
+          response.data?.items ?? [],
+          params.summarySort,
+          params.summaryOrder
+        ),
+      }
     },
   })
 }

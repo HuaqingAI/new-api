@@ -145,6 +145,12 @@ FR14: Epic 1 - 治理审计与诊断基线，并在 Epic 2-5 中由领域流程�
 
 **FRs covered:** FR11, FR12, FR13, FR14
 
+### Epic 6: 下游公共契约冻结与接入签核
+
+平台团队和下游集成方可以基于一套正式公共契约、状态矩阵、错误矩阵与 mock / fixture 完成 Cherry Studio 首个消费者签核，并验证 Codex 作为第二消费者时不需要新建平行协议主干。
+
+**FRs covered:** FR5, FR6, FR13, FR14, FR15；补充下游 P0 model discovery 签核缺口
+
 ## Epic 1: 资源治理基线
 
 先建立 Agent Platform 的 bounded context 基础，让后续所有面向客户端的能力都建立在统一资源模型、统一发布模型和统一审计模型之上，而不是在各领域重复造治理底座。
@@ -655,3 +661,143 @@ So that 这个产品线的控制面不是 story 占位壳，而是可持续扩�
 **When** 页面展示文案、状态、空态和错误态
 **Then** 新增文案遵循 frontend i18n 约束
 **And** 页面结构、状态表达与现有 `enterprise-*` 模块一致，不以 narrative shell 视作完成。
+
+## Epic 6: 下游公共契约冻结与接入签核
+
+AP-1 到 AP-5 已完成资源治理、客户端接入、开放能力、Skill、Knowledge 与 Agent 的 MVP 基线。Epic 6 不重建这些能力，而是把已实现能力冻结成下游可签核的公共契约，并补齐模型发现、错误/状态矩阵、mock fixture 和 onboarding 最小闭环。
+
+### Story 6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract
+
+As a 客户端集成人员,
+I want 获得明确的 OAuth / token / revoke / callback / allowlist wire contract,
+So that 下游可以稳定实现企业登录与授权回调，而不是依赖当前后端行为猜测。
+
+**Acceptance Criteria:**
+
+**Given** 下游客户端准备接入授权流程
+**When** 查阅 AP-6 公共契约
+**Then** 文档明确 `authorize`、`token`、`refresh`、`revoke` 的请求、响应、错误码、redirect/callback 行为和 allowlist 规则
+**And** 明确当前 JSON authorize 能力与最终浏览器 redirect UX 的关系。
+
+**Given** 用户 consent、grant 或 client 状态影响授权
+**When** 下游触发授权或 token 刷新
+**Then** 契约明确对应状态、错误语义、可重试性和审计要求
+**And** 不要求下游读取 dashboard session 或 relay token。
+
+### Story 6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程
+
+As a 平台管理员,
+I want 有一套可签核的 client registration schema 与最小 onboarding 流程,
+So that 运维人员可以为 Cherry Studio / Codex 注册客户端并解释每个字段的治理含义。
+
+**Acceptance Criteria:**
+
+**Given** 管理员创建或维护下游客户端
+**When** 使用 AP-6 规格
+**Then** `client_id`、`slug`、`client_type`、`allowed_grant_types`、`redirect_uris`、`allowed_scopes`、`contract_version`、`capabilities`、`extensions`、`allow_client_credentials` 均有字段语义、示例和校验规则
+**And** 无效配置会映射到明确 onboarding 状态，而不是只显示通用失败。
+
+**Given** web/default 当前只有 Agent Platform shell
+**When** 评估 AP-6 最小交付面
+**Then** 明确哪些 onboarding 动作必须在 UI 完成，哪些可暂由 API / fixture 支撑
+**And** 若完整 Clients 工作区超出 AP-6，则拆入后续产品化 epic。
+
+### Story 6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集
+
+As a 客户端集成人员,
+I want discovery / detail / refresh 字段集被正式冻结,
+So that 下游可以稳定展示资源列表、详情、freshness 与撤销状态。
+
+**Acceptance Criteria:**
+
+**Given** 下游读取资源列表或详情
+**When** AP-6 公共契约返回资源数据
+**Then** `resource_id`、`resource_type`、`display_name`、`resource_version`、`contract_version`、`visibility_state`、`callable_state`、`freshness_ttl_seconds`、`freshness`、`etag`、`extensions`、`diagnostics` 等字段被标注为 MUST / SHOULD / MAY
+**And** `source`、`accountId`、`tenantId`、`disabledReason`、`fetchedAt`、`expiresAt` 是否进入 P0 被明确决策。
+
+**Given** 资源被 revoke、rollback、disable 或 offline
+**When** 下游执行 refresh 或超过 TTL
+**Then** 契约明确 stale / revoked / offline / fresh 的收敛规则和示例 payload。
+
+### Story 6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec
+
+As a 客户端集成人员,
+I want Skill invoke 与 Knowledge query 有正式请求/响应规格,
+So that 下游可以在不阅读服务端代码的情况下实现调用和错误处理。
+
+**Acceptance Criteria:**
+
+**Given** 下游调用 Skill
+**When** 查阅 AP-6 规格
+**Then** Skill metadata、input schema、output schema、sync invoke 请求/响应、timeout、upstream failure 与 contract validation error 均有示例
+**And** P0 明确是否只支持 sync invoke；若 async / cancel / task status 不进入 P0，必须显式声明。
+
+**Given** 下游查询 Knowledge
+**When** 查阅 AP-6 规格
+**Then** retrieval query shape、items、citations、source metadata、排序信息、provider failure 与敏感配置保护均有示例
+**And** 公共契约不暴露 LightRAG / FastGPT / RAGFlow 等 provider-native 字段。
+
+### Story 6.5: 冻结 Enterprise Model Discovery 公共契约
+
+As a 客户端集成人员,
+I want 获得企业模型发现、默认模型和模型状态的公共契约,
+So that Cherry Studio P0 可以展示可用模型并解释不可用原因。
+
+**Acceptance Criteria:**
+
+**Given** 下游请求可用模型列表
+**When** 平台返回 enterprise model discovery 响应
+**Then** 契约明确 `modelId`、`providerStableId`、`displayName`、`isDefault`、`status`、`disabledReason`、`capabilities`、`accountId` / `tenantId` 来源语义
+**And** 明确该契约与现有 `/api/models`、`/api/user/models`、`/v1/models` 的关系，不能用现有管理或 relay 接口模糊替代。
+
+**Given** 出现无默认模型、多默认模型、默认模型不可用、模型被禁用或 provider 不可用
+**When** 下游读取模型状态
+**Then** 契约明确状态矩阵、错误语义和 UI 展示建议。
+
+### Story 6.6: 冻结错误码矩阵与客户端状态矩阵
+
+As a 下游产品负责人,
+I want 平台错误码与客户端展示状态有一张稳定矩阵,
+So that 登录过期、空列表、加载失败、无可用资源、网络失败和资源不可调用等状态不会被客户端各自猜测。
+
+**Acceptance Criteria:**
+
+**Given** 平台返回 open capability error envelope
+**When** 下游映射客户端状态
+**Then** `permissionDenied`、`resourceRevoked`、`resourceOffline`、`quotaOrRateLimited`、`timeout`、`upstreamFailed`、`contractInvalid` 等错误码都有 HTTP/status、retryable、责任边界和 UI state 映射
+**And** 下游需求中的 `loginExpired`、`noAssignedResource`、`networkFailed`、`empty`、`loadFailed` 等客户端态被纳入矩阵。
+
+### Story 6.7: 提供 Mock、Fixture 与 Contract Conformance 套件
+
+As a 下游集成方,
+I want 获得 mock / fixture / conformance 测试资产,
+So that 我可以在真实环境前验证 OAuth、discovery、detail、refresh、Skill invoke、Knowledge query 和 model discovery。
+
+**Acceptance Criteria:**
+
+**Given** 下游开发者未接入真实平台环境
+**When** 使用 AP-6 fixture
+**Then** 可以获得成功、撤销、下线、stale、contract mismatch、permission denied、provider failure、model disabled 等代表性 payload
+**And** fixture 不包含真实 token、provider secret 或敏感租户数据。
+
+**Given** 下游完成实现
+**When** 运行 conformance tests
+**Then** 可以验证字段解析、错误映射、状态矩阵、TTL/refresh 收敛和 model discovery 默认模型处理。
+
+### Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径
+
+As a 平台负责人,
+I want 用 Cherry Studio 完成首个签核，并用 Codex 验证第二消费者不会要求平行协议主干,
+So that Agent Platform 的公共契约通用性得到实际验证。
+
+**Acceptance Criteria:**
+
+**Given** AP-6 公共契约冻结
+**When** Cherry Studio 作为 first consumer 接入
+**Then** 签核记录覆盖 OAuth、model discovery、resource discovery/detail/refresh、Skill invoke、Knowledge query、错误/状态矩阵和 mock fixture
+**And** Cherry Studio 专属字段只能通过 namespaced extensions 承载，不得改写核心语义。
+
+**Given** Codex 作为 second consumer 做契约评审
+**When** 对照 AP-6 公共契约
+**Then** 不需要为 Codex 新建平行资源模型或核心协议主干
+**And** 若出现扩展需求，必须通过 contract version 或 namespaced extension 治理。

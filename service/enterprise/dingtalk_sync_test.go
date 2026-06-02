@@ -36,6 +36,7 @@ func (f fakeDingTalkSyncClient) ListDepartmentUsers(_ context.Context, _ string,
 }
 
 func TestDingTalkSyncFullSyncCreatesTreeUsersMembershipsAndIsIdempotent(t *testing.T) {
+	leader := true
 	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
 		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
 			1:  {{DeptId: 10, Name: "Engineering"}},
@@ -43,7 +44,7 @@ func TestDingTalkSyncFullSyncCreatesTreeUsersMembershipsAndIsIdempotent(t *testi
 			11: {},
 		},
 		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
-			10: {{UserId: "staff-1", UnionId: "union-1", Name: "Alice", Email: "alice@example.com"}},
+			10: {{UserId: "staff-1", UnionId: "union-1", Name: "Alice", Email: "alice@example.com", LeaderInDept: &leader}},
 			11: {{UserId: "staff-1", UnionId: "union-1", Name: "Alice", Email: "alice@example.com"}},
 		},
 	})
@@ -76,6 +77,55 @@ func TestDingTalkSyncFullSyncCreatesTreeUsersMembershipsAndIsIdempotent(t *testi
 	var membershipCount int64
 	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Where("external_source = ?", constant.EnterpriseExternalSourceDingTalk).Count(&membershipCount).Error)
 	require.Equal(t, int64(2), membershipCount)
+	var ownerCount int64
+	require.NoError(t, db.Model(&entmodel.DepartmentRole{}).Where("source = ? AND effect = ?", constant.EnterpriseDepartmentRoleSourceDingTalkOwner, constant.EnterpriseDepartmentRoleEffectAllow).Count(&ownerCount).Error)
+	require.Equal(t, int64(1), ownerCount)
+}
+
+func TestDingTalkSyncInactivatesStaleOwnerFactWithoutTouchingManualOverrides(t *testing.T) {
+	leader := true
+	svc, db := newDingTalkSyncTestService(t, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 10, Name: "Engineering"}},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			10: {{UserId: "staff-owner", UnionId: "union-owner", Name: "Owner", LeaderInDept: &leader}},
+		},
+	})
+
+	_, err := svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+	require.NoError(t, err)
+	var owner model.User
+	require.NoError(t, db.Where("username = ?", "owner").First(&owner).Error)
+	var department entmodel.Department
+	require.NoError(t, db.Where("external_id = ?", "10").First(&department).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentRole{
+		TenantId:     0,
+		UserId:       owner.Id,
+		DepartmentId: department.Id,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Source:       constant.EnterpriseDepartmentRoleSourceManualDenyOverride,
+		Effect:       constant.EnterpriseDepartmentRoleEffectDeny,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+
+	svc, _ = newDingTalkSyncTestServiceWithDB(t, db, fakeDingTalkSyncClient{
+		departmentsByParent: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 10, Name: "Engineering"}},
+		},
+		usersByDepartment: map[int64][]entservice.DingTalkDepartmentUserInfo{
+			10: {{UserId: "staff-owner", UnionId: "union-owner", Name: "Owner"}},
+		},
+	})
+	_, err = svc.StartFullSync(context.Background(), entservice.DingTalkSyncStartInput{RunInline: true})
+	require.NoError(t, err)
+
+	var dingTalkRole entmodel.DepartmentRole
+	require.NoError(t, db.Where("user_id = ? AND department_id = ? AND source = ?", owner.Id, department.Id, constant.EnterpriseDepartmentRoleSourceDingTalkOwner).First(&dingTalkRole).Error)
+	require.Equal(t, constant.EnterpriseDepartmentRoleStatusInactive, dingTalkRole.Status)
+	var manualDeny entmodel.DepartmentRole
+	require.NoError(t, db.Where("user_id = ? AND department_id = ? AND source = ?", owner.Id, department.Id, constant.EnterpriseDepartmentRoleSourceManualDenyOverride).First(&manualDeny).Error)
+	require.Equal(t, constant.EnterpriseDepartmentRoleStatusActive, manualDeny.Status)
 }
 
 func TestDingTalkSyncDisablesStaleRecords(t *testing.T) {
@@ -440,16 +490,28 @@ func newDingTalkSyncTestService(t *testing.T, client fakeDingTalkSyncClient) (*e
 	model.LOG_DB = db
 	common.RedisEnabled = false
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
-	require.NoError(t, db.Create(&entmodel.DingTalkConfig{
-		TenantId:     0,
-		CorpId:       "corp-id",
-		AppKey:       "app-key",
-		AppSecret:    "plain-secret",
-		CallbackUrl:  "https://example.com/api/oauth/dingtalk",
-		SyncScope:    "1",
-		LoginEnabled: true,
-		SyncEnabled:  true,
-	}).Error)
+	return newDingTalkSyncTestServiceWithDB(t, db, client)
+}
+
+func newDingTalkSyncTestServiceWithDB(t *testing.T, db *gorm.DB, client fakeDingTalkSyncClient) (*entservice.DingTalkSyncService, *gorm.DB) {
+	t.Helper()
+	model.DB = db
+	model.LOG_DB = db
+	common.RedisEnabled = false
+	var existingConfig int64
+	require.NoError(t, db.Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", 0).Count(&existingConfig).Error)
+	if existingConfig == 0 {
+		require.NoError(t, db.Create(&entmodel.DingTalkConfig{
+			TenantId:     0,
+			CorpId:       "corp-id",
+			AppKey:       "app-key",
+			AppSecret:    "plain-secret",
+			CallbackUrl:  "https://example.com/api/oauth/dingtalk",
+			SyncScope:    "1",
+			LoginEnabled: true,
+			SyncEnabled:  true,
+		}).Error)
+	}
 	if client.departmentsByParent == nil {
 		client.departmentsByParent = map[int64][]entservice.DingTalkDepartmentInfo{}
 	}

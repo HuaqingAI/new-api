@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -30,8 +31,13 @@ func EnterpriseDepartmentAdmin(departmentParam string) gin.HandlerFunc {
 			return
 		}
 
-		allowed, err := entservice.NewPermissionService(model.DB).CanManageDepartment(c.GetInt("id"), tenantId, departmentId)
+		allowed, err := entservice.NewPermissionService(model.DB).CanGovernDepartment(c.GetInt("id"), tenantId, departmentId)
 		if err != nil {
+			if errors.Is(err, entservice.ErrDepartmentOwnerDeniedByLocalRule) {
+				common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentOwnerDeniedByLocalRule)
+				c.Abort()
+				return
+			}
 			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 			c.Abort()
 			return

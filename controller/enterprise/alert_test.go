@@ -4,9 +4,13 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
+	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -412,4 +416,64 @@ func TestAlertRulesAPISupportsTenantScopeOnDetailAndDelete(t *testing.T) {
 	deleteRecorder := performEnterpriseRequest(t, router, http.MethodDelete, "/api/enterprise/alerts/rules/1?tenant_id=7", nil)
 	deleteResponse := decodeEnterpriseAPIResponse(t, deleteRecorder)
 	require.True(t, deleteResponse.Success, deleteResponse.Message)
+}
+
+func TestDepartmentRiskSummaryAPIAllowsScopedDepartmentOwner(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	db := setupEnterpriseBudgetPermissionDB(t)
+	model.DB = db
+	require.NoError(t, db.Create(&model.User{Id: 202, Username: "risk-owner", Password: "password123", AffCode: "risk-owner-aff"}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentRole{
+		TenantId:     0,
+		UserId:       202,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Source:       constant.EnterpriseDepartmentRoleSourceManualGrant,
+		Effect:       constant.EnterpriseDepartmentRoleEffectAllow,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	deptID := 1
+	snapshot := entmodel.UsageSnapshot{
+		TenantId:     0,
+		DeptId:       &deptID,
+		DeptName:     "Engineering",
+		WindowStart:  1717117200,
+		WindowEnd:    1717120800,
+		RequestCount: 3,
+	}
+	require.NoError(t, snapshot.SetModelDistribution(nil))
+	require.NoError(t, snapshot.SetUserIds([]int{202}))
+	require.NoError(t, db.Create(&snapshot).Error)
+	event := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       202,
+		Username:     "risk-owner",
+		RequestId:    "req-risk-owner",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: "blocked",
+		Summary:      "policy only",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: 1, DepartmentName: "Engineering"},
+	}))
+	require.NoError(t, db.Create(&event).Error)
+
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 202)
+		c.Set("role", common.RoleCommonUser)
+		c.Next()
+	})
+	router.GET("/api/enterprise/alerts/department-summary", GetDepartmentRiskSummary)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/department-summary?department_id=1&from=1717117200&to=1717120800&include_descendants=true", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	payload := decodeEnterpriseData[dtoenterprise.DepartmentRiskSummaryResponse](t, response)
+	require.True(t, payload.IncludeDescendants)
+	require.Equal(t, "Engineering", payload.ScopeDepartmentName)
+	require.Equal(t, []int{1}, payload.ScopeDepartmentIds)
 }

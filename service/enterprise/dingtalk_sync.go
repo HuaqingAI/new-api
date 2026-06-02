@@ -129,6 +129,7 @@ type DingTalkSyncConflictsResult struct {
 type dingTalkSyncSnapshot struct {
 	seenDepartmentExternalIds map[string]struct{}
 	seenMembershipKeys        map[string]struct{}
+	seenOwnerKeys             map[string]struct{}
 }
 
 func NewDingTalkSyncService(db *gorm.DB, client DingTalkSyncClient) *DingTalkSyncService {
@@ -188,6 +189,7 @@ func (s *DingTalkSyncService) RunTask(ctx context.Context, taskId int, config en
 	snapshot := &dingTalkSyncSnapshot{
 		seenDepartmentExternalIds: map[string]struct{}{},
 		seenMembershipKeys:        map[string]struct{}{},
+		seenOwnerKeys:             map[string]struct{}{},
 	}
 	accessToken, err := s.client.GetAccessToken(ctx, config.AppKey, config.AppSecret)
 	if err != nil {

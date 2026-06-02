@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	enterpriseMaintenanceTaskTickInterval    = 1 * time.Minute
-	enterpriseAlertDispatchTaskTickInterval  = 30 * time.Second
+	enterpriseMaintenanceTaskTickInterval        = 1 * time.Minute
+	enterpriseAlertDispatchTaskTickInterval      = 30 * time.Second
+	enterpriseGovernanceNotificationTickInterval = 30 * time.Second
 )
 
 var enterpriseSchedulerOnce sync.Once
@@ -44,6 +45,17 @@ func StartEnterpriseTasks() {
 			runEnterpriseAlertDispatchTaskOnce(ctx)
 			for range ticker.C {
 				runEnterpriseAlertDispatchTaskOnce(ctx)
+			}
+		})
+		gopool.Go(func() {
+			ctx := context.Background()
+			logger.LogInfo(ctx, fmt.Sprintf("enterprise governance notification dispatch tasks started: tick=%s", enterpriseGovernanceNotificationTickInterval))
+			ticker := time.NewTicker(enterpriseGovernanceNotificationTickInterval)
+			defer ticker.Stop()
+
+			runEnterpriseGovernanceNotificationDispatchTaskOnce(ctx)
+			for range ticker.C {
+				runEnterpriseGovernanceNotificationDispatchTaskOnce(ctx)
 			}
 		})
 	})
@@ -76,6 +88,20 @@ func runEnterpriseAlertDispatchTaskOnce(ctx context.Context) {
 	} else if result.Processed > 0 || result.FinalFailed > 0 {
 		logger.LogInfo(ctx, fmt.Sprintf(
 			"enterprise alert dispatch task finished: processed=%d sent=%d retried=%d final_failed=%d",
+			result.Processed,
+			result.Sent,
+			result.Retried,
+			result.FinalFailed,
+		))
+	}
+}
+
+func runEnterpriseGovernanceNotificationDispatchTaskOnce(ctx context.Context) {
+	if result, err := RunGovernanceNotificationDispatchTaskOnce(ctx); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("enterprise governance notification dispatch task failed: %v", err))
+	} else if result.Processed > 0 || result.FinalFailed > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf(
+			"enterprise governance notification dispatch task finished: processed=%d sent=%d retried=%d final_failed=%d",
 			result.Processed,
 			result.Sent,
 			result.Retried,

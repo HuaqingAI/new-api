@@ -15,6 +15,15 @@ revisionNotes: |
   - 移除 department_resolver.go 与历史快照机制，归因改为运行时 join enterprise_user_departments。
   - 新增后台任务：wallet_state_sync_task、balance_expiry_task。
   - 修订 CP-2、CP-5；新增 CP-14；Step 7 OQ-6/7 状态置为"已关闭"。
+  V1.3 修订（基于用户分层预算治理与额度审批 follow-up，2026-06-01）：
+  - 新增分层治理约束：部门负责人来源同时支持钉钉同步与手动指定，优先级为
+    manual_deny_override > manual_grant > dingtalk_synced_owner。
+  - 新增 descendant scope：预算/用量/告警 summary 支持 include_descendants，继续沿用邻接表，
+    如有性能需要可增路径缓存字段，不引入闭包表。
+  - 新增 budget delegation：支持祖先部门预算池向任意后代部门预算池分配；成员 wallet 分配仍由
+    enterprise_quota_allocations 承接，relay/billing 主链路保持不变。
+  - 新增 quota request workflow：员工申请 -> 部门负责人单步审批 -> 复用现有 allocation service 自动分配。
+  - 新增治理通知约束：通知失败不得阻塞核心治理事务提交，必须记录投递状态与错误原因。
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md"
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/addendum.md"
@@ -61,13 +70,14 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 **Functional Requirements:**
 
-V1 是对现有 new-api 的企业管控增强，不是新建产品或重写网关。需求由 20 个 FR 组成，集中在 5 个能力域：
+V1 是对现有 new-api 的企业管控增强，不是新建产品或重写网关。需求由 26 个 FR 组成，集中在 6 个能力域：
 
 1. 组织与部门模型：新增企业/部门/用户部门关系，但必须保持部门与现有 `Group` 语义分离。部门用于治理、统计和告警，`Group` 继续用于模型、渠道和计费倍率。**用户↔部门为 N:N 平等关系，不存在"主部门"概念**（V1.1 修订，OQ-7 已关闭）。
 2. 钉钉登录与通讯录同步：钉钉是 V1 唯一交付的企业身份入口。登录依赖最近一次成功同步的本地部门快照建立 N:N 关系，不因同步进行中而阻塞登录。
 3. 部门配额与额度控制：部门预算池采用 **balance / subscription 双类型**（与现有 user token/subscription 同构）。部门管理员把预算分配给成员时，**在被分配用户名下创建一个独立 wallet（subscription 行）**，relay 路径完全不动；wallet 重置/过期/撤销与父预算池状态联动（V1.1 修订，OQ-6 已关闭）。
 4. 组织用量看板与导出：提供部门维度聚合、详情、CSV 导出和定期邮件报告。**多部门用户的消费在所有归属部门重复计入，UI 需明确标注"部门间不可加和"**（V1.1 新增 CP-14）。归因运行时按 `enterprise_user_departments` join，无需历史快照表。
 5. 内容监控告警：基于现有敏感词/过滤能力补充风险事件、告警规则、告警投递和部门风险概览，不引入复杂语义审核模型。
+6. 分层预算治理与额度审批：在既有企业组织、预算、用量和告警基础上，补齐部门负责人权限模型、包含子部门的查询作用域、上级预算池向后代预算池分配、成员 allocation 调整/取消/回收、员工额度申请单步审批，以及治理动作审计与钉钉通知。
 
 **Non-Functional Requirements:**
 
@@ -306,6 +316,17 @@ PRD FR-10 需要从”部门参与运行时预扣费/结算”修正为”部门
 
 Root 管理钉钉密钥和系统级企业配置；Admin 管理全局企业能力；部门管理员权限放在新增部门角色/成员关系表中，不扩展 `users.role` 枚举。
 
+**Department Owner Precedence (V1.3):**
+
+部门负责人来源同时支持钉钉同步与手动指定。最终有效权限按以下顺序解析：
+
+`manual_deny_override > manual_grant > dingtalk_synced_owner`
+
+其中：
+- 钉钉同步负责人保留为组织来源事实；
+- 手动授权/禁用属于本地权限层覆盖，不回写外部事实；
+- 若某部门无任何有效负责人，治理审批动作可回退给 Admin，但必须显式可见且可审计。
+
 **Secrets:**
 
 钉钉 app secret、client secret、access token、suite ticket 不返回前端，不进入日志、导出和错误响应。
@@ -360,7 +381,16 @@ Default 使用 feature `api.ts` + TanStack Query hooks，queryKey 使用 `['ente
 
 **Information Architecture:**
 
-不要把企业能力塞进现有 Group、User、Log 页面。新增“企业组织/组织管理”模块，内部用 tabs/sections 承载组织架构、钉钉同步、配额分配、用量报表、风险告警。
+不要把企业能力塞进现有 Group、User、Log 页面。新增“企业组织/组织管理”模块，内部用 tabs/sections 承载组织架构、钉钉同步、配额分配、用量报表、风险告警。负责人审批、治理时间线和通知投递仍留在该工作台；但普通员工的额度申请入口应贴近余额 / 钱包场景，不要求普通用户通过企业组织管理菜单进入。
+
+**Descendant Scope (V1.3):**
+
+“包含子部门”优先作为查询/汇总作用域，而不是全量明细展开能力。第一版仅要求覆盖：
+- 预算 summary
+- 用量 summary
+- 告警 summary
+
+API 层建议增加 `include_descendants` 显式参数。树解析继续基于邻接表；若性能成为瓶颈，可增加跨库兼容的路径缓存字段，但 V1.3 不引入 closure table。
 
 **i18n:**
 
@@ -829,7 +859,7 @@ if errors.Is(err, serviceEnt.ErrAllocationExceedsBudget) {
 
 ### Requirements → Components Mapping
 
-V1 的 20 个 FR 按 PRD 的 5 个能力域归入企业模块的不同子组件。下表为权威映射（dev 创建 epic/story 时按此分配文件归属）：
+V1 的 26 个 FR 按 PRD 的 6 个能力域归入企业模块的不同子组件。下表为权威映射（dev 创建 epic/story 时按此分配文件归属）：
 
 | 能力域 | FR | 后端模型 | 后端服务 | 后端控制器 | 路由 | 前端 Default Feature | 前端 Classic 页面 |
 |---|---|---|---|---|---|---|---|
@@ -838,6 +868,7 @@ V1 的 20 个 FR 按 PRD 的 5 个能力域归入企业模块的不同子组件�
 | 部门配额与额度控制 | FR-9, FR-10, FR-11, FR-12 | `model/enterprise/quota_allocation.go`、`department_budget.go` + 扩展现有 `model/subscription.go`（V1.1 加 `source_type` / `source_allocation_id`） | `service/enterprise/quota_allocation.go`、`department_budget.go`、`wallet_subscription.go`、`wallet_state_sync_task.go`、`balance_expiry_task.go` | `controller/enterprise/quota_allocation.go`、`department_budget.go` | `/api/enterprise/quota-allocations`、`/api/enterprise/departments/:id/budget` | `enterprise-organization/`（配额分配 tab） | `pages/Enterprise/Allocation.js` |
 | 组织用量看板与导出 | FR-13, FR-14, FR-15, FR-16 | `model/enterprise/usage_snapshot.go`、`usage_report_job.go` | `service/enterprise/usage_aggregation.go`、`usage_aggregation_task.go`、`usage_export.go`、`usage_report_task.go` | `controller/enterprise/usage.go` | `/api/enterprise/usage/department-summary`、`/api/enterprise/usage/department-detail`、`/api/enterprise/usage/export`、`/api/enterprise/usage/reports` | `enterprise-usage/` | `pages/Enterprise/Usage.js` |
 | 内容监控告警 | FR-17, FR-18, FR-19, FR-20 | `model/enterprise/alert_event.go`、`alert_rule.go`、`alert_delivery.go` | `service/enterprise/alert.go`、`alert_dispatch.go`、`alert_dispatch_task.go` | `controller/enterprise/alert.go` | `/api/enterprise/alerts/events`、`/api/enterprise/alerts/rules`、`/api/enterprise/alerts/deliveries`、`/api/enterprise/alerts/department-summary` | `enterprise-alerts/` | `pages/Enterprise/Alerts.js` |
+| 分层预算治理与额度审批 | FR-21, FR-22, FR-23, FR-24, FR-25, FR-26 | `model/enterprise/department_role.go`、`budget_delegation.go`、`quota_request.go` | `service/enterprise/department_role.go`、`budget_delegation.go`、`quota_request.go`、`quota_allocation.go` | `controller/enterprise/department_role.go`、`budget_delegation.go`、`quota_request.go` | `/api/enterprise/departments/:id/owners`、`/api/enterprise/budget-delegations`、`/api/enterprise/quota-requests` | `enterprise-organization/`、`enterprise-usage/`、`enterprise-alerts/` | `pages/Enterprise/Allocation.js`、`pages/Enterprise/Usage.js` |
 
 **横切关注点（不属于任何单一域）：**
 
@@ -1148,11 +1179,15 @@ new-api/
 1. **钉钉登录流**：浏览器 → `/api/oauth/dingtalk` → 校验 state → 钉钉换 user_info → 命中 `enterprise_dingtalk_bindings` 找 `user_id` → 用 `setupLogin` 写 session。绑定缺失时按邮箱/手机号匹配；冲突进 `enterprise_dingtalk_conflicts`，登录走"建本地账号 + 等待管理员合并"路径。
 2. **通讯录同步流**：scheduler ticker → `dingtalk_sync_task` → 写 `enterprise_dingtalk_sync_jobs(status=running)` → `dingtalk_sync.go` 全量/增量 → 写入/更新 `enterprise_departments` & `enterprise_user_departments`（N:N 平等关系，无 is_primary）→ 冲突进 `enterprise_dingtalk_conflicts` → 写 job(status=success/failed, error_reason)。
 3. **配额分配流（V1.1）**：管理员 UI → `POST /api/enterprise/quota-allocations` → `quota_allocation.go` 校验父预算池剩余（balance：`remaining >= committed_quota`；subscription：`Σ children.committed_quota + new ≤ cycle_quota`）→ DB 事务：(a) 减 `enterprise_department_budgets.remaining`（balance）或 `allocated_total += committed_quota`（subscription）；(b) **在目标用户名下创建 subscriptions 行**（balance：`is_subscription=false, remain_quota=committed_quota, expires_at=snapshot`；subscription：`is_subscription=true, quota=committed_quota, cycle_period 跟随父`，扩展列 `source_type='enterprise_allocation'` + `source_allocation_id` 指回 allocation 行）；(c) 写 `enterprise_quota_allocations(wallet_id=新 subscription.id, status=active)` → 返回成功。失败回滚事务，全程**不**触及 relay 路径。
+4. **预算委派流（V1.3）**：部门负责人 UI → `POST /api/enterprise/budget-delegations` 或等价接口 → 校验来源部门是目标部门的祖先、来源预算池存在足够可委派额度、预算池类型仍为 `balance / subscription` → DB 事务：(a) 关闭或保留旧 delegation 事实；(b) 在目标部门预算池侧创建或更新新的委派事实；(c) 记录独立 delegation ledger 与审计快照。该流仅发生在部门预算池之间，**不**直接创建成员 wallet，后续成员分配仍走既有 `quota_allocation.go`。
 4. **wallet 状态联动流（V1.1）**：scheduler ticker → `wallet_state_sync_task`（受 `IsMasterNode` 守卫）→ 扫 `enterprise_department_budgets` 中 status 变更的父池 → 批量 update 该父池下所有 `enterprise_quota_allocations` 子记录与对应 subscriptions 行（暂停/恢复/过期联动）→ 写审计入口。subscription 类型的周期 reset 复用**现有 subscription reset 任务**（`token.remain_quota = token.quota`），零新代码。
 5. **balance 过期回收流（V1.1）**：scheduler ticker → `balance_expiry_task`（受 `IsMasterNode` 守卫）→ 扫 `subscriptions` 中 `source_type='enterprise_allocation' AND is_subscription=false AND expires_at <= now()` → 对每条 wallet 执行 best-effort 回收：`parent.remaining += min(wallet.remain_quota, max(0, ...))`，wallet 标记 `revoked/expired`，写流水。
 6. **用量聚合流（V1.1）**：scheduler ticker → `usage_aggregation_task` → 按时间窗扫 `logs` → 对每条 log `INNER JOIN enterprise_user_departments` 展开为 `(log_row, dept_id)` 多行（同一用户多部门 → 多行重复计入）→ 归并写入 `enterprise_usage_snapshots`；未归属用户单独归入 `dept_id IS NULL` 桶。前端看板 `GET /api/enterprise/usage/department-summary` 命中聚合表，不直接查 `logs`。
 5. **告警流**：现有敏感词/过滤产生事件 → 写 `enterprise_alert_events`（旁路写入，不阻塞 relay）→ scheduler ticker `alert_dispatch_task` → 匹配 `enterprise_alert_rules` → 解析部门收件人 → 调 `notify_*` 投递 → 写 `enterprise_alert_deliveries`。
 6. **管理动作审计流**：`controller/enterprise/*.go` 在所有低频管理 mutation 成功后调 `service.WriteAdminAction(ctx, action)` → 写 `enterprise_admin_actions`。配额分配**不**走此路径（自身在 `enterprise_quota_allocations` 已是审计源）。
+7. **额度申请审批流（V1.3）**：员工从余额 / 钱包相关 UI 发起额度申请 → `POST /api/enterprise/quota-requests` → 记录目标部门、目标预算池模式/池子、申请额度、申请原因与幂等键 → 系统按目标部门的有效负责人集合路由单步审批 → 审批通过后调用既有 `quota_allocation.go` 完成自动分配 → 写 request / approval / fulfillment 审计与通知状态。重复审批或重复回调不得产生重复分配。企业组织工作台负责审批、治理时间线与通知状态展示。
+
+8. **预算池类型约束边界（V1.3A）**：`DepartmentBudget.Type` 继续保持单值，因此单个预算池实例仍然只能是 `balance` 或 `subscription` 之一；但同一部门下允许并存多个不同类型预算池。类型兼容性校验应作用于当前操作选中的预算池，不应扩展成“部门级单类型”限制。
 
 ### File Organization Patterns
 
@@ -1259,8 +1294,14 @@ new-api/
 | FR-18 | 配置告警规则与通道 | `enterprise_alert_rules` + `AlertRuleEditor.tsx` |
 | FR-19 | 发送可追溯告警通知 | `alert_dispatch.go` + `alert_deliveries` 表 + 复用 `notify_*` 通道 |
 | FR-20 | 展示部门风险概览（V1.1：多部门重复计入） | `DepartmentRiskSummary.tsx` + `/api/enterprise/alerts/department-summary`；风险率分母按当前部门口径，未归属用户单独显示 |
+| FR-21 | 建立部门负责人权限模型 | `model/enterprise/department_role.go` 扩展来源/覆盖语义 + `service/enterprise/department_role.go` 生效优先级解析 |
+| FR-22 | 支持包含子部门的查询作用域 | `department_scope_resolver.go` 或等价 service + summary APIs 的 `include_descendants` 参数 |
+| FR-23 | 上级预算池向下级部门预算池分配 | 新增 delegation ledger / service；成员 wallet 分配仍由 `quota_allocation.go` 承接 |
+| FR-24 | 成员 allocation 调整 / 取消 / 回收 | 扩展 `quota_allocation.go` 与 wallet lifecycle 审计状态语义 |
+| FR-25 | 员工额度申请与单步审批 | 新增 request / approval workflow service，审批通过后复用 `quota_allocation.go` |
+| FR-26 | 治理动作审计与钉钉通知 | 复用 `enterprise_admin_actions` + `notify_*` / 钉钉机器人，通知失败不阻塞核心事务 |
 
-**所有 20 个 FR 均有架构落地**（FR-10 经由 Step 4 PRD Alignment 重新定义为预算分配模式，需 PRD 同步修正）。
+**所有 26 个 FR 均有架构落地**（FR-10 经由 Step 4 PRD Alignment 重新定义为预算分配模式，需 PRD 同步修正）。
 
 **Non-Functional Requirements Coverage:**
 
@@ -1300,7 +1341,7 @@ new-api/
 
 **Decision Completeness:**
 
-- 12 个核心架构决策（Step 4）+ 13 个一致性模式 CP（Step 5）+ 5 个能力域 × 完整目录（Step 6）覆盖了 PRD 所有 FR/NFR/约束。
+- 12 个核心架构决策（Step 4）+ 13 个一致性模式 CP（Step 5）+ 6 个能力域 × 完整目录（Step 6）覆盖了 PRD 所有 FR/NFR/约束。
 - 关键示例（路由、DTO、TanStack Query、Service sentinel）在 Step 5 Pattern Examples 给出了可拷贝代码块。
 
 **Structure Completeness:**
@@ -1386,7 +1427,7 @@ new-api/
 - 现有 monorepo 代码风格、命名、JSON tag、API 包装、跨库工具均已实地核验。
 - 14 个 CP（V1.1 新增 CP-14）全部回答了 "AI Agent 可能做出不同选择" 的具体场景。
 - 6 个数据流均落到文件 + 表 + 中间件粒度，无 hand-wave；V1.1 新增 wallet 状态联动流（#4）与 balance 过期回收流（#5）。
-- 所有 20 个 FR + 8 个 NFR + 6 个约束护栏均在表格中显式映射。
+- 所有 26 个 FR + 8 个 NFR + 6 个约束护栏均在表格中显式映射。
 - V1.1 wallet 模型直接复用现有 subscriptions 表 + 现有 reset 任务，零 relay 改动。
 
 **Key Strengths:**
@@ -1442,7 +1483,8 @@ PRD 关闭以上三项后，建议的 Epic 顺序（与 Step 4 Implementation Se
 3. **Epic 3: 部门配额分配（V1.1 wallet 模型）**：`enterprise_department_budgets`（balance/subscription 双类型）+ `enterprise_quota_allocations` + `subscriptions` 表 V1.1 列扩展迁移 + `wallet_subscription.go` + `wallet_state_sync_task` + `balance_expiry_task` + 分配/撤销 controller + Default `enterprise-organization` 配额 tab + Classic 必要入口。
 4. **Epic 4: 组织用量看板（V1.1 多部门重复计入）**：`enterprise_usage_snapshots` + 聚合任务（按 `enterprise_user_departments` join 展开）+ 看板/详情/CSV/定期报告 + i18n disclaimer + Default `enterprise-usage` feature。
 5. **Epic 5: 内容监控告警**：`enterprise_alert_events/rules/deliveries` + 投递任务 + Default `enterprise-alerts` feature + 部门风险概览（V1.1 多部门重复计入）。
-6. **Epic 6: 文档与 OpenAPI 完善**：`docs/enterprise/**` 设计文档落地 + `docs/openapi/api.json` 增补 Enterprise tags + 部署文档补钉钉与多节点说明。
+6. **Epic 6: 企业治理视图重构与账号标识修正**：树驱动治理视图、部门上下文操作、username 受控修改与统一展示规则。
+7. **Epic 7: 分层预算治理与额度审批**：部门负责人优先级、包含子部门 summary scope、预算委派、成员 allocation 治理、员工额度申请单步审批与治理动作通知。
 
 每个 Epic 内部可拆分为 3–6 个 story，story 级别再细化 `enterprise_admin_actions` 的具体类型枚举、`alert_rules` 的 DSL 形式、聚合窗口、`subscriptions` 表跨库迁移代码等 Important Gaps 项。
 
@@ -1461,7 +1503,7 @@ PRD 关闭以上三项后，建议的 Epic 顺序（与 Step 4 Implementation Se
 
 ### 本次架构工作交付清单
 
-✅ **Project Context Analysis（Step 2）** —— 把 20 个 FR、8 个 NFR、6 条约束护栏映射到棕地代码骨架，明确不可触碰区与允许扩展区。
+✅ **Project Context Analysis（Step 2）** —— 把 26 个 FR、8 个 NFR、6 条约束护栏映射到棕地代码骨架，明确不可触碰区与允许扩展区。
 
 ✅ **Brownfield Continuation Strategy（Step 3）** —— 锁定"沿用 monorepo + 子包扩展 + 表前缀 + 路由前缀"路径，避免新建独立服务或第二个 monorepo 带来的合并成本。
 

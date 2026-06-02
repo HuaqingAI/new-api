@@ -173,6 +173,7 @@ describe('Enterprise usage overview dashboard', () => {
       }),
       {
         dept_id: 1,
+        include_descendants: false,
         log_user: undefined,
         sort: 'tokens',
         summary_sort: 'users',
@@ -191,6 +192,7 @@ describe('Enterprise usage overview dashboard', () => {
       }),
       {
         dept_id: 1,
+        include_descendants: false,
         log_user: undefined,
         sort: 'quota',
       }
@@ -207,6 +209,7 @@ describe('Enterprise usage overview dashboard', () => {
       }),
       {
         dept_id: 2,
+        include_descendants: false,
         log_user: 'alice',
         sort: 'requests',
       }
@@ -223,6 +226,7 @@ describe('Enterprise usage overview dashboard', () => {
       }),
       {
         dept_id: undefined,
+        include_descendants: false,
         log_user: undefined,
         sort: 'requests',
       }
@@ -237,13 +241,24 @@ describe('Enterprise usage overview dashboard', () => {
       {
         from: 1748390400,
         to: 1748476799,
+        tenantId: undefined,
+        departmentId: undefined,
+        includeDescendants: undefined,
         summarySort: undefined,
         summaryOrder: undefined,
       },
     ])
 
     assert.deepEqual(
-      departmentSummaryQueryKey(1748390400, 1748476800, 2, 'quota', 'asc'),
+      departmentSummaryQueryKey(
+        1748390400,
+        1748476800,
+        2,
+        11,
+        true,
+        'quota',
+        'asc'
+      ),
       [
         'enterprise',
         'usage',
@@ -252,6 +267,8 @@ describe('Enterprise usage overview dashboard', () => {
           from: 1748390400,
           to: 1748476800,
           tenantId: 2,
+          departmentId: 11,
+          includeDescendants: true,
           summarySort: 'quota',
           summaryOrder: 'asc',
         },
@@ -921,6 +938,8 @@ describe('Enterprise usage overview dashboard', () => {
         from: 1714521600,
         to: 1717113600,
         tenantId: 7,
+        departmentId: 99,
+        includeDescendants: undefined,
         summarySort: 'users',
         summaryOrder: 'asc',
       }
@@ -967,7 +986,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 3,
           username: 'carol',
-          display_name: 'Carol',
+          display_name: '',
           request_count: 1,
           prompt_tokens: 100,
           completion_tokens: 200,
@@ -984,7 +1003,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 1,
           username: 'alice',
-          display_name: 'Alice',
+          display_name: '',
           request_count: 4,
           prompt_tokens: 400,
           completion_tokens: 160,
@@ -994,7 +1013,7 @@ describe('Enterprise usage overview dashboard', () => {
         {
           user_id: 2,
           username: 'bob',
-          display_name: 'Bob',
+          display_name: '',
           request_count: 6,
           prompt_tokens: 260,
           completion_tokens: 120,

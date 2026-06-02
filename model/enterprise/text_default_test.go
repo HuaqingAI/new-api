@@ -15,6 +15,7 @@ func TestEnterpriseTextFieldsDoNotDeclareDatabaseDefaults(t *testing.T) {
 	models := []any{
 		entmodel.Department{},
 		entmodel.DepartmentBudget{},
+		entmodel.BudgetDelegation{},
 		entmodel.UserDepartment{},
 		entmodel.DepartmentRole{},
 		entmodel.AdminAction{},

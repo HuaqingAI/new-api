@@ -2,9 +2,11 @@
 title: "Agent Platform 轻量 UX 说明"
 status: draft
 created: 2026-05-31
-updated: 2026-05-31
+updated: 2026-06-02
 related_prd: "./prds/prd-agent-platform-2026-05-31/prd.md"
 related_architecture: "./architecture-agent-platform.md"
+revision_notes:
+  - "V1.4 (2026-06-02): 补充 AP-6 下游公共契约冻结与接入签核所需的 UX 最小要求，包括 Clients onboarding、OAuth/consent 可见性、契约签核视图、错误/状态矩阵和 model discovery 状态展示。"
 ---
 
 # Agent Platform 轻量 UX 说明
@@ -64,6 +66,71 @@ related_architecture: "./architecture-agent-platform.md"
 - 对可重试失败，UI 使用明确文案 `retryable`。
 - 对不可重试失败，UI 必须提示用户优先检查契约、权限、依赖或 provider 状态，而不是只显示通用错误提示。
 
+### 3.6 AP-6 Clients onboarding
+
+- Clients 工作区必须支持下游接入最小闭环：
+  - client registration 字段查看与编辑
+  - redirect URI / callback 配置
+  - allowed scopes
+  - contract version
+  - capability declarations
+  - namespaced extensions
+  - allow client credentials 开关
+- 若完整 Clients 工作区尚未实现，UI 必须清楚标记哪些 onboarding 步骤仍由 API / fixture 完成，避免运营人员误以为可完全自助接入。
+- `invalid integration` 必须给出字段级原因，而不是只显示通用错误。
+
+### 3.7 OAuth / consent 可见性
+
+- 客户端详情页必须展示 OAuth 状态摘要：
+  - grant types
+  - redirect URI 校验状态
+  - consent 是否存在
+  - token revoke 状态
+  - 最近一次 authorize/token/revoke 时间
+- consent 可见性必须对管理员可解释，但不得显示 refresh token、access token、provider secret 或用户敏感凭据。
+- callback / allowlist 未配置或不匹配时，UI 显示专门状态，而不是归入 generic failure。
+
+### 3.8 下游契约签核视图
+
+- AP-6 至少需要一个契约签核视图或等价页面区块，用于展示：
+  - 当前 contract version
+  - OAuth / token / revoke 是否冻结
+  - discovery / detail / refresh 字段集是否冻结
+  - Skill invoke / Knowledge query spec 是否冻结
+  - model discovery spec 是否冻结
+  - error matrix / state matrix 是否冻结
+  - mock / fixture / conformance tests 是否可用
+  - Cherry Studio signoff 状态
+  - Codex second-consumer review 状态
+- 签核状态必须区分 `draft`、`ready for signoff`、`signed off`、`blocked`。
+
+### 3.9 Model discovery 状态展示
+
+- Model discovery UI 必须显示默认模型、模型状态和不可用原因。
+- 至少覆盖：
+  - no default model
+  - multiple default models
+  - default model disabled
+  - provider offline
+  - model unavailable
+  - account / tenant mismatch
+- 不得把 `/v1/models` 的 relay 列表直接展示成 enterprise model discovery 签核结果。
+
+### 3.10 客户端状态矩阵展示
+
+- UI 必须支持将平台错误映射为客户端可理解状态。
+- 至少覆盖：
+  - loginExpired
+  - empty
+  - loadFailed
+  - networkFailed
+  - noAssignedResource
+  - visibleButNotCallable
+  - stale
+  - revoked
+  - offline
+- 对每个状态，UI 应展示责任边界：client、resource、permission、contract、provider 或 platform。
+
 ## 4. 页面级最低要求
 
 ### Overview
@@ -73,6 +140,8 @@ related_architecture: "./architecture-agent-platform.md"
 ### Clients
 
 - 展示客户端接入状态、授权模式、能力声明完整性。
+- 展示 onboarding checklist：registration、redirect/callback、scopes、contract version、capabilities、consent、mock fixture。
+- 展示 AP-6 signoff 状态，至少覆盖 Cherry Studio first consumer 与 Codex second-consumer review。
 
 ### Skills / Knowledge / Agents
 
@@ -85,6 +154,12 @@ related_architecture: "./architecture-agent-platform.md"
 ### Audit & Diagnostics
 
 - 展示完整时间线和 drill-down 入口。
+
+### Contract Signoff
+
+- 展示 AP-6 公共契约冻结状态。
+- 展示 mock / fixture / conformance test 可用性。
+- 展示 error matrix、state matrix、model discovery 的签核状态。
 
 ## 5. 文案与术语约束
 

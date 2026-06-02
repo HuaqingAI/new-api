@@ -9,6 +9,7 @@ revision_notes:
   - "V1.1 (2026-05-31): 按 BMAD PRD 标准补充主/次用户、角色责任边界、闭环式 MVP、术语语义、跨切 NFR、成功指标与决策闸门，并将 Agent MVP 边界收敛为定义与引用对象。"
   - "V1.2 (2026-05-31): 锁定 Knowledge MVP 为 retrieval 单形态，量化缓存/撤销收敛窗口，统一 MVP/SM 口径，并补充 Agent 发现/引用验证指标。"
   - "V1.3 (2026-05-31): 根据 implementation-readiness 与 LightRAG 调研结论，进一步冻结 Knowledge 为 provider-neutral 的 `http_retrieval` 契约，确定 Codex 为第二验证消费者优先级，并要求实现前提供轻量 UX 说明。"
+  - "V1.4 (2026-06-02): Correct Course 重处理后，AP-6 被重新定义为 AP-1 到 AP-5 完成后的下游公共契约冻结与接入签核 follow-up epic，并作为 Cherry Studio / Codex 正式接入前的 MVP exit gate。"
 ---
 
 # PRD: new-api 通用 Agent 能力平台

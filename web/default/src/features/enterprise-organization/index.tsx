@@ -28,6 +28,8 @@ import {
   CalendarClock,
   Coins,
   CreditCard,
+  History,
+  Send,
   ShieldCheck,
   RefreshCw,
   RotateCcw,
@@ -108,9 +110,13 @@ import {
   getDepartmentBudgets,
   getBudgetDelegations,
   getDepartmentMembers,
+  getGovernanceNotifications,
+  getGovernanceTimeline,
   getQuotaAllocations,
   getQuotaRequestCapability,
   getQuotaRequests,
+  governanceNotificationQueryKey,
+  governanceTimelineQueryKey,
   getUserDepartments,
   grantDepartmentOwner,
   quotaRequestQueryKey,
@@ -119,6 +125,7 @@ import {
   quotaAllocationQueryScopeKey,
   reclaimQuotaAllocation,
   renameDepartmentMember,
+  resendGovernanceNotification,
   restoreDepartmentMember,
   cancelQuotaAllocation,
   revokeDepartmentOwnerDeny,
@@ -153,6 +160,8 @@ import type {
   DepartmentOwnerFactItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
+  GovernanceNotificationItem,
+  GovernanceTimelineItem,
   MembershipStatus,
   QuotaAllocationItem,
   QuotaRequestItem,
@@ -2110,6 +2119,34 @@ function DepartmentBudgetPanel({
       return result.data?.items ?? []
     },
   })
+  const governanceTimelineQuery = useQuery({
+    queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getGovernanceTimeline({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        page: 1,
+        page_size: 20,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+  const governanceNotificationQuery = useQuery({
+    queryKey: governanceNotificationQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getGovernanceNotifications({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        page: 1,
+        page_size: 20,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
 
   const descendantBudgetOptions = (
     descendantBudgetListQuery.data?.items ?? []
@@ -2203,6 +2240,7 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Wallet allocation created'))
     },
   })
@@ -2224,6 +2262,7 @@ function DepartmentBudgetPanel({
       await queryClient.invalidateQueries({
         queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Quota request submitted'))
     },
   })
@@ -2267,6 +2306,7 @@ function DepartmentBudgetPanel({
       await queryClient.invalidateQueries({
         queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Quota request updated'))
     },
   })
@@ -2298,6 +2338,9 @@ function DepartmentBudgetPanel({
       await queryClient.invalidateQueries({
         queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
       })
+      await queryClient.invalidateQueries({
+        queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
+      })
       toast.success(t('Budget delegation created'))
     },
   })
@@ -2327,6 +2370,9 @@ function DepartmentBudgetPanel({
       })
       await queryClient.invalidateQueries({
         queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
       })
       toast.success(t('Budget delegation adjusted'))
     },
@@ -2365,6 +2411,7 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Wallet allocation adjusted'))
     },
   })
@@ -2401,6 +2448,7 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Wallet allocation cancelled'))
     },
   })
@@ -2437,7 +2485,26 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Wallet allocation reclaimed'))
+    },
+  })
+
+  const governanceResendMutation = useMutation({
+    mutationFn: (deliveryId: number) =>
+      resendGovernanceNotification(deliveryId, tenantId || undefined),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: governanceNotificationQueryKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      toast.success(t('Governance notification resend queued'))
     },
   })
 
@@ -2739,6 +2806,20 @@ function DepartmentBudgetPanel({
         onSelectBudget={onSelectedBudgetIdChange}
         onSortByChange={setSortBy}
         onSortOrderChange={setSortOrder}
+      />
+      <GovernanceActivityCard
+        timelineItems={governanceTimelineQuery.data ?? []}
+        notificationItems={governanceNotificationQuery.data ?? []}
+        loading={
+          governanceTimelineQuery.isLoading ||
+          governanceNotificationQuery.isLoading
+        }
+        resendPendingId={
+          governanceResendMutation.isPending
+            ? governanceResendMutation.variables ?? null
+            : null
+        }
+        onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
       />
       <Card>
         <CardHeader>
@@ -3393,6 +3474,264 @@ export function QuotaAllocationTable({
       </TableBody>
     </Table>
   )
+}
+
+export async function invalidateGovernanceQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  departmentId: number,
+  tenantId: number
+) {
+  await queryClient.invalidateQueries({
+    queryKey: governanceTimelineQueryKey(departmentId, tenantId),
+  })
+  await queryClient.invalidateQueries({
+    queryKey: governanceNotificationQueryKey(departmentId, tenantId),
+  })
+}
+
+export function GovernanceActivityCard({
+  timelineItems,
+  notificationItems,
+  loading,
+  resendPendingId,
+  onResend,
+}: {
+  timelineItems: GovernanceTimelineItem[]
+  notificationItems: GovernanceNotificationItem[]
+  loading: boolean
+  resendPendingId?: number | null
+  onResend?: (deliveryId: number) => void
+}) {
+  const { t } = useTranslation()
+  const notificationsByTrace = useMemo(() => {
+    const map = new Map<string, GovernanceNotificationItem[]>()
+    for (const item of notificationItems) {
+      const current = map.get(item.trace_id) ?? []
+      current.push(item)
+      map.set(item.trace_id, current)
+    }
+    return map
+  }, [notificationItems])
+
+  if (loading) {
+    return <Skeleton className='h-48 w-full' />
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Governance Timeline and Notification Delivery')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Trace governance actions and DingTalk delivery state for the current department.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {timelineItems.length === 0 && notificationItems.length === 0 ? (
+          <Empty className='min-h-[180px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <History className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No governance activity yet')}</EmptyTitle>
+              <EmptyDescription>
+                {t(
+                  'Governance actions and notification delivery records will appear here after requests, approvals, allocations, or reclamation actions are completed.'
+                )}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('Trace ID')}</TableHead>
+                <TableHead>{t('Action')}</TableHead>
+                <TableHead>{t('Actor')}</TableHead>
+                <TableHead>{t('Target')}</TableHead>
+                <TableHead>{t('Quota Change')}</TableHead>
+                <TableHead>{t('Status')}</TableHead>
+                <TableHead>{t('Notification Status')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {timelineItems.map((item) => {
+                const deliveries = notificationsByTrace.get(item.trace_id) ?? []
+                return (
+                  <TableRow key={`${item.source_type}-${item.source_id}`}>
+                    <TableCell>
+                      <div className='flex min-w-[180px] flex-col gap-1'>
+                        <span className='font-mono text-xs'>{item.trace_id}</span>
+                        <span className='text-muted-foreground text-xs'>
+                          {item.source_type} #{item.source_id}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{governanceActionLabel(item.action_type, t)}</TableCell>
+                    <TableCell>
+                      {item.actor_name || (item.actor_id ? `#${item.actor_id}` : '-')}
+                    </TableCell>
+                    <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
+                    <TableCell>{formatNumber(item.quota_delta)}</TableCell>
+                    <TableCell>
+                      <Badge variant='secondary'>
+                        {enterpriseBudgetStatusLabel(item.status, t)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <GovernanceNotificationDeliveryList
+                        items={deliveries}
+                        resendPendingId={resendPendingId}
+                        onResend={onResend}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+        {notificationItems.some(
+          (item) => !notificationsByTrace.has(item.trace_id)
+        ) ? (
+          <GovernanceNotificationDeliveryList
+            items={notificationItems.filter(
+              (item) => !timelineItems.some((trace) => trace.trace_id === item.trace_id)
+            )}
+            resendPendingId={resendPendingId}
+            onResend={onResend}
+          />
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function GovernanceNotificationDeliveryList({
+  items,
+  resendPendingId,
+  onResend,
+}: {
+  items: GovernanceNotificationItem[]
+  resendPendingId?: number | null
+  onResend?: (deliveryId: number) => void
+}) {
+  const { t } = useTranslation()
+
+  if (items.length === 0) {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  return (
+    <div className='flex min-w-[220px] flex-col gap-2'>
+      {items.map((item) => (
+        <div key={item.id} className='rounded-md border p-2'>
+          <div className='flex items-center justify-between gap-2'>
+            <StatusBadge
+              label={governanceDeliveryStatusLabel(item.status, t)}
+              variant={governanceDeliveryStatusVariant(item.status)}
+              copyable={false}
+            />
+            {item.status === 'final_failed' ? (
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                disabled={!onResend || resendPendingId === item.id}
+                onClick={() => onResend?.(item.id)}
+              >
+                <Send data-icon='inline-start' />
+                {t('Resend')}
+              </Button>
+            ) : null}
+          </div>
+          <div className='text-muted-foreground mt-1 text-xs'>
+            {t('Attempt {{count}}/{{max}}', {
+              count: item.attempt_count,
+              max: item.max_attempts,
+            })}
+          </div>
+          {item.error_reason ? (
+            <div className='text-destructive mt-1 break-words text-xs'>
+              {item.error_reason}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatGovernanceTarget(
+  item: GovernanceTimelineItem,
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  if (item.target.display_name || item.target.username || item.target.user_id) {
+    return formatEnterpriseUserPrimary({
+      displayName: item.target.display_name,
+      username: item.target.username,
+      userId: item.target.user_id,
+    })
+  }
+  if (item.target.department_name || item.target.department_id) {
+    return item.target.department_name || `#${item.target.department_id}`
+  }
+  return item.target.object_id
+    ? `${item.target.object_type} #${item.target.object_id}`
+    : t('Unknown target')
+}
+
+function governanceActionLabel(
+  actionType: string,
+  t: (key: string) => string
+) {
+  const labels: Record<string, string> = {
+    'enterprise.organization.quota_request.submit': 'Quota request submitted',
+    'enterprise.organization.quota_request.approve': 'Quota request approved',
+    'enterprise.organization.quota_request.reject': 'Quota request rejected',
+    'enterprise.organization.quota_allocation.create': 'Allocation created',
+    'enterprise.organization.quota_allocation.reclaim': 'Allocation reclaimed',
+    'enterprise.organization.quota_allocation.cancel': 'Allocation cancelled',
+    'enterprise.organization.quota_allocation.revoke': 'Allocation revoked',
+    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+  }
+  return t(labels[actionType] ?? actionType)
+}
+
+function governanceDeliveryStatusLabel(
+  status: string,
+  t: (key: string) => string
+) {
+  switch (status) {
+    case 'pending':
+      return t('Pending')
+    case 'sent':
+      return t('Sent')
+    case 'resent':
+      return t('Resent')
+    case 'failed':
+      return t('Failed')
+    case 'final_failed':
+      return t('Final failed')
+    default:
+      return status
+  }
+}
+
+function governanceDeliveryStatusVariant(status: string) {
+  switch (status) {
+    case 'sent':
+    case 'resent':
+      return 'success' as const
+    case 'failed':
+      return 'warning' as const
+    case 'final_failed':
+      return 'red' as const
+    default:
+      return 'grey' as const
+  }
 }
 
 function QuotaRequestTable({

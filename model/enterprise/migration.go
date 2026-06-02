@@ -18,6 +18,9 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureQuotaRequestColumns(db); err != nil {
 		return err
 	}
+	if err := ensureGovernanceNotificationDeliveryColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
@@ -30,6 +33,7 @@ func Migrate(db *gorm.DB) error {
 		&AlertEvent{},
 		&AlertRule{},
 		&AlertDelivery{},
+		&GovernanceNotificationDelivery{},
 		&UsageSnapshot{},
 		&UsageReportJob{},
 		&DingTalkConfig{},
@@ -41,6 +45,45 @@ func Migrate(db *gorm.DB) error {
 		return err
 	}
 	return backfillAlertEventDepartmentTokens(db)
+}
+
+func ensureGovernanceNotificationDeliveryColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&GovernanceNotificationDelivery{}) {
+		return nil
+	}
+	columns := []string{
+		"tenant_id",
+		"source_type",
+		"source_id",
+		"trace_id",
+		"action_type",
+		"recipient_user_id",
+		"recipient_kind",
+		"channel_type",
+		"status",
+		"attempt_count",
+		"max_attempts",
+		"next_retry_at",
+		"last_attempt_at",
+		"sent_at",
+		"final_failed_at",
+		"error_reason",
+		"dedupe_key",
+		"trace_payload",
+		"trigger_source",
+		"manual_parent_id",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&GovernanceNotificationDelivery{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&GovernanceNotificationDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func AutoMigrate(db *gorm.DB) error {

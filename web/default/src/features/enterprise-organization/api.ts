@@ -30,6 +30,9 @@ import type {
   DepartmentBudgetListResponse,
   DepartmentBudgetSortField,
   DepartmentBudgetResponse,
+  GovernanceNotificationResponse,
+  GovernanceNotificationResendResponse,
+  GovernanceTimelineResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
   DepartmentOwnerMutationPayload,
@@ -123,6 +126,30 @@ export function quotaRequestQueryKey(
   return [
     ...quotaRequestQueryScopeKey(departmentId, tenantId),
     requesterUserId ?? 'all',
+  ] as const
+}
+
+export function governanceTimelineQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'governance-timeline',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function governanceNotificationQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'governance-notification',
+    departmentId,
+    tenantId,
   ] as const
 }
 
@@ -453,6 +480,50 @@ export async function getQuotaRequestCapability(
 ): Promise<ApiResponse<QuotaRequestCapabilityResponse>> {
   const res = await api.get(
     `/api/enterprise/quota-requests/capability/${departmentId}`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
+  return res.data
+}
+
+export async function getGovernanceTimeline(params: {
+  tenant_id?: number
+  department_id?: number
+  source_type?: string
+  action_type?: string
+  status?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<GovernanceTimelineResponse>> {
+  const res = await api.get('/api/enterprise/governance/timeline', {
+    params,
+  })
+  return res.data
+}
+
+export async function getGovernanceNotifications(params: {
+  tenant_id?: number
+  department_id?: number
+  source_type?: string
+  action_type?: string
+  status?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<GovernanceNotificationResponse>> {
+  const res = await api.get('/api/enterprise/governance/notifications', {
+    params,
+  })
+  return res.data
+}
+
+export async function resendGovernanceNotification(
+  deliveryId: number,
+  tenantId?: number
+): Promise<ApiResponse<GovernanceNotificationResendResponse>> {
+  const res = await api.post(
+    `/api/enterprise/governance/notifications/${deliveryId}/resend`,
+    null,
     {
       params: tenantId === undefined ? undefined : { tenant_id: tenantId },
     }

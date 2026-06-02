@@ -214,7 +214,11 @@ func (s *QuotaAllocationService) Revoke(input RevokeQuotaAllocationInput) (Quota
 	if input.TriggeredBy == QuotaAllocationProcessTriggerManual && input.ActorId <= 0 {
 		return QuotaAllocationItem{}, ErrQuotaAllocationInvalidInput
 	}
-	return s.governProcessedAllocation(quotaAllocationGovernModeRevoke, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.RevokeReason, input.TriggeredBy, input.TriggeredTime)
+	item, err := s.governProcessedAllocation(quotaAllocationGovernModeRevoke, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.RevokeReason, input.TriggeredBy, input.TriggeredTime)
+	if err == nil && input.TriggeredBy == QuotaAllocationProcessTriggerManual {
+		NewGovernanceNotificationService(s.db).EnqueueAllocationGovernance(item, input.ActorId, GovernanceActionAllocationRevoke)
+	}
+	return item, err
 }
 
 func (s *QuotaAllocationService) Cancel(input CancelQuotaAllocationInput) (QuotaAllocationItem, error) {
@@ -224,7 +228,11 @@ func (s *QuotaAllocationService) Cancel(input CancelQuotaAllocationInput) (Quota
 	if input.ProcessedTime <= 0 {
 		input.ProcessedTime = common.GetTimestamp()
 	}
-	return s.governProcessedAllocation(quotaAllocationGovernModeCancel, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.Reason, entmodel.QuotaAllocationProcessedManual, input.ProcessedTime)
+	item, err := s.governProcessedAllocation(quotaAllocationGovernModeCancel, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.Reason, entmodel.QuotaAllocationProcessedManual, input.ProcessedTime)
+	if err == nil {
+		NewGovernanceNotificationService(s.db).EnqueueAllocationGovernance(item, input.ActorId, GovernanceActionAllocationCancel)
+	}
+	return item, err
 }
 
 func (s *QuotaAllocationService) Reclaim(input ReclaimQuotaAllocationInput) (QuotaAllocationItem, error) {
@@ -234,7 +242,11 @@ func (s *QuotaAllocationService) Reclaim(input ReclaimQuotaAllocationInput) (Quo
 	if input.ProcessedTime <= 0 {
 		input.ProcessedTime = common.GetTimestamp()
 	}
-	return s.governProcessedAllocation(quotaAllocationGovernModeReclaim, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.Reason, entmodel.QuotaAllocationProcessedReclaim, input.ProcessedTime)
+	item, err := s.governProcessedAllocation(quotaAllocationGovernModeReclaim, input.TenantId, input.DepartmentId, input.AllocationId, input.ActorId, input.Reason, entmodel.QuotaAllocationProcessedReclaim, input.ProcessedTime)
+	if err == nil {
+		NewGovernanceNotificationService(s.db).EnqueueAllocationGovernance(item, input.ActorId, GovernanceActionAllocationReclaim)
+	}
+	return item, err
 }
 
 func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) (QuotaAllocationItem, error) {
@@ -245,6 +257,7 @@ func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) 
 		return QuotaAllocationItem{}, ErrQuotaAllocationQuotaInvalid
 	}
 	var result QuotaAllocationItem
+	var supersededItem QuotaAllocationItem
 	err := s.withAllocationRetry(func() error {
 		return s.db.Transaction(func(tx *gorm.DB) error {
 			allocation, wallet, budget, err := s.lockGovernedAllocation(tx, input.TenantId, input.DepartmentId, input.AllocationId)
@@ -329,10 +342,22 @@ func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) 
 				}).Error; err != nil {
 				return err
 			}
+			if err := tx.Where("id = ?", allocation.Id).First(&allocation).Error; err != nil {
+				return err
+			}
+			supersededItem = mapQuotaAllocationItem(allocation)
 			result = mapQuotaAllocationItem(nextAllocation)
 			return nil
 		})
 	})
+	if err == nil {
+		if supersededItem.Id > 0 {
+			NewGovernanceNotificationService(s.db).EnqueueAllocationGovernance(supersededItem, input.ActorId, GovernanceActionAllocationCancel)
+		}
+		if result.Id > 0 && result.SupersedesAllocationId > 0 {
+			NewGovernanceNotificationService(s.db).EnqueueAllocationGovernance(result, input.ActorId, GovernanceActionAllocationCreated)
+		}
+	}
 	return result, err
 }
 

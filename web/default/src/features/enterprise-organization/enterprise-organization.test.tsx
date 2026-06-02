@@ -11,7 +11,12 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import { departmentOwnersQueryKey, quotaRequestQueryKey } from './api'
+import {
+  departmentOwnersQueryKey,
+  governanceNotificationQueryKey,
+  governanceTimelineQueryKey,
+  quotaRequestQueryKey,
+} from './api'
 import {
   BudgetDelegationTable,
   __testRenderApiMessage,
@@ -27,6 +32,7 @@ import {
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
+  GovernanceActivityCard,
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
@@ -54,6 +60,8 @@ import type {
   EnterpriseBudgetErrorData,
   QuotaAllocationItem,
   QuotaRequestItem,
+  GovernanceNotificationItem,
+  GovernanceTimelineItem,
 } from './types'
 
 i18n.changeLanguage('en')
@@ -477,6 +485,64 @@ describe('Enterprise organization department tree workflow', () => {
       0,
       100,
     ])
+  })
+
+  test('governance query keys stay scoped to enterprise organization namespace', () => {
+    assert.deepEqual(governanceTimelineQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'governance-timeline',
+      7,
+      0,
+    ])
+    assert.deepEqual(governanceNotificationQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'governance-notification',
+      7,
+      0,
+    ])
+  })
+
+  test('renders governance timeline trace, delivery failure reason, and resend action', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[
+            governanceTimelineItem({
+              trace_id: 'quota_request:42',
+              action_type: 'enterprise.organization.quota_request.approve',
+              actor_name: 'Owner Alice',
+              quota_delta: 80,
+              status: 'fulfilled',
+            }),
+          ]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 7,
+              trace_id: 'quota_request:42',
+              status: 'final_failed',
+              error_reason: 'webhook request failed',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Governance Timeline and Notification Delivery',
+      'quota_request:42',
+      'Quota request approved',
+      'Owner Alice',
+      'Final failed',
+      'webhook request failed',
+      'Resend',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -1465,6 +1531,73 @@ function quotaRequest(
     fulfilled_at: overrides.fulfilled_at ?? 0,
     processed_at: overrides.processed_at ?? 0,
     expires_at: overrides.expires_at ?? 0,
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function governanceTimelineItem(
+  overrides: Partial<GovernanceTimelineItem> = {}
+): GovernanceTimelineItem {
+  return {
+    trace_id: overrides.trace_id ?? 'quota_request:1',
+    source_type: overrides.source_type ?? 'quota_request',
+    source_id: overrides.source_id ?? 1,
+    action_type:
+      overrides.action_type ?? 'enterprise.organization.quota_request.submit',
+    tenant_id: overrides.tenant_id ?? 0,
+    actor_id: overrides.actor_id ?? 1001,
+    actor_name: overrides.actor_name ?? 'Alice',
+    target:
+      overrides.target ??
+      {
+        department_id: 2,
+        department_name: 'Engineering',
+        user_id: 2001,
+        username: 'alice',
+        display_name: 'Alice',
+        object_type: 'enterprise_quota_request',
+        object_id: '1',
+      },
+    quota_delta: overrides.quota_delta ?? 100,
+    before_quota: overrides.before_quota ?? 0,
+    after_quota: overrides.after_quota ?? 0,
+    status: overrides.status ?? 'submitted',
+    occurred_at: overrides.occurred_at ?? 1700000000,
+    detail_route: overrides.detail_route ?? '/enterprise-organization',
+    detail_api_path:
+      overrides.detail_api_path ?? '/api/enterprise/governance/timeline',
+    summary: overrides.summary ?? '',
+  }
+}
+
+function governanceNotificationItem(
+  overrides: Partial<GovernanceNotificationItem> = {}
+): GovernanceNotificationItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    source_type: overrides.source_type ?? 'quota_request',
+    source_id: overrides.source_id ?? 1,
+    trace_id: overrides.trace_id ?? 'quota_request:1',
+    action_type:
+      overrides.action_type ?? 'enterprise.organization.quota_request.submit',
+    recipient_user_id: overrides.recipient_user_id ?? 1001,
+    recipient_kind: overrides.recipient_kind ?? 'owner',
+    channel_type: overrides.channel_type ?? 'dingtalk_robot',
+    status: overrides.status ?? 'pending',
+    attempt_count: overrides.attempt_count ?? 0,
+    max_attempts: overrides.max_attempts ?? 4,
+    next_retry_at: overrides.next_retry_at ?? 0,
+    last_attempt_at: overrides.last_attempt_at ?? 0,
+    sent_at: overrides.sent_at ?? 0,
+    final_failed_at: overrides.final_failed_at ?? 0,
+    error_reason: overrides.error_reason ?? '',
+    dedupe_key: overrides.dedupe_key ?? 'dedupe',
+    trigger_source: overrides.trigger_source ?? 'governance_action',
+    manual_parent_id: overrides.manual_parent_id,
+    trace_summary: overrides.trace_summary ?? '',
+    trace: overrides.trace,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

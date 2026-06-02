@@ -156,6 +156,9 @@ func (s *QuotaRequestService) Submit(input SubmitQuotaRequestInput) (QuotaReques
 		result = item
 		return nil
 	})
+	if err == nil {
+		NewGovernanceNotificationService(s.db).EnqueueQuotaRequestSubmitted(result, input.RequesterUserId)
+	}
 	return result, err
 }
 
@@ -394,6 +397,9 @@ func (s *QuotaRequestService) decide(input DecideQuotaRequestInput) (QuotaReques
 			return nil
 		}
 	})
+	if err == nil {
+		NewGovernanceNotificationService(s.db).EnqueueQuotaRequestDecision(result, input.ActorId, action)
+	}
 	return result, err
 }
 

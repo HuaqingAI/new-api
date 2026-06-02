@@ -82,6 +82,9 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.GET("/api/enterprise/alerts/rules/:id", GetAlertRule)
 	router.PUT("/api/enterprise/alerts/rules", SaveAlertRule)
 	router.DELETE("/api/enterprise/alerts/rules/:id", DeleteAlertRule)
+	router.GET("/api/enterprise/governance/timeline", ListGovernanceTimeline)
+	router.GET("/api/enterprise/governance/notifications", ListGovernanceNotifications)
+	router.POST("/api/enterprise/governance/notifications/:id/resend", ResendGovernanceNotification)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

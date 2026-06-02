@@ -89,6 +89,10 @@ var (
 	ErrAlertRuleChannelRequired                          = errors.New("enterprise alert rule channel required")
 	ErrAlertDeliveryNotFound                             = errors.New("enterprise alert delivery not found")
 	ErrAlertDeliveryResendNotAllowed                     = errors.New("enterprise alert delivery resend not allowed")
+	ErrInvalidGovernanceTimelineQuery                    = errors.New("enterprise governance timeline query invalid")
+	ErrInvalidGovernanceNotificationQuery                = errors.New("enterprise governance notification query invalid")
+	ErrGovernanceNotificationDeliveryNotFound            = errors.New("enterprise governance notification delivery not found")
+	ErrGovernanceNotificationResendNotAllowed            = errors.New("enterprise governance notification resend not allowed")
 )
 
 type QuotaAllocationBudgetError struct {

@@ -290,6 +290,112 @@ export type QuotaRequestListResponse = {
   items: QuotaRequestItem[]
 }
 
+export type GovernanceTimelineTarget = {
+  department_id: number
+  department_name: string
+  user_id: number
+  username: string
+  display_name: string
+  object_type: string
+  object_id: string
+}
+
+export type GovernanceTimelineItem = {
+  trace_id: string
+  source_type: string
+  source_id: number
+  action_type: string
+  tenant_id: number
+  actor_id: number
+  actor_name: string
+  target: GovernanceTimelineTarget
+  quota_delta: number
+  before_quota: number
+  after_quota: number
+  status: string
+  occurred_at: number
+  detail_route: string
+  detail_api_path: string
+  summary: string
+}
+
+export type GovernanceTimelineResponse = {
+  items: GovernanceTimelineItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type GovernanceNotificationTraceItem = {
+  trace_id: string
+  source_type: string
+  source_id: number
+  action_type: string
+  tenant_id: number
+  department_id: number
+  department_name: string
+  budget_id: number
+  allocation_id: number
+  request_id: number
+  actor_id: number
+  actor_name: string
+  target_user_id: number
+  target_username: string
+  target_display_name: string
+  quota_delta: number
+  committed_quota: number
+  requested_quota: number
+  approved_quota: number
+  status: string
+  fallback?: string
+  occurred_at: number
+  detail_route: string
+  detail_api_path: string
+  summary: string
+  recipient_user_id: number
+  recipient_kind: string
+  notification_target?: string
+}
+
+export type GovernanceNotificationItem = {
+  id: number
+  tenant_id: number
+  source_type: string
+  source_id: number
+  trace_id: string
+  action_type: string
+  recipient_user_id: number
+  recipient_kind: string
+  channel_type: string
+  status: string
+  attempt_count: number
+  max_attempts: number
+  next_retry_at: number
+  last_attempt_at: number
+  sent_at: number
+  final_failed_at: number
+  error_reason: string
+  dedupe_key: string
+  trigger_source: string
+  manual_parent_id?: number
+  trace_summary: string
+  trace?: GovernanceNotificationTraceItem
+  created_at: number
+  updated_at: number
+}
+
+export type GovernanceNotificationResponse = {
+  items: GovernanceNotificationItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type GovernanceNotificationResendResponse = {
+  item: GovernanceNotificationItem
+  created: boolean
+}
+
 export type QuotaRequestCapabilityBudgetItem = DepartmentBudgetItem
 
 export type QuotaRequestCapabilityResponse = {

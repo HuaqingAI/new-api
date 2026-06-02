@@ -20,20 +20,37 @@ import { api } from '@/lib/api'
 import type {
   AddDepartmentMemberPayload,
   ApiResponse,
+  BudgetDelegationListResponse,
+  BudgetDelegationResponse,
+  CreateBudgetDelegationPayload,
   CreateDepartmentBudgetPayload,
   CreateQuotaAllocationPayload,
+  DecideQuotaRequestPayload,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetListResponse,
   DepartmentBudgetSortField,
   DepartmentBudgetResponse,
+  GovernanceNotificationResponse,
+  GovernanceNotificationResendResponse,
+  GovernanceTimelineResponse,
   DepartmentMemberItem,
   DepartmentMembersResponse,
+  DepartmentOwnerMutationPayload,
+  DepartmentOwnersResponse,
   DepartmentTreeNode,
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
+  QuotaRequestCapabilityResponse,
+  QuotaRequestListResponse,
+  QuotaRequestResponse,
   RenameDepartmentMemberPayload,
+  ReclaimQuotaAllocationPayload,
   RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
+  CancelQuotaAllocationPayload,
+  SupersedeQuotaAllocationPayload,
+  SupersedeBudgetDelegationPayload,
+  SubmitQuotaRequestPayload,
   UserDepartmentsResponse,
 } from './types'
 
@@ -77,6 +94,65 @@ export function quotaAllocationQueryKey(
   ] as const
 }
 
+export function budgetDelegationQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'budget-delegation',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function quotaRequestQueryScopeKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'quota-request',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function quotaRequestQueryKey(
+  departmentId: number,
+  tenantId: number,
+  requesterUserId: number | null | undefined
+) {
+  return [
+    ...quotaRequestQueryScopeKey(departmentId, tenantId),
+    requesterUserId ?? 'all',
+  ] as const
+}
+
+export function governanceTimelineQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'governance-timeline',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function governanceNotificationQueryKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'governance-notification',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
 export function departmentBudgetListQueryScopeKey(
   departmentId: number,
   tenantId: number
@@ -92,11 +168,13 @@ export function departmentBudgetListQueryScopeKey(
 export function departmentBudgetListQueryKey(
   departmentId: number,
   tenantId: number,
+  includeDescendants: boolean,
   sortBy?: DepartmentBudgetSortField,
   sortOrder?: 'asc' | 'desc'
 ) {
   return [
     ...departmentBudgetListQueryScopeKey(departmentId, tenantId),
+    includeDescendants,
     sortBy,
     sortOrder,
   ] as const
@@ -130,6 +208,15 @@ export function departmentMembersQueryKey(departmentId: number) {
     ...enterpriseOrganizationQueryKey,
     'department-members',
     departmentId,
+  ] as const
+}
+
+export function departmentOwnersQueryKey(departmentId: number, tenantId = 0) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'department-owners',
+    departmentId,
+    tenantId,
   ] as const
 }
 
@@ -175,6 +262,65 @@ export async function getDepartmentMembers(
   return res.data
 }
 
+export async function getDepartmentOwners(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<DepartmentOwnersResponse>> {
+  const res = await api.get(
+    `/api/enterprise/departments/${departmentId}/owners`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
+  return res.data
+}
+
+export async function grantDepartmentOwner(
+  departmentId: number,
+  payload: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/owners/grants`,
+    payload
+  )
+  return res.data
+}
+
+export async function denyDepartmentOwner(
+  departmentId: number,
+  payload: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/owners/denies`,
+    payload
+  )
+  return res.data
+}
+
+export async function revokeDepartmentOwnerGrant(
+  departmentId: number,
+  userId: number,
+  payload?: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/enterprise/departments/${departmentId}/owners/grants/${userId}`,
+    { data: payload }
+  )
+  return res.data
+}
+
+export async function revokeDepartmentOwnerDeny(
+  departmentId: number,
+  userId: number,
+  payload?: DepartmentOwnerMutationPayload
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/enterprise/departments/${departmentId}/owners/denies/${userId}`,
+    { data: payload }
+  )
+  return res.data
+}
+
 export async function getDepartmentBudget(
   departmentId: number,
   tenantId?: number
@@ -192,6 +338,7 @@ export async function getDepartmentBudgets(
   departmentId: number,
   params?: {
     tenant_id?: number
+    include_descendants?: boolean
     sort_by?: DepartmentBudgetSortField
     sort_order?: 'asc' | 'desc'
   }
@@ -258,6 +405,158 @@ export async function revokeQuotaAllocation(
 ): Promise<ApiResponse<QuotaAllocationResponse>> {
   const res = await api.post(
     `/api/enterprise/quota-allocations/${allocationId}/revoke`,
+    payload
+  )
+  return res.data
+}
+
+export async function supersedeQuotaAllocation(
+  allocationId: number,
+  payload: SupersedeQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/supersede`,
+    payload
+  )
+  return res.data
+}
+
+export async function cancelQuotaAllocation(
+  allocationId: number,
+  payload: CancelQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/cancel`,
+    payload
+  )
+  return res.data
+}
+
+export async function reclaimQuotaAllocation(
+  allocationId: number,
+  payload: ReclaimQuotaAllocationPayload
+): Promise<ApiResponse<QuotaAllocationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-allocations/${allocationId}/reclaim`,
+    payload
+  )
+  return res.data
+}
+
+export async function getQuotaRequests(params: {
+  department_id?: number
+  tenant_id?: number
+  requester_user_id?: number
+  include_pending?: boolean
+  limit?: number
+}): Promise<ApiResponse<QuotaRequestListResponse>> {
+  const res = await api.get('/api/enterprise/quota-requests', {
+    params,
+  })
+  return res.data
+}
+
+export async function submitQuotaRequest(
+  payload: SubmitQuotaRequestPayload
+): Promise<ApiResponse<QuotaRequestResponse>> {
+  const res = await api.post('/api/enterprise/quota-requests', payload)
+  return res.data
+}
+
+export async function decideQuotaRequest(
+  requestId: number,
+  payload: DecideQuotaRequestPayload
+): Promise<ApiResponse<QuotaRequestResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-requests/${requestId}/decision`,
+    payload
+  )
+  return res.data
+}
+
+export async function getQuotaRequestCapability(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<QuotaRequestCapabilityResponse>> {
+  const res = await api.get(
+    `/api/enterprise/quota-requests/capability/${departmentId}`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
+  return res.data
+}
+
+export async function getGovernanceTimeline(params: {
+  tenant_id?: number
+  department_id?: number
+  source_type?: string
+  action_type?: string
+  status?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<GovernanceTimelineResponse>> {
+  const res = await api.get('/api/enterprise/governance/timeline', {
+    params,
+  })
+  return res.data
+}
+
+export async function getGovernanceNotifications(params: {
+  tenant_id?: number
+  department_id?: number
+  source_type?: string
+  action_type?: string
+  status?: string
+  page?: number
+  page_size?: number
+}): Promise<ApiResponse<GovernanceNotificationResponse>> {
+  const res = await api.get('/api/enterprise/governance/notifications', {
+    params,
+  })
+  return res.data
+}
+
+export async function resendGovernanceNotification(
+  deliveryId: number,
+  tenantId?: number
+): Promise<ApiResponse<GovernanceNotificationResendResponse>> {
+  const res = await api.post(
+    `/api/enterprise/governance/notifications/${deliveryId}/resend`,
+    null,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
+  )
+  return res.data
+}
+
+export async function getBudgetDelegations(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<BudgetDelegationListResponse>> {
+  const res = await api.get('/api/enterprise/budget-delegations', {
+    params: {
+      department_id: departmentId,
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+    },
+  })
+  return res.data
+}
+
+export async function createBudgetDelegation(
+  payload: CreateBudgetDelegationPayload
+): Promise<ApiResponse<BudgetDelegationResponse>> {
+  const res = await api.post('/api/enterprise/budget-delegations', payload)
+  return res.data
+}
+
+export async function supersedeBudgetDelegation(
+  delegationId: number,
+  payload: SupersedeBudgetDelegationPayload
+): Promise<ApiResponse<BudgetDelegationResponse>> {
+  const res = await api.post(
+    `/api/enterprise/budget-delegations/${delegationId}/supersede`,
     payload
   )
   return res.data

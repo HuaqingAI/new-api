@@ -44,8 +44,9 @@ const (
 )
 
 type DepartmentBudgetListQuery struct {
-	SortBy    string
-	SortOrder string
+	SortBy             string
+	SortOrder          string
+	IncludeDescendants bool
 }
 
 type DepartmentBudgetThresholds struct {
@@ -57,6 +58,7 @@ type DepartmentBudgetItem struct {
 	Id             int                            `json:"id"`
 	TenantId       int                            `json:"tenant_id"`
 	DepartmentId   int                            `json:"department_id"`
+	DepartmentName string                         `json:"department_name"`
 	Type           string                         `json:"type"`
 	Status         string                         `json:"status"`
 	TotalQuota     int64                          `json:"total_quota"`
@@ -75,8 +77,12 @@ type DepartmentBudgetItem struct {
 }
 
 type DepartmentBudgetListResult struct {
-	Items      []DepartmentBudgetItem     `json:"items"`
-	Thresholds DepartmentBudgetThresholds `json:"thresholds"`
+	Items              []DepartmentBudgetItem     `json:"items"`
+	Thresholds         DepartmentBudgetThresholds `json:"thresholds"`
+	ScopeDepartmentId  *int                       `json:"scope_department_id,omitempty"`
+	ScopeDepartmentName string                    `json:"scope_department_name"`
+	IncludeDescendants bool                       `json:"include_descendants"`
+	ScopeDepartmentIds []int                      `json:"scope_department_ids"`
 }
 
 type DepartmentBudgetWalletDetail struct {
@@ -160,7 +166,7 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 		if err := s.db.Create(&budget).Error; err != nil {
 			return DepartmentBudgetItem{}, err
 		}
-		return s.mapDepartmentBudgetItem(budget), nil
+		return s.mapDepartmentBudgetItem(budget, ""), nil
 	case entmodel.DepartmentBudgetTypeSubscription:
 		cycleQuota := int64OrZero(input.CycleQuota)
 		if cycleQuota <= 0 {
@@ -193,7 +199,7 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 		if err := s.db.Create(&budget).Error; err != nil {
 			return DepartmentBudgetItem{}, err
 		}
-		return s.mapDepartmentBudgetItem(budget), nil
+		return s.mapDepartmentBudgetItem(budget, ""), nil
 	default:
 		return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidType
 	}
@@ -213,7 +219,7 @@ func (s *DepartmentBudgetService) GetByDepartment(departmentId int, tenantId int
 	if budget == nil {
 		return nil, nil
 	}
-	item := s.mapDepartmentBudgetItem(*budget)
+	item := s.mapDepartmentBudgetItem(*budget, "")
 	return &item, nil
 }
 
@@ -221,25 +227,35 @@ func (s *DepartmentBudgetService) ListByDepartment(departmentId int, tenantId in
 	if departmentId <= 0 {
 		return nil, ErrInvalidDepartmentBudgetInput
 	}
-	if err := s.ensureDepartmentExists(tenantId, departmentId); err != nil {
+	scope, err := ResolveDepartmentScope(s.db, tenantId, &departmentId, query.IncludeDescendants)
+	if err != nil {
 		return nil, err
 	}
 
 	var budgets []entmodel.DepartmentBudget
-	dbQuery := s.db.Where("tenant_id = ? AND department_id = ?", tenantId, departmentId)
+	dbQuery := s.db.Where("tenant_id = ? AND department_id IN ?", tenantId, scope.DepartmentIds)
 	if err := dbQuery.Find(&budgets).Error; err != nil {
+		return nil, err
+	}
+
+	departmentNames, err := s.loadDepartmentNames(tenantId, scope.DepartmentIds)
+	if err != nil {
 		return nil, err
 	}
 
 	items := make([]DepartmentBudgetItem, 0, len(budgets))
 	for _, budget := range budgets {
-		items = append(items, s.mapDepartmentBudgetItem(budget))
+		items = append(items, s.mapDepartmentBudgetItem(budget, departmentNames[budget.DepartmentId]))
 	}
 	sortDepartmentBudgetItems(items, query)
 
 	return &DepartmentBudgetListResult{
-		Items:      items,
-		Thresholds: currentDepartmentBudgetThresholds(),
+		Items:               items,
+		Thresholds:          currentDepartmentBudgetThresholds(),
+		ScopeDepartmentId:   scope.DepartmentId,
+		ScopeDepartmentName: scope.DepartmentName,
+		IncludeDescendants:  query.IncludeDescendants,
+		ScopeDepartmentIds:  append([]int{}, scope.ScopeDepartmentIds...),
 	}, nil
 }
 
@@ -310,7 +326,7 @@ func (s *DepartmentBudgetService) GetDetail(departmentId int, budgetId int, tena
 	}
 
 	return &DepartmentBudgetDetailResult{
-		Budget:     s.mapDepartmentBudgetItem(budget),
+		Budget:     s.mapDepartmentBudgetItem(budget, ""),
 		Wallets:    details,
 		Thresholds: currentDepartmentBudgetThresholds(),
 	}, nil
@@ -328,12 +344,13 @@ func (s *DepartmentBudgetService) ensureDepartmentExists(tenantId int, departmen
 	return nil
 }
 
-func (s *DepartmentBudgetService) mapDepartmentBudgetItem(budget entmodel.DepartmentBudget) DepartmentBudgetItem {
+func (s *DepartmentBudgetService) mapDepartmentBudgetItem(budget entmodel.DepartmentBudget, departmentName string) DepartmentBudgetItem {
 	usageRatio := calculateDepartmentBudgetUsageRatio(budget)
 	return DepartmentBudgetItem{
 		Id:             budget.Id,
 		TenantId:       budget.TenantId,
 		DepartmentId:   budget.DepartmentId,
+		DepartmentName: departmentName,
 		Type:           budget.Type,
 		Status:         budget.Status,
 		TotalQuota:     budget.TotalQuota,
@@ -350,6 +367,21 @@ func (s *DepartmentBudgetService) mapDepartmentBudgetItem(budget entmodel.Depart
 		CreatedAt:      budget.CreatedAt,
 		UpdatedAt:      budget.UpdatedAt,
 	}
+}
+
+func (s *DepartmentBudgetService) loadDepartmentNames(tenantId int, departmentIds []int) (map[int]string, error) {
+	if len(departmentIds) == 0 {
+		return map[int]string{}, nil
+	}
+	var departments []entmodel.Department
+	if err := s.db.Select("id", "name").Where("tenant_id = ? AND id IN ?", tenantId, departmentIds).Find(&departments).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int]string, len(departments))
+	for _, department := range departments {
+		result[department.Id] = department.Name
+	}
+	return result, nil
 }
 
 func (s *DepartmentBudgetService) latestBudget(departmentId int, tenantId int) (*entmodel.DepartmentBudget, error) {

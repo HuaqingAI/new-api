@@ -128,6 +128,46 @@ func TestDepartmentBudgetListAndDetailAPI(t *testing.T) {
 	require.Equal(t, entmodel.DepartmentBudgetStatusActive, detailData.Wallets[0].SourceParentBudgetStatus)
 }
 
+func TestDepartmentBudgetListAPIIncludesDescendantsAndScopeMetadata(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.GET("/api/enterprise/departments/:id/budgets", ListDepartmentBudgets)
+	parentID := 1
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       3,
+		TenantId: 0,
+		Name:     "Platform",
+		ParentId: &parentID,
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           5,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   100,
+		Remaining:    80,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           6,
+		TenantId:     0,
+		DepartmentId: 3,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   50,
+		Remaining:    10,
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/departments/1/budgets?include_descendants=true", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	data := decodeEnterpriseData[dtoenterprise.DepartmentBudgetListResponse](t, response)
+	require.Len(t, data.Items, 2)
+	require.True(t, data.IncludeDescendants)
+	require.Equal(t, "Engineering", data.ScopeDepartmentName)
+	require.Equal(t, []int{1, 3}, data.ScopeDepartmentIds)
+}
+
 func TestDepartmentBudgetDetailReturnsBudgetNotFound(t *testing.T) {
 	router, _ := setupEnterpriseControllerTest(t)
 	router.GET("/api/enterprise/departments/:id/budgets/:budget_id", GetDepartmentBudgetDetail)

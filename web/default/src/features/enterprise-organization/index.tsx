@@ -22,11 +22,15 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   Building2,
   CalendarClock,
   Coins,
   CreditCard,
+  History,
+  Send,
+  ShieldCheck,
   RefreshCw,
   RotateCcw,
   Settings,
@@ -72,6 +76,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -85,26 +90,49 @@ import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import {
   addDepartmentMember,
+  budgetDelegationQueryKey,
+  createBudgetDelegation,
   createQuotaAllocation,
+  decideQuotaRequest,
   deactivateDepartmentMember,
   createDepartmentBudget,
+  denyDepartmentOwner,
   departmentBudgetDetailQueryScopeKey,
   departmentBudgetDetailQueryKey,
   departmentBudgetListQueryScopeKey,
   departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
   departmentMembersQueryKey,
+  departmentOwnersQueryKey,
+  getDepartmentOwners,
   getDepartmentBudget,
   getDepartmentBudgetDetail,
   getDepartmentBudgets,
+  getBudgetDelegations,
   getDepartmentMembers,
+  getGovernanceNotifications,
+  getGovernanceTimeline,
   getQuotaAllocations,
+  getQuotaRequestCapability,
+  getQuotaRequests,
+  governanceNotificationQueryKey,
+  governanceTimelineQueryKey,
   getUserDepartments,
+  grantDepartmentOwner,
+  quotaRequestQueryKey,
+  quotaRequestQueryScopeKey,
   quotaAllocationQueryKey,
   quotaAllocationQueryScopeKey,
+  reclaimQuotaAllocation,
   renameDepartmentMember,
+  resendGovernanceNotification,
   restoreDepartmentMember,
-  revokeQuotaAllocation,
+  cancelQuotaAllocation,
+  revokeDepartmentOwnerDeny,
+  revokeDepartmentOwnerGrant,
+  submitQuotaRequest,
+  supersedeQuotaAllocation,
+  supersedeBudgetDelegation,
   userDepartmentsQueryKey,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
@@ -121,15 +149,22 @@ import {
 } from './lib/user-display'
 import type {
   ApiResponse,
+  BudgetDelegationItem,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
   DepartmentBudgetSortField,
   DepartmentBudgetWalletDetail,
   DepartmentMemberItem,
+  DepartmentOwnersResponse,
+  EffectiveDepartmentOwnerItem,
+  DepartmentOwnerFactItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
+  GovernanceNotificationItem,
+  GovernanceTimelineItem,
   MembershipStatus,
   QuotaAllocationItem,
+  QuotaRequestItem,
   UserDepartmentItem,
 } from './types'
 
@@ -319,6 +354,76 @@ export function createAllocationSchema(t: (key: string) => string) {
   })
 }
 
+export function createDelegationSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    source_department_id: z.coerce.number().int().positive(),
+    source_budget_id: z.coerce.number().int().positive(),
+    target_department_id: z.coerce.number().int().positive(),
+    target_budget_id: z.coerce.number().int().positive(),
+    committed_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Delegation quota must be greater than 0'),
+      }),
+    reason: z.string().trim().max(500).default(''),
+  })
+}
+
+export function createQuotaRequestSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    department_id: z.coerce.number().int().positive(),
+    department_budget_id: z.coerce.number().int().positive({
+      message: t('Choose a target budget pool'),
+    }),
+    budget_mode: z.literal('department_budget'),
+    requested_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Requested quota must be greater than 0'),
+      }),
+    request_reason: z.string().trim().max(500).default(''),
+  })
+}
+
+export function createQuotaRequestDecisionSchema(t: (key: string) => string) {
+  return z
+    .object({
+      action: z.enum(['approve', 'reject']),
+      approved_quota: z.coerce.number().int().nonnegative(),
+      approval_reason: z.string().trim().max(500).default(''),
+      rejected_reason: z.string().trim().max(500).default(''),
+    })
+    .superRefine((value, ctx) => {
+      if (value.action === 'approve') {
+        if (value.approved_quota <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['approved_quota'],
+            message: t('Approved quota must be greater than 0'),
+          })
+        }
+        if (!value.approval_reason) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['approval_reason'],
+            message: t('Approval reason is required'),
+          })
+        }
+      }
+      if (value.action === 'reject' && !value.rejected_reason) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rejected_reason'],
+          message: t('Rejected requests must include a reject reason'),
+        })
+      }
+    })
+}
+
 export function __testRenderApiMessage(
   result: { message?: string; data?: unknown } | null | undefined,
   translator: (key: string) => string
@@ -389,6 +494,9 @@ function enterpriseBudgetStatusLabel(
   if (status === 'paused') return t('Paused')
   if (status === 'revoked') return t('Revoked')
   if (status === 'expired') return t('Expired')
+  if (status === 'superseded') return t('Superseded')
+  if (status === 'closed') return t('Closed')
+  if (status === 'cancelled') return t('Cancelled')
   return status || '-'
 }
 
@@ -396,6 +504,7 @@ function enterpriseBudgetStatusVariant(status: string) {
   if (status === 'active') return 'success' as const
   if (status === 'paused') return 'warning' as const
   if (status === 'revoked' || status === 'expired') return 'danger' as const
+  if (status === 'superseded' || status === 'closed') return 'neutral' as const
   return 'neutral' as const
 }
 
@@ -671,6 +780,11 @@ export function EnterpriseOrganizationWorkspace(props: {
         onSelectedMemberChange={setSelectedMemberUserId}
         onMembersChange={setDepartmentMembers}
       />
+      <DepartmentOwnersPanel
+        departmentId={props.currentDepartment.id}
+        departmentName={props.currentDepartment.name}
+        members={departmentMembers}
+      />
       <DepartmentMemberContextCard
         currentDepartment={props.currentDepartment}
         selectedMember={selectedMember}
@@ -685,6 +799,7 @@ export function EnterpriseOrganizationWorkspace(props: {
         onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
         selectedMember={selectedMember}
       />
+      {/* Existing governance panels remain below the request workflow. */}
     </div>
   )
 }
@@ -1030,6 +1145,346 @@ function DepartmentMembersPanel({
       </CardContent>
     </Card>
   )
+}
+
+function DepartmentOwnersPanel({
+  departmentId,
+  departmentName,
+  members,
+}: {
+  departmentId: number
+  departmentName: string
+  members: DepartmentMemberItem[]
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [ownerUserIdText, setOwnerUserIdText] = useState('')
+  const tenantId = 0
+
+  const ownersQuery = useQuery({
+    queryKey: departmentOwnersQueryKey(departmentId, tenantId),
+    queryFn: async () => {
+      const result = await getDepartmentOwners(departmentId, tenantId)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          facts: [],
+          effective_owners: [],
+          owner_count: 0,
+          fallback: 'admin',
+        }
+      )
+    },
+  })
+
+  const invalidateOwners = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: departmentOwnersQueryKey(departmentId, tenantId),
+    })
+  }
+
+  const grantMutation = useMutation({
+    mutationFn: (userId: number) =>
+      grantDepartmentOwner(departmentId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      setOwnerUserIdText('')
+      await invalidateOwners()
+      toast.success(t('Department owner granted'))
+    },
+  })
+  const denyMutation = useMutation({
+    mutationFn: (userId: number) =>
+      denyDepartmentOwner(departmentId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      setOwnerUserIdText('')
+      await invalidateOwners()
+      toast.success(t('Local deny override applied'))
+    },
+  })
+  const revokeGrantMutation = useMutation({
+    mutationFn: (userId: number) =>
+      revokeDepartmentOwnerGrant(departmentId, userId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await invalidateOwners()
+      toast.success(t('Manual grant revoked'))
+    },
+  })
+  const revokeDenyMutation = useMutation({
+    mutationFn: (userId: number) =>
+      revokeDepartmentOwnerDeny(departmentId, userId, {
+        tenant_id: tenantId,
+        user_id: userId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await invalidateOwners()
+      toast.success(t('Local deny override revoked'))
+    },
+  })
+
+  const ownerUserId = parsePositiveInt(ownerUserIdText)
+  const data = ownersQuery.data
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div>
+            <CardTitle>{t('Department Owners')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Review effective owners and source facts for {{department}}.',
+                { department: departmentName }
+              )}
+            </CardDescription>
+          </div>
+          <OwnerResolutionBadge data={data} />
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='flex flex-col gap-2 sm:flex-row'>
+          <Input
+            inputMode='numeric'
+            value={ownerUserIdText}
+            onChange={(event) => setOwnerUserIdText(event.target.value)}
+            placeholder={t('User ID')}
+          />
+          <Button
+            variant='outline'
+            onClick={() => ownerUserId && grantMutation.mutate(ownerUserId)}
+            disabled={!ownerUserId || grantMutation.isPending}
+          >
+            <ShieldCheck data-icon='inline-start' />
+            {t('Manual Grant')}
+          </Button>
+          <Button
+            variant='outline'
+            onClick={() => ownerUserId && denyMutation.mutate(ownerUserId)}
+            disabled={!ownerUserId || denyMutation.isPending}
+          >
+            <ShieldX data-icon='inline-start' />
+            {t('Local Deny')}
+          </Button>
+        </div>
+        <DepartmentOwnersEffectiveList
+          owners={data?.effective_owners ?? []}
+          members={members}
+        />
+        <DepartmentOwnerFactsTable
+          facts={data?.facts ?? []}
+          members={members}
+          onRevokeGrant={(userId) => revokeGrantMutation.mutate(userId)}
+          onRevokeDeny={(userId) => revokeDenyMutation.mutate(userId)}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function OwnerResolutionBadge({
+  data,
+}: {
+  data: DepartmentOwnersResponse | undefined
+}) {
+  const { t } = useTranslation()
+  if (!data) {
+    return <Badge variant='outline'>{t('Loading')}</Badge>
+  }
+  if (data.owner_count === 0) {
+    return (
+      <StatusBadge
+        label={`${t('No effective owner')} · ${t('Admin fallback')}`}
+        variant='warning'
+        copyable={false}
+      />
+    )
+  }
+  return (
+    <StatusBadge
+      label={t('{{count}} effective owner(s)', { count: data.owner_count })}
+      variant='success'
+      copyable={false}
+    />
+  )
+}
+
+function DepartmentOwnersEffectiveList({
+  owners,
+  members,
+}: {
+  owners: EffectiveDepartmentOwnerItem[]
+  members: DepartmentMemberItem[]
+}) {
+  const { t } = useTranslation()
+
+  if (owners.length === 0) {
+    return (
+      <Empty className='min-h-[180px]'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <ShieldX />
+          </EmptyMedia>
+          <EmptyTitle>{t('No effective owner')}</EmptyTitle>
+          <EmptyDescription>
+            {t('Admin fallback will handle owner-required actions.')}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <div className='grid gap-2 md:grid-cols-2'>
+      {owners.map((owner) => (
+        <div
+          key={`${owner.user_id}-${owner.role_fact_id}`}
+          className='rounded-lg border p-3'
+        >
+          <div className='font-medium'>
+            {formatOwnerUser(owner.user_id, members, t)}
+          </div>
+          <div className='mt-2 flex flex-wrap gap-2'>
+            <Badge variant='secondary'>
+              {ownerSourceLabel(owner.source, t)}
+            </Badge>
+            <Badge variant='outline'>
+              {t('Inherited from department #{{id}}', {
+                id: owner.inherited_from_department_id,
+              })}
+            </Badge>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DepartmentOwnerFactsTable({
+  facts,
+  members,
+  onRevokeGrant,
+  onRevokeDeny,
+}: {
+  facts: DepartmentOwnerFactItem[]
+  members: DepartmentMemberItem[]
+  onRevokeGrant: (userId: number) => void
+  onRevokeDeny: (userId: number) => void
+}) {
+  const { t } = useTranslation()
+
+  if (facts.length === 0) {
+    return (
+      <div className='text-muted-foreground rounded-lg border p-3 text-sm'>
+        {t('No owner source facts recorded')}
+      </div>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('User')}</TableHead>
+          <TableHead>{t('Source Fact')}</TableHead>
+          <TableHead>{t('Effect')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead className='text-right'>{t('Actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {facts.map((fact) => (
+          <TableRow key={fact.id}>
+            <TableCell>{formatOwnerUser(fact.user_id, members, t)}</TableCell>
+            <TableCell>{ownerSourceLabel(fact.source, t)}</TableCell>
+            <TableCell>{ownerEffectLabel(fact.effect, t)}</TableCell>
+            <TableCell>
+              <StatusBadge
+                label={
+                  fact.status === 1
+                    ? t('Active')
+                    : t('Fact inactive or revoked')
+                }
+                variant={fact.status === 1 ? 'success' : 'neutral'}
+                copyable={false}
+              />
+            </TableCell>
+            <TableCell className='text-right'>
+              {fact.source === 'manual_grant' && fact.status === 1 ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => onRevokeGrant(fact.user_id)}
+                >
+                  {t('Revoke Grant')}
+                </Button>
+              ) : null}
+              {fact.source === 'manual_deny_override' && fact.status === 1 ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => onRevokeDeny(fact.user_id)}
+                >
+                  {t('Revoke Local Deny')}
+                </Button>
+              ) : null}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function formatOwnerUser(
+  userId: number,
+  members: DepartmentMemberItem[],
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  const member = members.find((item) => item.user_id === userId)
+  if (!member) return t('User #{{id}}', { id: userId })
+  return formatEnterpriseUserPrimary({
+    displayName: member.display_name,
+    username: member.username,
+    userId,
+  })
+}
+
+function ownerSourceLabel(source: string, t: (key: string) => string) {
+  if (source === 'manual_deny_override') return t('Local deny override')
+  if (source === 'manual_grant') return t('Manual grant')
+  if (source === 'dingtalk_synced_owner') return t('DingTalk synced owner')
+  return source
+}
+
+function ownerEffectLabel(effect: string, t: (key: string) => string) {
+  if (effect === 'deny') return t('Deny')
+  if (effect === 'allow') return t('Allow')
+  return effect
 }
 
 function DepartmentMembersTable({
@@ -1393,13 +1848,18 @@ function DepartmentBudgetPanel({
   selectedMember: DepartmentMemberItem | null
 }) {
   const { t } = useTranslation()
+  const currentUser = useAuthStore((state) => state.auth.user)
   const queryClient = useQueryClient()
   const renderApiMessage = (result: ApiResponse<unknown> | null | undefined) =>
     __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
+  const delegationSchema = createDelegationSchema(t)
+  const quotaRequestSchema = createQuotaRequestSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
   type AllocationFormValues = z.infer<typeof allocationSchema>
+  type DelegationFormValues = z.infer<typeof delegationSchema>
+  type QuotaRequestFormValues = z.infer<typeof quotaRequestSchema>
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(
@@ -1430,11 +1890,55 @@ function DepartmentBudgetPanel({
       reason: '',
     },
   })
+  const delegationForm = useForm<DelegationFormValues>({
+    resolver: zodResolver(
+      delegationSchema
+    ) as unknown as Resolver<DelegationFormValues>,
+    defaultValues: {
+      tenant_id: 0,
+      source_department_id: departmentId,
+      source_budget_id: 0,
+      target_department_id: 0,
+      target_budget_id: 0,
+      committed_quota: 0,
+      reason: '',
+    },
+  })
+  const quotaRequestForm = useForm<QuotaRequestFormValues>({
+    resolver: zodResolver(
+      quotaRequestSchema
+    ) as unknown as Resolver<QuotaRequestFormValues>,
+    defaultValues: {
+      tenant_id: 0,
+      department_id: departmentId,
+      department_budget_id: 0,
+      budget_mode: 'department_budget',
+      requested_quota: 0,
+      request_reason: '',
+    },
+  })
   const tenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [includeDescendants, setIncludeDescendants] = useState(false)
+  const [supersedeDrafts, setSupersedeDrafts] = useState<Record<number, string>>(
+    {}
+  )
+  const [allocationSupersedeDrafts, setAllocationSupersedeDrafts] = useState<
+    Record<number, string>
+  >({})
+  const [quotaRequestDecisionDrafts, setQuotaRequestDecisionDrafts] = useState<
+    Record<
+      number,
+      {
+        approvedQuota: string
+        approvalReason: string
+        rejectedReason: string
+      }
+    >
+  >({})
   const normalizedTenantId = tenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
   const previousBudgetIdRef = useRef<number | null>(selectedBudgetId)
@@ -1453,17 +1957,37 @@ function DepartmentBudgetPanel({
   })
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
+  const quotaRequestCapabilityQuery = useQuery({
+    queryKey: [...quotaRequestQueryScopeKey(departmentId, normalizedTenantId), 'capability'],
+    queryFn: async () => {
+      const result = await getQuotaRequestCapability(
+        departmentId,
+        tenantId || undefined
+      )
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          can_submit: false,
+          can_govern: false,
+          budgets: [],
+        }
+      )
+    },
+  })
 
   const budgetListQuery = useQuery({
     queryKey: departmentBudgetListQueryKey(
       departmentId,
       normalizedTenantId,
+      includeDescendants,
       sortBy,
       sortOrder
     ),
     queryFn: async () => {
       const result = await getDepartmentBudgets(departmentId, {
         tenant_id: tenantId || undefined,
+        include_descendants: includeDescendants,
         sort_by: sortBy,
         sort_order: sortOrder,
       })
@@ -1473,6 +1997,37 @@ function DepartmentBudgetPanel({
         result.data ?? {
           items: [],
           thresholds: { warning: 80, critical: 95 },
+          scope_department_name: departmentName,
+          include_descendants: includeDescendants,
+          scope_department_ids: [departmentId],
+        }
+      )
+    },
+  })
+  const descendantBudgetListQuery = useQuery({
+    queryKey: departmentBudgetListQueryKey(
+      departmentId,
+      normalizedTenantId,
+      true,
+      sortBy,
+      sortOrder
+    ),
+    queryFn: async () => {
+      const result = await getDepartmentBudgets(departmentId, {
+        tenant_id: tenantId || undefined,
+        include_descendants: true,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          items: [],
+          thresholds: { warning: 80, critical: 95 },
+          scope_department_name: departmentName,
+          include_descendants: true,
+          scope_department_ids: [departmentId],
         }
       )
     },
@@ -1541,6 +2096,61 @@ function DepartmentBudgetPanel({
     },
     enabled: Boolean(effectiveBudgetId),
   })
+  const quotaRequestListQuery = useQuery({
+    queryKey: quotaRequestQueryKey(departmentId, normalizedTenantId, null),
+    queryFn: async () => {
+      const result = await getQuotaRequests({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        include_pending: true,
+        limit: 100,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+  const delegationListQuery = useQuery({
+    queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getBudgetDelegations(departmentId, tenantId || undefined)
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+  const governanceTimelineQuery = useQuery({
+    queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getGovernanceTimeline({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        page: 1,
+        page_size: 20,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+  const governanceNotificationQuery = useQuery({
+    queryKey: governanceNotificationQueryKey(departmentId, normalizedTenantId),
+    queryFn: async () => {
+      const result = await getGovernanceNotifications({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        page: 1,
+        page_size: 20,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
+
+  const descendantBudgetOptions = (
+    descendantBudgetListQuery.data?.items ?? []
+  ).filter((item) => item.department_id !== departmentId)
 
   const createMutation = useMutation({
     mutationFn: async (values: BudgetFormValues) => {
@@ -1630,13 +2240,185 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
       toast.success(t('Wallet allocation created'))
     },
   })
+  const quotaRequestMutation = useMutation({
+    mutationFn: async (values: QuotaRequestFormValues) =>
+      submitQuotaRequest({
+        tenant_id: Number(values.tenant_id),
+        department_id: Number(values.department_id),
+        department_budget_id: Number(values.department_budget_id),
+        budget_mode: values.budget_mode,
+        requested_quota: Number(values.requested_quota),
+        request_reason: values.request_reason.trim() || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      toast.success(t('Quota request submitted'))
+    },
+  })
+  const quotaRequestDecisionMutation = useMutation({
+    mutationFn: async (params: {
+      requestId: number
+      payload: {
+        action: 'approve' | 'reject'
+        approved_quota?: number
+        approval_reason?: string
+        rejected_reason?: string
+      }
+    }) =>
+      decideQuotaRequest(params.requestId, {
+        tenant_id: tenantId || undefined,
+        ...params.payload,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      toast.success(t('Quota request updated'))
+    },
+  })
+  const delegationMutation = useMutation({
+    mutationFn: async (values: DelegationFormValues) =>
+      createBudgetDelegation({
+        tenant_id: Number(values.tenant_id),
+        source_department_id: departmentId,
+        source_budget_id: Number(values.source_budget_id),
+        target_department_id: Number(values.target_department_id),
+        target_budget_id: Number(values.target_budget_id),
+        committed_quota: Number(values.committed_quota),
+        reason: values.reason.trim() || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Budget delegation created'))
+    },
+  })
+  const supersedeMutation = useMutation({
+    mutationFn: async (params: {
+      delegationId: number
+      committedQuota: number
+    }) =>
+      supersedeBudgetDelegation(params.delegationId, {
+        tenant_id: tenantId || undefined,
+        source_department_id: departmentId,
+        new_committed_quota: params.committedQuota,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: governanceTimelineQueryKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Budget delegation adjusted'))
+    },
+  })
 
-  const revokeMutation = useMutation({
+  const allocationSupersedeMutation = useMutation({
+    mutationFn: async (params: { allocationId: number; committedQuota: number }) =>
+      supersedeQuotaAllocation(params.allocationId, {
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        new_committed_quota: params.committedQuota,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      toast.success(t('Wallet allocation adjusted'))
+    },
+  })
+
+  const allocationCancelMutation = useMutation({
     mutationFn: async (allocationId: number) =>
-      revokeQuotaAllocation(allocationId, {
+      cancelQuotaAllocation(allocationId, {
         tenant_id: tenantId || undefined,
         department_id: departmentId,
       }),
@@ -1666,7 +2448,63 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      toast.success(t('Wallet allocation revoked'))
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      toast.success(t('Wallet allocation cancelled'))
+    },
+  })
+
+  const allocationReclaimMutation = useMutation({
+    mutationFn: async (allocationId: number) =>
+      reclaimQuotaAllocation(allocationId, {
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      toast.success(t('Wallet allocation reclaimed'))
+    },
+  })
+
+  const governanceResendMutation = useMutation({
+    mutationFn: (deliveryId: number) =>
+      resendGovernanceNotification(deliveryId, tenantId || undefined),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: governanceNotificationQueryKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      toast.success(t('Governance notification resend queued'))
     },
   })
 
@@ -1681,6 +2519,33 @@ function DepartmentBudgetPanel({
       allocationForm.setValue('tenant_id', tenantId)
     }
   }, [allocationForm, tenantId])
+
+  useEffect(() => {
+    if (delegationForm.getValues('tenant_id') !== tenantId) {
+      delegationForm.setValue('tenant_id', tenantId)
+    }
+    if (delegationForm.getValues('source_department_id') !== departmentId) {
+      delegationForm.setValue('source_department_id', departmentId)
+    }
+    if (effectiveBudgetId && delegationForm.getValues('source_budget_id') !== effectiveBudgetId) {
+      delegationForm.setValue('source_budget_id', effectiveBudgetId)
+    }
+  }, [delegationForm, departmentId, effectiveBudgetId, tenantId])
+
+  useEffect(() => {
+    if (quotaRequestForm.getValues('tenant_id') !== tenantId) {
+      quotaRequestForm.setValue('tenant_id', tenantId)
+    }
+    if (quotaRequestForm.getValues('department_id') !== departmentId) {
+      quotaRequestForm.setValue('department_id', departmentId)
+    }
+    if (
+      effectiveBudgetId &&
+      quotaRequestForm.getValues('department_budget_id') !== effectiveBudgetId
+    ) {
+      quotaRequestForm.setValue('department_budget_id', effectiveBudgetId)
+    }
+  }, [departmentId, effectiveBudgetId, quotaRequestForm, tenantId])
 
   useEffect(() => {
     if (previousDepartmentIdRef.current === departmentId) return
@@ -1931,12 +2796,347 @@ function DepartmentBudgetPanel({
         items={budgetListQuery.data?.items ?? []}
         loading={budgetListQuery.isLoading}
         selectedBudgetId={effectiveBudgetId}
+        includeDescendants={includeDescendants}
+        scopeDepartmentName={
+          budgetListQuery.data?.scope_department_name ?? departmentName
+        }
         sortBy={sortBy}
         sortOrder={sortOrder}
+        onIncludeDescendantsChange={setIncludeDescendants}
         onSelectBudget={onSelectedBudgetIdChange}
         onSortByChange={setSortBy}
         onSortOrderChange={setSortOrder}
       />
+      <GovernanceActivityCard
+        timelineItems={governanceTimelineQuery.data ?? []}
+        notificationItems={governanceNotificationQuery.data ?? []}
+        loading={
+          governanceTimelineQuery.isLoading ||
+          governanceNotificationQuery.isLoading
+        }
+        resendPendingId={
+          governanceResendMutation.isPending
+            ? governanceResendMutation.variables ?? null
+            : null
+        }
+        onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Budget Delegation To Descendant Department')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Delegate from the current department budget pool to a descendant department budget pool, while keeping superseded history visible.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <Form {...delegationForm}>
+            <form
+              className='grid gap-4 md:grid-cols-2'
+              onSubmit={delegationForm.handleSubmit((values) =>
+                delegationMutation.mutate(values)
+              )}
+            >
+              <FormField
+                control={delegationForm.control}
+                name='target_budget_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Target Descendant Budget Pool')}</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : undefined}
+                      onValueChange={(value) => {
+                        const budgetId = Number(value)
+                        const budget = descendantBudgetOptions.find(
+                          (item) => item.id === budgetId
+                        )
+                        field.onChange(budgetId)
+                        delegationForm.setValue(
+                          'target_department_id',
+                          budget?.department_id ?? 0
+                        )
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={t('Choose a descendant budget pool')}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {descendantBudgetOptions.map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
+                              source: departmentName,
+                              target: item.department_name,
+                              budgetId: item.id,
+                            })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={delegationForm.control}
+                name='committed_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Delegation Quota')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={delegationForm.control}
+                name='reason'
+                render={({ field }) => (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Reason')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Optional delegation note')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className='md:col-span-2 flex justify-end'>
+                <Button
+                  type='submit'
+                  disabled={
+                    !effectiveBudgetId ||
+                    descendantBudgetOptions.length === 0 ||
+                    delegationMutation.isPending
+                  }
+                >
+                  <Coins data-icon='inline-start' />
+                  {t('Delegate to descendant department')}
+                </Button>
+              </div>
+            </form>
+          </Form>
+          <BudgetDelegationTable
+            items={delegationListQuery.data ?? []}
+            loading={delegationListQuery.isLoading}
+            supersedeDrafts={supersedeDrafts}
+            onSupersedeDraftChange={(delegationId, value) =>
+              setSupersedeDrafts((current) => ({
+                ...current,
+                [delegationId]: value,
+              }))
+            }
+            onSupersede={(delegation) =>
+              supersedeMutation.mutate({
+                delegationId: delegation.id,
+                committedQuota: Number(
+                  supersedeDrafts[delegation.id] || delegation.committed_quota
+                ),
+              })
+            }
+            supersedePendingId={
+              supersedeMutation.isPending
+                ? supersedeMutation.variables?.delegationId ?? null
+                : null
+            }
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Employee Quota Requests')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Submit employee quota requests with an explicit target budget pool, then complete single-step approval in the same department workspace.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <Form {...quotaRequestForm}>
+            <form
+              className='grid gap-4 md:grid-cols-2'
+              onSubmit={quotaRequestForm.handleSubmit((values) =>
+                quotaRequestMutation.mutate(values)
+              )}
+            >
+              <div className='rounded-lg border p-3 md:col-span-2'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Requester')}
+                </div>
+                <div className='mt-1 text-sm font-medium'>
+                  {currentUser
+                    ? formatEnterpriseUserPrimary({
+                        displayName: currentUser.display_name,
+                        username: currentUser.username,
+                        userId: currentUser.id,
+                      })
+                    : t('No current user')}
+                </div>
+                <div className='text-muted-foreground mt-1 text-xs'>
+                  {t('Target Department')} {departmentName}
+                </div>
+              </div>
+              <FormField
+                control={quotaRequestForm.control}
+                name='department_budget_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Target Budget Pool')}</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : undefined}
+                      onValueChange={(value) => field.onChange(Number(value))}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={t('Choose a target budget pool')}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(quotaRequestCapabilityQuery.data?.budgets ??
+                          budgetListQuery.data?.items ??
+                          []).map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {t('{{department}} · Budget #{{budgetId}}', {
+                              department: item.department_name,
+                              budgetId: item.id,
+                            })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={quotaRequestForm.control}
+                name='requested_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Requested Quota')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={quotaRequestForm.control}
+                name='request_reason'
+                render={({ field }) => (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Request Reason')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Optional request note')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className='flex justify-end md:col-span-2'>
+                <Button
+                  type='submit'
+                  disabled={
+                    !currentUser ||
+                    !quotaRequestCapabilityQuery.data?.can_submit ||
+                    quotaRequestMutation.isPending
+                  }
+                >
+                  <Coins data-icon='inline-start' />
+                  {t('Submit quota request')}
+                </Button>
+              </div>
+            </form>
+          </Form>
+          {!quotaRequestCapabilityQuery.data?.can_submit ? (
+            <Empty className='min-h-[140px] border'>
+              <EmptyHeader>
+                <EmptyMedia variant='icon'>
+                  <Coins className='size-4' />
+                </EmptyMedia>
+                <EmptyTitle>{t('No request access in this department')}</EmptyTitle>
+                <EmptyDescription>
+                  {t(
+                    'You must be an active member of the selected department before submitting a quota request here.'
+                  )}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : null}
+          <QuotaRequestTable
+            items={quotaRequestListQuery.data ?? []}
+            loading={quotaRequestListQuery.isLoading}
+            decisionDrafts={quotaRequestDecisionDrafts}
+            onDecisionDraftChange={(requestId, patch) =>
+              setQuotaRequestDecisionDrafts((current) => ({
+                ...current,
+                [requestId]: {
+                  approvedQuota:
+                    patch.approvedQuota ??
+                    current[requestId]?.approvedQuota ??
+                    '',
+                  approvalReason:
+                    patch.approvalReason ??
+                    current[requestId]?.approvalReason ??
+                    '',
+                  rejectedReason:
+                    patch.rejectedReason ??
+                    current[requestId]?.rejectedReason ??
+                    '',
+                },
+              }))
+            }
+            onApprove={(item) => {
+              const draft = quotaRequestDecisionDrafts[item.id]
+              quotaRequestDecisionMutation.mutate({
+                requestId: item.id,
+                payload: {
+                  action: 'approve',
+                  approved_quota: Number(
+                    draft?.approvedQuota || item.requested_quota
+                  ),
+                  approval_reason:
+                    draft?.approvalReason || t('Approved in workspace'),
+                },
+              })
+            }}
+            onReject={(item) => {
+              const draft = quotaRequestDecisionDrafts[item.id]
+              quotaRequestDecisionMutation.mutate({
+                requestId: item.id,
+                payload: {
+                  action: 'reject',
+                  rejected_reason:
+                    draft?.rejectedReason || t('Rejected in workspace'),
+                },
+              })
+            }}
+            pendingRequestId={
+              quotaRequestDecisionMutation.isPending
+                ? quotaRequestDecisionMutation.variables?.requestId ?? null
+                : null
+            }
+            canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
+          />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
@@ -2047,9 +3247,41 @@ function DepartmentBudgetPanel({
           <QuotaAllocationTable
             items={allocationListQuery.data ?? []}
             loading={allocationListQuery.isLoading}
-            onRevoke={(allocationId) => revokeMutation.mutate(allocationId)}
-            revokePendingId={
-              revokeMutation.isPending ? revokeMutation.variables : null
+            supersedeDrafts={allocationSupersedeDrafts}
+            onSupersedeDraftChange={(allocationId, value) =>
+              setAllocationSupersedeDrafts((current) => ({
+                ...current,
+                [allocationId]: value,
+              }))
+            }
+            onSupersede={(item) =>
+              allocationSupersedeMutation.mutate({
+                allocationId: item.id,
+                committedQuota: Number(
+                  allocationSupersedeDrafts[item.id] || item.committed_quota
+                ),
+              })
+            }
+            onCancel={(allocationId) =>
+              allocationCancelMutation.mutate(allocationId)
+            }
+            onReclaim={(allocationId) =>
+              allocationReclaimMutation.mutate(allocationId)
+            }
+            supersedePendingId={
+              allocationSupersedeMutation.isPending
+                ? allocationSupersedeMutation.variables?.allocationId ?? null
+                : null
+            }
+            cancelPendingId={
+              allocationCancelMutation.isPending
+                ? allocationCancelMutation.variables ?? null
+                : null
+            }
+            reclaimPendingId={
+              allocationReclaimMutation.isPending
+                ? allocationReclaimMutation.variables ?? null
+                : null
             }
           />
         </CardContent>
@@ -2061,13 +3293,25 @@ function DepartmentBudgetPanel({
 export function QuotaAllocationTable({
   items,
   loading,
-  onRevoke,
-  revokePendingId,
+  supersedeDrafts,
+  onSupersedeDraftChange,
+  onSupersede,
+  onCancel,
+  onReclaim,
+  supersedePendingId,
+  cancelPendingId,
+  reclaimPendingId,
 }: {
   items: QuotaAllocationItem[]
   loading: boolean
-  onRevoke?: (allocationId: number) => void
-  revokePendingId?: number | null
+  supersedeDrafts?: Record<number, string>
+  onSupersedeDraftChange?: (allocationId: number, value: string) => void
+  onSupersede?: (item: QuotaAllocationItem) => void
+  onCancel?: (allocationId: number) => void
+  onReclaim?: (allocationId: number) => void
+  supersedePendingId?: number | null
+  cancelPendingId?: number | null
+  reclaimPendingId?: number | null
 }) {
   const { t } = useTranslation()
 
@@ -2100,6 +3344,8 @@ export function QuotaAllocationTable({
           <TableHead>{t('Allocation Quota')}</TableHead>
           <TableHead>{t('Wallet ID')}</TableHead>
           <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Lineage')}</TableHead>
+          <TableHead>{t('Reclaimed Quota')}</TableHead>
           <TableHead>{t('Processed At')}</TableHead>
           <TableHead>{t('Created At')}</TableHead>
           <TableHead>{t('Actions')}</TableHead>
@@ -2137,28 +3383,619 @@ export function QuotaAllocationTable({
               </Badge>
             </TableCell>
             <TableCell>
+              <div className='flex min-w-[180px] flex-col gap-1 text-xs'>
+                <span>
+                  {item.supersedes_allocation_id
+                    ? t('Supersedes Allocation #{{id}}', {
+                        id: item.supersedes_allocation_id,
+                      })
+                    : '-'}
+                </span>
+                <span className='text-muted-foreground'>
+                  {item.superseded_by_id
+                    ? t('Superseded By Allocation #{{id}}', {
+                        id: item.superseded_by_id,
+                      })
+                    : '-'}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell>{item.reclaimed_quota || 0}</TableCell>
+            <TableCell>
               {item.processed_at ? formatTimestamp(item.processed_at) : '-'}
             </TableCell>
             <TableCell>{formatTimestamp(item.created_at)}</TableCell>
             <TableCell>
+              <div className='flex min-w-[320px] items-center gap-2'>
+                {item.status === 'active' ? (
+                  <Input
+                    inputMode='numeric'
+                    value={
+                      supersedeDrafts?.[item.id] ?? String(item.committed_quota)
+                    }
+                    onChange={(event) =>
+                      onSupersedeDraftChange?.(item.id, event.target.value)
+                    }
+                    aria-label={t('Allocation Quota')}
+                  />
+                ) : null}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onSupersede ||
+                    item.status !== 'active' ||
+                    supersedePendingId === item.id
+                  }
+                  onClick={() => onSupersede?.(item)}
+                >
+                  <RotateCcw data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Close old allocation and create a new one')
+                    : t('Historical allocation')}
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onCancel ||
+                    item.status !== 'active' ||
+                    cancelPendingId === item.id
+                  }
+                  onClick={() => onCancel?.(item.id)}
+                >
+                  <ShieldX data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Cancel allocation')
+                    : t('Already processed')}
+                </Button>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onReclaim ||
+                    item.status !== 'active' ||
+                    reclaimPendingId === item.id
+                  }
+                  onClick={() => onReclaim?.(item.id)}
+                >
+                  <Coins data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Reclaim allocation')
+                    : t('Already processed')}
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+export async function invalidateGovernanceQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  departmentId: number,
+  tenantId: number
+) {
+  await queryClient.invalidateQueries({
+    queryKey: governanceTimelineQueryKey(departmentId, tenantId),
+  })
+  await queryClient.invalidateQueries({
+    queryKey: governanceNotificationQueryKey(departmentId, tenantId),
+  })
+}
+
+export function GovernanceActivityCard({
+  timelineItems,
+  notificationItems,
+  loading,
+  resendPendingId,
+  onResend,
+}: {
+  timelineItems: GovernanceTimelineItem[]
+  notificationItems: GovernanceNotificationItem[]
+  loading: boolean
+  resendPendingId?: number | null
+  onResend?: (deliveryId: number) => void
+}) {
+  const { t } = useTranslation()
+  const notificationsByTrace = useMemo(() => {
+    const map = new Map<string, GovernanceNotificationItem[]>()
+    for (const item of notificationItems) {
+      const current = map.get(item.trace_id) ?? []
+      current.push(item)
+      map.set(item.trace_id, current)
+    }
+    return map
+  }, [notificationItems])
+
+  if (loading) {
+    return <Skeleton className='h-48 w-full' />
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Governance Timeline and Notification Delivery')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Trace governance actions and DingTalk delivery state for the current department.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {timelineItems.length === 0 && notificationItems.length === 0 ? (
+          <Empty className='min-h-[180px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <History className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No governance activity yet')}</EmptyTitle>
+              <EmptyDescription>
+                {t(
+                  'Governance actions and notification delivery records will appear here after requests, approvals, allocations, or reclamation actions are completed.'
+                )}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('Trace ID')}</TableHead>
+                <TableHead>{t('Action')}</TableHead>
+                <TableHead>{t('Actor')}</TableHead>
+                <TableHead>{t('Target')}</TableHead>
+                <TableHead>{t('Quota Change')}</TableHead>
+                <TableHead>{t('Status')}</TableHead>
+                <TableHead>{t('Notification Status')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {timelineItems.map((item) => {
+                const deliveries = notificationsByTrace.get(item.trace_id) ?? []
+                return (
+                  <TableRow key={`${item.source_type}-${item.source_id}`}>
+                    <TableCell>
+                      <div className='flex min-w-[180px] flex-col gap-1'>
+                        <span className='font-mono text-xs'>{item.trace_id}</span>
+                        <span className='text-muted-foreground text-xs'>
+                          {item.source_type} #{item.source_id}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{governanceActionLabel(item.action_type, t)}</TableCell>
+                    <TableCell>
+                      {item.actor_name || (item.actor_id ? `#${item.actor_id}` : '-')}
+                    </TableCell>
+                    <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
+                    <TableCell>{formatNumber(item.quota_delta)}</TableCell>
+                    <TableCell>
+                      <Badge variant='secondary'>
+                        {enterpriseBudgetStatusLabel(item.status, t)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <GovernanceNotificationDeliveryList
+                        items={deliveries}
+                        resendPendingId={resendPendingId}
+                        onResend={onResend}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+        {notificationItems.some(
+          (item) => !notificationsByTrace.has(item.trace_id)
+        ) ? (
+          <GovernanceNotificationDeliveryList
+            items={notificationItems.filter(
+              (item) => !timelineItems.some((trace) => trace.trace_id === item.trace_id)
+            )}
+            resendPendingId={resendPendingId}
+            onResend={onResend}
+          />
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function GovernanceNotificationDeliveryList({
+  items,
+  resendPendingId,
+  onResend,
+}: {
+  items: GovernanceNotificationItem[]
+  resendPendingId?: number | null
+  onResend?: (deliveryId: number) => void
+}) {
+  const { t } = useTranslation()
+
+  if (items.length === 0) {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  return (
+    <div className='flex min-w-[220px] flex-col gap-2'>
+      {items.map((item) => (
+        <div key={item.id} className='rounded-md border p-2'>
+          <div className='flex items-center justify-between gap-2'>
+            <StatusBadge
+              label={governanceDeliveryStatusLabel(item.status, t)}
+              variant={governanceDeliveryStatusVariant(item.status)}
+              copyable={false}
+            />
+            {item.status === 'final_failed' ? (
               <Button
                 type='button'
                 size='sm'
                 variant='outline'
-                disabled={
-                  !onRevoke ||
-                  item.status === 'revoked' ||
-                  item.status === 'expired' ||
-                  revokePendingId === item.id
-                }
-                onClick={() => onRevoke?.(item.id)}
+                disabled={!onResend || resendPendingId === item.id}
+                onClick={() => onResend?.(item.id)}
               >
-                <ShieldX data-icon='inline-start' />
-                {item.status === 'revoked' || item.status === 'expired'
-                  ? t('Already processed')
-                  : t('Revoke allocation')}
+                <Send data-icon='inline-start' />
+                {t('Resend')}
               </Button>
+            ) : null}
+          </div>
+          <div className='text-muted-foreground mt-1 text-xs'>
+            {t('Attempt {{count}}/{{max}}', {
+              count: item.attempt_count,
+              max: item.max_attempts,
+            })}
+          </div>
+          {item.error_reason ? (
+            <div className='text-destructive mt-1 break-words text-xs'>
+              {item.error_reason}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatGovernanceTarget(
+  item: GovernanceTimelineItem,
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  if (item.target.display_name || item.target.username || item.target.user_id) {
+    return formatEnterpriseUserPrimary({
+      displayName: item.target.display_name,
+      username: item.target.username,
+      userId: item.target.user_id,
+    })
+  }
+  if (item.target.department_name || item.target.department_id) {
+    return item.target.department_name || `#${item.target.department_id}`
+  }
+  return item.target.object_id
+    ? `${item.target.object_type} #${item.target.object_id}`
+    : t('Unknown target')
+}
+
+function governanceActionLabel(
+  actionType: string,
+  t: (key: string) => string
+) {
+  const labels: Record<string, string> = {
+    'enterprise.organization.quota_request.submit': 'Quota request submitted',
+    'enterprise.organization.quota_request.approve': 'Quota request approved',
+    'enterprise.organization.quota_request.reject': 'Quota request rejected',
+    'enterprise.organization.quota_allocation.create': 'Allocation created',
+    'enterprise.organization.quota_allocation.reclaim': 'Allocation reclaimed',
+    'enterprise.organization.quota_allocation.cancel': 'Allocation cancelled',
+    'enterprise.organization.quota_allocation.revoke': 'Allocation revoked',
+    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+  }
+  return t(labels[actionType] ?? actionType)
+}
+
+function governanceDeliveryStatusLabel(
+  status: string,
+  t: (key: string) => string
+) {
+  switch (status) {
+    case 'pending':
+      return t('Pending')
+    case 'sent':
+      return t('Sent')
+    case 'resent':
+      return t('Resent')
+    case 'failed':
+      return t('Failed')
+    case 'final_failed':
+      return t('Final failed')
+    default:
+      return status
+  }
+}
+
+function governanceDeliveryStatusVariant(status: string) {
+  switch (status) {
+    case 'sent':
+    case 'resent':
+      return 'success' as const
+    case 'failed':
+      return 'warning' as const
+    case 'final_failed':
+      return 'red' as const
+    default:
+      return 'grey' as const
+  }
+}
+
+function QuotaRequestTable({
+  items,
+  loading,
+  decisionDrafts,
+  onDecisionDraftChange,
+  onApprove,
+  onReject,
+  pendingRequestId,
+  canGovern,
+}: {
+  items: QuotaRequestItem[]
+  loading: boolean
+  decisionDrafts: Record<
+    number,
+    {
+      approvedQuota: string
+      approvalReason: string
+      rejectedReason: string
+    }
+  >
+  onDecisionDraftChange: (
+    requestId: number,
+    patch: Partial<{
+      approvedQuota: string
+      approvalReason: string
+      rejectedReason: string
+    }>
+  ) => void
+  onApprove: (item: QuotaRequestItem) => void
+  onReject: (item: QuotaRequestItem) => void
+  pendingRequestId?: number | null
+  canGovern: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-32 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Coins className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No quota requests yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t(
+              'Requests will appear here after employees choose a target department budget pool and submit a quota request.'
+            )}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Requester')}</TableHead>
+          <TableHead>{t('Target Department')}</TableHead>
+          <TableHead>{t('Target Budget Pool')}</TableHead>
+          <TableHead>{t('Requested Quota')}</TableHead>
+          <TableHead>{t('Approved Quota')}</TableHead>
+          <TableHead>{t('Fulfillment')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => {
+          const draft = decisionDrafts[item.id] ?? {
+            approvedQuota: String(item.requested_quota),
+            approvalReason: '',
+            rejectedReason: '',
+          }
+          const actionable = canGovern && item.status === 'submitted'
+          return (
+            <TableRow key={item.id}>
+              <TableCell>
+                {formatEnterpriseUserPrimary({
+                  displayName: item.requester_display_name,
+                  username: item.requester_username,
+                  userId: item.requester_user_id,
+                })}
+              </TableCell>
+              <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
+              <TableCell>#{item.department_budget_id}</TableCell>
+              <TableCell>{item.requested_quota}</TableCell>
+              <TableCell>{item.approved_quota || '-'}</TableCell>
+              <TableCell>
+                {item.allocation_id
+                  ? t('Allocation #{{id}}', { id: item.allocation_id })
+                  : '-'}
+              </TableCell>
+              <TableCell>
+                <Badge variant='secondary'>{enterpriseBudgetStatusLabel(item.status, t)}</Badge>
+              </TableCell>
+              <TableCell>
+                <div className='flex min-w-[360px] flex-col gap-2'>
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      inputMode='numeric'
+                      value={draft.approvedQuota}
+                      onChange={(event) =>
+                        onDecisionDraftChange(item.id, {
+                          approvedQuota: event.target.value,
+                        })
+                      }
+                      disabled={!actionable}
+                      aria-label={t('Approved Quota')}
+                    />
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      disabled={!actionable || pendingRequestId === item.id}
+                      onClick={() => onApprove(item)}
+                    >
+                      {t('Approve')}
+                    </Button>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      disabled={!actionable || pendingRequestId === item.id}
+                      onClick={() => onReject(item)}
+                    >
+                      {t('Reject')}
+                    </Button>
+                  </div>
+                  <Input
+                    value={draft.approvalReason}
+                    onChange={(event) =>
+                      onDecisionDraftChange(item.id, {
+                        approvalReason: event.target.value,
+                      })
+                    }
+                    disabled={!actionable}
+                    placeholder={t('Approval reason is required')}
+                    aria-label={t('Approval reason is required')}
+                  />
+                  <Input
+                    value={draft.rejectedReason}
+                    onChange={(event) =>
+                      onDecisionDraftChange(item.id, {
+                        rejectedReason: event.target.value,
+                      })
+                    }
+                    disabled={!actionable}
+                    placeholder={t('Rejected requests must include a reject reason')}
+                    aria-label={t('Rejected requests must include a reject reason')}
+                  />
+                </div>
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
+}
+
+export function BudgetDelegationTable({
+  items,
+  loading,
+  supersedeDrafts,
+  onSupersedeDraftChange,
+  onSupersede,
+  supersedePendingId,
+}: {
+  items: BudgetDelegationItem[]
+  loading: boolean
+  supersedeDrafts?: Record<number, string>
+  onSupersedeDraftChange?: (delegationId: number, value: string) => void
+  onSupersede?: (item: BudgetDelegationItem) => void
+  supersedePendingId?: number | null
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-32 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Coins className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No budget delegations yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t(
+              'Choose a descendant department budget pool to create the first delegation in this governance chain.'
+            )}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Delegation Route')}</TableHead>
+          <TableHead>{t('Delegation Quota')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Supersede')}</TableHead>
+          <TableHead>{t('Created At')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => (
+          <TableRow key={item.id}>
+            <TableCell>
+              {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
+                source: item.source_department_name || `#${item.source_department_id}`,
+                target: item.target_department_name || `#${item.target_department_id}`,
+                budgetId: item.target_budget_id,
+              })}
             </TableCell>
+            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <Badge variant='secondary'>
+                {enterpriseBudgetStatusLabel(item.status, t)}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <div className='flex min-w-[260px] items-center gap-2'>
+                {item.status === 'active' ? (
+                  <Input
+                    inputMode='numeric'
+                    value={
+                      supersedeDrafts?.[item.id] ?? String(item.committed_quota)
+                    }
+                    onChange={(event) =>
+                      onSupersedeDraftChange?.(item.id, event.target.value)
+                    }
+                    aria-label={t('Delegation Quota')}
+                  />
+                ) : null}
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    !onSupersede ||
+                    item.status !== 'active' ||
+                    supersedePendingId === item.id
+                  }
+                  onClick={() => onSupersede?.(item)}
+                >
+                  <RotateCcw data-icon='inline-start' />
+                  {item.status === 'active'
+                    ? t('Close old delegation and create a new one')
+                    : t('Historical delegation')}
+                </Button>
+              </div>
+            </TableCell>
+            <TableCell>{formatTimestamp(item.created_at)}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -2170,8 +4007,11 @@ export function DepartmentBudgetListCard({
   items,
   loading,
   selectedBudgetId,
+  includeDescendants = false,
+  scopeDepartmentName = '',
   sortBy,
   sortOrder,
+  onIncludeDescendantsChange = () => {},
   onSelectBudget,
   onSortByChange,
   onSortOrderChange,
@@ -2179,8 +4019,11 @@ export function DepartmentBudgetListCard({
   items: DepartmentBudgetItem[]
   loading: boolean
   selectedBudgetId: number | null
+  includeDescendants?: boolean
+  scopeDepartmentName?: string
   sortBy: DepartmentBudgetSortField
   sortOrder: 'asc' | 'desc'
+  onIncludeDescendantsChange?: (value: boolean) => void
   onSelectBudget: (budgetId: number | null) => void
   onSortByChange: (field: DepartmentBudgetSortField) => void
   onSortOrderChange: (order: 'asc' | 'desc') => void
@@ -2196,6 +4039,24 @@ export function DepartmentBudgetListCard({
             'Sort budget pools by usage, remaining quota, type, or status and open one detail view at a time.'
           )}
         </CardDescription>
+        <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
+          <div className='space-y-1'>
+            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-muted-foreground text-xs'>
+              {includeDescendants
+                ? t('Current scope: {{department}} and all descendant departments', {
+                    department: scopeDepartmentName || t('Current department'),
+                  })
+                : t('Current scope: {{department}} only', {
+                    department: scopeDepartmentName || t('Current department'),
+                  })}
+            </div>
+          </div>
+          <Switch
+            checked={includeDescendants}
+            onCheckedChange={onIncludeDescendantsChange}
+          />
+        </div>
       </CardHeader>
       <CardContent className='space-y-4'>
         <div className='grid gap-3 md:grid-cols-2'>
@@ -2280,6 +4141,9 @@ export function DepartmentBudgetListCard({
                       <div className='flex min-w-[160px] flex-col gap-1'>
                         <span className='font-medium'>
                           {formatBudgetType(item.type, t)}
+                        </span>
+                        <span className='text-muted-foreground text-xs'>
+                          {item.department_name || t('Current department')}
                         </span>
                         <span className='text-muted-foreground text-xs'>
                           #{item.id}

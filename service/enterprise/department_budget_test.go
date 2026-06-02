@@ -201,6 +201,50 @@ func TestListDepartmentBudgetsSortsAndCalculatesThresholds(t *testing.T) {
 	require.Equal(t, 70, result.Thresholds.Critical)
 }
 
+func TestListDepartmentBudgetsSupportsIncludeDescendantsAndDepartmentNames(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	parentID := 1
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       2,
+		TenantId: 0,
+		Name:     "Platform",
+		ParentId: &parentID,
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           30,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   100,
+		Remaining:    70,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           31,
+		TenantId:     0,
+		DepartmentId: 2,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   50,
+		Remaining:    10,
+	}).Error)
+
+	currentOnly, err := svc.ListByDepartment(1, 0, entservice.DepartmentBudgetListQuery{})
+	require.NoError(t, err)
+	require.Len(t, currentOnly.Items, 1)
+	require.Equal(t, "Engineering", currentOnly.Items[0].DepartmentName)
+
+	withDescendants, err := svc.ListByDepartment(1, 0, entservice.DepartmentBudgetListQuery{
+		IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, withDescendants.Items, 2)
+	require.Equal(t, []int{1, 2}, withDescendants.ScopeDepartmentIds)
+	names := []string{withDescendants.Items[0].DepartmentName, withDescendants.Items[1].DepartmentName}
+	require.ElementsMatch(t, []string{"Engineering", "Platform"}, names)
+}
+
 func TestGetDepartmentBudgetDetailAggregatesAllocationWalletsWithoutLogs(t *testing.T) {
 	svc, db := newDepartmentBudgetTestService(t)
 	require.NoError(t, db.Create(&model.User{

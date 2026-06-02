@@ -102,13 +102,18 @@ func GetDepartmentRiskSummary(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
 
 	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
 	result, err := entservice.NewAlertService(model.DB).GetDepartmentRiskSummary(entservice.DepartmentRiskSummaryQuery{
-		TenantId: tenantId,
-		From:     req.From,
-		To:       req.To,
-		Sort:     sortConfig,
+		TenantId:           tenantId,
+		DepartmentId:       req.DepartmentId,
+		From:               req.From,
+		To:                 req.To,
+		Sort:               sortConfig,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
 	})
 	if err != nil {
 		writeAlertEventError(c, err)
@@ -157,7 +162,11 @@ func GetDepartmentRiskSummary(c *gin.Context) {
 			NumeratorLabel:   result.Formula.NumeratorLabel,
 			DenominatorLabel: result.Formula.DenominatorLabel,
 		},
-		DisclaimerKey: result.DisclaimerKey,
+		DisclaimerKey:       result.DisclaimerKey,
+		ScopeDepartmentId:   result.ScopeDepartmentId,
+		ScopeDepartmentName: result.ScopeDepartmentName,
+		IncludeDescendants:  result.IncludeDescendants,
+		ScopeDepartmentIds:  append([]int{}, result.ScopeDepartmentIds...),
 	})
 }
 

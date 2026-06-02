@@ -23,12 +23,12 @@ tiktoken_cache
 .gomodcache/
 .cache
 plans
-.claude
+# .claude
 .cursor
 
 electron/node_modules
 electron/dist
-data/
+/data/
 .gomodcache/
 .gocache-temp
 .gopath
@@ -37,3 +37,5 @@ token_estimator_test.go
 skills-lock.json
 .agents/.story-automator-active
 .tmp/
+
+__pycache__

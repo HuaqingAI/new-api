@@ -12,8 +12,17 @@ import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import {
+  departmentOwnersQueryKey,
+  governanceNotificationQueryKey,
+  governanceTimelineQueryKey,
+  quotaRequestQueryKey,
+} from './api'
+import {
+  BudgetDelegationTable,
   __testRenderApiMessage,
   __testRenderUsernameMutationMessage,
+  createQuotaRequestDecisionSchema,
+  createQuotaRequestSchema,
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
   enterpriseOrganizationSearchSchema,
@@ -23,9 +32,11 @@ import {
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
+  GovernanceActivityCard,
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
+  createDelegationSchema,
   createRenameUsernameSchema,
   normalizeEnterpriseOrganizationSearch,
   resolveDepartmentMemberSelection,
@@ -41,12 +52,16 @@ import {
 } from './lib/tree-utils'
 import type {
   ApiResponse,
+  BudgetDelegationItem,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetItem,
   DepartmentMemberItem,
   DepartmentTreeNode,
   EnterpriseBudgetErrorData,
   QuotaAllocationItem,
+  QuotaRequestItem,
+  GovernanceNotificationItem,
+  GovernanceTimelineItem,
 } from './types'
 
 i18n.changeLanguage('en')
@@ -155,6 +170,33 @@ describe('Enterprise organization department tree workflow', () => {
     })
     assert.equal(invalid.dept_id, undefined)
     assert.equal(invalid.budget_id, undefined)
+  })
+
+  test('budget list card exposes descendant scope toggle and department labels', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          items={[
+            departmentBudget({ id: 1, department_name: 'Engineering' }),
+            departmentBudget({ id: 2, department_name: 'Platform' }),
+          ]}
+          loading={false}
+          selectedBudgetId={1}
+          includeDescendants={true}
+          scopeDepartmentName='Engineering'
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onIncludeDescendantsChange={() => {}}
+          onSelectBudget={() => {}}
+          onSortByChange={() => {}}
+          onSortOrderChange={() => {}}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Include descendants/)
+    assert.match(html, /Engineering and all descendant departments/)
+    assert.match(html, /Platform/)
   })
 
   test('normalizes stale search state for empty trees and invalid department ids', () => {
@@ -411,6 +453,9 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Department Members',
+      'Department Owners',
+      'No effective owner',
+      'Admin fallback',
       'Department Budget',
       'Current Member Governance',
       'Current Member Wallet Allocation',
@@ -419,6 +464,85 @@ describe('Enterprise organization department tree workflow', () => {
     }
 
     assert.doesNotMatch(html, /Membership Lookup/)
+  })
+
+  test('department owner query key stays scoped to enterprise organization namespace', () => {
+    assert.deepEqual(departmentOwnersQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'department-owners',
+      7,
+      0,
+    ])
+  })
+
+  test('quota request query key stays scoped to enterprise organization namespace', () => {
+    assert.deepEqual(quotaRequestQueryKey(7, 0, 100), [
+      'enterprise',
+      'organization',
+      'quota-request',
+      7,
+      0,
+      100,
+    ])
+  })
+
+  test('governance query keys stay scoped to enterprise organization namespace', () => {
+    assert.deepEqual(governanceTimelineQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'governance-timeline',
+      7,
+      0,
+    ])
+    assert.deepEqual(governanceNotificationQueryKey(7, 0), [
+      'enterprise',
+      'organization',
+      'governance-notification',
+      7,
+      0,
+    ])
+  })
+
+  test('renders governance timeline trace, delivery failure reason, and resend action', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[
+            governanceTimelineItem({
+              trace_id: 'quota_request:42',
+              action_type: 'enterprise.organization.quota_request.approve',
+              actor_name: 'Owner Alice',
+              quota_delta: 80,
+              status: 'fulfilled',
+            }),
+          ]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 7,
+              trace_id: 'quota_request:42',
+              status: 'final_failed',
+              error_reason: 'webhook request failed',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Governance Timeline and Notification Delivery',
+      'quota_request:42',
+      'Quota request approved',
+      'Owner Alice',
+      'Final failed',
+      'webhook request failed',
+      'Resend',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -521,6 +645,49 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(subscription.success, true)
   })
 
+  test('quota request schema requires explicit budget selection', () => {
+    const schema = createQuotaRequestSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      department_id: 1,
+      department_budget_id: 0,
+      budget_mode: 'department_budget',
+      requested_quota: 0,
+      request_reason: '',
+    })
+    assert.equal(invalid.success, false)
+    if (invalid.success) return
+    const issues = JSON.stringify(invalid.error.flatten().fieldErrors)
+    assert.match(issues, /Choose a target budget pool/)
+    assert.match(issues, /Requested quota must be greater than 0/)
+  })
+
+  test('quota request decision schema supports smaller approval and requires reject reason', () => {
+    const schema = createQuotaRequestDecisionSchema((key) => key)
+
+    const approve = schema.safeParse({
+      action: 'approve',
+      approved_quota: 80,
+      approval_reason: 'approve smaller amount',
+      rejected_reason: '',
+    })
+    assert.equal(approve.success, true)
+
+    const reject = schema.safeParse({
+      action: 'reject',
+      approved_quota: 0,
+      approval_reason: '',
+      rejected_reason: '',
+    })
+    assert.equal(reject.success, false)
+    if (reject.success) return
+    assert.match(
+      JSON.stringify(reject.error.flatten().fieldErrors),
+      /Rejected requests must include a reject reason/
+    )
+  })
+
   test('allocation schema rejects empty target and quota, then accepts valid input', () => {
     const schema = createAllocationSchema((key) => key)
 
@@ -541,6 +708,32 @@ describe('Enterprise organization department tree workflow', () => {
       target_user_id: 2001,
       committed_quota: 300,
       reason: 'department allocation',
+    })
+    assert.equal(valid.success, true)
+  })
+
+  test('delegation schema rejects missing descendant target and quota, then accepts valid input', () => {
+    const schema = createDelegationSchema((key) => key)
+
+    const invalid = schema.safeParse({
+      tenant_id: 0,
+      source_department_id: 1,
+      source_budget_id: 11,
+      target_department_id: 0,
+      target_budget_id: 0,
+      committed_quota: 0,
+      reason: '',
+    })
+    assert.equal(invalid.success, false)
+
+    const valid = schema.safeParse({
+      tenant_id: 0,
+      source_department_id: 1,
+      source_budget_id: 11,
+      target_department_id: 3,
+      target_budget_id: 21,
+      committed_quota: 400,
+      reason: 'delegate',
     })
     assert.equal(valid.success, true)
   })
@@ -859,6 +1052,61 @@ describe('Enterprise organization department tree workflow', () => {
     )
   })
 
+  test('renders budget delegation empty state with descendant guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <BudgetDelegationTable items={[]} loading={false} />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /No budget delegations yet/)
+    assert.match(
+      html,
+      /Choose a descendant department budget pool to create the first delegation in this governance chain\./
+    )
+  })
+
+  test('renders budget delegation rows with route, quota, status, and supersede guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <BudgetDelegationTable
+          loading={false}
+          items={[
+            budgetDelegation({
+              id: 41,
+              source_department_name: 'Engineering',
+              target_department_name: 'Platform',
+              target_budget_id: 23,
+              committed_quota: 450,
+              status: 'active',
+            }),
+            budgetDelegation({
+              id: 42,
+              source_department_name: 'Engineering',
+              target_department_name: 'Platform',
+              target_budget_id: 24,
+              committed_quota: 300,
+              status: 'superseded',
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Delegation Route',
+      'Delegation Quota',
+      'Engineering -&gt; Platform -&gt; Budget #23',
+      '450',
+      'Active',
+      'Close old delegation and create a new one',
+      'Superseded',
+      'Historical delegation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
   test('renders quota allocation rows with committed quota, wallet id, and status', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -893,8 +1141,76 @@ describe('Enterprise organization department tree workflow', () => {
       '300',
       '301',
       'Active',
-      'Revoke allocation',
+      'Close old allocation and create a new one',
+      'Cancel allocation',
+      'Reclaim allocation',
     ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders quota allocation governance states with lineage and action guidance', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAllocationTable
+          loading={false}
+          items={[
+            quotaAllocation({
+              id: 10,
+              status: 'active',
+              supersedes_allocation_id: 7,
+              reclaimed_quota: 0,
+            }),
+            quotaAllocation({
+              id: 11,
+              status: 'superseded',
+              superseded_by_id: 10,
+              processed_at: 1700000450,
+            }),
+            quotaAllocation({
+              id: 12,
+              status: 'closed',
+              reclaimed_quota: 175,
+              processed_at: 1700000500,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    for (const expected of [
+      'Superseded',
+      'Closed',
+      'Supersedes Allocation #7',
+      'Superseded By Allocation #10',
+      'Reclaimed Quota',
+      '175',
+      'Close old allocation and create a new one',
+      'Historical allocation',
+      'Reclaim allocation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('renders quota request rows with explicit target department, approved quota, and fulfillment result', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <table>
+          <tbody>
+            <tr>
+              <td>{quotaRequest().department_name}</td>
+              <td>{quotaRequest().requested_quota}</td>
+              <td>{quotaRequest({ approved_quota: 80 }).approved_quota}</td>
+              <td>{quotaRequest({ allocation_id: 21 }).allocation_id}</td>
+              <td>{quotaRequest({ status: 'fulfilled' }).status}</td>
+            </tr>
+          </tbody>
+        </table>
+      </I18nextProvider>
+    )
+
+    for (const expected of ['Engineering', '120', '80', '21', 'fulfilled']) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
   })
@@ -1081,6 +1397,7 @@ function departmentBudget(
     id: overrides.id ?? 1,
     tenant_id: overrides.tenant_id ?? 0,
     department_id: overrides.department_id ?? 2,
+    department_name: overrides.department_name ?? 'Engineering',
     type: overrides.type ?? 'subscription',
     status: overrides.status ?? 'active',
     total_quota: overrides.total_quota ?? 0,
@@ -1141,7 +1458,146 @@ function quotaAllocation(
     expires_at_snapshot: overrides.expires_at_snapshot ?? 0,
     reason: overrides.reason ?? '',
     status: overrides.status ?? 'active',
+    superseded_by_id: overrides.superseded_by_id ?? 0,
+    supersedes_allocation_id: overrides.supersedes_allocation_id ?? 0,
+    revoke_reason: overrides.revoke_reason ?? '',
+    reclaimed_quota: overrides.reclaimed_quota ?? 0,
+    processed_source: overrides.processed_source ?? '',
     processed_at: overrides.processed_at ?? 0,
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function budgetDelegation(
+  overrides: Partial<BudgetDelegationItem> = {}
+): BudgetDelegationItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    source_department_id: overrides.source_department_id ?? 1,
+    source_department_name: overrides.source_department_name ?? 'HQ',
+    source_budget_id: overrides.source_budget_id ?? 11,
+    target_department_id: overrides.target_department_id ?? 3,
+    target_department_name: overrides.target_department_name ?? 'Platform',
+    target_budget_id: overrides.target_budget_id ?? 21,
+    actor_id: overrides.actor_id ?? 1001,
+    committed_quota: overrides.committed_quota ?? 300,
+    budget_type_snapshot: overrides.budget_type_snapshot ?? 'balance',
+    cycle_type_snapshot: overrides.cycle_type_snapshot ?? 'never',
+    before_source_budget_snapshot:
+      overrides.before_source_budget_snapshot ?? '{}',
+    after_source_budget_snapshot:
+      overrides.after_source_budget_snapshot ?? '{}',
+    before_target_budget_snapshot:
+      overrides.before_target_budget_snapshot ?? '{}',
+    after_target_budget_snapshot:
+      overrides.after_target_budget_snapshot ?? '{}',
+    status: overrides.status ?? 'active',
+    superseded_by_id: overrides.superseded_by_id ?? 0,
+    processed_at: overrides.processed_at ?? 0,
+    reason: overrides.reason ?? '',
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function quotaRequest(
+  overrides: Partial<QuotaRequestItem> = {}
+): QuotaRequestItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    department_id: overrides.department_id ?? 2,
+    department_name: overrides.department_name ?? 'Engineering',
+    department_budget_id: overrides.department_budget_id ?? 11,
+    budget_mode: overrides.budget_mode ?? 'department_budget',
+    requester_user_id: overrides.requester_user_id ?? 2001,
+    requester_username: overrides.requester_username ?? 'alice',
+    requester_display_name: overrides.requester_display_name ?? 'Alice',
+    requested_quota: overrides.requested_quota ?? 120,
+    approved_quota: overrides.approved_quota ?? 0,
+    status: overrides.status ?? 'submitted',
+    approver_user_id: overrides.approver_user_id ?? 0,
+    approver_username: overrides.approver_username ?? '',
+    approval_reason: overrides.approval_reason ?? '',
+    request_reason: overrides.request_reason ?? '',
+    allocation_id: overrides.allocation_id ?? 0,
+    owner_count_snapshot: overrides.owner_count_snapshot ?? 1,
+    fallback: overrides.fallback ?? '',
+    submitted_at: overrides.submitted_at ?? 1700000000,
+    approved_at: overrides.approved_at ?? 0,
+    rejected_at: overrides.rejected_at ?? 0,
+    fulfilled_at: overrides.fulfilled_at ?? 0,
+    processed_at: overrides.processed_at ?? 0,
+    expires_at: overrides.expires_at ?? 0,
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
+  }
+}
+
+function governanceTimelineItem(
+  overrides: Partial<GovernanceTimelineItem> = {}
+): GovernanceTimelineItem {
+  return {
+    trace_id: overrides.trace_id ?? 'quota_request:1',
+    source_type: overrides.source_type ?? 'quota_request',
+    source_id: overrides.source_id ?? 1,
+    action_type:
+      overrides.action_type ?? 'enterprise.organization.quota_request.submit',
+    tenant_id: overrides.tenant_id ?? 0,
+    actor_id: overrides.actor_id ?? 1001,
+    actor_name: overrides.actor_name ?? 'Alice',
+    target:
+      overrides.target ??
+      {
+        department_id: 2,
+        department_name: 'Engineering',
+        user_id: 2001,
+        username: 'alice',
+        display_name: 'Alice',
+        object_type: 'enterprise_quota_request',
+        object_id: '1',
+      },
+    quota_delta: overrides.quota_delta ?? 100,
+    before_quota: overrides.before_quota ?? 0,
+    after_quota: overrides.after_quota ?? 0,
+    status: overrides.status ?? 'submitted',
+    occurred_at: overrides.occurred_at ?? 1700000000,
+    detail_route: overrides.detail_route ?? '/enterprise-organization',
+    detail_api_path:
+      overrides.detail_api_path ?? '/api/enterprise/governance/timeline',
+    summary: overrides.summary ?? '',
+  }
+}
+
+function governanceNotificationItem(
+  overrides: Partial<GovernanceNotificationItem> = {}
+): GovernanceNotificationItem {
+  return {
+    id: overrides.id ?? 1,
+    tenant_id: overrides.tenant_id ?? 0,
+    source_type: overrides.source_type ?? 'quota_request',
+    source_id: overrides.source_id ?? 1,
+    trace_id: overrides.trace_id ?? 'quota_request:1',
+    action_type:
+      overrides.action_type ?? 'enterprise.organization.quota_request.submit',
+    recipient_user_id: overrides.recipient_user_id ?? 1001,
+    recipient_kind: overrides.recipient_kind ?? 'owner',
+    channel_type: overrides.channel_type ?? 'dingtalk_robot',
+    status: overrides.status ?? 'pending',
+    attempt_count: overrides.attempt_count ?? 0,
+    max_attempts: overrides.max_attempts ?? 4,
+    next_retry_at: overrides.next_retry_at ?? 0,
+    last_attempt_at: overrides.last_attempt_at ?? 0,
+    sent_at: overrides.sent_at ?? 0,
+    final_failed_at: overrides.final_failed_at ?? 0,
+    error_reason: overrides.error_reason ?? '',
+    dedupe_key: overrides.dedupe_key ?? 'dedupe',
+    trigger_source: overrides.trigger_source ?? 'governance_action',
+    manual_parent_id: overrides.manual_parent_id,
+    trace_summary: overrides.trace_summary ?? '',
+    trace: overrides.trace,
     created_at: overrides.created_at ?? 1700000000,
     updated_at: overrides.updated_at ?? 1700000001,
   }

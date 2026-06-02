@@ -46,11 +46,13 @@ type AlertEventsResponse struct {
 }
 
 type DepartmentRiskSummaryQuery struct {
-	TenantId     *int    `form:"tenant_id,omitempty"`
-	From         int64   `form:"from"`
-	To           int64   `form:"to"`
-	SummarySort  *string `form:"summary_sort,omitempty"`
-	SummaryOrder *string `form:"summary_order,omitempty"`
+	TenantId           *int    `form:"tenant_id,omitempty"`
+	DepartmentId       *int    `form:"department_id,omitempty"`
+	From               int64   `form:"from"`
+	To                 int64   `form:"to"`
+	SummarySort        *string `form:"summary_sort,omitempty"`
+	SummaryOrder       *string `form:"summary_order,omitempty"`
+	IncludeDescendants *bool   `form:"include_descendants,omitempty"`
 }
 
 type DepartmentRiskEventEntry struct {
@@ -92,12 +94,16 @@ type DepartmentRiskFormula struct {
 }
 
 type DepartmentRiskSummaryResponse struct {
-	Items          []DepartmentRiskSummaryItem `json:"items"`
-	TopDepartments []DepartmentRiskSummaryItem `json:"top_departments"`
-	Trend          []DepartmentRiskTrendPoint  `json:"trend"`
-	Unassigned     DepartmentRiskSummaryItem   `json:"unassigned"`
-	Formula        DepartmentRiskFormula       `json:"formula"`
-	DisclaimerKey  string                      `json:"disclaimer_key"`
+	Items               []DepartmentRiskSummaryItem `json:"items"`
+	TopDepartments      []DepartmentRiskSummaryItem `json:"top_departments"`
+	Trend               []DepartmentRiskTrendPoint  `json:"trend"`
+	Unassigned          DepartmentRiskSummaryItem   `json:"unassigned"`
+	Formula             DepartmentRiskFormula       `json:"formula"`
+	DisclaimerKey       string                      `json:"disclaimer_key"`
+	ScopeDepartmentId   *int                        `json:"scope_department_id,omitempty"`
+	ScopeDepartmentName string                      `json:"scope_department_name"`
+	IncludeDescendants  bool                        `json:"include_descendants"`
+	ScopeDepartmentIds  []int                       `json:"scope_department_ids"`
 }
 
 type AlertDeliveriesQuery struct {

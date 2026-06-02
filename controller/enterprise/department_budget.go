@@ -136,8 +136,9 @@ func ListDepartmentBudgets(c *gin.Context) {
 	}
 
 	result, err := entservice.NewDepartmentBudgetService(model.DB).ListByDepartment(departmentId, tenantId, entservice.DepartmentBudgetListQuery{
-		SortBy:    req.SortBy,
-		SortOrder: req.SortOrder,
+		SortBy:             req.SortBy,
+		SortOrder:          req.SortOrder,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
 	})
 	if err != nil {
 		writeDepartmentBudgetError(c, err)
@@ -155,6 +156,10 @@ func ListDepartmentBudgets(c *gin.Context) {
 			Warning:  result.Thresholds.Warning,
 			Critical: result.Thresholds.Critical,
 		},
+		ScopeDepartmentId:   result.ScopeDepartmentId,
+		ScopeDepartmentName: result.ScopeDepartmentName,
+		IncludeDescendants:  result.IncludeDescendants,
+		ScopeDepartmentIds:  append([]int{}, result.ScopeDepartmentIds...),
 	})
 }
 
@@ -261,6 +266,7 @@ func mapDepartmentBudgetItemDTO(item entservice.DepartmentBudgetItem) *dtoenterp
 		Id:             item.Id,
 		TenantId:       item.TenantId,
 		DepartmentId:   item.DepartmentId,
+		DepartmentName: item.DepartmentName,
 		Type:           item.Type,
 		Status:         item.Status,
 		TotalQuota:     item.TotalQuota,

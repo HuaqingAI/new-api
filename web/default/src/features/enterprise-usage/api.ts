@@ -32,15 +32,23 @@ export function departmentSummaryQueryKey(
   from: number,
   to: number,
   tenantId?: number,
+  departmentId?: number,
+  includeDescendants?: boolean,
   summarySort?: DepartmentUsageSummarySort,
   summaryOrder?: UsageSortOrder
 ) {
   return [
     ...enterpriseUsageQueryKey,
     'department-summary',
-    tenantId === undefined
-      ? { from, to, summarySort, summaryOrder }
-      : { from, to, tenantId, summarySort, summaryOrder },
+    {
+      from,
+      to,
+      tenantId,
+      departmentId,
+      includeDescendants,
+      summarySort,
+      summaryOrder,
+    },
   ] as const
 }
 
@@ -63,6 +71,8 @@ export async function getDepartmentUsageSummary(params: {
   from: number
   to: number
   tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
   summarySort?: DepartmentUsageSummarySort
   summaryOrder?: UsageSortOrder
 }): Promise<ApiResponse<DepartmentUsageSummaryResponse>> {
@@ -71,6 +81,12 @@ export async function getDepartmentUsageSummary(params: {
       from: params.from,
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.departmentId === undefined
+        ? {}
+        : { department_id: params.departmentId }),
+      ...(params.includeDescendants === undefined
+        ? {}
+        : { include_descendants: params.includeDescendants }),
       ...(params.summarySort === undefined
         ? {}
         : { summary_sort: params.summarySort }),
@@ -86,6 +102,8 @@ export async function exportDepartmentUsageCSV(params: {
   from: number
   to: number
   tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
   summarySort?: DepartmentUsageSummarySort
   summaryOrder?: UsageSortOrder
 }) {
@@ -94,6 +112,12 @@ export async function exportDepartmentUsageCSV(params: {
       from: params.from,
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.departmentId === undefined
+        ? {}
+        : { department_id: params.departmentId }),
+      ...(params.includeDescendants === undefined
+        ? {}
+        : { include_descendants: params.includeDescendants }),
       ...(params.summarySort === undefined
         ? {}
         : { summary_sort: params.summarySort }),

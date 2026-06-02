@@ -81,13 +81,14 @@ type DingTalkDepartmentInfo struct {
 }
 
 type DingTalkDepartmentUserInfo struct {
-	UserId     string  `json:"userid"`
-	UnionId    string  `json:"unionid"`
-	Name       string  `json:"name"`
-	Email      string  `json:"email"`
-	Mobile     string  `json:"mobile"`
-	Active     *bool   `json:"active"`
-	DeptIdList []int64 `json:"dept_id_list"`
+	UserId       string  `json:"userid"`
+	UnionId      string  `json:"unionid"`
+	Name         string  `json:"name"`
+	Email        string  `json:"email"`
+	Mobile       string  `json:"mobile"`
+	Active       *bool   `json:"active"`
+	DeptIdList   []int64 `json:"dept_id_list"`
+	LeaderInDept *bool   `json:"leader_in_dept"`
 }
 
 type dingTalkOAuthTokenRequest struct {
@@ -98,20 +99,20 @@ type dingTalkOAuthTokenRequest struct {
 }
 
 type dingTalkOAuthTokenResponse struct {
-	AccessToken                  string `json:"accessToken"`
-	AccessTokenLegacy            string `json:"access_token"`
-	RefreshToken                 string `json:"refreshToken"`
-	RefreshTokenLegacy           string `json:"refresh_token"`
-	ExpiresIn                    int64  `json:"expireIn"`
-	ExpiresInLegacy              int64  `json:"expires_in"`
-	RefreshTokenExpiresIn        int64  `json:"refreshExpireIn"`
-	RefreshTokenExpiresInLegacy  int64  `json:"refresh_expires_in"`
-	TokenType                    string `json:"tokenType"`
-	TokenTypeLegacy              string `json:"token_type"`
-	OpenId                       string `json:"openId"`
-	OpenIdLegacy                 string `json:"open_id"`
-	UnionId                      string `json:"unionId"`
-	UnionIdLegacy                string `json:"union_id"`
+	AccessToken                 string `json:"accessToken"`
+	AccessTokenLegacy           string `json:"access_token"`
+	RefreshToken                string `json:"refreshToken"`
+	RefreshTokenLegacy          string `json:"refresh_token"`
+	ExpiresIn                   int64  `json:"expireIn"`
+	ExpiresInLegacy             int64  `json:"expires_in"`
+	RefreshTokenExpiresIn       int64  `json:"refreshExpireIn"`
+	RefreshTokenExpiresInLegacy int64  `json:"refresh_expires_in"`
+	TokenType                   string `json:"tokenType"`
+	TokenTypeLegacy             string `json:"token_type"`
+	OpenId                      string `json:"openId"`
+	OpenIdLegacy                string `json:"open_id"`
+	UnionId                     string `json:"unionId"`
+	UnionIdLegacy               string `json:"union_id"`
 }
 
 type dingTalkOAuthUserInfoResponse struct {

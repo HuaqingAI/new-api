@@ -28,10 +28,12 @@ type UsageAggregationWindow struct {
 }
 
 type UsageSummaryQuery struct {
-	TenantId int
-	From     int64
-	To       int64
-	Sort     UsageSummarySort
+	TenantId           int
+	DeptId             *int
+	From               int64
+	To                 int64
+	Sort               UsageSummarySort
+	IncludeDescendants bool
 }
 
 type UsageDepartmentSummaryItem struct {
@@ -49,6 +51,19 @@ type UsageDepartmentSummaryItem struct {
 
 type UsageDepartmentSummaryResult struct {
 	Items []UsageDepartmentSummaryItem
+	Scope DepartmentUsageSummaryScope
+}
+
+type DepartmentUsageSummaryScope struct {
+	DepartmentId       *int
+	DepartmentName     string
+	IncludeDescendants bool
+	DepartmentIds      []int
+	RequestCount       int64
+	PromptTokens       int64
+	CompletionTokens   int64
+	Quota              int64
+	UserCount          int64
 }
 
 type UsageDetailQuery struct {
@@ -205,7 +220,27 @@ func (s *UsageAggregationService) AggregateWindow(window UsageAggregationWindow)
 
 func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) (UsageDepartmentSummaryResult, error) {
 	if query.From < 0 || query.To <= 0 || query.From >= query.To {
-		return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}}, ErrInvalidUsageSummaryQuery
+		return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}, Scope: DepartmentUsageSummaryScope{DepartmentIds: []int{}}}, ErrInvalidUsageSummaryQuery
+	}
+
+	scope := DepartmentUsageSummaryScope{
+		DepartmentId:       query.DeptId,
+		DepartmentName:     "",
+		IncludeDescendants: query.IncludeDescendants,
+		DepartmentIds:      []int{},
+	}
+	var scopeFilter map[int]struct{}
+	if query.DeptId != nil {
+		resolvedScope, err := ResolveDepartmentScope(s.db, query.TenantId, query.DeptId, query.IncludeDescendants)
+		if err != nil {
+			return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}, Scope: DepartmentUsageSummaryScope{DepartmentIds: []int{}}}, err
+		}
+		scope.DepartmentName = resolvedScope.DepartmentName
+		scope.DepartmentIds = append([]int{}, resolvedScope.DepartmentIds...)
+		scopeFilter = make(map[int]struct{}, len(resolvedScope.DepartmentIds))
+		for _, id := range resolvedScope.DepartmentIds {
+			scopeFilter[id] = struct{}{}
+		}
 	}
 
 	var snapshots []entmodel.UsageSnapshot
@@ -213,12 +248,21 @@ func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) 
 		Where("tenant_id = ? AND window_start >= ? AND window_end <= ?", query.TenantId, query.From, query.To).
 		Order("window_start ASC, id ASC").
 		Find(&snapshots).Error; err != nil {
-		return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}}, err
+		return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}, Scope: scope}, err
 	}
 
 	grouped := make(map[string]*UsageDepartmentSummaryItem)
 	groupedUsers := make(map[string]map[int]struct{})
+	scopeUsers := map[int]struct{}{}
 	for _, snapshot := range snapshots {
+		if scopeFilter != nil {
+			if snapshot.DeptId == nil {
+				continue
+			}
+			if _, ok := scopeFilter[*snapshot.DeptId]; !ok {
+				continue
+			}
+		}
 		key := usageBucketKey(snapshot.DeptId)
 		item, ok := grouped[key]
 		if !ok {
@@ -245,17 +289,22 @@ func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) 
 
 		stats, err := snapshot.ParsedModelDistribution()
 		if err != nil {
-			return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}}, err
+			return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}, Scope: scope}, err
 		}
 		item.ModelDistribution = mergeUsageModelStats(item.ModelDistribution, stats)
 
 		userIds, err := snapshot.ParsedUserIds()
 		if err != nil {
-			return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}}, err
+			return UsageDepartmentSummaryResult{Items: []UsageDepartmentSummaryItem{}, Scope: scope}, err
 		}
 		for _, userId := range userIds {
 			groupedUsers[key][userId] = struct{}{}
+			scopeUsers[userId] = struct{}{}
 		}
+		scope.RequestCount += snapshot.RequestCount
+		scope.PromptTokens += snapshot.PromptTokens
+		scope.CompletionTokens += snapshot.CompletionTokens
+		scope.Quota += snapshot.Quota
 	}
 
 	items := make([]UsageDepartmentSummaryItem, 0, len(grouped))
@@ -273,7 +322,8 @@ func (s *UsageAggregationService) GetDepartmentSummary(query UsageSummaryQuery) 
 	if items == nil {
 		items = []UsageDepartmentSummaryItem{}
 	}
-	return UsageDepartmentSummaryResult{Items: items}, nil
+	scope.UserCount = int64(len(scopeUsers))
+	return UsageDepartmentSummaryResult{Items: items, Scope: scope}, nil
 }
 
 func (s *UsageAggregationService) GetDepartmentDetail(query UsageDetailQuery) (UsageDepartmentDetailResult, error) {

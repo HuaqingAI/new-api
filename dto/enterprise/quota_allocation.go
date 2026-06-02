@@ -32,12 +32,36 @@ type QuotaAllocationItem struct {
 	ExpiresAtSnapshot      int64  `json:"expires_at_snapshot"`
 	Reason                 string `json:"reason"`
 	Status                 string `json:"status"`
+	SupersededById         int    `json:"superseded_by_id"`
+	SupersedesAllocationId int    `json:"supersedes_allocation_id"`
+	RevokeReason           string `json:"revoke_reason"`
+	ReclaimedQuota         int64  `json:"reclaimed_quota"`
+	ProcessedSource        string `json:"processed_source"`
 	ProcessedAt            int64  `json:"processed_at"`
 	CreatedAt              int64  `json:"created_at"`
 	UpdatedAt              int64  `json:"updated_at"`
 }
 
 type RevokeQuotaAllocationRequest struct {
+	TenantId     *int   `json:"tenant_id,omitempty"`
+	DepartmentId int    `json:"department_id"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+type SupersedeQuotaAllocationRequest struct {
+	TenantId          *int   `json:"tenant_id,omitempty"`
+	DepartmentId      int    `json:"department_id"`
+	NewCommittedQuota *int64 `json:"new_committed_quota,omitempty"`
+	Reason            string `json:"reason,omitempty"`
+}
+
+type CancelQuotaAllocationRequest struct {
+	TenantId     *int   `json:"tenant_id,omitempty"`
+	DepartmentId int    `json:"department_id"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+type ReclaimQuotaAllocationRequest struct {
 	TenantId     *int   `json:"tenant_id,omitempty"`
 	DepartmentId int    `json:"department_id"`
 	Reason       string `json:"reason,omitempty"`

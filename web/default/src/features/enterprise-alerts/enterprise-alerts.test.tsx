@@ -100,6 +100,7 @@ describe('Enterprise alerts feature', () => {
         tab: 'events',
         tenant_id: 7,
         department_id: 11,
+        include_descendants: true,
         unassigned_only: true,
         user_id: 99,
         username: 'alice',
@@ -112,6 +113,8 @@ describe('Enterprise alerts feature', () => {
       }),
       {
         tenant_id: 7,
+        department_id: 11,
+        include_descendants: true,
         from: 1717117200,
         to: 1717120800,
         summary_sort: 'quota',

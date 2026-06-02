@@ -134,6 +134,7 @@ export const enterpriseAlertsSearchSchema = z.object({
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
   event_id: z.coerce.number().int().positive().optional().catch(undefined),
   department_id: z.coerce.number().int().positive().optional().catch(undefined),
+  include_descendants: z.coerce.boolean().optional().catch(false),
   unassigned_only: z.coerce.boolean().optional().catch(undefined),
   user_id: z.coerce.number().int().positive().optional().catch(undefined),
   username: z.string().optional().catch(undefined),
@@ -384,6 +385,8 @@ export function overviewSearchFromAlerts(
   const current = dayjs()
   return {
     tenant_id: search.tenant_id,
+    department_id: search.department_id,
+    include_descendants: search.include_descendants ?? false,
     from: search.from ?? current.subtract(6, 'day').startOf('day').unix(),
     to: search.to ?? current.add(1, 'day').startOf('day').unix(),
     summary_sort: search.summary_sort ?? 'quota',
@@ -437,11 +440,16 @@ export function DepartmentRiskOverviewTab(props: {
           denominator_label: string
         }
         disclaimer_key: string
+        scope_department_id?: number | null
+        scope_department_name?: string
+        include_descendants?: boolean
+        scope_department_ids?: number[]
       }
     | undefined
   isLoading: boolean
   errorMessage: string | null
   onOpenEventEntry: (entry: DepartmentRiskSummaryItem['event_entry']) => void
+  onIncludeDescendantsChange?: (value: boolean) => void
 }) {
   const { t } = useTranslation()
   const summary = props.summary
@@ -457,6 +465,31 @@ export function DepartmentRiskOverviewTab(props: {
           )}
         </AlertDescription>
       </Alert>
+
+      <Card>
+        <CardContent className='flex items-center justify-between px-6 py-4'>
+          <div className='space-y-1'>
+            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-muted-foreground text-xs'>
+              {summary?.include_descendants
+                ? t('Current scope: {{department}} and all descendant departments', {
+                    department:
+                      summary?.scope_department_name || t('Current department'),
+                  })
+                : t('Current scope: {{department}} only', {
+                    department:
+                      summary?.scope_department_name || t('Current department'),
+                  })}
+            </div>
+          </div>
+          <Switch
+            checked={summary?.include_descendants ?? false}
+            onCheckedChange={(value) =>
+              props.onIncludeDescendantsChange?.(value)
+            }
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -626,6 +659,11 @@ export function DepartmentRiskOverviewTab(props: {
               <div className='text-muted-foreground text-sm'>
                 {t('Unassigned')}: {summary?.unassigned.risk_event_count ?? 0} /{' '}
                 {summary?.unassigned.total_request_count ?? 0}
+              </div>
+              <div className='text-muted-foreground text-sm'>
+                {t(
+                  'Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.'
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1005,6 +1043,15 @@ export function EnterpriseAlertsPage() {
                     : null
                 }
                 onOpenEventEntry={handleOpenEventEntry}
+                onIncludeDescendantsChange={(includeDescendants) =>
+                  navigate({
+                    to: '/enterprise-alerts',
+                    search: (prev: EnterpriseAlertsSearch) => ({
+                      ...prev,
+                      include_descendants: includeDescendants,
+                    }),
+                  })
+                }
               />
             </TabsContent>
 

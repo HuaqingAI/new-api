@@ -89,10 +89,12 @@ type AlertEventListResult struct {
 }
 
 type DepartmentRiskSummaryQuery struct {
-	TenantId int
-	From     int64
-	To       int64
-	Sort     UsageSummarySort
+	TenantId           int
+	DepartmentId       *int
+	From               int64
+	To                 int64
+	Sort               UsageSummarySort
+	IncludeDescendants bool
 }
 
 type DepartmentRiskEventEntry struct {
@@ -140,6 +142,10 @@ type DepartmentRiskSummaryResult struct {
 	Unassigned     DepartmentRiskSummaryItem
 	Formula        DepartmentRiskFormula
 	DisclaimerKey  string
+	ScopeDepartmentId   *int
+	ScopeDepartmentName string
+	IncludeDescendants  bool
+	ScopeDepartmentIds  []int
 }
 
 type parsedAlertEvent struct {
@@ -449,6 +455,9 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 			Unassigned:     buildDepartmentRiskSummaryItem(nil, "", query.From, query.To, 0, 0, query.TenantId),
 			Formula:        defaultDepartmentRiskFormula(),
 			DisclaimerKey:  "enterprise.usage.multi_dept_disclaimer",
+			IncludeDescendants: query.IncludeDescendants,
+			ScopeDepartmentId:  query.DepartmentId,
+			ScopeDepartmentIds: []int{},
 		}, nil
 	}
 	if query.TenantId < 0 || query.From <= 0 || query.To <= 0 || query.From >= query.To {
@@ -456,13 +465,20 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 	}
 
 	usageSummary, err := NewUsageAggregationService(s.db).GetDepartmentSummary(UsageSummaryQuery{
-		TenantId: query.TenantId,
-		From:     query.From,
-		To:       query.To,
-		Sort:     query.Sort,
+		TenantId:           query.TenantId,
+		DeptId:             query.DepartmentId,
+		From:               query.From,
+		To:                 query.To,
+		Sort:               query.Sort,
+		IncludeDescendants: query.IncludeDescendants,
 	})
 	if err != nil {
 		return DepartmentRiskSummaryResult{}, err
+	}
+
+	scopeFilter := map[int]struct{}{}
+	for _, id := range usageSummary.Scope.DepartmentIds {
+		scopeFilter[id] = struct{}{}
 	}
 
 	type eventAggregate struct {
@@ -490,6 +506,9 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 			event:       event,
 			departments: snapshot,
 		})
+		if query.DepartmentId != nil && len(snapshot) == 0 {
+			continue
+		}
 		if len(snapshot) == 0 {
 			key := usageBucketKey(nil)
 			aggregate, ok := riskCounts[key]
@@ -504,6 +523,11 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 		for _, dept := range snapshot {
 			if dept.DepartmentId <= 0 {
 				continue
+			}
+			if query.DepartmentId != nil {
+				if _, ok := scopeFilter[dept.DepartmentId]; !ok {
+					continue
+				}
 			}
 			if _, ok := seen[dept.DepartmentId]; ok {
 				continue
@@ -524,23 +548,39 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 	for _, item := range usageSummary.Items {
 		usageByKey[usageBucketKey(item.DeptId)] = item
 	}
-	if _, ok := usageByKey[usageBucketKey(nil)]; !ok {
-		usageByKey[usageBucketKey(nil)] = UsageDepartmentSummaryItem{
-			DeptId:      nil,
-			DeptName:    entmodel.UsageSnapshotUnassignedDeptName,
-			WindowStart: query.From,
-			WindowEnd:   query.To,
+	if query.DepartmentId == nil {
+		if _, ok := usageByKey[usageBucketKey(nil)]; !ok {
+			usageByKey[usageBucketKey(nil)] = UsageDepartmentSummaryItem{
+				DeptId:      nil,
+				DeptName:    entmodel.UsageSnapshotUnassignedDeptName,
+				WindowStart: query.From,
+				WindowEnd:   query.To,
+			}
 		}
 	}
-	for key, aggregate := range riskCounts {
-		if _, ok := usageByKey[key]; ok {
-			continue
+	if query.DepartmentId == nil {
+		for key, aggregate := range riskCounts {
+			if _, ok := usageByKey[key]; ok {
+				continue
+			}
+			usageByKey[key] = UsageDepartmentSummaryItem{
+				DeptId:      aggregate.deptId,
+				DeptName:    aggregate.deptName,
+				WindowStart: query.From,
+				WindowEnd:   query.To,
+			}
 		}
-		usageByKey[key] = UsageDepartmentSummaryItem{
-			DeptId:      aggregate.deptId,
-			DeptName:    aggregate.deptName,
-			WindowStart: query.From,
-			WindowEnd:   query.To,
+	} else {
+		for key, aggregate := range riskCounts {
+			if _, ok := usageByKey[key]; ok {
+				continue
+			}
+			usageByKey[key] = UsageDepartmentSummaryItem{
+				DeptId:      aggregate.deptId,
+				DeptName:    aggregate.deptName,
+				WindowStart: query.From,
+				WindowEnd:   query.To,
+			}
 		}
 	}
 
@@ -598,6 +638,14 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 	trendByWindow := make(map[string]*trendAggregate)
 	trendWindowOrder := make([]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
+		if query.DepartmentId != nil {
+			if snapshot.DeptId == nil {
+				continue
+			}
+			if _, ok := scopeFilter[*snapshot.DeptId]; !ok {
+				continue
+			}
+		}
 		pointKey := fmt.Sprintf("%d:%d", snapshot.WindowStart, snapshot.WindowEnd)
 		point, ok := trendByWindow[pointKey]
 		if !ok {
@@ -623,6 +671,9 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 				continue
 			}
 			if len(parsedEvent.departments) == 0 {
+				if query.DepartmentId != nil {
+					continue
+				}
 				point.unassignedRiskEventCount++
 				point.riskEventCount++
 				break
@@ -631,6 +682,11 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 			for _, dept := range parsedEvent.departments {
 				if dept.DepartmentId <= 0 {
 					continue
+				}
+				if query.DepartmentId != nil {
+					if _, ok := scopeFilter[dept.DepartmentId]; !ok {
+						continue
+					}
 				}
 				if _, ok := seen[dept.DepartmentId]; ok {
 					continue
@@ -668,20 +724,26 @@ func (s *AlertService) GetDepartmentRiskSummary(query DepartmentRiskSummaryQuery
 	}
 
 	unassigned := buildDepartmentRiskSummaryItem(nil, entmodel.UsageSnapshotUnassignedDeptName, query.From, query.To, 0, 0, query.TenantId)
-	for _, item := range items {
-		if item.IsUnassigned {
-			unassigned = item
-			break
+	if query.DepartmentId == nil {
+		for _, item := range items {
+			if item.IsUnassigned {
+				unassigned = item
+				break
+			}
 		}
 	}
 
 	return DepartmentRiskSummaryResult{
-		Items:          items,
-		TopDepartments: topDepartments,
-		Trend:          trend,
-		Unassigned:     unassigned,
-		Formula:        defaultDepartmentRiskFormula(),
-		DisclaimerKey:  "enterprise.usage.multi_dept_disclaimer",
+		Items:               items,
+		TopDepartments:      topDepartments,
+		Trend:               trend,
+		Unassigned:          unassigned,
+		Formula:             defaultDepartmentRiskFormula(),
+		DisclaimerKey:       "enterprise.usage.multi_dept_disclaimer",
+		ScopeDepartmentId:   usageSummary.Scope.DepartmentId,
+		ScopeDepartmentName: usageSummary.Scope.DepartmentName,
+		IncludeDescendants:  usageSummary.Scope.IncludeDescendants,
+		ScopeDepartmentIds:  append([]int{}, usageSummary.Scope.DepartmentIds...),
 	}, nil
 }
 

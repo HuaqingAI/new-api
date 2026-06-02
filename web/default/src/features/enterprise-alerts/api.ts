@@ -86,6 +86,12 @@ export async function getDepartmentRiskSummary(
   const res = await api.get('/api/enterprise/alerts/department-summary', {
     params: {
       ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.department_id === undefined
+        ? {}
+        : { department_id: search.department_id }),
+      ...(search.include_descendants === undefined
+        ? {}
+        : { include_descendants: search.include_descendants }),
       ...(search.from === undefined ? {} : { from: search.from }),
       ...(search.to === undefined ? {} : { to: search.to }),
       ...(search.summary_sort === undefined

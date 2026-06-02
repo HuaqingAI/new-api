@@ -43,8 +43,21 @@ export type DepartmentUsageSummaryItem = {
   model_distribution: UsageModelDistributionItem[]
 }
 
+export type DepartmentUsageSummaryScope = {
+  department_id?: number | null
+  department_name: string
+  include_descendants: boolean
+  department_ids: number[]
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  quota: number
+  user_count: number
+}
+
 export type DepartmentUsageSummaryResponse = {
   items: DepartmentUsageSummaryItem[]
+  scope: DepartmentUsageSummaryScope
 }
 
 export type DepartmentUsageUserRankItem = {
@@ -180,6 +193,7 @@ export type EnterpriseUsageSearch = {
   to?: number
   tenant_id?: number
   dept_id?: number
+  include_descendants?: boolean
   sort?: DepartmentUsageUserRankSort
   summary_sort?: DepartmentUsageSummarySort
   summary_order?: UsageSortOrder

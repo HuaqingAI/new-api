@@ -3,22 +3,37 @@ package enterprise
 import "gorm.io/gorm"
 
 func Migrate(db *gorm.DB) error {
+	if err := ensureDepartmentRoleOwnerColumnsAndIndexes(db); err != nil {
+		return err
+	}
 	if err := ensureAlertEventDepartmentTokensColumn(db); err != nil {
 		return err
 	}
 	if err := ensureAlertDeliveryColumns(db); err != nil {
 		return err
 	}
+	if err := ensureQuotaAllocationLifecycleColumns(db); err != nil {
+		return err
+	}
+	if err := ensureQuotaRequestColumns(db); err != nil {
+		return err
+	}
+	if err := ensureGovernanceNotificationDeliveryColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
+		&BudgetDelegation{},
 		&QuotaAllocation{},
+		&QuotaRequest{},
 		&UserDepartment{},
 		&DepartmentRole{},
 		&AdminAction{},
 		&AlertEvent{},
 		&AlertRule{},
 		&AlertDelivery{},
+		&GovernanceNotificationDelivery{},
 		&UsageSnapshot{},
 		&UsageReportJob{},
 		&DingTalkConfig{},
@@ -32,8 +47,76 @@ func Migrate(db *gorm.DB) error {
 	return backfillAlertEventDepartmentTokens(db)
 }
 
+func ensureGovernanceNotificationDeliveryColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&GovernanceNotificationDelivery{}) {
+		return nil
+	}
+	columns := []string{
+		"tenant_id",
+		"source_type",
+		"source_id",
+		"trace_id",
+		"action_type",
+		"recipient_user_id",
+		"recipient_kind",
+		"channel_type",
+		"status",
+		"attempt_count",
+		"max_attempts",
+		"next_retry_at",
+		"last_attempt_at",
+		"sent_at",
+		"final_failed_at",
+		"error_reason",
+		"dedupe_key",
+		"trace_payload",
+		"trigger_source",
+		"manual_parent_id",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&GovernanceNotificationDelivery{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&GovernanceNotificationDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func AutoMigrate(db *gorm.DB) error {
 	return Migrate(db)
+}
+
+func ensureDepartmentRoleOwnerColumnsAndIndexes(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&DepartmentRole{}) {
+		return nil
+	}
+	for _, column := range []string{"source", "effect", "external_source"} {
+		if db.Migrator().HasColumn(&DepartmentRole{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&DepartmentRole{}, column); err != nil {
+			return err
+		}
+	}
+	if err := db.Model(&DepartmentRole{}).
+		Where("source = '' OR source IS NULL").
+		Updates(map[string]any{
+			"source":          "manual_grant",
+			"effect":          "allow",
+			"external_source": "",
+		}).Error; err != nil {
+		return err
+	}
+	if db.Migrator().HasIndex(&DepartmentRole{}, "uq_ent_dept_roles_role") {
+		if err := db.Migrator().DropIndex(&DepartmentRole{}, "uq_ent_dept_roles_role"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureAlertEventDepartmentTokensColumn(db *gorm.DB) error {
@@ -102,6 +185,68 @@ func ensureAlertDeliveryColumns(db *gorm.DB) error {
 			continue
 		}
 		if err := db.Migrator().AddColumn(&AlertDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureQuotaAllocationLifecycleColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&QuotaAllocation{}) {
+		return nil
+	}
+	columns := []string{
+		"superseded_by_id",
+		"supersedes_allocation_id",
+		"revoke_reason",
+		"reclaimed_quota",
+		"processed_source",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&QuotaAllocation{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&QuotaAllocation{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureQuotaRequestColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&QuotaRequest{}) {
+		return nil
+	}
+	columns := []string{
+		"tenant_id",
+		"department_id",
+		"department_budget_id",
+		"budget_mode",
+		"requester_user_id",
+		"requested_quota",
+		"approved_quota",
+		"status",
+		"approver_user_id",
+		"request_reason",
+		"approval_reason",
+		"allocation_id",
+		"idempotency_key",
+		"owner_count_snapshot",
+		"fallback",
+		"submitted_at",
+		"approved_at",
+		"rejected_at",
+		"fulfilled_at",
+		"processed_at",
+		"expires_at",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&QuotaRequest{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&QuotaRequest{}, column); err != nil {
 			return err
 		}
 	}

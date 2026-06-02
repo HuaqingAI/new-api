@@ -35,10 +35,12 @@ type UsageSummarySort struct {
 }
 
 type DepartmentUsageExportQuery struct {
-	TenantId int
-	From     int64
-	To       int64
-	Sort     UsageSummarySort
+	TenantId           int
+	DepartmentId       *int
+	From               int64
+	To                 int64
+	Sort               UsageSummarySort
+	IncludeDescendants bool
 }
 
 type DepartmentUsageExportRow struct {
@@ -183,10 +185,12 @@ func compareOptionalInt(left *int, right *int) int {
 
 func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExportQuery) (DepartmentUsageExportResult, error) {
 	summary, err := s.aggregation.GetDepartmentSummary(UsageSummaryQuery{
-		TenantId: query.TenantId,
-		From:     query.From,
-		To:       query.To,
-		Sort:     query.Sort,
+		TenantId:           query.TenantId,
+		DeptId:             query.DepartmentId,
+		From:               query.From,
+		To:                 query.To,
+		Sort:               query.Sort,
+		IncludeDescendants: query.IncludeDescendants,
 	})
 	if err != nil {
 		return DepartmentUsageExportResult{}, err

@@ -381,7 +381,7 @@ Default 使用 feature `api.ts` + TanStack Query hooks，queryKey 使用 `['ente
 
 **Information Architecture:**
 
-不要把企业能力塞进现有 Group、User、Log 页面。新增“企业组织/组织管理”模块，内部用 tabs/sections 承载组织架构、钉钉同步、配额分配、用量报表、风险告警。
+不要把企业能力塞进现有 Group、User、Log 页面。新增“企业组织/组织管理”模块，内部用 tabs/sections 承载组织架构、钉钉同步、配额分配、用量报表、风险告警。负责人审批、治理时间线和通知投递仍留在该工作台；但普通员工的额度申请入口应贴近余额 / 钱包场景，不要求普通用户通过企业组织管理菜单进入。
 
 **Descendant Scope (V1.3):**
 
@@ -1185,7 +1185,9 @@ new-api/
 6. **用量聚合流（V1.1）**：scheduler ticker → `usage_aggregation_task` → 按时间窗扫 `logs` → 对每条 log `INNER JOIN enterprise_user_departments` 展开为 `(log_row, dept_id)` 多行（同一用户多部门 → 多行重复计入）→ 归并写入 `enterprise_usage_snapshots`；未归属用户单独归入 `dept_id IS NULL` 桶。前端看板 `GET /api/enterprise/usage/department-summary` 命中聚合表，不直接查 `logs`。
 5. **告警流**：现有敏感词/过滤产生事件 → 写 `enterprise_alert_events`（旁路写入，不阻塞 relay）→ scheduler ticker `alert_dispatch_task` → 匹配 `enterprise_alert_rules` → 解析部门收件人 → 调 `notify_*` 投递 → 写 `enterprise_alert_deliveries`。
 6. **管理动作审计流**：`controller/enterprise/*.go` 在所有低频管理 mutation 成功后调 `service.WriteAdminAction(ctx, action)` → 写 `enterprise_admin_actions`。配额分配**不**走此路径（自身在 `enterprise_quota_allocations` 已是审计源）。
-7. **额度申请审批流（V1.3）**：员工 UI → `POST /api/enterprise/quota-requests` → 记录目标部门、目标预算池模式/池子、申请额度、申请原因与幂等键 → 系统按目标部门的有效负责人集合路由单步审批 → 审批通过后调用既有 `quota_allocation.go` 完成自动分配 → 写 request / approval / fulfillment 审计与通知状态。重复审批或重复回调不得产生重复分配。
+7. **额度申请审批流（V1.3）**：员工从余额 / 钱包相关 UI 发起额度申请 → `POST /api/enterprise/quota-requests` → 记录目标部门、目标预算池模式/池子、申请额度、申请原因与幂等键 → 系统按目标部门的有效负责人集合路由单步审批 → 审批通过后调用既有 `quota_allocation.go` 完成自动分配 → 写 request / approval / fulfillment 审计与通知状态。重复审批或重复回调不得产生重复分配。企业组织工作台负责审批、治理时间线与通知状态展示。
+
+8. **预算池类型约束边界（V1.3A）**：`DepartmentBudget.Type` 继续保持单值，因此单个预算池实例仍然只能是 `balance` 或 `subscription` 之一；但同一部门下允许并存多个不同类型预算池。类型兼容性校验应作用于当前操作选中的预算池，不应扩展成“部门级单类型”限制。
 
 ### File Organization Patterns
 

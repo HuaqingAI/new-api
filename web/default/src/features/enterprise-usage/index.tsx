@@ -118,6 +118,7 @@ import type {
   DepartmentUsageLogEntryLink,
   DepartmentUsageLogUserOption,
   DepartmentUsageReportJobItem,
+  DepartmentUsageSummaryScope,
   DepartmentUsageSummarySort,
   DepartmentUsageSummaryItem,
   DepartmentUsageUserRankItem,
@@ -194,6 +195,7 @@ export const enterpriseUsageSearchSchema = z.object({
   to: z.coerce.number().int().optional().catch(undefined),
   tenant_id: z.coerce.number().int().nonnegative().optional().catch(undefined),
   dept_id: z.coerce.number().int().positive().optional().catch(undefined),
+  include_descendants: z.coerce.boolean().optional().catch(false),
   sort: z.enum(['quota', 'requests', 'tokens']).optional().catch('quota'),
   summary_sort: z
     .enum(['requests', 'quota', 'users', 'dept_name'])
@@ -222,6 +224,8 @@ export function resolveDepartmentUsageExportParams(
     from: range.from,
     to: range.to,
     tenantId: search.tenant_id,
+    departmentId: search.dept_id,
+    includeDescendants: search.include_descendants,
     summarySort: search.summary_sort,
     summaryOrder: search.summary_order,
   }
@@ -235,6 +239,7 @@ export function normalizeEnterpriseUsageSearch(params: {
     return {
       ...params.search,
       dept_id: undefined,
+      include_descendants: false,
       log_user: undefined,
     }
   }
@@ -249,6 +254,7 @@ export function normalizeEnterpriseUsageSearch(params: {
   return {
     ...params.search,
     dept_id: normalizedDepartmentId,
+    include_descendants: params.search.include_descendants ?? false,
     log_user: shouldResetChildState ? undefined : params.search.log_user,
   }
 }
@@ -432,6 +438,8 @@ export function EnterpriseUsageOverview() {
     from: resolvedRange.from,
     to: resolvedRange.to,
     tenantId: search.tenant_id,
+    departmentId: normalizedSearch.dept_id,
+    includeDescendants: normalizedSearch.include_descendants,
     summarySort: search.summary_sort,
     summaryOrder: search.summary_order,
   })
@@ -699,7 +707,8 @@ export function EnterpriseUsageOverview() {
                 treeError instanceof Error ? treeError.message : null
               }
               expandedDepartmentIds={expandedDepartmentIds}
-              items={usageQuery.data ?? []}
+              items={usageQuery.data?.items ?? []}
+              summaryScope={usageQuery.data?.scope ?? null}
               isLoading={usageQuery.isLoading}
               errorMessage={
                 usageQuery.error instanceof Error
@@ -709,6 +718,7 @@ export function EnterpriseUsageOverview() {
               rangeLabel={resolvedRange.rangeLabel}
               selectedDepartmentId={normalizedSearch.dept_id}
               currentDepartmentName={currentDepartment?.name ?? null}
+              includeDescendants={normalizedSearch.include_descendants ?? false}
               detail={detailQuery.data ?? null}
               detailLoading={detailQuery.isLoading}
               detailErrorMessage={
@@ -744,6 +754,15 @@ export function EnterpriseUsageOverview() {
               summarySort={search.summary_sort ?? 'requests'}
               summaryOrder={search.summary_order ?? 'desc'}
               onSummarySortChange={handleSummarySortChange}
+              onIncludeDescendantsChange={(includeDescendants) =>
+                navigate({
+                  to: '/enterprise-usage',
+                  search: (prev: EnterpriseUsageSearch) => ({
+                    ...prev,
+                    include_descendants: includeDescendants,
+                  }),
+                })
+              }
               onExport={handleExport}
               exportLoading={isExporting}
               report={reportQuery.data ?? null}
@@ -776,8 +795,10 @@ type EnterpriseUsageContentProps = {
   treeErrorMessage?: string | null
   expandedDepartmentIds?: number[]
   items: DepartmentUsageSummaryItem[]
+  summaryScope?: DepartmentUsageSummaryScope | null
   selectedDepartmentId?: number
   currentDepartmentName?: string | null
+  includeDescendants?: boolean
   detail: DepartmentUsageDetailResponse | null
   detailLoading: boolean
   detailErrorMessage: string | null
@@ -807,6 +828,7 @@ type EnterpriseUsageContentProps = {
     summarySort: DepartmentUsageSummarySort,
     summaryOrder: UsageSortOrder
   ) => void
+  onIncludeDescendantsChange?: (value: boolean) => void
   onExport: () => void
   exportLoading: boolean
   report?: DepartmentUsageReportJobItem | null
@@ -887,6 +909,8 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
     props.detail?.dept_name ||
     selectedSummaryItem?.dept_name ||
     t('No department selected')
+  const scopeLabel =
+    props.summaryScope?.department_name || currentDepartmentLabel
 
   return (
     <div className='space-y-4'>
@@ -1026,6 +1050,28 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   {t('Apply')}
                 </Button>
               </div>
+              <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
+                <div className='space-y-1'>
+                  <div className='text-sm font-medium'>
+                    {t('Include descendants')}
+                  </div>
+                  <div className='text-muted-foreground text-xs'>
+                    {props.includeDescendants
+                      ? t('Current scope: {{department}} and all descendant departments', {
+                          department: scopeLabel,
+                        })
+                      : t('Current scope: {{department}} only', {
+                          department: scopeLabel,
+                        })}
+                  </div>
+                </div>
+                <Switch
+                  checked={props.includeDescendants ?? false}
+                  onCheckedChange={(value) =>
+                    props.onIncludeDescendantsChange?.(value)
+                  }
+                />
+              </div>
               {!props.customRange.isValid ? (
                 <Alert variant='destructive'>
                   <AlertDescription>
@@ -1085,26 +1131,20 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                       </CardHeader>
                       <CardContent className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
                         <ReportStat
-                          label={t('Department')}
-                          value={currentDepartmentLabel}
+                          label={t('Scope')}
+                          value={scopeLabel}
                         />
                         <ReportStat
                           label={t('Requests')}
-                          value={formatNumber(
-                            analysisSummaryItems[0]?.request_count ?? 0
-                          )}
+                          value={formatNumber(props.summaryScope?.request_count ?? 0)}
                         />
                         <ReportStat
                           label={t('Users')}
-                          value={formatNumber(
-                            analysisSummaryItems[0]?.user_count ?? 0
-                          )}
+                          value={formatNumber(props.summaryScope?.user_count ?? 0)}
                         />
                         <ReportStat
                           label={t('Quota')}
-                          value={formatQuota(
-                            analysisSummaryItems[0]?.quota ?? 0
-                          )}
+                          value={formatQuota(props.summaryScope?.quota ?? 0)}
                         />
                       </CardContent>
                     </Card>
@@ -1122,6 +1162,11 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                         <p>
                           {t(
                             'Scheduled reports remain tenant-scoped unless explicitly stated otherwise in the configuration card below.'
+                          )}
+                        </p>
+                        <p>
+                          {t(
+                            'Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.'
                           )}
                         </p>
                       </CardContent>

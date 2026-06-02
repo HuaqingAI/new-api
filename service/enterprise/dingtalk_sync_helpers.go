@@ -52,6 +52,23 @@ func (s *DingTalkSyncService) disableStaleRecords(ctx context.Context, taskId in
 		s.incrementTaskCounter(ctx, taskId, "memberships_disabled", 1)
 		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectMembership, ObjectExternalId: membership.ExternalUserId, Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "membership_left_or_transferred"})
 	}
+
+	var ownerRoles []entmodel.DepartmentRole
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND source = ? AND status = ?", tenantId, constant.EnterpriseDepartmentRoleSourceDingTalkOwner, constant.EnterpriseDepartmentRoleStatusActive).Find(&ownerRoles).Error; err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectOwner, "", "stale_owner_query_failed")
+		return
+	}
+	for _, role := range ownerRoles {
+		key := fmt.Sprintf("%d:%d:%s", role.UserId, role.DepartmentId, role.Source)
+		if _, ok := snapshot.seenOwnerKeys[key]; ok {
+			continue
+		}
+		if err := s.db.WithContext(ctx).Model(&role).Updates(map[string]any{"status": constant.EnterpriseDepartmentRoleStatusInactive}).Error; err != nil {
+			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectOwner, strconv.Itoa(role.UserId), "owner_fact_disable_failed")
+			continue
+		}
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectOwner, ObjectExternalId: strconv.Itoa(role.UserId), Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "owner_fact_inactivated"})
+	}
 }
 
 func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenantId int, dingTalkUser DingTalkDepartmentUserInfo, userId int) {

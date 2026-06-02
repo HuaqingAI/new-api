@@ -45,6 +45,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 
 	require.NoError(t, db.Create(&model.User{Id: 100, Username: "alice", Password: "password123", DisplayName: "Alice", Group: "vip", AffCode: "alice-api"}).Error)
 	require.NoError(t, db.Create(&model.User{Id: 101, Username: "bob", Password: "password123", DisplayName: "Bob", Group: "default", AffCode: "bob-api"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 999, Username: "actor-admin", Password: "password123", DisplayName: "Actor Admin", Group: "default", AffCode: "actor-admin-api", Role: common.RoleAdminUser}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{Id: 1, TenantId: 0, Name: "Engineering", Status: constant.EnterpriseDepartmentStatusActive}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{Id: 2, TenantId: 0, Name: "Security", Status: constant.EnterpriseDepartmentStatusActive}).Error)
 
@@ -61,6 +62,13 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.PUT("/api/enterprise/departments/:id/members/:user_id/username", RenameDepartmentMember)
 	router.DELETE("/api/enterprise/departments/:id/members/:user_id", DeactivateDepartmentMember)
 	router.POST("/api/enterprise/departments/:id/members/:user_id/restore", RestoreDepartmentMember)
+	router.GET("/api/enterprise/departments/:id/owners", ListDepartmentOwners)
+	router.POST("/api/enterprise/departments/:id/owners/grants", GrantDepartmentOwner)
+	router.POST("/api/enterprise/departments/:id/owners/denies", DenyDepartmentOwner)
+	router.DELETE("/api/enterprise/departments/:id/owners/grants/:user_id", RevokeDepartmentOwnerGrant)
+	router.DELETE("/api/enterprise/departments/:id/owners/denies/:user_id", RevokeDepartmentOwnerDeny)
+	router.POST("/api/enterprise/departments/:id/admins", GrantDepartmentAdmin)
+	router.DELETE("/api/enterprise/departments/:id/admins/:user_id", RevokeDepartmentAdmin)
 	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
 	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
 	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
@@ -74,6 +82,9 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.GET("/api/enterprise/alerts/rules/:id", GetAlertRule)
 	router.PUT("/api/enterprise/alerts/rules", SaveAlertRule)
 	router.DELETE("/api/enterprise/alerts/rules/:id", DeleteAlertRule)
+	router.GET("/api/enterprise/governance/timeline", ListGovernanceTimeline)
+	router.GET("/api/enterprise/governance/notifications", ListGovernanceNotifications)
+	router.POST("/api/enterprise/governance/notifications/:id/resend", ResendGovernanceNotification)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

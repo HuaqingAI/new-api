@@ -121,7 +121,31 @@ func (s *DingTalkSyncService) syncDepartmentUsers(ctx context.Context, taskId in
 		key := fmt.Sprintf("%d:%d:%s", user.Id, localDepartmentId, constant.EnterpriseExternalSourceDingTalk)
 		snapshot.seenMembershipKeys[key] = struct{}{}
 		s.upsertMembership(ctx, taskId, tenantId, localDepartmentId, user.Id, dingTalkUser.UserId)
+		if dingTalkUser.LeaderInDept != nil && *dingTalkUser.LeaderInDept {
+			ownerKey := fmt.Sprintf("%d:%d:%s", user.Id, localDepartmentId, constant.EnterpriseDepartmentRoleSourceDingTalkOwner)
+			snapshot.seenOwnerKeys[ownerKey] = struct{}{}
+			s.upsertDingTalkDepartmentOwner(ctx, taskId, tenantId, localDepartmentId, user.Id, dingTalkUser.UserId)
+		}
 	}
+}
+
+func (s *DingTalkSyncService) upsertDingTalkDepartmentOwner(ctx context.Context, taskId int, tenantId int, departmentId int, userId int, externalUserId string) {
+	role, err := NewPermissionService(s.db.WithContext(ctx)).UpsertDingTalkDepartmentOwner(DepartmentAdminRoleInput{
+		TenantId:     tenantId,
+		UserId:       userId,
+		DepartmentId: departmentId,
+	})
+	if err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectOwner, externalUserId, "owner_fact_upsert_failed")
+		return
+	}
+	action := constant.DingTalkSyncLogActionCreated
+	message := "owner_fact_created"
+	if role.UpdatedAt > role.CreatedAt {
+		action = constant.DingTalkSyncLogActionUpdated
+		message = "owner_fact_updated"
+	}
+	s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectOwner, ObjectExternalId: externalUserId, Action: action, Status: constant.DingTalkSyncLogStatusSuccess, Message: message})
 }
 
 func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenantId int, dingTalkUser DingTalkDepartmentUserInfo) (*model.User, bool) {

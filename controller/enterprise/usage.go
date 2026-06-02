@@ -31,13 +31,18 @@ func GetDepartmentUsageSummary(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
 
 	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
 	result, err := entservice.NewUsageAggregationService(model.DB).GetDepartmentSummary(entservice.UsageSummaryQuery{
-		TenantId: tenantId,
-		From:     req.From,
-		To:       req.To,
-		Sort:     sortConfig,
+		TenantId:           tenantId,
+		DeptId:             req.DepartmentId,
+		From:               req.From,
+		To:                 req.To,
+		Sort:               sortConfig,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
 	})
 	if err != nil {
 		writeUsageSummaryError(c, err)
@@ -73,7 +78,20 @@ func GetDepartmentUsageSummary(c *gin.Context) {
 		items = []dtoenterprise.DepartmentUsageSummaryItem{}
 	}
 
-	common.ApiSuccess(c, dtoenterprise.DepartmentUsageSummaryResponse{Items: items})
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsageSummaryResponse{
+		Items: items,
+		Scope: dtoenterprise.DepartmentUsageSummaryScope{
+			DepartmentId:       result.Scope.DepartmentId,
+			DepartmentName:     result.Scope.DepartmentName,
+			IncludeDescendants: result.Scope.IncludeDescendants,
+			DepartmentIds:      append([]int{}, result.Scope.DepartmentIds...),
+			RequestCount:       result.Scope.RequestCount,
+			PromptTokens:       result.Scope.PromptTokens,
+			CompletionTokens:   result.Scope.CompletionTokens,
+			Quota:              result.Scope.Quota,
+			UserCount:          result.Scope.UserCount,
+		},
+	})
 }
 
 func ExportDepartmentUsageCSV(c *gin.Context) {
@@ -91,13 +109,18 @@ func ExportDepartmentUsageCSV(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
 
 	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
 	exportResult, err := entservice.NewUsageExportService(model.DB).ExportDepartmentUsageCSV(entservice.DepartmentUsageExportQuery{
-		TenantId: tenantId,
-		From:     req.From,
-		To:       req.To,
-		Sort:     sortConfig,
+		TenantId:           tenantId,
+		DepartmentId:       req.DepartmentId,
+		From:               req.From,
+		To:                 req.To,
+		Sort:               sortConfig,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
 	})
 	if err != nil {
 		writeUsageSummaryError(c, err)
@@ -315,6 +338,33 @@ func readOptionalString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func authorizeScopedEnterpriseSummary(c *gin.Context, tenantId int, departmentId *int) bool {
+	if c.GetInt("role") >= common.RoleAdminUser {
+		return true
+	}
+	if departmentId == nil || *departmentId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionAdminRequired)
+		return false
+	}
+	allowed, err := entservice.NewPermissionService(model.DB).CanGovernDepartment(c.GetInt("id"), tenantId, *departmentId)
+	if err != nil {
+		switch {
+		case errors.Is(err, entservice.ErrDepartmentOwnerDeniedByLocalRule):
+			common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentOwnerDeniedByLocalRule)
+		case errors.Is(err, entservice.ErrDepartmentNotFound):
+			common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
+		default:
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		}
+		return false
+	}
+	if !allowed {
+		common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
+		return false
+	}
+	return true
 }
 
 func mapUsageReportJobDTO(item entservice.UsageReportJobResult) (dtoenterprise.DepartmentUsageReportJobItem, error) {

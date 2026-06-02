@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -374,6 +375,55 @@ func TestUsageReportConfigAPIValidatesAndPersists(t *testing.T) {
 	require.Equal(t, entservice.AdminActionUsageReportSet, actions[len(actions)-1].ActionType)
 	require.Equal(t, entservice.AdminObjectUsageReportJob, actions[len(actions)-1].ObjectType)
 	require.Contains(t, actions[len(actions)-1].Payload, "ops@example.com")
+}
+
+func TestUsageSummaryAPIAllowsScopedDepartmentOwnerAndReturnsScopeEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	db := setupEnterpriseBudgetPermissionDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.Create(&model.User{Id: 201, Username: "owner", Password: "password123", AffCode: "owner-aff"}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentRole{
+		TenantId:     0,
+		UserId:       201,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Source:       constant.EnterpriseDepartmentRoleSourceManualGrant,
+		Effect:       constant.EnterpriseDepartmentRoleEffectAllow,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	deptID := 1
+	snapshot := entmodel.UsageSnapshot{
+		TenantId:         0,
+		DeptId:           &deptID,
+		DeptName:         "Engineering",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     2,
+		PromptTokens:     20,
+		CompletionTokens: 10,
+		Quota:            40,
+	}
+	require.NoError(t, snapshot.SetModelDistribution(nil))
+	require.NoError(t, snapshot.SetUserIds([]int{201}))
+	require.NoError(t, db.Create(&snapshot).Error)
+
+	router.Use(func(c *gin.Context) {
+		c.Set("id", 201)
+		c.Set("role", common.RoleCommonUser)
+		c.Next()
+	})
+	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/department-summary?department_id=1&from=1700000000&to=1700003600&include_descendants=true", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var payload dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(response.Data, &payload))
+	require.Equal(t, "Engineering", payload.Scope.DepartmentName)
+	require.True(t, payload.Scope.IncludeDescendants)
+	require.Equal(t, []int{1}, payload.Scope.DepartmentIds)
 }
 
 func strPtr(value string) *string {

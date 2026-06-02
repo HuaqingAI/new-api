@@ -97,6 +97,42 @@ export type DepartmentMembersResponse = {
   total: number
 }
 
+export type DepartmentOwnerFactItem = {
+  id: number
+  tenant_id: number
+  user_id: number
+  department_id: number
+  role: number
+  source: string
+  effect: string
+  external_source: string
+  status: number
+  inherited_from_department_id: number
+  created_at: number
+  updated_at: number
+}
+
+export type EffectiveDepartmentOwnerItem = {
+  user_id: number
+  department_id: number
+  source: string
+  effect: string
+  inherited_from_department_id: number
+  role_fact_id: number
+}
+
+export type DepartmentOwnersResponse = {
+  facts: DepartmentOwnerFactItem[]
+  effective_owners: EffectiveDepartmentOwnerItem[]
+  owner_count: number
+  fallback: string
+}
+
+export type DepartmentOwnerMutationPayload = {
+  tenant_id?: number
+  user_id: number
+}
+
 export type DepartmentBudgetType = 'balance' | 'subscription'
 export type DepartmentBudgetStatus = 'active' | 'paused' | 'revoked' | 'expired'
 
@@ -117,6 +153,7 @@ export type DepartmentBudgetItem = {
   id: number
   tenant_id: number
   department_id: number
+  department_name: string
   type: DepartmentBudgetType
   status: DepartmentBudgetStatus | string
   total_quota: number
@@ -141,6 +178,10 @@ export type DepartmentBudgetResponse = {
 export type DepartmentBudgetListResponse = {
   items: DepartmentBudgetItem[]
   thresholds: DepartmentBudgetThresholds
+  scope_department_id?: number | null
+  scope_department_name: string
+  include_descendants: boolean
+  scope_department_ids: number[]
 }
 
 export type DepartmentBudgetWalletDetail = {
@@ -192,6 +233,11 @@ export type QuotaAllocationItem = {
   expires_at_snapshot: number
   reason: string
   status: string
+  superseded_by_id: number
+  supersedes_allocation_id: number
+  revoke_reason: string
+  reclaimed_quota: number
+  processed_source: string
   processed_at: number
   created_at: number
   updated_at: number
@@ -203,6 +249,192 @@ export type QuotaAllocationResponse = {
 
 export type QuotaAllocationListResponse = {
   items: QuotaAllocationItem[]
+}
+
+export type QuotaRequestItem = {
+  id: number
+  tenant_id: number
+  department_id: number
+  department_name: string
+  department_budget_id: number
+  budget_mode: string
+  requester_user_id: number
+  requester_username: string
+  requester_display_name: string
+  requested_quota: number
+  approved_quota: number
+  status: string
+  approver_user_id: number
+  approver_username: string
+  approval_reason: string
+  request_reason: string
+  allocation_id: number
+  owner_count_snapshot: number
+  fallback: string
+  submitted_at: number
+  approved_at: number
+  rejected_at: number
+  fulfilled_at: number
+  processed_at: number
+  expires_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type QuotaRequestResponse = {
+  item: QuotaRequestItem | null
+  allocation?: QuotaAllocationItem | null
+}
+
+export type QuotaRequestListResponse = {
+  items: QuotaRequestItem[]
+}
+
+export type GovernanceTimelineTarget = {
+  department_id: number
+  department_name: string
+  user_id: number
+  username: string
+  display_name: string
+  object_type: string
+  object_id: string
+}
+
+export type GovernanceTimelineItem = {
+  trace_id: string
+  source_type: string
+  source_id: number
+  action_type: string
+  tenant_id: number
+  actor_id: number
+  actor_name: string
+  target: GovernanceTimelineTarget
+  quota_delta: number
+  before_quota: number
+  after_quota: number
+  status: string
+  occurred_at: number
+  detail_route: string
+  detail_api_path: string
+  summary: string
+}
+
+export type GovernanceTimelineResponse = {
+  items: GovernanceTimelineItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type GovernanceNotificationTraceItem = {
+  trace_id: string
+  source_type: string
+  source_id: number
+  action_type: string
+  tenant_id: number
+  department_id: number
+  department_name: string
+  budget_id: number
+  allocation_id: number
+  request_id: number
+  actor_id: number
+  actor_name: string
+  target_user_id: number
+  target_username: string
+  target_display_name: string
+  quota_delta: number
+  committed_quota: number
+  requested_quota: number
+  approved_quota: number
+  status: string
+  fallback?: string
+  occurred_at: number
+  detail_route: string
+  detail_api_path: string
+  summary: string
+  recipient_user_id: number
+  recipient_kind: string
+  notification_target?: string
+}
+
+export type GovernanceNotificationItem = {
+  id: number
+  tenant_id: number
+  source_type: string
+  source_id: number
+  trace_id: string
+  action_type: string
+  recipient_user_id: number
+  recipient_kind: string
+  channel_type: string
+  status: string
+  attempt_count: number
+  max_attempts: number
+  next_retry_at: number
+  last_attempt_at: number
+  sent_at: number
+  final_failed_at: number
+  error_reason: string
+  dedupe_key: string
+  trigger_source: string
+  manual_parent_id?: number
+  trace_summary: string
+  trace?: GovernanceNotificationTraceItem
+  created_at: number
+  updated_at: number
+}
+
+export type GovernanceNotificationResponse = {
+  items: GovernanceNotificationItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type GovernanceNotificationResendResponse = {
+  item: GovernanceNotificationItem
+  created: boolean
+}
+
+export type QuotaRequestCapabilityBudgetItem = DepartmentBudgetItem
+
+export type QuotaRequestCapabilityResponse = {
+  can_submit: boolean
+  can_govern: boolean
+  budgets: QuotaRequestCapabilityBudgetItem[]
+}
+
+export type BudgetDelegationItem = {
+  id: number
+  tenant_id: number
+  source_department_id: number
+  source_department_name: string
+  source_budget_id: number
+  target_department_id: number
+  target_department_name: string
+  target_budget_id: number
+  actor_id: number
+  committed_quota: number
+  budget_type_snapshot: string
+  cycle_type_snapshot: string
+  before_source_budget_snapshot: string
+  after_source_budget_snapshot: string
+  before_target_budget_snapshot: string
+  after_target_budget_snapshot: string
+  status: string
+  superseded_by_id: number
+  processed_at: number
+  reason: string
+  created_at: number
+  updated_at: number
+}
+
+export type BudgetDelegationResponse = {
+  item: BudgetDelegationItem | null
+}
+
+export type BudgetDelegationListResponse = {
+  items: BudgetDelegationItem[]
 }
 
 export type CreateDepartmentBudgetPayload = {
@@ -225,10 +457,64 @@ export type CreateQuotaAllocationPayload = {
   reason?: string
 }
 
+export type CreateBudgetDelegationPayload = {
+  tenant_id?: number
+  source_department_id: number
+  source_budget_id: number
+  target_department_id: number
+  target_budget_id: number
+  committed_quota?: number
+  reason?: string
+}
+
+export type SupersedeBudgetDelegationPayload = {
+  tenant_id?: number
+  source_department_id: number
+  new_committed_quota?: number
+  reason?: string
+}
+
 export type RevokeQuotaAllocationPayload = {
   tenant_id?: number
   department_id: number
   reason?: string
+}
+
+export type SupersedeQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  new_committed_quota?: number
+  reason?: string
+}
+
+export type CancelQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  reason?: string
+}
+
+export type ReclaimQuotaAllocationPayload = {
+  tenant_id?: number
+  department_id: number
+  reason?: string
+}
+
+export type SubmitQuotaRequestPayload = {
+  tenant_id?: number
+  department_id: number
+  department_budget_id: number
+  budget_mode: string
+  requested_quota?: number
+  request_reason?: string
+  idempotency_key?: string
+}
+
+export type DecideQuotaRequestPayload = {
+  tenant_id?: number
+  action: 'approve' | 'reject'
+  approved_quota?: number
+  approval_reason?: string
+  rejected_reason?: string
 }
 
 export type ReplaceUserDepartmentsPayload = {

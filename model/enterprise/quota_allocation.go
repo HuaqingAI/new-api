@@ -8,11 +8,18 @@ import (
 )
 
 const (
-	QuotaAllocationStatusActive   = "active"
-	QuotaAllocationStatusPaused   = "paused"
-	QuotaAllocationStatusRevoked  = "revoked"
-	QuotaAllocationStatusExpired  = "expired"
-	QuotaAllocationStatusCanceled = "cancelled"
+	QuotaAllocationStatusActive       = "active"
+	QuotaAllocationStatusPaused       = "paused"
+	QuotaAllocationStatusSuperseded   = "superseded"
+	QuotaAllocationStatusRevoked      = "revoked"
+	QuotaAllocationStatusExpired      = "expired"
+	QuotaAllocationStatusClosed       = "closed"
+	QuotaAllocationStatusCanceled     = "cancelled"
+	QuotaAllocationProcessedManual    = "manual_cancel"
+	QuotaAllocationProcessedExpiry    = "balance_expiry_task"
+	QuotaAllocationProcessedSync      = "wallet_state_sync_task"
+	QuotaAllocationProcessedSupersede = "manual_supersede"
+	QuotaAllocationProcessedReclaim   = "manual_reclaim"
 )
 
 type QuotaAllocation struct {
@@ -33,6 +40,11 @@ type QuotaAllocation struct {
 	BeforeBudgetSnapshot   string `json:"before_budget_snapshot" gorm:"type:text"`
 	AfterBudgetSnapshot    string `json:"after_budget_snapshot" gorm:"type:text"`
 	Status                 string `json:"status" gorm:"type:varchar(32);not null;default:'active';index:idx_ent_quota_alloc_status"`
+	SupersededById         int    `json:"superseded_by_id" gorm:"not null;default:0;index:idx_ent_quota_alloc_superseded_by"`
+	SupersedesAllocationId int    `json:"supersedes_allocation_id" gorm:"not null;default:0;index:idx_ent_quota_alloc_supersedes"`
+	RevokeReason           string `json:"revoke_reason" gorm:"type:text"`
+	ReclaimedQuota         int64  `json:"reclaimed_quota" gorm:"type:bigint;not null;default:0"`
+	ProcessedSource        string `json:"processed_source" gorm:"type:varchar(64);not null;default:''"`
 	ProcessedAt            int64  `json:"processed_at" gorm:"type:bigint;not null;default:0;index:idx_ent_quota_alloc_processed_at"`
 	CreatedAt              int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt              int64  `json:"updated_at" gorm:"bigint"`

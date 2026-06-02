@@ -588,6 +588,51 @@ func TestAlertServiceGetDepartmentRiskSummaryExcludesEventsAtUpperBound(t *testi
 	require.Equal(t, int64(1), result.Trend[0].RiskEventCount)
 }
 
+func TestAlertServiceGetDepartmentRiskSummarySupportsDescendantScope(t *testing.T) {
+	service, db := setupAlertServiceTest(t)
+	rootID := 11
+	childID := 22
+	require.NoError(t, db.Create(&[]entmodel.Department{
+		{Id: rootID, TenantId: 0, Name: "Engineering", Status: constant.DepartmentStatusEnabled, SourceType: constant.DepartmentSourceTypeManual, NameHistory: "[]"},
+		{Id: childID, TenantId: 0, Name: "Platform", ParentId: &rootID, Status: constant.DepartmentStatusEnabled, SourceType: constant.DepartmentSourceTypeManual, NameHistory: "[]"},
+	}).Error)
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &rootID, "Engineering", 1717117200, 1717120800, 8, []int{1001})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, &childID, "Platform", 1717117200, 1717120800, 4, []int{1001, 1002})
+	seedDepartmentRiskUsageSnapshot(t, db, 0, nil, entmodel.UsageSnapshotUnassignedDeptName, 1717117200, 1717120800, 3, []int{1003})
+
+	event := entmodel.AlertEvent{
+		TenantId:     0,
+		UserId:       1001,
+		Username:     "alice",
+		RequestId:    "req-desc",
+		ModelName:    "gpt-4o-mini",
+		RiskType:     "abuse",
+		ActionResult: AlertActionBlocked,
+		Summary:      "review",
+		CreatedAt:    1717117300,
+		UpdatedAt:    1717117300,
+	}
+	require.NoError(t, event.SetDepartmentSnapshot([]entmodel.AlertEventDepartmentSnapshot{
+		{DepartmentId: childID, DepartmentName: "Platform"},
+	}))
+	require.NoError(t, db.Create(&event).Error)
+
+	result, err := service.GetDepartmentRiskSummary(DepartmentRiskSummaryQuery{
+		TenantId:           0,
+		DepartmentId:       &rootID,
+		From:               1717117200,
+		To:                 1717120800,
+		Sort:               NormalizeUsageSummarySort("quota", "desc"),
+		IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &rootID, result.ScopeDepartmentId)
+	require.Equal(t, []int{11, 22}, result.ScopeDepartmentIds)
+	require.Len(t, result.Items, 2)
+	require.Equal(t, int64(1), result.TopDepartments[0].RiskEventCount)
+	require.Equal(t, int64(12), result.Trend[0].TotalRequestCount)
+}
+
 func TestAlertServiceEnqueueAlertDeliveriesProcessesLaterBatches(t *testing.T) {
 	service, db := setupAlertServiceTest(t)
 	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "alice", Password: "password123", Group: "default", AffCode: "alice-aff"}).Error)

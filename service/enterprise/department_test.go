@@ -122,6 +122,45 @@ func TestBuildDepartmentTreeRejectsInvalidNameHistory(t *testing.T) {
 	require.ErrorIs(t, err, ErrDepartmentNameHistoryInvalid)
 }
 
+func TestResolveDepartmentScopeSupportsCurrentDescendantsOrphansAndTenantIsolation(t *testing.T) {
+	db := newDepartmentTestDB(t)
+	parentID := 1
+	childID := 2
+	require.NoError(t, db.Create(&[]modelenterprise.Department{
+		department(1, nil, "Root", constant.DepartmentStatusEnabled, constant.DepartmentSyncStatusOK),
+		department(2, &parentID, "Child", constant.DepartmentStatusEnabled, constant.DepartmentSyncStatusOK),
+		department(3, &childID, "Grandchild", constant.DepartmentStatusEnabled, constant.DepartmentSyncStatusOK),
+		department(4, nil, "Sibling", constant.DepartmentStatusEnabled, constant.DepartmentSyncStatusOK),
+		{
+			Id:          10,
+			TenantId:    9,
+			Name:        "Other Tenant Root",
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+	}).Error)
+
+	scope, err := ResolveDepartmentScope(db, 0, nil, false)
+	require.NoError(t, err)
+	require.True(t, scope.IsAllDepartments)
+	require.Equal(t, []int{1, 2, 3, 4}, scope.DepartmentIds)
+
+	scope, err = ResolveDepartmentScope(db, 0, &parentID, false)
+	require.NoError(t, err)
+	require.Equal(t, []int{1}, scope.DepartmentIds)
+	require.Equal(t, "Root", scope.DepartmentName)
+
+	scope, err = ResolveDepartmentScope(db, 0, &parentID, true)
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3}, scope.DepartmentIds)
+
+	missing := 999
+	_, err = ResolveDepartmentScope(db, 0, &missing, true)
+	require.ErrorIs(t, err, ErrDepartmentNotFound)
+}
+
 func newDepartmentTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

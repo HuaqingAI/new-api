@@ -6,7 +6,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import i18n from '@/i18n/config'
+import i18n, { resources } from '@/i18n/config'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -505,23 +505,78 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders governance timeline trace, delivery failure reason, and resend action', () => {
+    const knownActions = [
+      ['enterprise.organization.membership.replace', 'Membership replaced'],
+      ['enterprise.organization.membership.add', 'Membership added'],
+      ['enterprise.organization.membership.disable', 'Membership disabled'],
+      ['enterprise.organization.membership.restore', 'Membership restored'],
+      ['enterprise.organization.membership.rename', 'Membership renamed'],
+      ['enterprise.organization.department_admin.grant', 'Department admin granted'],
+      ['enterprise.organization.department_admin.revoke', 'Department admin revoked'],
+      ['enterprise.organization.department_owner.manual_grant', 'Department owner granted'],
+      [
+        'enterprise.organization.department_owner.manual_grant.revoke',
+        'Department owner grant revoked',
+      ],
+      ['enterprise.organization.department_owner.manual_deny', 'Department owner denied'],
+      [
+        'enterprise.organization.department_owner.manual_deny.revoke',
+        'Department owner denial revoked',
+      ],
+      [
+        'enterprise.organization.department_owner.dingtalk_sync.update',
+        'DingTalk owner sync updated',
+      ],
+      [
+        'enterprise.organization.department_owner.resolution.denied',
+        'Department owner resolution denied',
+      ],
+      ['enterprise.dingtalk.config.set', 'DingTalk configuration updated'],
+      ['enterprise.dingtalk.connectivity.test', 'DingTalk connectivity tested'],
+      ['enterprise.dingtalk.sync.start', 'DingTalk sync started'],
+      [
+        'enterprise.dingtalk.sync_conflict.bind_candidate',
+        'DingTalk sync conflict candidate bound',
+      ],
+      ['enterprise.usage.report.set', 'Usage report configured'],
+      ['enterprise.organization.department_budget.create', 'Department budget created'],
+      ['enterprise.organization.department_budget.reject', 'Department budget rejected'],
+      ['enterprise.organization.budget_delegation.create', 'Budget delegation created'],
+      [
+        'enterprise.organization.budget_delegation.supersede',
+        'Budget delegation adjusted',
+      ],
+      ['enterprise.organization.budget_delegation.revoke', 'Budget delegation revoked'],
+      ['enterprise.organization.budget_delegation.reject', 'Budget delegation rejected'],
+      ['enterprise.organization.quota_request.submit', 'Quota request submitted'],
+      ['enterprise.organization.quota_request.approve', 'Quota request approved'],
+      ['enterprise.organization.quota_request.reject', 'Quota request rejected'],
+      ['enterprise.organization.quota_allocation.create', 'Allocation created'],
+      ['enterprise.organization.quota_allocation.reclaim', 'Allocation reclaimed'],
+      ['enterprise.organization.quota_allocation.cancel', 'Allocation cancelled'],
+      ['enterprise.organization.quota_allocation.revoke', 'Allocation revoked'],
+      ['enterprise.alert.rule.save', 'Alert rule saved'],
+      ['enterprise.alert.rule.delete', 'Alert rule deleted'],
+      ['enterprise.alert.delivery.resend', 'Alert delivery resent'],
+    ] as const
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <GovernanceActivityCard
           loading={false}
-          timelineItems={[
+          timelineItems={knownActions.map(([actionType], index) =>
             governanceTimelineItem({
-              trace_id: 'quota_request:42',
-              action_type: 'enterprise.organization.quota_request.approve',
-              actor_name: 'Owner Alice',
+              source_id: index + 1,
+              trace_id: `governance:${index + 1}`,
+              action_type: actionType,
+              actor_name: index === 1 ? 'Owner Alice' : `Actor ${index + 1}`,
               quota_delta: 80,
               status: 'fulfilled',
-            }),
-          ]}
+            })
+          )}
           notificationItems={[
             governanceNotificationItem({
               id: 7,
-              trace_id: 'quota_request:42',
+              trace_id: 'governance:2',
               status: 'final_failed',
               error_reason: 'webhook request failed',
             }),
@@ -534,14 +589,167 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Governance Timeline and Notification Delivery',
-      'quota_request:42',
-      'Quota request approved',
+      'governance:2',
       'Owner Alice',
       'Final failed',
       'webhook request failed',
       'Resend',
+      ...knownActions.map(([, label]) => label),
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+    assert.doesNotMatch(html, /enterprise\.organization\./)
+  })
+
+  test('renders governance notification action summary for delivery-only rows', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 9,
+              trace_id: 'alert_delivery:9',
+              action_type: 'enterprise.alert.delivery.resend',
+              status: 'sent',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Alert delivery resent/)
+    assert.match(html, /Sent/)
+    assert.doesNotMatch(html, /enterprise\.alert\.delivery\.resend/)
+  })
+
+  test('renders governance activity with zh locale translations and safe fallbacks', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const html = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <GovernanceActivityCard
+            loading={false}
+            timelineItems={[
+              governanceTimelineItem({
+                source_id: 1,
+                trace_id: 'quota_request:42',
+                action_type: 'enterprise.organization.quota_request.approve',
+                actor_name: 'Owner Alice',
+                quota_delta: 80,
+                status: 'fulfilled',
+              }),
+              governanceTimelineItem({
+                source_id: 2,
+                trace_id: 'unknown:99',
+                action_type: 'enterprise.organization.future_action.full.internal.key',
+                status: 'mystery_status',
+              }),
+            ]}
+            notificationItems={[
+              governanceNotificationItem({
+                id: 7,
+                trace_id: 'quota_request:42',
+                status: 'final_failed',
+                error_reason: 'webhook request failed',
+              }),
+              governanceNotificationItem({
+                id: 8,
+                trace_id: 'unknown:99',
+                status: 'future_status',
+              }),
+            ]}
+            resendPendingId={null}
+            onResend={() => undefined}
+          />
+        </I18nextProvider>
+      )
+
+      for (const expected of [
+        '治理时间线与通知投递',
+        '动作',
+        '通知状态',
+        '额度申请已批准',
+        '最终失败',
+        '重新发送',
+        '未知治理动作',
+        '未知投递状态',
+        'quota_request:42',
+        'unknown:99',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+      assert.doesNotMatch(
+        html,
+        /enterprise\.organization\.future_action\.full\.internal\.key/
+      )
+      assert.doesNotMatch(html, />future_status</)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
+  })
+
+  test('governance locale keys exist for every supported language', () => {
+    const requiredKeys = [
+      'Governance Timeline and Notification Delivery',
+      'Action',
+      'Notification Status',
+      'Final failed',
+      'Resend',
+      'Attempt {{count}}/{{max}}',
+      'Membership replaced',
+      'Membership added',
+      'Membership disabled',
+      'Membership restored',
+      'Membership renamed',
+      'Department admin granted',
+      'Department admin revoked',
+      'Department owner granted',
+      'Department owner grant revoked',
+      'Department owner denied',
+      'Department owner denial revoked',
+      'DingTalk owner sync updated',
+      'Department owner resolution denied',
+      'DingTalk configuration updated',
+      'DingTalk connectivity tested',
+      'DingTalk sync started',
+      'DingTalk sync conflict candidate bound',
+      'Usage report configured',
+      'Alert rule saved',
+      'Alert rule deleted',
+      'Alert delivery resent',
+      'Quota request submitted',
+      'Quota request approved',
+      'Quota request rejected',
+      'Allocation created',
+      'Allocation reclaimed',
+      'Allocation cancelled',
+      'Allocation revoked',
+      'Budget delegation created',
+      'Budget delegation adjusted',
+      'Budget delegation revoked',
+      'Budget delegation rejected',
+      'Department budget created',
+      'Department budget rejected',
+      'Unknown governance action',
+      'Unknown delivery status',
+      'Employee Quota Requests',
+      'Target Budget Pool',
+      'Trace ID',
+    ] as const
+
+    for (const [language, resource] of Object.entries(resources)) {
+      for (const key of requiredKeys) {
+        assert.notEqual(
+          resource.translation[key],
+          undefined,
+          `${language} missing ${key}`
+        )
+      }
     }
   })
 

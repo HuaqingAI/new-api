@@ -3512,6 +3512,10 @@ export function GovernanceActivityCard({
     }
     return map
   }, [notificationItems])
+  const timelineTraceIds = useMemo(
+    () => new Set(timelineItems.map((item) => item.trace_id)),
+    [timelineItems]
+  )
 
   if (loading) {
     return <Skeleton className='h-48 w-full' />
@@ -3592,12 +3596,10 @@ export function GovernanceActivityCard({
             </TableBody>
           </Table>
         )}
-        {notificationItems.some(
-          (item) => !notificationsByTrace.has(item.trace_id)
-        ) ? (
+        {notificationItems.some((item) => !timelineTraceIds.has(item.trace_id)) ? (
           <GovernanceNotificationDeliveryList
             items={notificationItems.filter(
-              (item) => !timelineItems.some((trace) => trace.trace_id === item.trace_id)
+              (item) => !timelineTraceIds.has(item.trace_id)
             )}
             resendPendingId={resendPendingId}
             onResend={onResend}
@@ -3627,6 +3629,9 @@ function GovernanceNotificationDeliveryList({
     <div className='flex min-w-[220px] flex-col gap-2'>
       {items.map((item) => (
         <div key={item.id} className='rounded-md border p-2'>
+          <div className='mb-2 text-xs font-medium'>
+            {governanceActionLabel(item.action_type, t)}
+          </div>
           <div className='flex items-center justify-between gap-2'>
             <StatusBadge
               label={governanceDeliveryStatusLabel(item.status, t)}
@@ -3687,6 +3692,30 @@ function governanceActionLabel(
   t: (key: string) => string
 ) {
   const labels: Record<string, string> = {
+    'enterprise.organization.membership.replace': 'Membership replaced',
+    'enterprise.organization.membership.add': 'Membership added',
+    'enterprise.organization.membership.disable': 'Membership disabled',
+    'enterprise.organization.membership.restore': 'Membership restored',
+    'enterprise.organization.membership.rename': 'Membership renamed',
+    'enterprise.organization.department_admin.grant': 'Department admin granted',
+    'enterprise.organization.department_admin.revoke': 'Department admin revoked',
+    'enterprise.organization.department_owner.manual_grant': 'Department owner granted',
+    'enterprise.organization.department_owner.manual_grant.revoke': 'Department owner grant revoked',
+    'enterprise.organization.department_owner.manual_deny': 'Department owner denied',
+    'enterprise.organization.department_owner.manual_deny.revoke': 'Department owner denial revoked',
+    'enterprise.organization.department_owner.dingtalk_sync.update': 'DingTalk owner sync updated',
+    'enterprise.organization.department_owner.resolution.denied': 'Department owner resolution denied',
+    'enterprise.dingtalk.config.set': 'DingTalk configuration updated',
+    'enterprise.dingtalk.connectivity.test': 'DingTalk connectivity tested',
+    'enterprise.dingtalk.sync.start': 'DingTalk sync started',
+    'enterprise.dingtalk.sync_conflict.bind_candidate': 'DingTalk sync conflict candidate bound',
+    'enterprise.usage.report.set': 'Usage report configured',
+    'enterprise.organization.department_budget.create': 'Department budget created',
+    'enterprise.organization.department_budget.reject': 'Department budget rejected',
+    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+    'enterprise.organization.budget_delegation.revoke': 'Budget delegation revoked',
+    'enterprise.organization.budget_delegation.reject': 'Budget delegation rejected',
     'enterprise.organization.quota_request.submit': 'Quota request submitted',
     'enterprise.organization.quota_request.approve': 'Quota request approved',
     'enterprise.organization.quota_request.reject': 'Quota request rejected',
@@ -3694,10 +3723,11 @@ function governanceActionLabel(
     'enterprise.organization.quota_allocation.reclaim': 'Allocation reclaimed',
     'enterprise.organization.quota_allocation.cancel': 'Allocation cancelled',
     'enterprise.organization.quota_allocation.revoke': 'Allocation revoked',
-    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
-    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+    'enterprise.alert.rule.save': 'Alert rule saved',
+    'enterprise.alert.rule.delete': 'Alert rule deleted',
+    'enterprise.alert.delivery.resend': 'Alert delivery resent',
   }
-  return t(labels[actionType] ?? actionType)
+  return t(labels[actionType] ?? 'Unknown governance action')
 }
 
 function governanceDeliveryStatusLabel(
@@ -3716,7 +3746,7 @@ function governanceDeliveryStatusLabel(
     case 'final_failed':
       return t('Final failed')
     default:
-      return status
+      return t('Unknown delivery status')
   }
 }
 

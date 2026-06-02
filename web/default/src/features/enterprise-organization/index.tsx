@@ -22,7 +22,6 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useAuthStore } from '@/stores/auth-store'
 import {
   Building2,
   CalendarClock,
@@ -40,6 +39,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -88,6 +88,8 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
+import { searchUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
 import {
   addDepartmentMember,
   budgetDelegationQueryKey,
@@ -103,6 +105,7 @@ import {
   departmentBudgetListQueryKey,
   departmentBudgetQueryKey,
   departmentMembersQueryKey,
+  enterpriseOrganizationQueryKey,
   departmentOwnersQueryKey,
   getDepartmentOwners,
   getDepartmentBudget,
@@ -380,9 +383,12 @@ export function createQuotaRequestSchema(t: (key: string) => string) {
   return z.object({
     tenant_id: z.coerce.number().int().nonnegative(),
     department_id: z.coerce.number().int().positive(),
-    department_budget_id: z.coerce.number().int().positive({
-      message: t('Choose a target budget pool'),
-    }),
+    department_budget_id: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Choose a target budget pool'),
+      }),
     budget_mode: z.literal('department_budget'),
     requested_quota: z.coerce
       .number()
@@ -1085,7 +1091,11 @@ function DepartmentMembersPanel({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [memberUserIdText, setMemberUserIdText] = useState('')
+  const [memberSearchText, setMemberSearchText] = useState('')
+  const [selectedCandidateUserId, setSelectedCandidateUserId] = useState<
+    number | null
+  >(null)
+  const memberSearchKeyword = memberSearchText.trim()
 
   const departmentMembersQuery = useQuery({
     queryKey: departmentMembersQueryKey(departmentId, tenantId),
@@ -1096,6 +1106,33 @@ function DepartmentMembersPanel({
       return result.data ?? { items: [], total: 0 }
     },
   })
+  const userSearchQuery = useQuery({
+    queryKey: [
+      ...enterpriseOrganizationQueryKey,
+      'member-user-search',
+      departmentId,
+      tenantId,
+      memberSearchKeyword,
+    ],
+    queryFn: async () => {
+      const result = await searchUsers({
+        keyword: memberSearchKeyword,
+        page_size: 8,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Failed to search users'))
+      return result.data?.items ?? []
+    },
+    enabled: memberSearchKeyword.length >= 2,
+  })
+  const userSearchResults = userSearchQuery.data ?? []
+  const selectedCandidate =
+    userSearchResults.find((item) => item.id === selectedCandidateUserId) ??
+    null
+
+  useEffect(() => {
+    setSelectedCandidateUserId(null)
+  }, [memberSearchKeyword])
 
   useEffect(() => {
     onMembersChange(departmentMembersQuery.data?.items ?? [])
@@ -1103,11 +1140,10 @@ function DepartmentMembersPanel({
 
   const addMemberMutation = useMutation({
     mutationFn: () => {
-      const memberUserId = parsePositiveInt(memberUserIdText)
-      if (!memberUserId) throw new Error('missing ids')
+      if (!selectedCandidateUserId) throw new Error('missing user')
       return addDepartmentMember(departmentId, {
         tenant_id: tenantId,
-        user_id: memberUserId,
+        user_id: selectedCandidateUserId,
       })
     },
     onSuccess: async (result) => {
@@ -1115,7 +1151,8 @@ function DepartmentMembersPanel({
         toast.error(result.message || t('Request failed'))
         return
       }
-      setMemberUserIdText('')
+      setMemberSearchText('')
+      setSelectedCandidateUserId(null)
       await queryClient.invalidateQueries({
         queryKey: departmentMembersQueryKey(departmentId, tenantId),
       })
@@ -1137,17 +1174,43 @@ function DepartmentMembersPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className='flex flex-col gap-4'>
-        <div className='flex flex-col gap-2 sm:flex-row'>
+        <div className='grid gap-3 rounded-lg border p-3'>
+          <Label>{t('Add member from user search')}</Label>
           <Input
-            inputMode='numeric'
-            value={memberUserIdText}
-            onChange={(event) => setMemberUserIdText(event.target.value)}
-            placeholder={t('User ID')}
+            value={memberSearchText}
+            onChange={(event) => setMemberSearchText(event.target.value)}
+            placeholder={t(
+              'Search users by username, display name, or email...'
+            )}
           />
+          <DepartmentMemberCandidateList
+            items={userSearchResults}
+            members={departmentMembersQuery.data?.items ?? []}
+            loading={userSearchQuery.isLoading}
+            keyword={memberSearchKeyword}
+            selectedUserId={selectedCandidateUserId}
+            onSelectUser={setSelectedCandidateUserId}
+          />
+          {selectedCandidate ? (
+            <div className='text-muted-foreground text-xs'>
+              {t('Selected user: {{user}}', {
+                user: formatEnterpriseUserPrimary({
+                  displayName: selectedCandidate.display_name,
+                  username: selectedCandidate.username,
+                  userId: selectedCandidate.id,
+                }),
+              })}
+            </div>
+          ) : null}
           <Button
+            className='justify-self-start'
             onClick={() => addMemberMutation.mutate()}
             disabled={
-              !parsePositiveInt(memberUserIdText) || addMemberMutation.isPending
+              !selectedCandidate ||
+              departmentMembersQuery.data?.items.some(
+                (item) => item.user_id === selectedCandidate.id
+              ) ||
+              addMemberMutation.isPending
             }
           >
             <UserPlus data-icon='inline-start' />
@@ -1163,6 +1226,97 @@ function DepartmentMembersPanel({
         />
       </CardContent>
     </Card>
+  )
+}
+
+function DepartmentMemberCandidateList({
+  items,
+  members,
+  loading,
+  keyword,
+  selectedUserId,
+  onSelectUser,
+}: {
+  items: User[]
+  members: DepartmentMemberItem[]
+  loading: boolean
+  keyword: string
+  selectedUserId: number | null
+  onSelectUser: (userId: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const memberUserIds = useMemo(
+    () => new Set(members.map((item) => item.user_id)),
+    [members]
+  )
+
+  if (!keyword) {
+    return (
+      <div className='text-muted-foreground text-xs'>
+        {t(
+          'Search for a user, then add the selected user to the current department.'
+        )}
+      </div>
+    )
+  }
+  if (keyword.length < 2) {
+    return (
+      <div className='text-muted-foreground text-xs'>
+        {t('Type at least 2 characters to search users.')}
+      </div>
+    )
+  }
+  if (loading) {
+    return <Skeleton className='h-10 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <div className='text-muted-foreground text-xs'>
+        {t('No matching users found.')}
+      </div>
+    )
+  }
+
+  return (
+    <div className='grid gap-2 sm:grid-cols-2'>
+      {items.map((item) => {
+        const alreadyMember = memberUserIds.has(item.id)
+        const selected = selectedUserId === item.id
+        return (
+          <Button
+            key={item.id}
+            type='button'
+            variant={selected ? 'secondary' : 'outline'}
+            className='h-auto justify-start px-3 py-2 text-left'
+            disabled={alreadyMember}
+            onClick={() => onSelectUser(selected ? null : item.id)}
+          >
+            <Users data-icon='inline-start' />
+            <span className='flex min-w-0 flex-col'>
+              <span className='truncate'>
+                {formatEnterpriseUserPrimary({
+                  displayName: item.display_name,
+                  username: item.username,
+                  userId: item.id,
+                })}
+              </span>
+              <span className='text-muted-foreground truncate text-xs font-normal'>
+                {alreadyMember
+                  ? t('Already in current department')
+                  : formatEnterpriseUserSecondary(
+                      {
+                        displayName: item.display_name,
+                        username: item.username,
+                        userId: item.id,
+                      },
+                      t
+                    )}
+              </span>
+            </span>
+          </Button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -1859,7 +2013,7 @@ export function DepartmentMemberContextCard({
   )
 }
 
-function DepartmentBudgetPanel({
+export function DepartmentBudgetPanel({
   departmentId,
   tenantId,
   departmentName,
@@ -1950,9 +2104,9 @@ function DepartmentBudgetPanel({
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
-  const [supersedeDrafts, setSupersedeDrafts] = useState<Record<number, string>>(
-    {}
-  )
+  const [supersedeDrafts, setSupersedeDrafts] = useState<
+    Record<number, string>
+  >({})
   const [allocationSupersedeDrafts, setAllocationSupersedeDrafts] = useState<
     Record<number, string>
   >({})
@@ -1985,7 +2139,10 @@ function DepartmentBudgetPanel({
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
   const quotaRequestCapabilityQuery = useQuery({
-    queryKey: [...quotaRequestQueryScopeKey(departmentId, normalizedTenantId), 'capability'],
+    queryKey: [
+      ...quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      'capability',
+    ],
     queryFn: async () => {
       const result = await getQuotaRequestCapability(
         departmentId,
@@ -2140,7 +2297,10 @@ function DepartmentBudgetPanel({
   const delegationListQuery = useQuery({
     queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
-      const result = await getBudgetDelegations(departmentId, formTenantId || undefined)
+      const result = await getBudgetDelegations(
+        departmentId,
+        formTenantId || undefined
+      )
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
@@ -2267,7 +2427,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation created'))
     },
   })
@@ -2289,7 +2453,11 @@ function DepartmentBudgetPanel({
       await queryClient.invalidateQueries({
         queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Quota request submitted'))
     },
   })
@@ -2331,9 +2499,16 @@ function DepartmentBudgetPanel({
         ),
       })
       await queryClient.invalidateQueries({
-        queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Quota request updated'))
     },
   })
@@ -2406,7 +2581,10 @@ function DepartmentBudgetPanel({
   })
 
   const allocationSupersedeMutation = useMutation({
-    mutationFn: async (params: { allocationId: number; committedQuota: number }) =>
+    mutationFn: async (params: {
+      allocationId: number
+      committedQuota: number
+    }) =>
       supersedeQuotaAllocation(params.allocationId, {
         tenant_id: formTenantId || undefined,
         department_id: departmentId,
@@ -2438,7 +2616,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation adjusted'))
     },
   })
@@ -2475,7 +2657,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation cancelled'))
     },
   })
@@ -2512,7 +2698,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation reclaimed'))
     },
   })
@@ -2557,7 +2747,10 @@ function DepartmentBudgetPanel({
     if (delegationForm.getValues('source_department_id') !== departmentId) {
       delegationForm.setValue('source_department_id', departmentId)
     }
-    if (effectiveBudgetId && delegationForm.getValues('source_budget_id') !== effectiveBudgetId) {
+    if (
+      effectiveBudgetId &&
+      delegationForm.getValues('source_budget_id') !== effectiveBudgetId
+    ) {
       delegationForm.setValue('source_budget_id', effectiveBudgetId)
     }
   }, [delegationForm, departmentId, effectiveBudgetId, formTenantId])
@@ -2846,14 +3039,16 @@ function DepartmentBudgetPanel({
         }
         resendPendingId={
           governanceResendMutation.isPending
-            ? governanceResendMutation.variables ?? null
+            ? (governanceResendMutation.variables ?? null)
             : null
         }
         onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
       />
       <Card>
         <CardHeader>
-          <CardTitle>{t('Budget Delegation To Descendant Department')}</CardTitle>
+          <CardTitle>
+            {t('Budget Delegation To Descendant Department')}
+          </CardTitle>
           <CardDescription>
             {t(
               'Delegate from the current department budget pool to a descendant department budget pool, while keeping superseded history visible.'
@@ -2898,11 +3093,14 @@ function DepartmentBudgetPanel({
                       <SelectContent>
                         {descendantBudgetOptions.map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>
-                            {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
-                              source: departmentName,
-                              target: item.department_name,
-                              budgetId: item.id,
-                            })}
+                            {t(
+                              '{{source}} -> {{target}} -> Budget #{{budgetId}}',
+                              {
+                                source: departmentName,
+                                target: item.department_name,
+                                budgetId: item.id,
+                              }
+                            )}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2941,7 +3139,7 @@ function DepartmentBudgetPanel({
                   </FormItem>
                 )}
               />
-              <div className='md:col-span-2 flex justify-end'>
+              <div className='flex justify-end md:col-span-2'>
                 <Button
                   type='submit'
                   disabled={
@@ -2976,7 +3174,7 @@ function DepartmentBudgetPanel({
             }
             supersedePendingId={
               supersedeMutation.isPending
-                ? supersedeMutation.variables?.delegationId ?? null
+                ? (supersedeMutation.variables?.delegationId ?? null)
                 : null
             }
           />
@@ -3034,9 +3232,11 @@ function DepartmentBudgetPanel({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(quotaRequestCapabilityQuery.data?.budgets ??
+                        {(
+                          quotaRequestCapabilityQuery.data?.budgets ??
                           budgetListQuery.data?.items ??
-                          []).map((item) => (
+                          []
+                        ).map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>
                             {t('{{department}} · Budget #{{budgetId}}', {
                               department: item.department_name,
@@ -3101,7 +3301,9 @@ function DepartmentBudgetPanel({
                 <EmptyMedia variant='icon'>
                   <Coins className='size-4' />
                 </EmptyMedia>
-                <EmptyTitle>{t('No request access in this department')}</EmptyTitle>
+                <EmptyTitle>
+                  {t('No request access in this department')}
+                </EmptyTitle>
                 <EmptyDescription>
                   {t(
                     'You must be an active member of the selected department before submitting a quota request here.'
@@ -3160,7 +3362,7 @@ function DepartmentBudgetPanel({
             }}
             pendingRequestId={
               quotaRequestDecisionMutation.isPending
-                ? quotaRequestDecisionMutation.variables?.requestId ?? null
+                ? (quotaRequestDecisionMutation.variables?.requestId ?? null)
                 : null
             }
             canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
@@ -3300,17 +3502,17 @@ function DepartmentBudgetPanel({
             }
             supersedePendingId={
               allocationSupersedeMutation.isPending
-                ? allocationSupersedeMutation.variables?.allocationId ?? null
+                ? (allocationSupersedeMutation.variables?.allocationId ?? null)
                 : null
             }
             cancelPendingId={
               allocationCancelMutation.isPending
-                ? allocationCancelMutation.variables ?? null
+                ? (allocationCancelMutation.variables ?? null)
                 : null
             }
             reclaimPendingId={
               allocationReclaimMutation.isPending
-                ? allocationReclaimMutation.variables ?? null
+                ? (allocationReclaimMutation.variables ?? null)
                 : null
             }
           />
@@ -3550,7 +3752,9 @@ export function GovernanceActivityCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('Governance Timeline and Notification Delivery')}</CardTitle>
+        <CardTitle>
+          {t('Governance Timeline and Notification Delivery')}
+        </CardTitle>
         <CardDescription>
           {t(
             'Trace governance actions and DingTalk delivery state for the current department.'
@@ -3592,15 +3796,20 @@ export function GovernanceActivityCard({
                   <TableRow key={`${item.source_type}-${item.source_id}`}>
                     <TableCell>
                       <div className='flex min-w-[180px] flex-col gap-1'>
-                        <span className='font-mono text-xs'>{item.trace_id}</span>
+                        <span className='font-mono text-xs'>
+                          {item.trace_id}
+                        </span>
                         <span className='text-muted-foreground text-xs'>
                           {item.source_type} #{item.source_id}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>{governanceActionLabel(item.action_type, t)}</TableCell>
                     <TableCell>
-                      {item.actor_name || (item.actor_id ? `#${item.actor_id}` : '-')}
+                      {governanceActionLabel(item.action_type, t)}
+                    </TableCell>
+                    <TableCell>
+                      {item.actor_name ||
+                        (item.actor_id ? `#${item.actor_id}` : '-')}
                     </TableCell>
                     <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
                     <TableCell>{formatNumber(item.quota_delta)}</TableCell>
@@ -3627,7 +3836,8 @@ export function GovernanceActivityCard({
         ) ? (
           <GovernanceNotificationDeliveryList
             items={notificationItems.filter(
-              (item) => !timelineItems.some((trace) => trace.trace_id === item.trace_id)
+              (item) =>
+                !timelineItems.some((trace) => trace.trace_id === item.trace_id)
             )}
             resendPendingId={resendPendingId}
             onResend={onResend}
@@ -3683,7 +3893,7 @@ function GovernanceNotificationDeliveryList({
             })}
           </div>
           {item.error_reason ? (
-            <div className='text-destructive mt-1 break-words text-xs'>
+            <div className='text-destructive mt-1 text-xs break-words'>
               {item.error_reason}
             </div>
           ) : null}
@@ -3712,10 +3922,7 @@ function formatGovernanceTarget(
     : t('Unknown target')
 }
 
-function governanceActionLabel(
-  actionType: string,
-  t: (key: string) => string
-) {
+function governanceActionLabel(actionType: string, t: (key: string) => string) {
   const labels: Record<string, string> = {
     'enterprise.organization.quota_request.submit': 'Quota request submitted',
     'enterprise.organization.quota_request.approve': 'Quota request approved',
@@ -3724,8 +3931,10 @@ function governanceActionLabel(
     'enterprise.organization.quota_allocation.reclaim': 'Allocation reclaimed',
     'enterprise.organization.quota_allocation.cancel': 'Allocation cancelled',
     'enterprise.organization.quota_allocation.revoke': 'Allocation revoked',
-    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
-    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+    'enterprise.organization.budget_delegation.create':
+      'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede':
+      'Budget delegation adjusted',
   }
   return t(labels[actionType] ?? actionType)
 }
@@ -3851,7 +4060,9 @@ function QuotaRequestTable({
                   userId: item.requester_user_id,
                 })}
               </TableCell>
-              <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
+              <TableCell>
+                {item.department_name || `#${item.department_id}`}
+              </TableCell>
               <TableCell>#{item.department_budget_id}</TableCell>
               <TableCell>{item.requested_quota}</TableCell>
               <TableCell>{item.approved_quota || '-'}</TableCell>
@@ -3861,7 +4072,9 @@ function QuotaRequestTable({
                   : '-'}
               </TableCell>
               <TableCell>
-                <Badge variant='secondary'>{enterpriseBudgetStatusLabel(item.status, t)}</Badge>
+                <Badge variant='secondary'>
+                  {enterpriseBudgetStatusLabel(item.status, t)}
+                </Badge>
               </TableCell>
               <TableCell>
                 <div className='flex min-w-[360px] flex-col gap-2'>
@@ -3915,8 +4128,12 @@ function QuotaRequestTable({
                       })
                     }
                     disabled={!actionable}
-                    placeholder={t('Rejected requests must include a reject reason')}
-                    aria-label={t('Rejected requests must include a reject reason')}
+                    placeholder={t(
+                      'Rejected requests must include a reject reason'
+                    )}
+                    aria-label={t(
+                      'Rejected requests must include a reject reason'
+                    )}
                   />
                 </div>
               </TableCell>
@@ -3982,8 +4199,12 @@ export function BudgetDelegationTable({
           <TableRow key={item.id}>
             <TableCell>
               {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
-                source: item.source_department_name || `#${item.source_department_id}`,
-                target: item.target_department_name || `#${item.target_department_id}`,
+                source:
+                  item.source_department_name ||
+                  `#${item.source_department_id}`,
+                target:
+                  item.target_department_name ||
+                  `#${item.target_department_id}`,
                 budgetId: item.target_budget_id,
               })}
             </TableCell>
@@ -4071,12 +4292,18 @@ export function DepartmentBudgetListCard({
         </CardDescription>
         <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
           <div className='space-y-1'>
-            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-sm font-medium'>
+              {t('Include descendants')}
+            </div>
             <div className='text-muted-foreground text-xs'>
               {includeDescendants
-                ? t('Current scope: {{department}} and all descendant departments', {
-                    department: scopeDepartmentName || t('Current department'),
-                  })
+                ? t(
+                    'Current scope: {{department}} and all descendant departments',
+                    {
+                      department:
+                        scopeDepartmentName || t('Current department'),
+                    }
+                  )
                 : t('Current scope: {{department}} only', {
                     department: scopeDepartmentName || t('Current department'),
                   })}

@@ -4935,6 +4935,13 @@
     "Current scope: {{department}} only": "Périmètre actuel : {{department}} uniquement",
     "Current department": "Département actuel",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Le classement détaillé et les journaux récents restent limités au département actuel et n'étendent pas automatiquement tout l'arbre descendant.",
-    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Les listes détaillées d'événements de risque restent sur des filtres d'événements directs et n'étendent pas automatiquement tout l'arbre descendant."
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Les listes détaillées d'événements de risque restent sur des filtres d'événements directs et n'étendent pas automatiquement tout l'arbre descendant.",
+    "Add member from user search": "Ajouter un membre via la recherche utilisateur",
+    "Already in current department": "Déjà dans le département actuel",
+    "No matching users found.": "Aucun utilisateur correspondant trouvé.",
+    "Search for a user, then add the selected user to the current department.": "Recherchez un utilisateur, puis ajoutez l’utilisateur sélectionné au département actuel.",
+    "Search users by username, display name, or email...": "Rechercher des utilisateurs par nom d’utilisateur, nom affiché ou e-mail...",
+    "Selected user: {{user}}": "Utilisateur sélectionné : {{user}}",
+    "Type at least 2 characters to search users.": "Saisissez au moins 2 caractères pour rechercher des utilisateurs."
   }
 }

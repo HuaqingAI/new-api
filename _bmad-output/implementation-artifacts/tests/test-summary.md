@@ -2,42 +2,41 @@
 
 ## Story
 
-- Story 6.2: 部门用量页重构为树驱动分析视图
+- Story 6.3: 部门上下文驱动的成员与预算操作
 - Workflow: `.claude/skills/bmad-qa-generate-e2e-tests`
-- 时间: 2026-06-03 01:15 +0800
+- 时间: 2026-06-03 +0800
 
 ## 已生成/补齐的测试
 
 ### API 测试
 
-- [x] `tests/api/enterprise_usage_test.go` - 更新空 summary 响应断言，锁定空数据时仍返回 `scope` 的结构化契约。
-- [x] `tests/api/enterprise_usage_test.go` - 确认既有覆盖包含管理员权限、snapshot 数据源、非法时间范围、summary 排序、多部门重复计入、CSV export、department detail、recent logs filter context、report config 保存和 job status。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增成员、预算池、预算详情、quota allocation 查询路径与参数断言，锁定所有请求继承当前部门与 tenant 上下文。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增 quota allocation 创建 payload 断言，验证 wallet 分配提交使用当前部门、当前预算池和从成员列表选中的用户。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增部门成员加载业务失败断言，覆盖 scoped API error response。
 
 ### E2E / UI 测试
 
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 新增组织树作为用量页主导航的 SSR 覆盖，验证外部传入的层级树、展开子部门、当前部门分析区同时渲染。
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 新增 `include descendants` 当前 scope 覆盖，验证右侧分析 shell 显示后代范围、scope 汇总名称和关键指标。
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 新增最近日志用户上下文覆盖，验证选中用户提示保留在当前部门分析视图内。
-- [x] `web/default/src/features/enterprise-usage/enterprise-usage.test.tsx` - 新增 `renderEnterpriseUsageContent()` 和 `departmentUsageScope()` fixture helper，减少 story 6.2 用例重复 props。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增当前成员 wallet 分配空态覆盖，验证缺少成员/预算池时展示上下文说明而不是裸露 `Target User ID` 或 `Membership Lookup` 主路径。
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - 新增已选成员 wallet 分配上下文覆盖，验证表单承接当前部门成员并显示 `Selected from Security`、allocation quota 和 reason 输入。
+- [x] `web/default/src/features/enterprise-organization/index.tsx` - 导出 `DepartmentBudgetPanel` 供现有 SSR/node:test 测试直接覆盖当前部门预算与成员分配工作区。
 
 ## 覆盖范围
 
-- API endpoints: `/api/enterprise/usage/department-summary`、`/api/enterprise/usage/department-detail`、`/api/enterprise/usage/export`、`/api/enterprise/usage/reports`
-- UI features: 左侧组织树导航、展开子部门、当前部门选中上下文、右侧当前部门分析区、后代 scope 开关状态、scope 汇总指标、用户排行、模型分布、趋势、最近日志入口、分析说明、定期报告配置卡片
-- Critical error cases: 非管理员访问、非法 usage 时间范围、空 snapshot 列表、export 业务错误 JSON、detail 非法参数、report delivery failure、无效/缺失 `dept_id` 回退、空树清理、旧部门 `log_user` 清理
+- API endpoints: `/api/enterprise/departments/:id/members`、`/api/enterprise/departments/:id/budgets`、`/api/enterprise/departments/:id/budgets/:budgetId`、`/api/enterprise/quota-allocations`
+- UI features: 当前部门成员上下文、当前成员 wallet 分配、无成员提示、无预算池提示、隐藏手工 `Target User ID` 主流程、隐藏旧 `Membership Lookup` 入口
+- Critical error cases: scoped department member API business failure、无成员上下文、无预算池上下文、旧手工 ID 主入口回归
 
 ## 验证结果
 
-- `cd web/default && bun run test:e2e` 通过；`Enterprise usage overview dashboard` 25/25 通过
+- `cd web/default && bun run test:e2e` 通过；`Enterprise organization department tree workflow` 48/48 通过，整体 e2e 命令全部通过
 - `cd web/default && bun run typecheck` 通过
-- `cd web/default && bun run i18n:sync` 通过；`en/zh/fr/ru/ja/vi` missing/extras/untranslated 均为 0
-- `GOCACHE=$(pwd)/.cache/go-build go test ./tests/api -run 'EnterpriseUsage'` 通过
+- `cd web/default && bun run i18n:sync` 通过；本次未新增 UI 文案
 
 ## Checklist
 
 - [x] API tests generated/confirmed where applicable
 - [x] E2E tests generated/confirmed for UI
-- [x] Tests use standard project framework APIs (`node:test`/SSR frontend tests, Go API tests)
+- [x] Tests use standard project framework APIs (`rsbuild` + `node:test` SSR tests)
 - [x] Tests cover happy path
 - [x] Tests cover critical error cases
 - [x] All generated tests run successfully
@@ -51,5 +50,5 @@
 
 ## 备注
 
-- 项目当前未使用 Playwright/Cypress；本次继续沿用现有 `rsbuild` + `node:test` 前端测试和 Go API 测试模式。
+- 项目当前未使用 Playwright/Cypress；本次继续沿用现有 `rsbuild` + `node:test` 前端测试模式。
 - `bun run test:e2e` 构建阶段仍输出现有 `debug` 包可选依赖 `supports-color` warning；测试执行全部通过。

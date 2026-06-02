@@ -4935,6 +4935,13 @@
     "Current scope: {{department}} only": "Phạm vi hiện tại: chỉ {{department}}",
     "Current department": "Phòng ban hiện tại",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Bảng xếp hạng chi tiết và nhật ký gần đây vẫn giữ trong phòng ban hiện tại và không tự động mở rộng toàn bộ cây phòng ban con.",
-    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Danh sách chi tiết sự kiện rủi ro vẫn giữ ở bộ lọc sự kiện trực tiếp và không tự động mở rộng toàn bộ cây phòng ban con."
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Danh sách chi tiết sự kiện rủi ro vẫn giữ ở bộ lọc sự kiện trực tiếp và không tự động mở rộng toàn bộ cây phòng ban con.",
+    "Add member from user search": "Thêm thành viên từ tìm kiếm người dùng",
+    "Already in current department": "Đã ở trong phòng ban hiện tại",
+    "No matching users found.": "Không tìm thấy người dùng phù hợp.",
+    "Search for a user, then add the selected user to the current department.": "Tìm kiếm người dùng, rồi thêm người dùng đã chọn vào phòng ban hiện tại.",
+    "Search users by username, display name, or email...": "Tìm người dùng theo tên đăng nhập, tên hiển thị hoặc email...",
+    "Selected user: {{user}}": "Người dùng đã chọn: {{user}}",
+    "Type at least 2 characters to search users.": "Nhập ít nhất 2 ký tự để tìm người dùng."
   }
 }

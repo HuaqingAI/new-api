@@ -4935,6 +4935,13 @@
     "Current scope: {{department}} only": "Текущая область: только {{department}}",
     "Current department": "Текущий отдел",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "Детальный рейтинг и последние журналы остаются в рамках текущего отдела и не раскрывают автоматически всё дочернее дерево.",
-    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Списки деталей рисковых событий остаются на прямых фильтрах событий и не раскрывают автоматически всё дочернее дерево."
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "Списки деталей рисковых событий остаются на прямых фильтрах событий и не раскрывают автоматически всё дочернее дерево.",
+    "Add member from user search": "Добавить участника через поиск пользователей",
+    "Already in current department": "Уже в текущем отделе",
+    "No matching users found.": "Подходящие пользователи не найдены.",
+    "Search for a user, then add the selected user to the current department.": "Найдите пользователя, затем добавьте выбранного пользователя в текущий отдел.",
+    "Search users by username, display name, or email...": "Искать пользователей по имени, отображаемому имени или email...",
+    "Selected user: {{user}}": "Выбранный пользователь: {{user}}",
+    "Type at least 2 characters to search users.": "Введите не менее 2 символов для поиска пользователей."
   }
 }

@@ -11,13 +11,20 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+import { api } from '@/lib/api'
 import {
+  createQuotaAllocation,
   departmentMembersQueryKey,
   departmentOwnersQueryKey,
+  getDepartmentBudgetDetail,
+  getDepartmentBudgets,
+  getDepartmentMembers,
+  getQuotaAllocations,
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
   quotaRequestQueryKey,
 } from './api'
+import { DepartmentTree } from './components/DepartmentTree'
 import {
   BudgetDelegationTable,
   __testRenderApiMessage,
@@ -26,6 +33,7 @@ import {
   createQuotaRequestSchema,
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
+  DepartmentBudgetPanel,
   enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
   EnterpriseOrganizationWorkspace,
@@ -51,7 +59,6 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
-import { DepartmentTree } from './components/DepartmentTree'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -530,6 +537,9 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Department Members',
+      'Add member from user search',
+      'Search users by username, display name, or email...',
+      'Search for a user, then add the selected user to the current department.',
       'Department Owners',
       'No effective owner',
       'Admin fallback',
@@ -572,6 +582,134 @@ describe('Enterprise organization department tree workflow', () => {
       0,
       100,
     ])
+  })
+
+  test('api calls keep members, budgets, and allocations scoped to the selected department', async () => {
+    const originalGet = api.get
+    const calls: Array<{ url: string; params?: unknown }> = []
+
+    api.get = (async (url: string, config?: Record<string, unknown>) => {
+      calls.push({ url, params: config?.params })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: {
+            items: [],
+            total: 0,
+            thresholds: { warning: 80, critical: 95 },
+          },
+        },
+      }
+    }) as typeof api.get
+
+    try {
+      await getDepartmentMembers(7, 2)
+      await getDepartmentBudgets(7, {
+        tenant_id: 2,
+        include_descendants: false,
+        sort_by: 'usage_ratio',
+        sort_order: 'desc',
+      })
+      await getDepartmentBudgetDetail(7, 11, 2)
+      await getQuotaAllocations(11, 2, 7)
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/departments/7/members',
+          params: { tenant_id: 2 },
+        },
+        {
+          url: '/api/enterprise/departments/7/budgets',
+          params: {
+            tenant_id: 2,
+            include_descendants: false,
+            sort_by: 'usage_ratio',
+            sort_order: 'desc',
+          },
+        },
+        {
+          url: '/api/enterprise/departments/7/budgets/11',
+          params: { tenant_id: 2 },
+        },
+        {
+          url: '/api/enterprise/quota-allocations',
+          params: {
+            department_budget_id: 11,
+            department_id: 7,
+            tenant_id: 2,
+          },
+        },
+      ])
+    } finally {
+      api.get = originalGet
+    }
+  })
+
+  test('quota allocation creation posts selected department and member context without manual ids', async () => {
+    const originalPost = api.post
+    const calls: Array<{ url: string; payload?: unknown }> = []
+
+    api.post = (async (url: string, payload?: unknown) => {
+      calls.push({ url, payload })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: { item: quotaAllocation({ department_id: 7 }) },
+        },
+      }
+    }) as typeof api.post
+
+    try {
+      await createQuotaAllocation({
+        tenant_id: 2,
+        department_id: 7,
+        department_budget_id: 11,
+        target_user_id: 2001,
+        committed_quota: 300,
+        reason: 'workspace allocation',
+      })
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/quota-allocations',
+          payload: {
+            tenant_id: 2,
+            department_id: 7,
+            department_budget_id: 11,
+            target_user_id: 2001,
+            committed_quota: 300,
+            reason: 'workspace allocation',
+          },
+        },
+      ])
+    } finally {
+      api.post = originalPost
+    }
+  })
+
+  test('api functions surface business failures for scoped department member loading', async () => {
+    const originalGet = api.get
+
+    api.get = (async () => ({
+      data: {
+        success: false,
+        message: 'enterprise.organization.department_not_found',
+      },
+    })) as typeof api.get
+
+    try {
+      const result = await getDepartmentMembers(404, 2)
+
+      assert.equal(result.success, false)
+      assert.equal(
+        result.message,
+        'enterprise.organization.department_not_found'
+      )
+    } finally {
+      api.get = originalGet
+    }
   })
 
   test('governance query keys stay scoped to enterprise organization namespace', () => {
@@ -1415,6 +1553,54 @@ describe('Enterprise organization department tree workflow', () => {
       assert.match(selectedHtml, new RegExp(escapeRegExp(expected)))
     }
   })
+
+  test('wallet allocation form explains missing current member and budget context instead of exposing id inputs', () => {
+    const html = renderDepartmentBudgetPanel({
+      departmentId: 7,
+      departmentName: 'Security',
+      selectedMember: null,
+    })
+
+    for (const expected of [
+      'Current Member Wallet Allocation',
+      'No member selected',
+      'Select a member from the current department list before creating a wallet allocation.',
+      'Select a budget pool',
+      'Choose a budget pool in the current department before creating a member wallet allocation.',
+      'Create wallet allocation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.doesNotMatch(html, /Target User ID/)
+    assert.doesNotMatch(html, /Membership Lookup/)
+  })
+
+  test('wallet allocation form inherits the selected department member context', () => {
+    const html = renderDepartmentBudgetPanel({
+      departmentId: 7,
+      departmentName: 'Security',
+      selectedMember: departmentMember({
+        department_id: 7,
+        user_id: 2001,
+        username: 'alice',
+        display_name: 'Alice',
+      }),
+    })
+
+    for (const expected of [
+      'Current Member Wallet Allocation',
+      'Alice',
+      'Selected from Security',
+      'Allocation Quota',
+      'Optional allocation note',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.doesNotMatch(html, /Target User ID/)
+    assert.doesNotMatch(html, /Department ID/)
+  })
 })
 
 function renderEnterpriseOrganizationContent(
@@ -1452,6 +1638,31 @@ function renderWorkspace(
         </I18nextProvider>
       </QueryClientProvider>
     </RouterContextProvider>
+  )
+}
+
+function renderDepartmentBudgetPanel({
+  departmentId,
+  departmentName,
+  selectedMember,
+}: {
+  departmentId: number
+  departmentName: string
+  selectedMember: DepartmentMemberItem | null
+}) {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetPanel
+          departmentId={departmentId}
+          tenantId={0}
+          departmentName={departmentName}
+          selectedBudgetId={null}
+          onSelectedBudgetIdChange={() => undefined}
+          selectedMember={selectedMember}
+        />
+      </I18nextProvider>
+    </QueryClientProvider>
   )
 }
 
@@ -1635,17 +1846,15 @@ function governanceTimelineItem(
     tenant_id: overrides.tenant_id ?? 0,
     actor_id: overrides.actor_id ?? 1001,
     actor_name: overrides.actor_name ?? 'Alice',
-    target:
-      overrides.target ??
-      {
-        department_id: 2,
-        department_name: 'Engineering',
-        user_id: 2001,
-        username: 'alice',
-        display_name: 'Alice',
-        object_type: 'enterprise_quota_request',
-        object_id: '1',
-      },
+    target: overrides.target ?? {
+      department_id: 2,
+      department_name: 'Engineering',
+      user_id: 2001,
+      username: 'alice',
+      display_name: 'Alice',
+      object_type: 'enterprise_quota_request',
+      object_id: '1',
+    },
     quota_delta: overrides.quota_delta ?? 100,
     before_quota: overrides.before_quota ?? 0,
     after_quota: overrides.after_quota ?? 0,

@@ -4935,6 +4935,13 @@
     "Current scope: {{department}} only": "当前作用域：仅 {{department}}",
     "Current department": "当前部门",
     "Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.": "明细排行和最近日志仍保持在当前部门范围内，不会自动展开整棵子树。",
-    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "风险事件明细列表仍保持直接事件筛选，不会自动展开整棵子树。"
+    "Risk event detail lists stay on direct event filters and do not auto-expand the full descendant tree.": "风险事件明细列表仍保持直接事件筛选，不会自动展开整棵子树。",
+    "Add member from user search": "从用户搜索添加成员",
+    "Already in current department": "已在当前部门",
+    "No matching users found.": "未找到匹配用户。",
+    "Search for a user, then add the selected user to the current department.": "搜索用户，然后将选中的用户添加到当前部门。",
+    "Search users by username, display name, or email...": "按用户名、显示名称或邮箱搜索用户...",
+    "Selected user: {{user}}": "已选用户：{{user}}",
+    "Type at least 2 characters to search users.": "输入至少 2 个字符以搜索用户。"
   }
 }

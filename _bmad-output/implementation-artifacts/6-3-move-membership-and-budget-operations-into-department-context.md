@@ -124,6 +124,10 @@ GPT-5 Codex
 - 已读取 Epic 6 中 Story 6.3 的 AC、Story 1.2 成员关系交付、Story 3.1/3.2/3.5 预算与 wallet 交付，以及当前 `enterprise-organization` 页面实现，确认 6.3 是对既有成员与预算操作台的上下文收敛，而不是新建后端能力。
 - 已确认 6.3 的主要实现面应集中在 Default `enterprise-organization` feature，把当前部门和当前成员作为联合上下文驱动成员维护、预算池查看与 wallet 分配。
 - 2026-05-31 17:07:44 +0800：运行 `cd web/default && bun run typecheck`、`bun run test:e2e`、`bun run i18n:sync`，均通过；额外尝试 `bun run lint` 时命中仓库当前 ESLint 依赖异常 `brace_expansion_1.expand is not a function`，未作为本 Story 阻塞项。
+- 2026-06-03 01:34 +0800：按 dev-story 重新校验 Story 6.3，确认 story 与 sprint 状态均已为 `done`，Tasks/Subtasks 无剩余 `[ ]` 项；本轮未改业务代码或任务勾选。
+- 2026-06-03 01:34 +0800：运行 `cd web/default && bun run typecheck`、`bun run i18n:sync`、`bun run test:e2e` 均通过；`bun run lint` 仍失败于 ESLint 依赖链 `brace_expansion_1.expand is not a function`；`GOCACHE=/private/tmp/new-api-go-build-cache go test ./...` 暴露既有非 6.3 范围失败（model 测试表缺失、Claude 文件内容转换断言、stream scanner 断言、usage report 计数、httptest 端口权限等）。
+- 2026-06-03 01:52 +0800：story-automator-review 复核 Story 6.3；发现成员添加主路径仍暴露裸 `User ID` 输入，不满足 AC2/任务“User ID 不再作为主界面默认输入路径”，已自动修复为当前部门内的用户搜索选择流程。
+- 2026-06-03 01:52 +0800：运行 `cd web/default && bun run i18n:sync`、`bun test src/features/enterprise-organization/enterprise-organization.test.tsx`、`bun run typecheck`，均通过；新增成员搜索文案已补齐 en/zh/fr/ja/ru/vi。
 
 ### Completion Notes List
 
@@ -133,6 +137,26 @@ GPT-5 Codex
 - 工作区现在由当前部门驱动成员列表、成员治理卡片、预算池列表和当前成员钱包分配表单，主流程不再暴露全局 `Membership Lookup` 或手工 `Target User ID` 输入。
 - 部门切换、预算池切换、成员切换都会通过纯函数归一化和 `useEffect` 同步重置无效 allocation draft，避免旧部门/旧成员残留。
 - 已补充 enterprise-organization 纯函数与静态渲染测试，覆盖成员归一化、allocation reset、当前成员治理空态与上下文承接；并同步新增中英法俄日越文案。
+- 本轮复核未发现 Story 6.3 剩余未完成任务；前端 story 相关回归通过，仓库级 lint/go test 仍存在与本 Story 无关的既有环境或测试失败。
+- Senior review 自动修复成员维护入口：`DepartmentMembersPanel` 现在通过用户搜索结果选择目标用户并添加到当前部门，query key 包含当前部门和租户上下文，不再把裸 `User ID` 输入作为添加成员默认路径。
+
+### Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex on 2026-06-03 01:52 +0800
+
+Outcome: Approved after auto-fix. Story status remains `done`; sprint-status already has `6-3-move-membership-and-budget-operations-into-department-context: done`.
+
+Findings:
+
+- HIGH fixed: 成员维护任务标记为完成，但 `DepartmentMembersPanel` 的新增成员主路径仍是手工数字 `User ID` 输入，和 AC2 / “`User ID` 不再作为主界面默认输入路径”不一致。已改为当前部门卡片内的用户搜索、候选选择、再添加成员流程；重复成员会禁用候选项。
+- MEDIUM fixed: 新增成员搜索流程必须遵守精确 query key 约束。已将用户搜索缓存键限定在 `['enterprise', 'organization', 'member-user-search', departmentId, tenantId, keyword]`，避免跨部门/租户上下文混用审查证据。
+- MEDIUM fixed: 新增搜索文案需要覆盖所有 Default locale。已补齐 `en/zh/fr/ja/ru/vi` 并运行 i18n 同步。
+
+Validation:
+
+- `cd web/default && bun run i18n:sync`
+- `cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx`
+- `cd web/default && bun run typecheck`
 
 ### File List
 
@@ -149,3 +173,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-05-31：将 enterprise organization 工作区收敛为“当前部门 + 当前成员”驱动的治理流，移除主路径中的全局 Membership Lookup 与手工 Target User ID 输入，补齐状态归一化、测试与多语言文案。
+- 2026-06-03：Senior review 自动修复成员添加入口，将裸 `User ID` 输入改为当前部门上下文内的用户搜索选择流程，并补齐测试与多语言文案。

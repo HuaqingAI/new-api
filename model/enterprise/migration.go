@@ -15,11 +15,15 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureQuotaAllocationLifecycleColumns(db); err != nil {
 		return err
 	}
+	if err := ensureQuotaRequestColumns(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&Department{},
 		&DepartmentBudget{},
 		&BudgetDelegation{},
 		&QuotaAllocation{},
+		&QuotaRequest{},
 		&UserDepartment{},
 		&DepartmentRole{},
 		&AdminAction{},
@@ -160,6 +164,46 @@ func ensureQuotaAllocationLifecycleColumns(db *gorm.DB) error {
 			continue
 		}
 		if err := db.Migrator().AddColumn(&QuotaAllocation{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureQuotaRequestColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&QuotaRequest{}) {
+		return nil
+	}
+	columns := []string{
+		"tenant_id",
+		"department_id",
+		"department_budget_id",
+		"budget_mode",
+		"requester_user_id",
+		"requested_quota",
+		"approved_quota",
+		"status",
+		"approver_user_id",
+		"request_reason",
+		"approval_reason",
+		"allocation_id",
+		"idempotency_key",
+		"owner_count_snapshot",
+		"fallback",
+		"submitted_at",
+		"approved_at",
+		"rejected_at",
+		"fulfilled_at",
+		"processed_at",
+		"expires_at",
+		"created_at",
+		"updated_at",
+	}
+	for _, column := range columns {
+		if db.Migrator().HasColumn(&QuotaRequest{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&QuotaRequest{}, column); err != nil {
 			return err
 		}
 	}

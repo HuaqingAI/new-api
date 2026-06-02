@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-02 01:28:36 +0800
+last_updated: 2026-06-02 09:48:30 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -95,7 +95,7 @@ development_status:
   7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: done
   7-3-delegate-ancestor-budget-pools-to-descendant-department-pools: review
   7-4-govern-member-allocations-with-adjust-cancel-and-reclaim: review
-  7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: backlog
+  7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
   7-6-audit-governance-actions-and-send-dingtalk-notifications: backlog
   epic-7-retrospective: optional
 

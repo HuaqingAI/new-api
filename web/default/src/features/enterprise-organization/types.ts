@@ -251,6 +251,53 @@ export type QuotaAllocationListResponse = {
   items: QuotaAllocationItem[]
 }
 
+export type QuotaRequestItem = {
+  id: number
+  tenant_id: number
+  department_id: number
+  department_name: string
+  department_budget_id: number
+  budget_mode: string
+  requester_user_id: number
+  requester_username: string
+  requester_display_name: string
+  requested_quota: number
+  approved_quota: number
+  status: string
+  approver_user_id: number
+  approver_username: string
+  approval_reason: string
+  request_reason: string
+  allocation_id: number
+  owner_count_snapshot: number
+  fallback: string
+  submitted_at: number
+  approved_at: number
+  rejected_at: number
+  fulfilled_at: number
+  processed_at: number
+  expires_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type QuotaRequestResponse = {
+  item: QuotaRequestItem | null
+  allocation?: QuotaAllocationItem | null
+}
+
+export type QuotaRequestListResponse = {
+  items: QuotaRequestItem[]
+}
+
+export type QuotaRequestCapabilityBudgetItem = DepartmentBudgetItem
+
+export type QuotaRequestCapabilityResponse = {
+  can_submit: boolean
+  can_govern: boolean
+  budgets: QuotaRequestCapabilityBudgetItem[]
+}
+
 export type BudgetDelegationItem = {
   id: number
   tenant_id: number
@@ -344,6 +391,24 @@ export type ReclaimQuotaAllocationPayload = {
   tenant_id?: number
   department_id: number
   reason?: string
+}
+
+export type SubmitQuotaRequestPayload = {
+  tenant_id?: number
+  department_id: number
+  department_budget_id: number
+  budget_mode: string
+  requested_quota?: number
+  request_reason?: string
+  idempotency_key?: string
+}
+
+export type DecideQuotaRequestPayload = {
+  tenant_id?: number
+  action: 'approve' | 'reject'
+  approved_quota?: number
+  approval_reason?: string
+  rejected_reason?: string
 }
 
 export type ReplaceUserDepartmentsPayload = {

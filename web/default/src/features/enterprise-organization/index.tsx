@@ -22,6 +22,7 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   Building2,
   CalendarClock,
@@ -90,6 +91,7 @@ import {
   budgetDelegationQueryKey,
   createBudgetDelegation,
   createQuotaAllocation,
+  decideQuotaRequest,
   deactivateDepartmentMember,
   createDepartmentBudget,
   denyDepartmentOwner,
@@ -107,8 +109,12 @@ import {
   getBudgetDelegations,
   getDepartmentMembers,
   getQuotaAllocations,
+  getQuotaRequestCapability,
+  getQuotaRequests,
   getUserDepartments,
   grantDepartmentOwner,
+  quotaRequestQueryKey,
+  quotaRequestQueryScopeKey,
   quotaAllocationQueryKey,
   quotaAllocationQueryScopeKey,
   reclaimQuotaAllocation,
@@ -117,6 +123,7 @@ import {
   cancelQuotaAllocation,
   revokeDepartmentOwnerDeny,
   revokeDepartmentOwnerGrant,
+  submitQuotaRequest,
   supersedeQuotaAllocation,
   supersedeBudgetDelegation,
   userDepartmentsQueryKey,
@@ -148,6 +155,7 @@ import type {
   EnterpriseBudgetErrorData,
   MembershipStatus,
   QuotaAllocationItem,
+  QuotaRequestItem,
   UserDepartmentItem,
 } from './types'
 
@@ -352,6 +360,59 @@ export function createDelegationSchema(t: (key: string) => string) {
       }),
     reason: z.string().trim().max(500).default(''),
   })
+}
+
+export function createQuotaRequestSchema(t: (key: string) => string) {
+  return z.object({
+    tenant_id: z.coerce.number().int().nonnegative(),
+    department_id: z.coerce.number().int().positive(),
+    department_budget_id: z.coerce.number().int().positive({
+      message: t('Choose a target budget pool'),
+    }),
+    budget_mode: z.literal('department_budget'),
+    requested_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Requested quota must be greater than 0'),
+      }),
+    request_reason: z.string().trim().max(500).default(''),
+  })
+}
+
+export function createQuotaRequestDecisionSchema(t: (key: string) => string) {
+  return z
+    .object({
+      action: z.enum(['approve', 'reject']),
+      approved_quota: z.coerce.number().int().nonnegative(),
+      approval_reason: z.string().trim().max(500).default(''),
+      rejected_reason: z.string().trim().max(500).default(''),
+    })
+    .superRefine((value, ctx) => {
+      if (value.action === 'approve') {
+        if (value.approved_quota <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['approved_quota'],
+            message: t('Approved quota must be greater than 0'),
+          })
+        }
+        if (!value.approval_reason) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['approval_reason'],
+            message: t('Approval reason is required'),
+          })
+        }
+      }
+      if (value.action === 'reject' && !value.rejected_reason) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rejected_reason'],
+          message: t('Rejected requests must include a reject reason'),
+        })
+      }
+    })
 }
 
 export function __testRenderApiMessage(
@@ -729,6 +790,7 @@ export function EnterpriseOrganizationWorkspace(props: {
         onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
         selectedMember={selectedMember}
       />
+      {/* Existing governance panels remain below the request workflow. */}
     </div>
   )
 }
@@ -1777,15 +1839,18 @@ function DepartmentBudgetPanel({
   selectedMember: DepartmentMemberItem | null
 }) {
   const { t } = useTranslation()
+  const currentUser = useAuthStore((state) => state.auth.user)
   const queryClient = useQueryClient()
   const renderApiMessage = (result: ApiResponse<unknown> | null | undefined) =>
     __testRenderApiMessage(result, t)
   const budgetSchema = createBudgetSchema(t)
   const allocationSchema = createAllocationSchema(t)
   const delegationSchema = createDelegationSchema(t)
+  const quotaRequestSchema = createQuotaRequestSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
   type AllocationFormValues = z.infer<typeof allocationSchema>
   type DelegationFormValues = z.infer<typeof delegationSchema>
+  type QuotaRequestFormValues = z.infer<typeof quotaRequestSchema>
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(
@@ -1830,6 +1895,19 @@ function DepartmentBudgetPanel({
       reason: '',
     },
   })
+  const quotaRequestForm = useForm<QuotaRequestFormValues>({
+    resolver: zodResolver(
+      quotaRequestSchema
+    ) as unknown as Resolver<QuotaRequestFormValues>,
+    defaultValues: {
+      tenant_id: 0,
+      department_id: departmentId,
+      department_budget_id: 0,
+      budget_mode: 'department_budget',
+      requested_quota: 0,
+      request_reason: '',
+    },
+  })
   const tenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
@@ -1841,6 +1919,16 @@ function DepartmentBudgetPanel({
   )
   const [allocationSupersedeDrafts, setAllocationSupersedeDrafts] = useState<
     Record<number, string>
+  >({})
+  const [quotaRequestDecisionDrafts, setQuotaRequestDecisionDrafts] = useState<
+    Record<
+      number,
+      {
+        approvedQuota: string
+        approvalReason: string
+        rejectedReason: string
+      }
+    >
   >({})
   const normalizedTenantId = tenantId || 0
   const previousDepartmentIdRef = useRef(departmentId)
@@ -1860,6 +1948,24 @@ function DepartmentBudgetPanel({
   })
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
+  const quotaRequestCapabilityQuery = useQuery({
+    queryKey: [...quotaRequestQueryScopeKey(departmentId, normalizedTenantId), 'capability'],
+    queryFn: async () => {
+      const result = await getQuotaRequestCapability(
+        departmentId,
+        tenantId || undefined
+      )
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? {
+          can_submit: false,
+          can_govern: false,
+          budgets: [],
+        }
+      )
+    },
+  })
 
   const budgetListQuery = useQuery({
     queryKey: departmentBudgetListQueryKey(
@@ -1981,6 +2087,20 @@ function DepartmentBudgetPanel({
     },
     enabled: Boolean(effectiveBudgetId),
   })
+  const quotaRequestListQuery = useQuery({
+    queryKey: quotaRequestQueryKey(departmentId, normalizedTenantId, null),
+    queryFn: async () => {
+      const result = await getQuotaRequests({
+        tenant_id: tenantId || undefined,
+        department_id: departmentId,
+        include_pending: true,
+        limit: 100,
+      })
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return result.data?.items ?? []
+    },
+  })
   const delegationListQuery = useQuery({
     queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
@@ -2084,6 +2204,70 @@ function DepartmentBudgetPanel({
         ),
       })
       toast.success(t('Wallet allocation created'))
+    },
+  })
+  const quotaRequestMutation = useMutation({
+    mutationFn: async (values: QuotaRequestFormValues) =>
+      submitQuotaRequest({
+        tenant_id: Number(values.tenant_id),
+        department_id: Number(values.department_id),
+        department_budget_id: Number(values.department_budget_id),
+        budget_mode: values.budget_mode,
+        requested_quota: Number(values.requested_quota),
+        request_reason: values.request_reason.trim() || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Quota request submitted'))
+    },
+  })
+  const quotaRequestDecisionMutation = useMutation({
+    mutationFn: async (params: {
+      requestId: number
+      payload: {
+        action: 'approve' | 'reject'
+        approved_quota?: number
+        approval_reason?: string
+        rejected_reason?: string
+      }
+    }) =>
+      decideQuotaRequest(params.requestId, {
+        tenant_id: tenantId || undefined,
+        ...params.payload,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetListQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: departmentBudgetDetailQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
+      })
+      toast.success(t('Quota request updated'))
     },
   })
   const delegationMutation = useMutation({
@@ -2280,6 +2464,21 @@ function DepartmentBudgetPanel({
       delegationForm.setValue('source_budget_id', effectiveBudgetId)
     }
   }, [delegationForm, departmentId, effectiveBudgetId, tenantId])
+
+  useEffect(() => {
+    if (quotaRequestForm.getValues('tenant_id') !== tenantId) {
+      quotaRequestForm.setValue('tenant_id', tenantId)
+    }
+    if (quotaRequestForm.getValues('department_id') !== departmentId) {
+      quotaRequestForm.setValue('department_id', departmentId)
+    }
+    if (
+      effectiveBudgetId &&
+      quotaRequestForm.getValues('department_budget_id') !== effectiveBudgetId
+    ) {
+      quotaRequestForm.setValue('department_budget_id', effectiveBudgetId)
+    }
+  }, [departmentId, effectiveBudgetId, quotaRequestForm, tenantId])
 
   useEffect(() => {
     if (previousDepartmentIdRef.current === departmentId) return
@@ -2674,6 +2873,191 @@ function DepartmentBudgetPanel({
       </Card>
       <Card>
         <CardHeader>
+          <CardTitle>{t('Employee Quota Requests')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Submit employee quota requests with an explicit target budget pool, then complete single-step approval in the same department workspace.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-4'>
+          <Form {...quotaRequestForm}>
+            <form
+              className='grid gap-4 md:grid-cols-2'
+              onSubmit={quotaRequestForm.handleSubmit((values) =>
+                quotaRequestMutation.mutate(values)
+              )}
+            >
+              <div className='rounded-lg border p-3 md:col-span-2'>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Requester')}
+                </div>
+                <div className='mt-1 text-sm font-medium'>
+                  {currentUser
+                    ? formatEnterpriseUserPrimary({
+                        displayName: currentUser.display_name,
+                        username: currentUser.username,
+                        userId: currentUser.id,
+                      })
+                    : t('No current user')}
+                </div>
+                <div className='text-muted-foreground mt-1 text-xs'>
+                  {t('Target Department')} {departmentName}
+                </div>
+              </div>
+              <FormField
+                control={quotaRequestForm.control}
+                name='department_budget_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Target Budget Pool')}</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : undefined}
+                      onValueChange={(value) => field.onChange(Number(value))}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={t('Choose a target budget pool')}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(quotaRequestCapabilityQuery.data?.budgets ??
+                          budgetListQuery.data?.items ??
+                          []).map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {t('{{department}} · Budget #{{budgetId}}', {
+                              department: item.department_name,
+                              budgetId: item.id,
+                            })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={quotaRequestForm.control}
+                name='requested_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Requested Quota')}</FormLabel>
+                    <FormControl>
+                      <Input inputMode='numeric' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={quotaRequestForm.control}
+                name='request_reason'
+                render={({ field }) => (
+                  <FormItem className='md:col-span-2'>
+                    <FormLabel>{t('Request Reason')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Optional request note')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className='flex justify-end md:col-span-2'>
+                <Button
+                  type='submit'
+                  disabled={
+                    !currentUser ||
+                    !quotaRequestCapabilityQuery.data?.can_submit ||
+                    quotaRequestMutation.isPending
+                  }
+                >
+                  <Coins data-icon='inline-start' />
+                  {t('Submit quota request')}
+                </Button>
+              </div>
+            </form>
+          </Form>
+          {!quotaRequestCapabilityQuery.data?.can_submit ? (
+            <Empty className='min-h-[140px] border'>
+              <EmptyHeader>
+                <EmptyMedia variant='icon'>
+                  <Coins className='size-4' />
+                </EmptyMedia>
+                <EmptyTitle>{t('No request access in this department')}</EmptyTitle>
+                <EmptyDescription>
+                  {t(
+                    'You must be an active member of the selected department before submitting a quota request here.'
+                  )}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : null}
+          <QuotaRequestTable
+            items={quotaRequestListQuery.data ?? []}
+            loading={quotaRequestListQuery.isLoading}
+            decisionDrafts={quotaRequestDecisionDrafts}
+            onDecisionDraftChange={(requestId, patch) =>
+              setQuotaRequestDecisionDrafts((current) => ({
+                ...current,
+                [requestId]: {
+                  approvedQuota:
+                    patch.approvedQuota ??
+                    current[requestId]?.approvedQuota ??
+                    '',
+                  approvalReason:
+                    patch.approvalReason ??
+                    current[requestId]?.approvalReason ??
+                    '',
+                  rejectedReason:
+                    patch.rejectedReason ??
+                    current[requestId]?.rejectedReason ??
+                    '',
+                },
+              }))
+            }
+            onApprove={(item) => {
+              const draft = quotaRequestDecisionDrafts[item.id]
+              quotaRequestDecisionMutation.mutate({
+                requestId: item.id,
+                payload: {
+                  action: 'approve',
+                  approved_quota: Number(
+                    draft?.approvedQuota || item.requested_quota
+                  ),
+                  approval_reason:
+                    draft?.approvalReason || t('Approved in workspace'),
+                },
+              })
+            }}
+            onReject={(item) => {
+              const draft = quotaRequestDecisionDrafts[item.id]
+              quotaRequestDecisionMutation.mutate({
+                requestId: item.id,
+                payload: {
+                  action: 'reject',
+                  rejected_reason:
+                    draft?.rejectedReason || t('Rejected in workspace'),
+                },
+              })
+            }}
+            pendingRequestId={
+              quotaRequestDecisionMutation.isPending
+                ? quotaRequestDecisionMutation.variables?.requestId ?? null
+                : null
+            }
+            canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
           <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
           <CardDescription>
             {t(
@@ -3006,6 +3390,170 @@ export function QuotaAllocationTable({
             </TableCell>
           </TableRow>
         ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function QuotaRequestTable({
+  items,
+  loading,
+  decisionDrafts,
+  onDecisionDraftChange,
+  onApprove,
+  onReject,
+  pendingRequestId,
+  canGovern,
+}: {
+  items: QuotaRequestItem[]
+  loading: boolean
+  decisionDrafts: Record<
+    number,
+    {
+      approvedQuota: string
+      approvalReason: string
+      rejectedReason: string
+    }
+  >
+  onDecisionDraftChange: (
+    requestId: number,
+    patch: Partial<{
+      approvedQuota: string
+      approvalReason: string
+      rejectedReason: string
+    }>
+  ) => void
+  onApprove: (item: QuotaRequestItem) => void
+  onReject: (item: QuotaRequestItem) => void
+  pendingRequestId?: number | null
+  canGovern: boolean
+}) {
+  const { t } = useTranslation()
+
+  if (loading) {
+    return <Skeleton className='h-32 w-full' />
+  }
+  if (items.length === 0) {
+    return (
+      <Empty className='min-h-[180px] border'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <Coins className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No quota requests yet')}</EmptyTitle>
+          <EmptyDescription>
+            {t(
+              'Requests will appear here after employees choose a target department budget pool and submit a quota request.'
+            )}
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('Requester')}</TableHead>
+          <TableHead>{t('Target Department')}</TableHead>
+          <TableHead>{t('Target Budget Pool')}</TableHead>
+          <TableHead>{t('Requested Quota')}</TableHead>
+          <TableHead>{t('Approved Quota')}</TableHead>
+          <TableHead>{t('Fulfillment')}</TableHead>
+          <TableHead>{t('Status')}</TableHead>
+          <TableHead>{t('Actions')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => {
+          const draft = decisionDrafts[item.id] ?? {
+            approvedQuota: String(item.requested_quota),
+            approvalReason: '',
+            rejectedReason: '',
+          }
+          const actionable = canGovern && item.status === 'submitted'
+          return (
+            <TableRow key={item.id}>
+              <TableCell>
+                {formatEnterpriseUserPrimary({
+                  displayName: item.requester_display_name,
+                  username: item.requester_username,
+                  userId: item.requester_user_id,
+                })}
+              </TableCell>
+              <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
+              <TableCell>#{item.department_budget_id}</TableCell>
+              <TableCell>{item.requested_quota}</TableCell>
+              <TableCell>{item.approved_quota || '-'}</TableCell>
+              <TableCell>
+                {item.allocation_id
+                  ? t('Allocation #{{id}}', { id: item.allocation_id })
+                  : '-'}
+              </TableCell>
+              <TableCell>
+                <Badge variant='secondary'>{enterpriseBudgetStatusLabel(item.status, t)}</Badge>
+              </TableCell>
+              <TableCell>
+                <div className='flex min-w-[360px] flex-col gap-2'>
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      inputMode='numeric'
+                      value={draft.approvedQuota}
+                      onChange={(event) =>
+                        onDecisionDraftChange(item.id, {
+                          approvedQuota: event.target.value,
+                        })
+                      }
+                      disabled={!actionable}
+                      aria-label={t('Approved Quota')}
+                    />
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      disabled={!actionable || pendingRequestId === item.id}
+                      onClick={() => onApprove(item)}
+                    >
+                      {t('Approve')}
+                    </Button>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      disabled={!actionable || pendingRequestId === item.id}
+                      onClick={() => onReject(item)}
+                    >
+                      {t('Reject')}
+                    </Button>
+                  </div>
+                  <Input
+                    value={draft.approvalReason}
+                    onChange={(event) =>
+                      onDecisionDraftChange(item.id, {
+                        approvalReason: event.target.value,
+                      })
+                    }
+                    disabled={!actionable}
+                    placeholder={t('Approval reason is required')}
+                    aria-label={t('Approval reason is required')}
+                  />
+                  <Input
+                    value={draft.rejectedReason}
+                    onChange={(event) =>
+                      onDecisionDraftChange(item.id, {
+                        rejectedReason: event.target.value,
+                      })
+                    }
+                    disabled={!actionable}
+                    placeholder={t('Rejected requests must include a reject reason')}
+                    aria-label={t('Rejected requests must include a reject reason')}
+                  />
+                </div>
+              </TableCell>
+            </TableRow>
+          )
+        })}
       </TableBody>
     </Table>
   )

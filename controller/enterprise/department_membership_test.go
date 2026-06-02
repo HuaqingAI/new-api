@@ -45,6 +45,7 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 
 	require.NoError(t, db.Create(&model.User{Id: 100, Username: "alice", Password: "password123", DisplayName: "Alice", Group: "vip", AffCode: "alice-api"}).Error)
 	require.NoError(t, db.Create(&model.User{Id: 101, Username: "bob", Password: "password123", DisplayName: "Bob", Group: "default", AffCode: "bob-api"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 999, Username: "actor-admin", Password: "password123", DisplayName: "Actor Admin", Group: "default", AffCode: "actor-admin-api", Role: common.RoleAdminUser}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{Id: 1, TenantId: 0, Name: "Engineering", Status: constant.EnterpriseDepartmentStatusActive}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{Id: 2, TenantId: 0, Name: "Security", Status: constant.EnterpriseDepartmentStatusActive}).Error)
 

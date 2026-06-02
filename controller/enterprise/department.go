@@ -25,10 +25,19 @@ func GetDepartmentTree(c *gin.Context) {
 			return
 		}
 		if len(manageableDepartmentIds) == 0 {
-			common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
-			return
+			membershipResult, membershipErr := serviceenterprise.NewDepartmentMembershipService(model.DB).ListUserDepartments(c.GetInt("id"), serviceenterprise.MembershipQuery{})
+			if membershipErr != nil {
+				common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+				return
+			}
+			memberDepartmentIds := make([]int, 0, len(membershipResult.Items))
+			for _, item := range membershipResult.Items {
+				memberDepartmentIds = append(memberDepartmentIds, item.DepartmentId)
+			}
+			items, err = departmentService.GetDepartmentTreeByIds(memberDepartmentIds)
+		} else {
+			items, err = departmentService.GetDepartmentTreeByIds(manageableDepartmentIds)
 		}
-		items, err = departmentService.GetDepartmentTreeByIds(manageableDepartmentIds)
 	}
 	if err == nil {
 		common.ApiSuccess(c, items)

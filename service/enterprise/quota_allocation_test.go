@@ -52,6 +52,14 @@ func newQuotaAllocationTestService(t *testing.T) (*entservice.QuotaAllocationSer
 		Group:    "default",
 		AffCode:  "member-aff",
 	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1001,
+		Username: "admin",
+		Password: "pwd",
+		Group:    "default",
+		AffCode:  "admin-aff",
+		Role:     common.RoleAdminUser,
+	}).Error)
 	require.NoError(t, db.Create(&entmodel.Department{
 		Id:       1,
 		TenantId: 0,

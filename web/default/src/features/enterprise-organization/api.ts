@@ -25,6 +25,7 @@ import type {
   CreateBudgetDelegationPayload,
   CreateDepartmentBudgetPayload,
   CreateQuotaAllocationPayload,
+  DecideQuotaRequestPayload,
   DepartmentBudgetDetailResponse,
   DepartmentBudgetListResponse,
   DepartmentBudgetSortField,
@@ -36,6 +37,9 @@ import type {
   DepartmentTreeNode,
   QuotaAllocationListResponse,
   QuotaAllocationResponse,
+  QuotaRequestCapabilityResponse,
+  QuotaRequestListResponse,
+  QuotaRequestResponse,
   RenameDepartmentMemberPayload,
   ReclaimQuotaAllocationPayload,
   RevokeQuotaAllocationPayload,
@@ -43,6 +47,7 @@ import type {
   CancelQuotaAllocationPayload,
   SupersedeQuotaAllocationPayload,
   SupersedeBudgetDelegationPayload,
+  SubmitQuotaRequestPayload,
   UserDepartmentsResponse,
 } from './types'
 
@@ -95,6 +100,29 @@ export function budgetDelegationQueryKey(
     'budget-delegation',
     departmentId,
     tenantId,
+  ] as const
+}
+
+export function quotaRequestQueryScopeKey(
+  departmentId: number,
+  tenantId: number
+) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'quota-request',
+    departmentId,
+    tenantId,
+  ] as const
+}
+
+export function quotaRequestQueryKey(
+  departmentId: number,
+  tenantId: number,
+  requesterUserId: number | null | undefined
+) {
+  return [
+    ...quotaRequestQueryScopeKey(departmentId, tenantId),
+    requesterUserId ?? 'all',
   ] as const
 }
 
@@ -384,6 +412,50 @@ export async function reclaimQuotaAllocation(
   const res = await api.post(
     `/api/enterprise/quota-allocations/${allocationId}/reclaim`,
     payload
+  )
+  return res.data
+}
+
+export async function getQuotaRequests(params: {
+  department_id?: number
+  tenant_id?: number
+  requester_user_id?: number
+  include_pending?: boolean
+  limit?: number
+}): Promise<ApiResponse<QuotaRequestListResponse>> {
+  const res = await api.get('/api/enterprise/quota-requests', {
+    params,
+  })
+  return res.data
+}
+
+export async function submitQuotaRequest(
+  payload: SubmitQuotaRequestPayload
+): Promise<ApiResponse<QuotaRequestResponse>> {
+  const res = await api.post('/api/enterprise/quota-requests', payload)
+  return res.data
+}
+
+export async function decideQuotaRequest(
+  requestId: number,
+  payload: DecideQuotaRequestPayload
+): Promise<ApiResponse<QuotaRequestResponse>> {
+  const res = await api.post(
+    `/api/enterprise/quota-requests/${requestId}/decision`,
+    payload
+  )
+  return res.data
+}
+
+export async function getQuotaRequestCapability(
+  departmentId: number,
+  tenantId?: number
+): Promise<ApiResponse<QuotaRequestCapabilityResponse>> {
+  const res = await api.get(
+    `/api/enterprise/quota-requests/capability/${departmentId}`,
+    {
+      params: tenantId === undefined ? undefined : { tenant_id: tenantId },
+    }
   )
   return res.data
 }

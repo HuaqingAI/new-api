@@ -35,6 +35,9 @@ const (
 	AdminActionBudgetDelegationSupersede     = "enterprise.organization.budget_delegation.supersede"
 	AdminActionBudgetDelegationRevoke        = "enterprise.organization.budget_delegation.revoke"
 	AdminActionBudgetDelegationReject        = "enterprise.organization.budget_delegation.reject"
+	AdminActionQuotaRequestSubmit            = "enterprise.organization.quota_request.submit"
+	AdminActionQuotaRequestApprove           = "enterprise.organization.quota_request.approve"
+	AdminActionQuotaRequestReject            = "enterprise.organization.quota_request.reject"
 	AdminActionAlertRuleSave                 = "enterprise.alert.rule.save"
 	AdminActionAlertRuleDelete               = "enterprise.alert.rule.delete"
 	AdminActionAlertDeliveryResend           = "enterprise.alert.delivery.resend"
@@ -48,6 +51,7 @@ const (
 	AdminObjectUsageReportJob       = "enterprise_usage_report_job"
 	AdminObjectDepartmentBudget     = "enterprise_department_budget"
 	AdminObjectBudgetDelegation     = "enterprise_budget_delegation"
+	AdminObjectQuotaRequest         = "enterprise_quota_request"
 	AdminObjectAlertRule            = "enterprise_alert_rule"
 	AdminObjectAlertDelivery        = "enterprise_alert_delivery"
 )

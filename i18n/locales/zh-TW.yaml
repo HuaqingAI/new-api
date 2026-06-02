@@ -52,6 +52,15 @@ enterprise.organization.budget_delegation_budget_inactive: "來源或目標預�
 enterprise.organization.budget_delegation_target_not_descendant: "目標部門必須是來源部門的後代部門"
 enterprise.organization.budget_delegation_permission_denied: "你沒有向該部門委派預算的治理權限"
 enterprise.organization.budget_delegation_budget_type_mismatch: "來源與目標預算池必須使用相同預算類型"
+enterprise.organization.quota_request_not_found: "員工額度申請不存在"
+enterprise.organization.quota_request_budget_mode_required: "必須明確選擇目標預算模式"
+enterprise.organization.quota_request_budget_pool_required: "必須明確選擇目標預算池"
+enterprise.organization.quota_request_department_membership_required: "申請人必須是目標部門的有效成員"
+enterprise.organization.quota_request_approval_not_allowed: "你無權審批該部門額度申請"
+enterprise.organization.quota_request_already_processed: "該額度申請已經處理過"
+enterprise.organization.quota_request_approval_reason_required: "必須填寫審批說明"
+enterprise.organization.quota_request_approved_quota_invalid: "批准額度必須大於 0 且不能超過申請額度"
+enterprise.organization.quota_request_rejected_reason_required: "駁回申請時必須填寫原因"
 
 # Token messages
 token.name_too_long: "令牌名稱過長"

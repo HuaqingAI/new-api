@@ -33,6 +33,10 @@ func TestAlertEventsAPIValidatesQueryAndReturnsPaginationEnvelope(t *testing.T) 
 		{DepartmentId: 1, DepartmentName: "Engineering"},
 	}))
 	require.NoError(t, db.Create(&event).Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 100).Updates(map[string]any{
+		"username":     "alice_ops",
+		"display_name": "Alice Zhang",
+	}).Error)
 
 	invalid := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/alerts/events?department_id=bad", nil)
 	invalidResponse := decodeEnterpriseAPIResponse(t, invalid)
@@ -50,11 +54,17 @@ func TestAlertEventsAPIValidatesQueryAndReturnsPaginationEnvelope(t *testing.T) 
 	require.Equal(t, 1, payload.Page)
 	require.Equal(t, 20, payload.PageSize)
 	require.Len(t, payload.Items, 1)
-	require.Equal(t, "alice", payload.Items[0].Username)
-	require.Equal(t, "Alice", payload.Items[0].DisplayName)
+	require.Equal(t, "alice_ops", payload.Items[0].Username)
+	require.Equal(t, "Alice Zhang", payload.Items[0].DisplayName)
+	require.Equal(t, "alice", payload.Items[0].UsernameSnapshot)
 	require.Equal(t, "2 sensitive word hits", payload.Items[0].Summary)
 	require.NotNil(t, payload.Items[0].DepartmentSnapshot)
 	require.Len(t, payload.Items[0].DepartmentSnapshot, 1)
+	require.Equal(t, "Engineering", payload.Items[0].DepartmentSnapshot[0].DepartmentName)
+
+	var historicalEvent entmodel.AlertEvent
+	require.NoError(t, db.Where("id = ?", event.Id).First(&historicalEvent).Error)
+	require.Equal(t, "alice", historicalEvent.Username)
 }
 
 func TestAlertEventsAPIReturnsEmptyItemsArray(t *testing.T) {

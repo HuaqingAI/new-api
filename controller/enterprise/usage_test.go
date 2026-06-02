@@ -242,6 +242,10 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 		JoinedAt:       0,
 		LeftAt:         0,
 	}).Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 100).Updates(map[string]any{
+		"username":     "alice_ops",
+		"display_name": "Alice Zhang",
+	}).Error)
 
 	invalidRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=bad&from=1700000000&to=1700003600", nil)
 	invalidResponse := decodeEnterpriseAPIResponse(t, invalidRecorder)
@@ -265,7 +269,7 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.Contains(t, okRecorder.Body.String(), `"model_distribution":[]`)
 	require.Contains(t, okRecorder.Body.String(), `"user_ranking":[`)
 	require.Contains(t, okRecorder.Body.String(), `"recent_logs_entry":`)
-	require.Contains(t, okRecorder.Body.String(), `"username_options":["alice"]`)
+	require.Contains(t, okRecorder.Body.String(), `"username_options":["alice_ops"]`)
 
 	var payload dtoenterprise.DepartmentUsageDetailResponse
 	require.NoError(t, common.Unmarshal(okResponse.Data, &payload))
@@ -274,16 +278,24 @@ func TestUsageDetailAPIValidatesTimeRangeAndNormalizesArrays(t *testing.T) {
 	require.NotNil(t, payload.ModelDistribution)
 	require.Empty(t, payload.ModelDistribution)
 	require.Len(t, payload.UserRanking, 1)
-	require.Equal(t, "Alice", payload.UserRanking[0].DisplayName)
+	require.Equal(t, "alice_ops", payload.UserRanking[0].Username)
+	require.Equal(t, "Alice Zhang", payload.UserRanking[0].DisplayName)
 	require.Equal(t, int64(15), payload.UserRanking[0].TokenCount)
 	require.NotNil(t, payload.Trend)
 	require.Len(t, payload.Trend, 1)
 	require.Equal(t, "/usage-logs/common", payload.RecentLogsEntry.Path)
 	require.Equal(t, "common", payload.RecentLogsEntry.Section)
 	require.Equal(t, int64(1700003599), payload.RecentLogsEntry.Filters.EndTimestamp)
-	require.Equal(t, []string{"alice"}, payload.RecentLogsEntry.Filters.UsernameOptions)
+	require.Equal(t, "", payload.RecentLogsEntry.Filters.Username)
+	require.Equal(t, []string{"alice_ops"}, payload.RecentLogsEntry.Filters.UsernameOptions)
 	require.Len(t, payload.RecentLogsEntry.Filters.UserOptions, 1)
-	require.Equal(t, "Alice", payload.RecentLogsEntry.Filters.UserOptions[0].DisplayName)
+	require.Equal(t, 100, payload.RecentLogsEntry.Filters.UserOptions[0].UserId)
+	require.Equal(t, "alice_ops", payload.RecentLogsEntry.Filters.UserOptions[0].Username)
+	require.Equal(t, "Alice Zhang", payload.RecentLogsEntry.Filters.UserOptions[0].DisplayName)
+
+	var historicalLog model.Log
+	require.NoError(t, db.Where("id = ?", 1).First(&historicalLog).Error)
+	require.Equal(t, "alice", historicalLog.Username)
 }
 
 func TestUsageDetailAPIKeepsUsernameAndUserIDWhenDisplayNameMissing(t *testing.T) {

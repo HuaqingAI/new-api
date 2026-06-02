@@ -2187,7 +2187,9 @@ export function resolveRecentLogsSearch(
   }
 }
 
-function resolveRecentLogsUserOptions(entry: DepartmentUsageLogEntryLink) {
+export function resolveRecentLogsUserOptions(
+  entry: DepartmentUsageLogEntryLink
+): DepartmentUsageLogUserOption[] {
   const unique = new Map<string, DepartmentUsageLogUserOption>()
   for (const item of entry.filters.user_options ?? []) {
     if (!item.username) continue
@@ -2196,8 +2198,7 @@ function resolveRecentLogsUserOptions(entry: DepartmentUsageLogEntryLink) {
   if (unique.size > 0) {
     return Array.from(unique.values())
   }
-  return (entry.filters.username_options ?? []).map((username, index) => ({
-    user_id: index + 1,
+  return (entry.filters.username_options ?? []).map((username) => ({
     username,
     display_name: '',
   }))

@@ -72,7 +72,7 @@ export type DepartmentUsageUserRankItem = {
 }
 
 export type DepartmentUsageLogUserOption = {
-  user_id: number
+  user_id?: number | null
   username: string
   display_name: string
 }

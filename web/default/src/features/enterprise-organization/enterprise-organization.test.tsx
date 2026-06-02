@@ -151,6 +151,19 @@ describe('Enterprise organization department tree workflow', () => {
       ),
       'alice_ops'
     )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+        },
+        t
+      ),
+      'alice_ops'
+    )
+    assert.equal(formatEnterpriseUserPrimary({}), '-')
+    assert.equal(formatEnterpriseUserSecondary({}, t), '-')
+    assert.notEqual(formatEnterpriseUserSecondary({}, t), 'User ID #-')
   })
 
   test('renders the empty state with actionable disabled next-step entries', () => {

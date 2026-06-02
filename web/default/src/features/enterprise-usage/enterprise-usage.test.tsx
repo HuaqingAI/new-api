@@ -52,6 +52,7 @@ import {
   resolveDepartmentUsageExportParams,
   resolveEnterpriseUsageRange,
   resolveRecentLogsSearch,
+  resolveRecentLogsUserOptions,
   shouldSyncEnterpriseUsageSearch,
   shouldResetReportForm,
   sortDepartmentUserRanking,
@@ -1396,7 +1397,7 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(params.username, 'alice')
   })
 
-  test('prefers the selected log user when present and falls back to the first available username', () => {
+  test('prefers only real usernames for recent logs and never uses display names as filters', () => {
     const entry = detailUsageItem().recent_logs_entry
 
     assert.deepEqual(resolveRecentLogsSearch(entry, 'bob'), {
@@ -1415,6 +1416,18 @@ describe('Enterprise usage overview dashboard', () => {
       username: 'alice_ops',
     })
 
+    assert.deepEqual(resolveRecentLogsSearch(entry, 'Alice Zhang'), {
+      departmentId: 1,
+      departmentName: 'Engineering',
+      startTime: 1748476800000,
+      endTime: 1748563200000,
+      username: 'alice_ops',
+    })
+    assert.notEqual(
+      resolveRecentLogsSearch(entry, 'Alice Zhang').username,
+      'Alice Zhang'
+    )
+
     assert.deepEqual(resolveRecentLogsSearch(entry), {
       departmentId: 1,
       departmentName: 'Engineering',
@@ -1422,6 +1435,33 @@ describe('Enterprise usage overview dashboard', () => {
       endTime: 1748563200000,
       username: 'alice_ops',
     })
+  })
+
+  test('does not fabricate user ids when recent log user options fall back to usernames', () => {
+    const entry = {
+      ...detailUsageItem().recent_logs_entry,
+      filters: {
+        ...detailUsageItem().recent_logs_entry.filters,
+        username_options: ['alice_ops'],
+        user_options: [],
+      },
+    }
+
+    assert.deepEqual(resolveRecentLogsUserOptions(entry), [
+      {
+        username: 'alice_ops',
+        display_name: '',
+      },
+    ])
+
+    const html = renderEnterpriseUsageContent({
+      detail: detailUsageItem({
+        user_ranking: [],
+        recent_logs_entry: entry,
+      }),
+    })
+    assert.match(html, /alice_ops/)
+    assert.doesNotMatch(html, /User ID #1/)
   })
 })
 

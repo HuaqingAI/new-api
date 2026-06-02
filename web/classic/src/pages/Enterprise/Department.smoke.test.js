@@ -55,6 +55,9 @@ describe('Enterprise department classic smoke', () => {
       ),
       'alice_ops',
     );
+    assert.equal(formatClassicEnterpriseUserPrimary({}), '-');
+    assert.equal(formatClassicEnterpriseUserSecondary({}, t), '-');
+    assert.notEqual(formatClassicEnterpriseUserSecondary({}, t), '用户 ID #-');
   });
 
   test('department page member table consumes the shared enterprise user formatter', () => {

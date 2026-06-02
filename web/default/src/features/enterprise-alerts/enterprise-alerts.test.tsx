@@ -336,6 +336,41 @@ describe('Enterprise alerts feature', () => {
         unassigned_only: true,
       }
     )
+
+    assert.deepEqual(
+      buildAlertEventEntrySearch(
+        {
+          tab: 'overview',
+          tenant_id: 7,
+          department_id: 22,
+          username: 'Alice Zhang',
+          user_id: 99,
+          model_name: 'gpt-4o-mini',
+          risk_type: 'abuse',
+          page: 2,
+        },
+        {
+          detail_route: '/enterprise-alerts?tab=events&department_id=11',
+          detail_api_path: '/api/enterprise/alerts/events?department_id=11',
+          department_id: 11,
+          department_name: 'Engineering',
+          from: 1717117200,
+          to: 1717120800,
+          unassigned_only: false,
+        }
+      ),
+      {
+        tab: 'events',
+        tenant_id: 7,
+        event_id: undefined,
+        department_id: 11,
+        from: 1717117200,
+        to: 1717120800,
+        page: 1,
+        page_size: undefined,
+        unassigned_only: undefined,
+      }
+    )
   })
 
   test('resend clears blocking status filters so old and new deliveries can be reviewed together', () => {
@@ -755,6 +790,11 @@ describe('Enterprise alerts feature', () => {
       'DepartmentRiskTrendChart',
       'enterprise.usage.multi_dept_disclaimer',
       'unassigned_only',
+      'displayName: item.display_name',
+      'username: item.username',
+      'userId: item.user_id',
+      'item.username_snapshot',
+      'Historical Username Snapshot',
     ]) {
       assert.match(source, new RegExp(escapeRegExp(expected)))
     }

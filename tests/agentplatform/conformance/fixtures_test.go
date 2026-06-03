@@ -156,16 +156,35 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
 			require.Equal(t, payload.Total, decoded.Total, fixture.Name)
 			assertJSONFields(t, fixture.Name, fields, "items", "total")
+			for _, item := range decoded.Items {
+				itemBytes, err := common.Marshal(item)
+				require.NoError(t, err, fixture.Name)
+				var itemFields map[string]any
+				require.NoError(t, common.Unmarshal(itemBytes, &itemFields), fixture.Name)
+				assertJSONFields(t, fixture.Name, itemFields, "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag")
+				assertFrozenFreshnessEnum(t, fixture.Name, item.Freshness)
+				require.LessOrEqual(t, item.FreshnessTTLSeconds, 300, fixture.Name)
+				require.NotContains(t, itemFields, "diagnostics", fixture.Name)
+				assertResourceP0Excluded(t, fixture.Name, itemFields)
+			}
 		case dtoagentplatform.OpenCapabilityDetailResponse:
 			var decoded dtoagentplatform.OpenCapabilityDetailResponse
 			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
 			require.Equal(t, payload.ResourceId, decoded.ResourceId, fixture.Name)
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "status", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag", "contract_compatible", "diagnostics")
+			assertFrozenFreshnessEnum(t, fixture.Name, decoded.Freshness)
+			require.LessOrEqual(t, decoded.FreshnessTTLSeconds, 300, fixture.Name)
+			assertFrozenDiagnosticsShape(t, fixture.Name, fields)
+			assertResourceP0Excluded(t, fixture.Name, fields)
 		case dtoagentplatform.OpenCapabilityRefreshResponse:
 			var decoded dtoagentplatform.OpenCapabilityRefreshResponse
 			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
 			require.Equal(t, payload.ResourceId, decoded.ResourceId, fixture.Name)
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
+			assertFrozenFreshnessEnum(t, fixture.Name, decoded.Freshness)
+			require.LessOrEqual(t, decoded.FreshnessTTLSeconds, 300, fixture.Name)
+			assertFrozenDiagnosticsShape(t, fixture.Name, fields)
+			assertResourceP0Excluded(t, fixture.Name, fields)
 		case apservice.OpenCapabilityErrorResponse:
 			var decoded apservice.OpenCapabilityErrorResponse
 			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
@@ -186,6 +205,49 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
 		default:
 			t.Fatalf("fixture %s uses unsupported payload type %T", fixture.Name, fixture.Payload)
+		}
+	}
+}
+
+func TestOpenCapabilityResourceContractFrozenFields(t *testing.T) {
+	for _, fixture := range FixtureCatalog() {
+		if fixture.PendingReason != "" {
+			continue
+		}
+
+		bytes, err := common.Marshal(fixture.Payload)
+		require.NoError(t, err, fixture.Name)
+
+		var fields map[string]any
+		require.NoError(t, common.Unmarshal(bytes, &fields), fixture.Name)
+
+		switch fixture.Payload.(type) {
+		case dtoagentplatform.OpenCapabilityDiscoveryResponse:
+			items, ok := fields["items"].([]any)
+			require.True(t, ok, fixture.Name)
+			for _, item := range items {
+				itemFields, ok := item.(map[string]any)
+				require.True(t, ok, fixture.Name)
+				assertJSONFields(t, fixture.Name, itemFields, "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag")
+				require.NotContains(t, itemFields, "diagnostics", fixture.Name)
+				assertResourceP0Excluded(t, fixture.Name, itemFields)
+				assertFrozenFreshnessTTL(t, fixture.Name, itemFields)
+				assertFrozenFreshnessEnum(t, fixture.Name, itemFields["freshness"])
+			}
+		case dtoagentplatform.OpenCapabilityDetailResponse:
+			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag", "status", "contract_compatible", "diagnostics")
+			assertResourceP0Excluded(t, fixture.Name, fields)
+			assertFrozenFreshnessTTL(t, fixture.Name, fields)
+			assertFrozenFreshnessEnum(t, fixture.Name, fields["freshness"])
+			assertFrozenDiagnosticsShape(t, fixture.Name, fields)
+		case dtoagentplatform.OpenCapabilityRefreshResponse:
+			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
+			require.NotContains(t, fields, "resource_type", fixture.Name)
+			require.NotContains(t, fields, "display_name", fixture.Name)
+			assertResourceP0Excluded(t, fixture.Name, fields)
+			assertFrozenFreshnessTTL(t, fixture.Name, fields)
+			assertFrozenFreshnessEnum(t, fixture.Name, fields["freshness"])
+			assertFrozenDiagnosticsShape(t, fixture.Name, fields)
 		}
 	}
 }
@@ -230,8 +292,12 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/agent-platform/oauth/authorize", "client_id", "contract_version", "scope", "authorization_code", "redirect_uri", "consent_recorded")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/oauth/token", "access_token", "token_type", "expires_in", "scope", "contract_version")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/oauth/revoke", "revoked")
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/discovery", "items", "total")
+	assertOpenAPIDiscoveryItemSchema(t, spec.Paths, "/api/open-capabilities/discovery")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}", "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "status", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag", "contract_compatible", "diagnostics")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh", "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
+	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}")
+	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientUpdateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientItem")
@@ -284,11 +350,15 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 
 	require.Contains(t, signoff, "Cherry Studio OAuth subdomain signoff: `signed off`")
 	require.Contains(t, signoff, "Cherry Studio first-consumer signoff: `blocked`")
+	require.Contains(t, signoff, "Resource discovery/detail/refresh signoff: `signed off`")
 	require.Contains(t, signoff, "Codex second-consumer review: `signed off`")
 	require.Contains(t, signoff, "OpenAPI change: OAuth schema freeze")
 
 	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
 	require.Contains(t, contract, "Status: frozen")
+	require.Contains(t, contract, "AP-6.3 resource discovery/detail/refresh contract freeze")
+	require.Contains(t, contract, "`source`、`accountId`、`tenantId`、`disabledReason`、`fetchedAt`、`expiresAt` 不进入 AP-6.3 P0")
+	require.Contains(t, contract, "下一次 refresh 或 300 秒 TTL 上限内收敛")
 	require.Contains(t, contract, "API / fixture 支撑")
 	require.Contains(t, contract, "`invalid_integration`")
 	require.Contains(t, contract, "controller/agentplatform/oauth_test.go")
@@ -498,6 +568,142 @@ func assertOpenAPIPropertyExample(t *testing.T, properties map[string]any, prope
 	require.Equal(t, expectedValue, property["example"], "OpenAPI property %s example drifted", propertyName)
 }
 
+func assertResourceP0Excluded(t *testing.T, fixtureName string, fields map[string]any) {
+	t.Helper()
+
+	for _, field := range []string{"source", "accountId", "tenantId", "disabledReason", "fetchedAt", "expiresAt"} {
+		require.NotContains(t, fields, field, "fixture %s must not promote %s into AP-6.3 P0 core fields", fixtureName, field)
+	}
+}
+
+func assertFrozenFreshnessTTL(t *testing.T, fixtureName string, fields map[string]any) {
+	t.Helper()
+
+	value, ok := fields["freshness_ttl_seconds"].(float64)
+	require.True(t, ok, "fixture %s freshness_ttl_seconds must be numeric", fixtureName)
+	require.LessOrEqual(t, int(value), 300, "fixture %s TTL must not exceed 300 seconds", fixtureName)
+}
+
+func assertFrozenFreshnessEnum(t *testing.T, fixtureName string, value any) {
+	t.Helper()
+
+	text, ok := value.(string)
+	require.True(t, ok, "fixture %s freshness must be a string", fixtureName)
+	require.Contains(t, []string{"fresh", "stale", "offline", "revoked"}, text, "fixture %s freshness enum drifted", fixtureName)
+}
+
+func assertFrozenDiagnosticsShape(t *testing.T, fixtureName string, fields map[string]any) {
+	t.Helper()
+
+	diagnostics, ok := fields["diagnostics"].(map[string]any)
+	require.True(t, ok, "fixture %s diagnostics must be an object", fixtureName)
+	assertJSONFields(t, fixtureName, diagnostics, "reason", "converged", "client_non_compliant")
+	_, ok = diagnostics["reason"].(string)
+	require.True(t, ok, "fixture %s diagnostics.reason must be string", fixtureName)
+	for _, field := range []string{"converged", "client_non_compliant"} {
+		_, ok := diagnostics[field].(bool)
+		require.True(t, ok, "fixture %s diagnostics.%s must be boolean", fixtureName, field)
+	}
+}
+
+func assertOpenCapabilityFreshness(t *testing.T, fixtureName string, value string) {
+	t.Helper()
+
+	assertFrozenFreshnessEnum(t, fixtureName, value)
+}
+
+func assertDiagnosticsShape(t *testing.T, fixtureName string, fields map[string]any) {
+	t.Helper()
+
+	assertFrozenDiagnosticsShape(t, fixtureName, fields)
+}
+
+func assertNoAP63ExcludedCoreFields(t *testing.T, fixtureName string, fields map[string]any) {
+	t.Helper()
+
+	assertResourceP0Excluded(t, fixtureName, fields)
+}
+
+func assertOpenAPIDiscoveryItemSchema(t *testing.T, paths map[string]any, path string) {
+	t.Helper()
+
+	dataSchema := openAPIResponseDataSchema(t, paths, nil, "get", path)
+	properties, ok := dataSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI discovery response must define properties")
+	items, ok := properties["items"].(map[string]any)
+	require.True(t, ok, "OpenAPI discovery response must define items")
+	itemSchema, ok := items["items"].(map[string]any)
+	require.True(t, ok, "OpenAPI discovery items must define item schema")
+	required, ok := itemSchema["required"].([]any)
+	require.True(t, ok, "OpenAPI discovery item schema must define required fields")
+	requiredSet := stringSetFromAny(required)
+	for _, field := range []string{"resource_id", "resource_type", "display_name", "resource_version", "contract_version", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag"} {
+		require.Contains(t, requiredSet, field, "OpenAPI discovery item missing required field %s", field)
+	}
+	require.NotContains(t, requiredSet, "diagnostics", "discovery list summary must not require diagnostics")
+	itemProperties, ok := itemSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI discovery item must define properties")
+	assertOpenAPIFreshnessAndTTL(t, itemProperties)
+	for _, field := range []string{"source", "accountId", "tenantId", "disabledReason", "fetchedAt", "expiresAt"} {
+		require.NotContains(t, itemProperties, field, "OpenAPI discovery item must not define AP-6.5/6.6 candidate field %s", field)
+	}
+}
+
+func assertOpenAPIResourceContractSchema(t *testing.T, paths map[string]any, schemas map[string]any, method string, path string) {
+	t.Helper()
+
+	dataSchema := openAPIResponseDataSchema(t, paths, schemas, method, path)
+	properties, ok := dataSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI %s %s data schema must define properties", method, path)
+	assertOpenAPIFreshnessAndTTL(t, properties)
+
+	diagnostics, ok := properties["diagnostics"].(map[string]any)
+	require.True(t, ok, "OpenAPI %s %s must define diagnostics", method, path)
+	diagnosticsProperties, ok := diagnostics["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI diagnostics must define properties")
+	assertOpenAPIRequiredSchemaNodeFields(t, diagnostics, "reason", "converged", "client_non_compliant")
+	require.Equal(t, "string", diagnosticsProperties["reason"].(map[string]any)["type"])
+	require.Equal(t, "boolean", diagnosticsProperties["converged"].(map[string]any)["type"])
+	require.Equal(t, "boolean", diagnosticsProperties["client_non_compliant"].(map[string]any)["type"])
+
+	for _, field := range []string{"source", "accountId", "tenantId", "disabledReason", "fetchedAt", "expiresAt"} {
+		require.NotContains(t, properties, field, "OpenAPI %s %s must not define AP-6.5/6.6 candidate field %s", method, path, field)
+	}
+}
+
+func assertOpenAPIFreshnessAndTTL(t *testing.T, properties map[string]any) {
+	t.Helper()
+
+	freshness, ok := properties["freshness"].(map[string]any)
+	require.True(t, ok, "OpenAPI freshness property must exist")
+	assertOpenAPIEnum(t, freshness, "fresh", "stale", "offline", "revoked")
+
+	ttl, ok := properties["freshness_ttl_seconds"].(map[string]any)
+	require.True(t, ok, "OpenAPI freshness_ttl_seconds property must exist")
+	require.Equal(t, float64(300), ttl["maximum"], "OpenAPI TTL maximum must remain 300 seconds")
+}
+
+func assertOpenAPIRequiredSchemaNodeFields(t *testing.T, schema map[string]any, requiredFields ...string) {
+	t.Helper()
+
+	required, ok := schema["required"].([]any)
+	require.True(t, ok, "OpenAPI schema node must define required fields")
+	requiredSet := stringSetFromAny(required)
+	for _, field := range requiredFields {
+		require.Contains(t, requiredSet, field)
+	}
+}
+
+func stringSetFromAny(values []any) map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			set[text] = struct{}{}
+		}
+	}
+	return set
+}
+
 func TestConsumerSignoffExtensionGovernanceMatchesFixtures(t *testing.T) {
 	signoffBytes, err := os.ReadFile("../../../docs/agent-platform-consumer-signoff.md")
 	require.NoError(t, err)
@@ -656,6 +862,23 @@ func assertJSONFields(t *testing.T, fixtureName string, fields map[string]any, r
 func assertOpenAPIRequiredFields(t *testing.T, paths map[string]any, schemas map[string]any, method string, path string, requiredFields ...string) {
 	t.Helper()
 
+	dataSchema := openAPIResponseDataSchema(t, paths, schemas, method, path)
+	required, ok := dataSchema["required"].([]any)
+	require.True(t, ok, "OpenAPI path %s %s data schema must define required fields", method, path)
+	requiredSet := map[string]struct{}{}
+	for _, value := range required {
+		if text, ok := value.(string); ok {
+			requiredSet[text] = struct{}{}
+		}
+	}
+	for _, field := range requiredFields {
+		require.Contains(t, requiredSet, field, "OpenAPI path %s %s data schema missing required field %s", method, path, field)
+	}
+}
+
+func openAPIResponseDataSchema(t *testing.T, paths map[string]any, schemas map[string]any, method string, path string) map[string]any {
+	t.Helper()
+
 	pathNode, ok := paths[path].(map[string]any)
 	require.True(t, ok, "OpenAPI path %s must be an object", path)
 	methodNode, ok := pathNode[method].(map[string]any)
@@ -672,18 +895,10 @@ func assertOpenAPIRequiredFields(t *testing.T, paths map[string]any, schemas map
 	require.True(t, ok, "OpenAPI path %s %s 200 response must define schema", method, path)
 	dataSchema := openAPIDataSchema(schema)
 	require.NotNil(t, dataSchema, "OpenAPI path %s %s 200 response must define data schema", method, path)
-	dataSchema = resolveOpenAPIRef(t, dataSchema, schemas)
-	required, ok := dataSchema["required"].([]any)
-	require.True(t, ok, "OpenAPI path %s %s data schema must define required fields", method, path)
-	requiredSet := map[string]struct{}{}
-	for _, value := range required {
-		if text, ok := value.(string); ok {
-			requiredSet[text] = struct{}{}
-		}
+	if schemas != nil {
+		dataSchema = resolveOpenAPIRef(t, dataSchema, schemas)
 	}
-	for _, field := range requiredFields {
-		require.Contains(t, requiredSet, field, "OpenAPI path %s %s data schema missing required field %s", method, path, field)
-	}
+	return dataSchema
 }
 
 func resolveOpenAPIRef(t *testing.T, schema map[string]any, schemas map[string]any) map[string]any {

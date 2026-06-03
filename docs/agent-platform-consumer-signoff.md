@@ -106,6 +106,7 @@ AP-6.2 不交付完整 `web/default` Clients 产品化工作区。当前 onboard
 - Cherry Studio first-consumer signoff: `blocked`
 - Client registration / onboarding signoff: `signed off`
 - Cherry Studio OAuth subdomain signoff: `signed off`
+- Resource discovery/detail/refresh signoff: `signed off`
 - Codex second-consumer review: `signed off`
 - Extension namespaces used or reserved: `extensions.cherry_studio`, `extensions.codex`
 - OpenAPI change: OAuth schema freeze plus AP-6.2 existing Clients API schema freeze

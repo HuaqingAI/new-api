@@ -6969,10 +6969,17 @@
                                 "type": "string"
                               },
                               "freshness_ttl_seconds": {
-                                "type": "integer"
+                                "type": "integer",
+                                "maximum": 300
                               },
                               "freshness": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": [
+                                  "fresh",
+                                  "stale",
+                                  "offline",
+                                  "revoked"
+                                ]
                               },
                               "etag": {
                                 "type": "string"
@@ -7134,10 +7141,17 @@
                           "type": "string"
                         },
                         "freshness_ttl_seconds": {
-                          "type": "integer"
+                          "type": "integer",
+                          "maximum": 300
                         },
                         "freshness": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "offline",
+                            "revoked"
+                          ]
                         },
                         "etag": {
                           "type": "string"
@@ -7334,10 +7348,17 @@
                           "type": "string"
                         },
                         "freshness_ttl_seconds": {
-                          "type": "integer"
+                          "type": "integer",
+                          "maximum": 300
                         },
                         "freshness": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "offline",
+                            "revoked"
+                          ]
                         },
                         "etag": {
                           "type": "string"

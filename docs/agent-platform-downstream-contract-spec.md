@@ -746,17 +746,134 @@ Invalid configurations that must resolve to explicit onboarding state instead of
 
 ### 11.3 Discovery / Detail / Refresh Contract
 
-Status: pending freeze
+Status: frozen
 
 Owner story: `ap-6-3-freeze-discovery-detail-and-refresh-public-fields`
 
-Must freeze:
+AP-6.3 resource discovery/detail/refresh contract freeze applies to the existing open capability plane only:
 
-- resource fields and MUST / SHOULD / MAY level
-- freshness semantics
-- visible / callable semantics
-- diagnostics object
-- optional `source` / `accountId` / `tenantId` / `disabledReason` / `fetchedAt` / `expiresAt` decision
+- `GET /api/open-capabilities/discovery`
+- `GET /api/open-capabilities/resources/{id}`
+- `POST /api/open-capabilities/refresh`
+
+This story does not introduce a new endpoint, a parallel resource model, or a parallel core protocol. The runtime source of truth remains `dto/agentplatform/open_capabilities.go`, `controller/agentplatform/open_capabilities.go`, `service/agentplatform/discovery.go`, `docs/openapi/api.json`, and `tests/agentplatform/conformance/`.
+
+#### 11.3.1 Field Levels by Endpoint
+
+`GET /api/open-capabilities/discovery` is the list-summary contract:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `resource_id` | MUST | Stable opaque resource identifier. |
+| `resource_type` | MUST | Current public values are `skill`, `knowledge`, `agent`. |
+| `display_name` | MUST | Human-readable resource label. |
+| `resource_version` | MUST | Visible published projection version. |
+| `contract_version` | MUST | AP contract version shared by client and projection. |
+| `visibility_state` | MUST | Discovery surface only exposes visible entries. |
+| `callable_state` | MUST | Distinct from visibility; clients must not infer callable from visible alone. |
+| `freshness_ttl_seconds` | MUST | Current P0 upper bound is `300`. |
+| `freshness` | MUST | Enum frozen as `fresh`, `stale`, `offline`, `revoked`. |
+| `etag` | MUST | Projection cache token for refresh reconciliation. |
+| `extensions` | MAY | Extension-only, namespaced, must not override core semantics. |
+| `diagnostics` | MUST NOT | Discovery remains a summary payload and does not require diagnostics. |
+
+`GET /api/open-capabilities/resources/{id}` is the detail contract:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| Discovery MUST fields | MUST | Detail inherits all discovery core fields except discovery-only list container fields. |
+| `status` | MUST | Current projection/resource status such as `published`. |
+| `contract_compatible` | MUST | Indicates whether client and projection contract versions align. |
+| `diagnostics.reason` | MUST | Canonical convergence or mismatch reason. |
+| `diagnostics.converged` | MUST | Whether the client view is already converged to platform truth. |
+| `diagnostics.client_non_compliant` | MUST | Explicitly flags stale/non-compliant client reuse. |
+| `diagnostics.observed_etag` | MAY | Present when client supplied an observed ETag. |
+| `diagnostics.observed_version` | MAY | Present when client supplied an observed resource version. |
+| `schema` | SHOULD | Public schema payload when available. |
+| `detail` | SHOULD | Public detail payload when available. |
+| `supported_extensions` | SHOULD | Derived extension namespaces for client inspection. |
+| `extensions` | MAY | Namespaced optional projection metadata only. |
+
+`POST /api/open-capabilities/refresh` is the reconciliation contract:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `resource_id` | MUST | Stable opaque resource identifier. |
+| `resource_version` | MUST | Current published projection version after reconciliation. |
+| `contract_version` | MUST | AP contract version shared by client and projection. |
+| `freshness_ttl_seconds` | MUST | Current P0 upper bound is `300`. |
+| `freshness` | MUST | Enum frozen as `fresh`, `stale`, `offline`, `revoked`. |
+| `etag` | MUST | Current projection ETag after reconciliation. |
+| `visibility_state` | MUST | Current discovery visibility state. |
+| `callable_state` | MUST | Current callable state after dependency and contract checks. |
+| `contract_compatible` | MUST | Indicates whether client and projection contract versions align. |
+| `diagnostics` | MUST | Required reconciliation diagnostics object. |
+
+#### 11.3.2 P0 Inclusion and Exclusion Decisions
+
+The following candidates are explicitly excluded from AP-6.3 P0 core fields:
+
+- `source`
+- `accountId`
+- `tenantId`
+- `disabledReason`
+- `fetchedAt`
+- `expiresAt`
+
+`source`、`accountId`、`tenantId`、`disabledReason`、`fetchedAt`、`expiresAt` 不进入 AP-6.3 P0 core resource fields.
+
+Rationale:
+
+- `accountId` / `tenantId` and provider source semantics belong to AP-6.5 enterprise model discovery, not AP-6.3 open capability resources.
+- `disabledReason` is expressed through `diagnostics.reason` plus the stable error envelope instead of a new P0 top-level field.
+- `fetchedAt` / `expiresAt` are not required by the current runtime DTOs; freshness is standardized via `freshness_ttl_seconds`, `freshness`, `etag`, and `resource_version`.
+- Consumer-specific private display fields may be exposed only through namespaced `extensions`, such as `extensions.cherry_studio` and future `extensions.codex`.
+
+#### 11.3.3 Freshness, Visibility, Callable, and Convergence
+
+Frozen semantics:
+
+- `freshness` enum is `fresh`, `stale`, `offline`, `revoked`.
+- `freshness_ttl_seconds` MUST NOT exceed `300`.
+- `visibility_state` answers whether the resource is discoverable.
+- `callable_state` answers whether the resource can currently be invoked or queried.
+- A resource may remain visible while becoming not callable; clients must treat that as a contract or dependency issue instead of silently assuming success.
+- Agent dependency failures may surface as `callable_state=contract_invalid` with `diagnostics.reason=dependency_not_callable`.
+
+Convergence rules:
+
+- Revoke, rollback, disable, or offline transitions must converge for clients on the next `refresh` or within the 300-second TTL ceiling.
+- 下一次 refresh 或 300 秒 TTL 上限内收敛。
+- Continuing to use a stale projection after the convergence window is client non-compliance, not silently tolerated platform behavior.
+- `diagnostics.client_non_compliant=true` marks that downstream misuse explicitly.
+
+Canonical diagnostics reasons currently frozen by runtime/tests include:
+
+- `in_sync`
+- `projection_stale`
+- `client_non_compliant_stale`
+- `client_cache_mismatch`
+- `client_version_mismatch`
+- `dependency_not_callable`
+- `resource_revoked`
+- `resource_offline`
+
+#### 11.3.4 Example Payload Requirements
+
+Example payloads and fixtures MUST:
+
+- use synthetic ids and tokens only
+- avoid real tenant, account, provider, or secret data
+- cover `fresh`, `stale`, `revoked`, `offline`, and observed ETag/version mismatch examples
+- stay aligned across API / fixture 支撑, OpenAPI, and runtime tests
+
+Frozen implementation evidence:
+
+- `tests/agentplatform/conformance/fixtures.go`
+- `tests/agentplatform/conformance/fixtures_test.go`
+- `controller/agentplatform/open_capabilities_test.go`
+- `service/agentplatform/discovery_test.go`
+- `docs/agent-platform-consumer-signoff.md`
 
 ### 11.4 Skill Invoke and Knowledge Query Contracts
 

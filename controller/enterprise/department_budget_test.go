@@ -197,8 +197,8 @@ func TestDepartmentBudgetAPIRejectsInvalidPayload(t *testing.T) {
 	require.Equal(t, "enterprise.organization.department_budget.reject", actions[0].ActionType)
 }
 
-func TestDepartmentBudgetAPIRejectsTypeSwitch(t *testing.T) {
-	router, _ := setupEnterpriseControllerTest(t)
+func TestDepartmentBudgetAPIAllowsMixedTypeCreates(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
 	router.POST("/api/enterprise/departments/:id/budget", CreateDepartmentBudget)
 
 	total := int64(1000)
@@ -218,8 +218,19 @@ func TestDepartmentBudgetAPIRejectsTypeSwitch(t *testing.T) {
 		CycleStartedAt: &startedAt,
 	})
 	createSubscriptionResponse := decodeEnterpriseAPIResponse(t, createSubscription)
-	require.False(t, createSubscriptionResponse.Success)
-	require.Equal(t, "enterprise.organization.department_budget_type_immutable", createSubscriptionResponse.Message)
+	require.True(t, createSubscriptionResponse.Success, createSubscriptionResponse.Message)
+
+	var budgets []entmodel.DepartmentBudget
+	require.NoError(t, db.Where("department_id = ?", 1).Order("id ASC").Find(&budgets).Error)
+	require.Len(t, budgets, 2)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, budgets[0].Type)
+	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, budgets[1].Type)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 2)
+	require.Equal(t, "enterprise.organization.department_budget.create", actions[0].ActionType)
+	require.Equal(t, "enterprise.organization.department_budget.create", actions[1].ActionType)
 }
 
 func TestDepartmentBudgetAPIRequiresValidPath(t *testing.T) {

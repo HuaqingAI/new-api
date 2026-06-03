@@ -178,6 +178,39 @@ func TestEnterpriseMembershipAPIUserDepartmentWorkflow(t *testing.T) {
 	require.Equal(t, "100", actions[0].ObjectId)
 }
 
+func TestEnterpriseMembershipAPIAllowsUsersToReadOnlyTheirOwnDepartments(t *testing.T) {
+	adminRouter, _ := setupEnterpriseControllerTest(t)
+
+	replaceRecorder := performEnterpriseRequest(t, adminRouter, http.MethodPut, "/api/enterprise/users/100/departments", dtoenterprise.ReplaceUserDepartmentsRequest{
+		DepartmentIds:   []int{1},
+		ExternalSource:  "manual",
+		DeactivateStale: boolPtr(true),
+	})
+	replaceResponse := decodeEnterpriseAPIResponse(t, replaceRecorder)
+	require.True(t, replaceResponse.Success, replaceResponse.Message)
+
+	userRouter := gin.New()
+	userRouter.Use(func(c *gin.Context) {
+		c.Set("id", 100)
+		c.Set("role", common.RoleCommonUser)
+		c.Next()
+	})
+	userRouter.GET("/api/enterprise/users/:id/departments", ListUserDepartments)
+
+	selfRecorder := performEnterpriseRequest(t, userRouter, http.MethodGet, "/api/enterprise/users/100/departments", nil)
+	selfResponse := decodeEnterpriseAPIResponse(t, selfRecorder)
+	require.True(t, selfResponse.Success, selfResponse.Message)
+	selfData := decodeEnterpriseData[dtoenterprise.UserDepartmentsResponse](t, selfResponse)
+	require.False(t, selfData.IsUnassigned)
+	require.Len(t, selfData.Items, 1)
+	require.Equal(t, "Engineering", selfData.Items[0].DepartmentName)
+
+	otherRecorder := performEnterpriseRequest(t, userRouter, http.MethodGet, "/api/enterprise/users/101/departments", nil)
+	otherResponse := decodeEnterpriseAPIResponse(t, otherRecorder)
+	require.False(t, otherResponse.Success)
+	require.Equal(t, "auth.insufficient_privilege", otherResponse.Message)
+}
+
 func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 

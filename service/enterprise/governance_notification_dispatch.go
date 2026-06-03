@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -136,20 +137,15 @@ func (s *GovernanceNotificationDispatchService) findDingTalkChannel(tenantId int
 }
 
 func (s *GovernanceNotificationDispatchService) markDeliveryConfigurationFailure(delivery *entmodel.GovernanceNotificationDelivery, nowUnix int64, reason error) (string, error) {
-	attemptCount := delivery.AttemptCount + 1
-	if attemptCount < 1 {
-		attemptCount = 1
+	errorReason := "governance notification channel is not configured"
+	if reason != nil && !errors.Is(reason, ErrAlertRuleNotFound) {
+		errorReason = summarizeAlertDispatchError(reason)
 	}
-	if delivery.MaxAttempts > 0 && attemptCount > delivery.MaxAttempts {
-		attemptCount = delivery.MaxAttempts
-	}
-	errorReason := summarizeAlertDispatchError(reason)
-	return entmodel.GovernanceNotificationStatusFinalFailed, s.db.Model(delivery).Updates(map[string]any{
-		"status":          entmodel.GovernanceNotificationStatusFinalFailed,
-		"attempt_count":   attemptCount,
-		"last_attempt_at": nowUnix,
-		"next_retry_at":   0,
-		"final_failed_at": nowUnix,
+	return entmodel.GovernanceNotificationStatusUnconfigured, s.db.Model(delivery).Updates(map[string]any{
+		"status":          entmodel.GovernanceNotificationStatusUnconfigured,
+		"last_attempt_at": int64(0),
+		"next_retry_at":   int64(0),
+		"final_failed_at": int64(0),
 		"error_reason":    errorReason,
 		"updated_at":      nowUnix,
 	}).Error

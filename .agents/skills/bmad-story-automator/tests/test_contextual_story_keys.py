@@ -29,6 +29,10 @@ SPRINT_STATUS = """development_status:
   agent-platform-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
+
+  epic-7b: in-progress
+  7b-1-decouple-governance-action-result-from-notification-delivery: done
+  7b-2-redesign-budget-pool-selection-and-selected-summary: backlog
 """
 
 
@@ -106,6 +110,14 @@ class ContextualStoryKeyTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(captured[-1]["story_key"], "ap-1-1-establish-shared-resource-registry-and-stable-identity")
         self.assertTrue(str(captured[-1]["file"]).endswith("ap-1-1-establish-shared-resource-registry-and-stable-identity.md"))
+
+    def test_normalize_story_key_supports_alpha_numeric_epic_ids(self) -> None:
+        result = normalize_story_key(str(self.root), "7B.1")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.id, "7B.1")
+        self.assertEqual(result.prefix, "7b-1")
+        self.assertEqual(result.key, "7b-1-decouple-governance-action-result-from-notification-delivery")
 
 
 if __name__ == "__main__":

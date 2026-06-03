@@ -11,7 +11,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 	enterpriseRoute.Use(middleware.UserAuth())
 	{
 		enterpriseRoute.GET("/departments/tree", controllerenterprise.GetDepartmentTree)
-		enterpriseRoute.GET("/users/:id/departments", middleware.AdminAuth(), controllerenterprise.ListUserDepartments)
+		enterpriseRoute.GET("/users/:id/departments", controllerenterprise.ListUserDepartments)
 		enterpriseRoute.PUT("/users/:id/departments", middleware.AdminAuth(), controllerenterprise.ReplaceUserDepartments)
 		enterpriseRoute.GET("/departments/:id/members", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.ListDepartmentMembers)
 		enterpriseRoute.GET("/departments/:id/budget", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.GetDepartmentBudget)

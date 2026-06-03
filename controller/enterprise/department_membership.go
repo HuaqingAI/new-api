@@ -18,6 +18,10 @@ func ListUserDepartments(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if c.GetInt("role") < common.RoleAdminUser && c.GetInt("id") != userId {
+		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+		return
+	}
 
 	query, ok := parseMembershipQuery(c)
 	if !ok {

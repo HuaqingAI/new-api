@@ -24,6 +24,8 @@ tiktoken_cache
 .cache
 plans
 # .claude
+.claude/launch.json
+.codex/hooks.json
 .cursor
 
 electron/node_modules
@@ -39,3 +41,4 @@ skills-lock.json
 .tmp/
 
 __pycache__
+.claude/.story-automator-active

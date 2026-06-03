@@ -183,6 +183,7 @@
 - `GET/PUT /api/enterprise/users/:id/departments`
 - `GET /api/enterprise/departments/:id/members`
 - `POST /api/enterprise/departments/:id/members`
+- `PUT /api/enterprise/departments/:id/members/:user_id/username`
 - `DELETE /api/enterprise/departments/:id/members/:user_id`
 - `POST /api/enterprise/departments/:id/members/:user_id/restore`
 - `GET /api/enterprise/departments/:id/budget`
@@ -190,11 +191,35 @@
 - `GET /api/enterprise/departments/:id/budgets/:budget_id`
 - `POST /api/enterprise/departments/:id/budget`
 - `GET/POST /api/enterprise/quota-allocations`
+- `POST /api/enterprise/quota-allocations/:id/supersede`
+- `POST /api/enterprise/quota-allocations/:id/cancel`
+- `POST /api/enterprise/quota-allocations/:id/reclaim`
 - `POST /api/enterprise/quota-allocations/:id/revoke`
 - `POST /api/enterprise/departments/:id/admins`
 - `DELETE /api/enterprise/departments/:id/admins/:user_id`
+- `GET /api/enterprise/departments/:id/owners`
+- `POST /api/enterprise/departments/:id/owners/grants`
+- `POST /api/enterprise/departments/:id/owners/denies`
+- `DELETE /api/enterprise/departments/:id/owners/grants/:user_id`
+- `DELETE /api/enterprise/departments/:id/owners/denies/:user_id`
 - `GET /api/enterprise/admin-actions`
 - `GET /api/enterprise/admin-actions/:id`
+
+#### 分层预算治理与额度申请
+- `GET/POST /api/enterprise/quota-requests`
+- `GET /api/enterprise/quota-requests/capability/:department_id`
+- `GET /api/enterprise/quota-requests/:id`
+- `POST /api/enterprise/quota-requests/:id/decision`
+- `GET /api/enterprise/budget-delegations`
+- `POST /api/enterprise/budget-delegations`
+- `POST /api/enterprise/budget-delegations/:id/supersede`
+- `GET /api/enterprise/governance/timeline`
+- `GET /api/enterprise/governance/notifications`
+  - 过滤参数支持 `tenant_id`、`department_id`、`status`、`recipient_user_id`、`trace_id`、`page`、`page_size`
+  - 治理通知投递状态包括 `pending`、`sent`、`failed`、`final_failed`、`resent`、`unconfigured`
+  - `unconfigured` 表示通知通道或规则缺失的非阻塞状态，不代表治理动作失败
+- `POST /api/enterprise/governance/notifications/:id/resend`
+  - 仅允许对真实 `final_failed` 投递触发手动重发；`unconfigured` 不可重发
 
 #### 内容风险事件与告警
 - `GET /api/enterprise/alerts/events`

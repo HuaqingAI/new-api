@@ -45,3 +45,7 @@ type OAuthRevokeRequest struct {
 	Token         string `json:"token"`
 	TokenTypeHint string `json:"token_type_hint"`
 }
+
+type OAuthRevokeResponse struct {
+	Revoked bool `json:"revoked"`
+}

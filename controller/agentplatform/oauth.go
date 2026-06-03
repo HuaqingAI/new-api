@@ -94,7 +94,7 @@ func OAuthRevoke(c *gin.Context) {
 		writeOAuthError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"revoked": true})
+	common.ApiSuccess(c, dtoagentplatform.OAuthRevokeResponse{Revoked: true})
 }
 
 func oauthAuthorizeService() *apservice.OAuthAuthorizeService {

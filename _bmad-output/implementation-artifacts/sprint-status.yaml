@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-03 02:27 +0800
+# last_updated: 2026-06-03 10:01 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-03 02:27 +0800
+last_updated: 2026-06-03 10:01 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -148,6 +148,6 @@ development_status:
   ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: backlog
   ap-6-5-freeze-enterprise-model-discovery-contract: backlog
   ap-6-6-freeze-error-code-and-client-state-matrices: backlog
-  ap-6-7-provide-mock-fixture-and-contract-conformance-suite: backlog
+  ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done
   ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog
   agent-platform-epic-6-retrospective: optional

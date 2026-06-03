@@ -674,20 +674,39 @@ Must freeze mappings from platform errors to client states:
 
 ### 11.7 Mock / Fixture / Conformance
 
-Status: missing / must add
+Status: provided for frozen OAuth and open capability surfaces; AP-6.5 / AP-6.6 dependent cases are explicit pending fixtures
 
 Owner story: `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`
 
-Must provide synthetic fixtures for:
+Source of truth artifacts:
+
+- Fixture catalog and conformance assertions: `tests/agentplatform/conformance/`
+- Runtime handler conformance coverage: `controller/agentplatform/open_capabilities_test.go`
+- OpenAPI public path/schema source: `docs/openapi/api.json`
+
+Local / CI commands:
+
+- `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance`
+- `GOCACHE=/private/tmp/go-build-cache go test ./service/agentplatform ./controller/agentplatform`
+
+Synthetic fixture coverage:
 
 - OAuth success / expired / revoked
-- discovery empty / success
-- detail visible but not callable
-- refresh stale / revoked / offline
-- Skill invoke success / contract invalid / upstream failed
-- Knowledge query success / provider offline
-- model discovery default / no default / disabled
-- error matrix states
+- OAuth missing scope / permission denied
+- discovery empty / success / multi-resource / contract mismatch filtered or rejected
+- detail visible + callable / visible but not callable / contract invalid / resource revoked / resource offline
+- refresh fresh / stale / revoked / offline / observed ETag-version mismatch / TTL over 300 seconds non-compliance diagnostics
+- Skill invoke sync success / contract invalid / timeout / upstream provider failure
+- Knowledge query retrieval success with items and citations / provider offline / upstream provider failure / no provider-native field leakage
+- model discovery default / no default / multiple defaults / default disabled / provider offline / unavailable / account-tenant mismatch: pending with AP-6.5 reason because enterprise model discovery is not frozen
+- error matrix states: pending with AP-6.6 reason because the client state matrix artifact is not frozen
+
+Safety constraints:
+
+- Fixtures use synthetic IDs such as `client_cherry_mock`, `tenant_demo`, `acct_demo`, `res_skill_demo`, `res_knowledge_demo`, `res_agent_demo`, and `model_demo_default`.
+- Fixtures must not contain real access tokens, refresh tokens, provider secrets, tenant secrets, real user information, or real enterprise data.
+- OAuth token examples use synthetic placeholders only; provider-native Knowledge fields and provider config are not exposed in conformance payloads.
+- Model discovery pending fixtures must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`.
 
 ### 11.8 Consumer Signoff
 

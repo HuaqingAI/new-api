@@ -7156,6 +7156,34 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -7169,7 +7197,9 @@
                         "callable_state",
                         "freshness_ttl_seconds",
                         "freshness",
-                        "etag"
+                        "etag",
+                        "contract_compatible",
+                        "diagnostics"
                       ]
                     }
                   },
@@ -7257,6 +7287,16 @@
                 "properties": {
                   "resource_id": {
                     "type": "string"
+                  },
+                  "observed_etag": {
+                    "type": "string"
+                  },
+                  "observed_resource_version": {
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "type": "integer",
+                    "format": "int64"
                   }
                 },
                 "required": [
@@ -7307,6 +7347,34 @@
                         },
                         "callable_state": {
                           "type": "string"
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -7317,7 +7385,9 @@
                         "freshness",
                         "etag",
                         "visibility_state",
-                        "callable_state"
+                        "callable_state",
+                        "contract_compatible",
+                        "diagnostics"
                       ]
                     }
                   },
@@ -7700,6 +7770,34 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -7713,7 +7811,9 @@
                         "callable_state",
                         "freshness_ttl_seconds",
                         "freshness",
-                        "etag"
+                        "etag",
+                        "contract_compatible",
+                        "diagnostics"
                       ]
                     }
                   },
@@ -7783,6 +7883,178 @@
             "Combination1243": []
           }
         ]
+      }
+    },
+    "/api/agent-platform/oauth/authorize": {
+      "get": {
+        "summary": "Agent Platform OAuth authorize",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "S256"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API envelope containing authorization result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthAuthorizeResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-platform/oauth/token": {
+      "post": {
+        "summary": "Agent Platform OAuth token exchange",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformOAuthTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API envelope containing token result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthTokenResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-platform/oauth/revoke": {
+      "post": {
+        "summary": "Agent Platform OAuth token revoke",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformOAuthRevokeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API envelope containing revoke result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthRevokeResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -9435,6 +9707,164 @@
             "type": "integer"
           }
         }
+      },
+      "AgentPlatformOAuthAuthorizeResponse": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "authorization_code": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "consent_recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client_id",
+          "contract_version",
+          "scope",
+          "authorization_code",
+          "redirect_uri",
+          "consent_recorded"
+        ]
+      },
+      "AgentPlatformOAuthTokenRequest": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "grant_type": {
+            "type": "string",
+            "enum": [
+              "authorization_code",
+              "refresh_token",
+              "client_credentials"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "code_verifier": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "grant_type"
+        ]
+      },
+      "AgentPlatformOAuthTokenResponse": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "refresh_expires_in": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "grant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "contract_version"
+        ]
+      },
+      "AgentPlatformOAuthRevokeRequest": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_type_hint": {
+            "type": "string",
+            "enum": [
+              "access_token",
+              "refresh_token"
+            ]
+          }
+        },
+        "required": [
+          "client_id",
+          "token"
+        ]
+      },
+      "AgentPlatformOAuthRevokeResponse": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ]
+      },
+      "AgentPlatformAPIEnvelope": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "success"
+        ]
       }
     },
     "responses": {},

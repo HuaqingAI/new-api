@@ -1,3 +1,5 @@
+import { useForm, type Resolver } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterContextProvider,
@@ -11,8 +13,8 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import { useForm, type Resolver } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import {
   departmentOwnersQueryKey,
   governanceNotificationQueryKey,
@@ -49,10 +51,12 @@ import {
   syncAllocationFormDraft,
 } from './index'
 import {
-  enterpriseBudgetStatusLabel,
-  formatBudgetType,
-  getQuotaRequestBudgetDisplayText,
-} from './quota-request-budget-display'
+  getAncestorDepartmentIds,
+  getDefaultExpandedDepartmentIds,
+  resolveDepartmentSelection,
+  syncExpandedDepartmentIds,
+  toggleExpandedDepartmentId,
+} from './lib/tree-utils'
 import {
   convertEnterpriseQuotaInputMode,
   formatEnterpriseQuotaAmount,
@@ -60,16 +64,14 @@ import {
   QuotaAmountDisplay,
 } from './quota-amount-controls'
 import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+  getQuotaRequestBudgetDisplayText,
+} from './quota-request-budget-display'
+import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from './quota-request-budget-display-components'
-import {
-  getAncestorDepartmentIds,
-  getDefaultExpandedDepartmentIds,
-  resolveDepartmentSelection,
-  syncExpandedDepartmentIds,
-  toggleExpandedDepartmentId,
-} from './lib/tree-utils'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -283,6 +285,34 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(canManageBudgetLifecycle(1), false)
     assert.equal(canManageBudgetLifecycle(10), true)
     assert.equal(canManageBudgetLifecycle(100), true)
+  })
+
+  test('budget pool creation entry is limited to enterprise administrators', () => {
+    const { auth } = useAuthStore.getState()
+    const previousUser = auth.user
+    const department = departmentNode({ id: 1, name: 'Engineering' })
+
+    try {
+      auth.setUser({
+        id: 1001,
+        username: 'dept-admin',
+        role: ROLE.USER,
+      })
+      const departmentAdminHtml = renderWorkspace(department, null)
+      assert.doesNotMatch(departmentAdminHtml, /Create Budget Pool/)
+      assert.match(departmentAdminHtml, /Budget Pool Overview/)
+
+      auth.setUser({
+        id: 1002,
+        username: 'enterprise-admin',
+        role: ROLE.ADMIN,
+      })
+      const enterpriseAdminHtml = renderWorkspace(department, null)
+      assert.match(enterpriseAdminHtml, /Create Budget Pool/)
+      assert.match(enterpriseAdminHtml, /Budget Pool Overview/)
+    } finally {
+      auth.setUser(previousUser)
+    }
   })
 
   test('normalizes stale search state for empty trees and invalid department ids', () => {
@@ -641,13 +671,14 @@ describe('Enterprise organization department tree workflow', () => {
       'Department Owners',
       'No effective owner',
       'Admin fallback',
-      'Department Budget',
+      'Budget Pool Overview',
       'Current Member Governance',
       'Current Member Wallet Allocation',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
 
+    assert.doesNotMatch(html, /Create Budget Pool/)
     assert.doesNotMatch(html, /Membership Lookup/)
   })
 
@@ -696,14 +727,26 @@ describe('Enterprise organization department tree workflow', () => {
       ['enterprise.organization.membership.disable', 'Membership disabled'],
       ['enterprise.organization.membership.restore', 'Membership restored'],
       ['enterprise.organization.membership.rename', 'Membership renamed'],
-      ['enterprise.organization.department_admin.grant', 'Department admin granted'],
-      ['enterprise.organization.department_admin.revoke', 'Department admin revoked'],
-      ['enterprise.organization.department_owner.manual_grant', 'Department owner granted'],
+      [
+        'enterprise.organization.department_admin.grant',
+        'Department admin granted',
+      ],
+      [
+        'enterprise.organization.department_admin.revoke',
+        'Department admin revoked',
+      ],
+      [
+        'enterprise.organization.department_owner.manual_grant',
+        'Department owner granted',
+      ],
       [
         'enterprise.organization.department_owner.manual_grant.revoke',
         'Department owner grant revoked',
       ],
-      ['enterprise.organization.department_owner.manual_deny', 'Department owner denied'],
+      [
+        'enterprise.organization.department_owner.manual_deny',
+        'Department owner denied',
+      ],
       [
         'enterprise.organization.department_owner.manual_deny.revoke',
         'Department owner denial revoked',
@@ -724,21 +767,51 @@ describe('Enterprise organization department tree workflow', () => {
         'DingTalk sync conflict candidate bound',
       ],
       ['enterprise.usage.report.set', 'Usage report configured'],
-      ['enterprise.organization.department_budget.create', 'Department budget created'],
-      ['enterprise.organization.department_budget.reject', 'Department budget rejected'],
-      ['enterprise.organization.budget_delegation.create', 'Budget delegation created'],
+      [
+        'enterprise.organization.department_budget.create',
+        'Department budget created',
+      ],
+      [
+        'enterprise.organization.department_budget.reject',
+        'Department budget rejected',
+      ],
+      [
+        'enterprise.organization.budget_delegation.create',
+        'Budget delegation created',
+      ],
       [
         'enterprise.organization.budget_delegation.supersede',
         'Budget delegation adjusted',
       ],
-      ['enterprise.organization.budget_delegation.revoke', 'Budget delegation revoked'],
-      ['enterprise.organization.budget_delegation.reject', 'Budget delegation rejected'],
-      ['enterprise.organization.quota_request.submit', 'Quota request submitted'],
-      ['enterprise.organization.quota_request.approve', 'Quota request approved'],
-      ['enterprise.organization.quota_request.reject', 'Quota request rejected'],
+      [
+        'enterprise.organization.budget_delegation.revoke',
+        'Budget delegation revoked',
+      ],
+      [
+        'enterprise.organization.budget_delegation.reject',
+        'Budget delegation rejected',
+      ],
+      [
+        'enterprise.organization.quota_request.submit',
+        'Quota request submitted',
+      ],
+      [
+        'enterprise.organization.quota_request.approve',
+        'Quota request approved',
+      ],
+      [
+        'enterprise.organization.quota_request.reject',
+        'Quota request rejected',
+      ],
       ['enterprise.organization.quota_allocation.create', 'Allocation created'],
-      ['enterprise.organization.quota_allocation.reclaim', 'Allocation reclaimed'],
-      ['enterprise.organization.quota_allocation.cancel', 'Allocation cancelled'],
+      [
+        'enterprise.organization.quota_allocation.reclaim',
+        'Allocation reclaimed',
+      ],
+      [
+        'enterprise.organization.quota_allocation.cancel',
+        'Allocation cancelled',
+      ],
       ['enterprise.organization.quota_allocation.revoke', 'Allocation revoked'],
       ['enterprise.alert.rule.save', 'Alert rule saved'],
       ['enterprise.alert.rule.delete', 'Alert rule deleted'],
@@ -872,7 +945,8 @@ describe('Enterprise organization department tree workflow', () => {
               governanceTimelineItem({
                 source_id: 2,
                 trace_id: 'unknown:99',
-                action_type: 'enterprise.organization.future_action.full.internal.key',
+                action_type:
+                  'enterprise.organization.future_action.full.internal.key',
                 status: 'mystery_status',
               }),
             ]}
@@ -1031,8 +1105,14 @@ describe('Enterprise organization department tree workflow', () => {
     }
 
     assert.equal(formatBudgetType('balance', i18n.t), 'Balance Budget')
-    assert.equal(formatBudgetType('subscription', i18n.t), 'Subscription Budget')
-    assert.equal(formatBudgetType('future_budget', i18n.t), 'Unknown budget type')
+    assert.equal(
+      formatBudgetType('subscription', i18n.t),
+      'Subscription Budget'
+    )
+    assert.equal(
+      formatBudgetType('future_budget', i18n.t),
+      'Unknown budget type'
+    )
   })
 
   test('formats enterprise quota amounts and parses amount view through wallet helpers', () => {
@@ -1660,7 +1740,7 @@ describe('Enterprise organization department tree workflow', () => {
     )
   })
 
-  test('renders budget delegation empty state with descendant guidance', () => {
+  test('renders budget delegation empty state with subordinate allocation guidance', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <BudgetDelegationTable items={[]} loading={false} />
@@ -1670,8 +1750,11 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /No budget delegations yet/)
     assert.match(
       html,
-      /Choose a descendant department budget pool to create the first delegation in this governance chain\./
+      /Choose a subordinate department budget pool to create the first allocation in this governance chain\./
     )
+    assert.doesNotMatch(html, /Descendant/)
+    assert.doesNotMatch(html, /descendant department/)
+    assert.doesNotMatch(html, /后代部门/)
   })
 
   test('renders budget delegation rows with route, quota, status, and supersede guidance', () => {
@@ -2258,17 +2341,15 @@ function governanceTimelineItem(
     tenant_id: overrides.tenant_id ?? 0,
     actor_id: overrides.actor_id ?? 1001,
     actor_name: overrides.actor_name ?? 'Alice',
-    target:
-      overrides.target ??
-      {
-        department_id: 2,
-        department_name: 'Engineering',
-        user_id: 2001,
-        username: 'alice',
-        display_name: 'Alice',
-        object_type: 'enterprise_quota_request',
-        object_id: '1',
-      },
+    target: overrides.target ?? {
+      department_id: 2,
+      department_name: 'Engineering',
+      user_id: 2001,
+      username: 'alice',
+      display_name: 'Alice',
+      object_type: 'enterprise_quota_request',
+      object_id: '1',
+    },
     quota_delta: overrides.quota_delta ?? 100,
     before_quota: overrides.before_quota ?? 0,
     after_quota: overrides.after_quota ?? 0,

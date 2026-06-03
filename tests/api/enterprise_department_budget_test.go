@@ -29,7 +29,7 @@ func TestEnterpriseDepartmentBudgetAPIWorkflowWritesAuditAndHidesPayloadInList(t
 		SyncStatus:  constant.DepartmentSyncStatusOK,
 		NameHistory: "[]",
 	}).Error)
-	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+	cookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
 
 	totalQuota := int64(1000)
 	create := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budget", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
@@ -78,7 +78,7 @@ func TestEnterpriseDepartmentBudgetAPIRejectsInvalidSubscriptionAndAuditsFailure
 		SyncStatus:  constant.DepartmentSyncStatusOK,
 		NameHistory: "[]",
 	}).Error)
-	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+	cookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
 
 	cycleQuota := int64(200)
 	startedAt := int64(1700000000)
@@ -116,7 +116,7 @@ func TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow(t *testing
 		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
 		Status:       constant.EnterpriseDepartmentRoleStatusActive,
 	}).Error)
-	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+	cookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
 
 	cycleQuota := int64(300)
 	startedAt := int64(1700000000)
@@ -130,7 +130,7 @@ func TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow(t *testing
 	})
 	withoutTenantPayload := decodeDepartmentMembersAPIResponse(t, withoutTenant)
 	require.False(t, withoutTenantPayload.Success)
-	require.Contains(t, withoutTenantPayload.Message, "error.enterprise.permission.dept_admin_required")
+	require.Contains(t, withoutTenantPayload.Message, "enterprise.organization.department_not_found")
 
 	withTenant := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/101/budget?tenant_id=1", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
 		Type:           modelenterprise.DepartmentBudgetTypeSubscription,
@@ -168,7 +168,7 @@ func TestEnterpriseDepartmentBudgetAPIAllowsMixedTypeCreatesForDepartment(t *tes
 		SyncStatus:  constant.DepartmentSyncStatusOK,
 		NameHistory: "[]",
 	}).Error)
-	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+	cookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
 
 	totalQuota := int64(1000)
 	firstCreate := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budget", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
@@ -202,6 +202,60 @@ func TestEnterpriseDepartmentBudgetAPIAllowsMixedTypeCreatesForDepartment(t *tes
 	require.True(t, actionsPayload.Success, actionsPayload.Message)
 	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_budget.create")
 	require.NotContains(t, string(actionsPayload.Data), "enterprise.organization.department_budget_type_immutable")
+}
+
+func TestEnterpriseDepartmentBudgetAPIDepartmentAdminCanReadButCannotCreate(t *testing.T) {
+	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentRole{
+		UserId:       1001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:          1,
+		TenantId:    0,
+		Name:        "Engineering",
+		Status:      constant.DepartmentStatusEnabled,
+		SourceType:  constant.DepartmentSourceTypeManual,
+		SyncStatus:  constant.DepartmentSyncStatusOK,
+		NameHistory: "[]",
+	}).Error)
+	require.NoError(t, fixture.db.Create(&modelenterprise.DepartmentBudget{
+		Id:           31,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         modelenterprise.DepartmentBudgetTypeBalance,
+		Status:       modelenterprise.DepartmentBudgetStatusActive,
+		TotalQuota:   500,
+		Remaining:    500,
+	}).Error)
+	cookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
+
+	get := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/budget", cookies)
+	getPayload := decodeDepartmentMembersAPIResponse(t, get)
+	require.True(t, getPayload.Success, getPayload.Message)
+	require.Contains(t, string(getPayload.Data), `"total_quota":500`)
+
+	list := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/1/budgets", cookies)
+	listPayload := decodeDepartmentMembersAPIResponse(t, list)
+	require.True(t, listPayload.Success, listPayload.Message)
+	require.Contains(t, string(listPayload.Data), `"id":31`)
+
+	totalQuota := int64(1000)
+	create := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budget", cookies, dtoenterprise.CreateDepartmentBudgetRequest{
+		Type:       modelenterprise.DepartmentBudgetTypeBalance,
+		TotalQuota: &totalQuota,
+	})
+	createPayload := decodeDepartmentMembersAPIResponse(t, create)
+	require.False(t, createPayload.Success)
+	require.Equal(t, "error.enterprise.permission.admin_required", createPayload.Message)
+
+	actions := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20&object_type=enterprise_department_budget", fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled))
+	actionsPayload := decodeAdminActionsAPIResponse(t, actions)
+	require.True(t, actionsPayload.Success, actionsPayload.Message)
+	require.NotContains(t, string(actionsPayload.Data), "enterprise.organization.department_budget.create")
+	require.NotContains(t, string(actionsPayload.Data), "enterprise.organization.department_budget.reject")
 }
 
 func TestEnterpriseDepartmentBudgetLifecycleAPIWorkflow(t *testing.T) {
@@ -306,6 +360,15 @@ func TestEnterpriseDepartmentBudgetLifecycleAPIWorkflow(t *testing.T) {
 	require.False(t, createWhilePausedPayload.Success)
 	require.Equal(t, "enterprise.organization.quota_allocation_budget_inactive", createWhilePausedPayload.Message)
 
+	resume := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budgets/11/resume", adminCookies, dtoenterprise.DepartmentBudgetLifecycleRequest{})
+	resumePayload := decodeDepartmentMembersAPIResponse(t, resume)
+	require.True(t, resumePayload.Success, resumePayload.Message)
+	require.Contains(t, string(resumePayload.Data), `"status":"active"`)
+	require.NoError(t, fixture.db.First(&pausedAllocation, 21).Error)
+	require.Equal(t, modelenterprise.QuotaAllocationStatusActive, pausedAllocation.Status)
+	require.NoError(t, fixture.db.First(&pausedWallet, 31).Error)
+	require.Equal(t, "active", pausedWallet.Status)
+
 	tooSmallTotal := int64(200)
 	rejectedResize := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budgets/11/resize", adminCookies, dtoenterprise.ResizeDepartmentBudgetRequest{TotalQuota: &tooSmallTotal})
 	rejectedResizePayload := decodeDepartmentMembersAPIResponse(t, rejectedResize)
@@ -321,15 +384,6 @@ func TestEnterpriseDepartmentBudgetLifecycleAPIWorkflow(t *testing.T) {
 	require.True(t, resizePayload.Success, resizePayload.Message)
 	require.Contains(t, string(resizePayload.Data), `"total_quota":1200`)
 	require.Contains(t, string(resizePayload.Data), `"remaining":900`)
-
-	resume := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/departments/1/budgets/11/resume", adminCookies, dtoenterprise.DepartmentBudgetLifecycleRequest{})
-	resumePayload := decodeDepartmentMembersAPIResponse(t, resume)
-	require.True(t, resumePayload.Success, resumePayload.Message)
-	require.Contains(t, string(resumePayload.Data), `"status":"active"`)
-	require.NoError(t, fixture.db.First(&pausedAllocation, 21).Error)
-	require.Equal(t, modelenterprise.QuotaAllocationStatusActive, pausedAllocation.Status)
-	require.NoError(t, fixture.db.First(&pausedWallet, 31).Error)
-	require.Equal(t, "active", pausedWallet.Status)
 
 	createAfterResume := fixture.performEnterpriseRequestWithBody(t, http.MethodPost, "/api/enterprise/quota-allocations", userCookies, dtoenterprise.CreateQuotaAllocationRequest{
 		DepartmentBudgetId: 11,

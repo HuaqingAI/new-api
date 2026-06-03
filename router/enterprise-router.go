@@ -17,7 +17,7 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.GET("/departments/:id/budget", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.GetDepartmentBudget)
 		enterpriseRoute.GET("/departments/:id/budgets", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.ListDepartmentBudgets)
 		enterpriseRoute.GET("/departments/:id/budgets/:budget_id", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.GetDepartmentBudgetDetail)
-		enterpriseRoute.POST("/departments/:id/budget", middleware.EnterpriseDepartmentAdmin("id"), controllerenterprise.CreateDepartmentBudget)
+		enterpriseRoute.POST("/departments/:id/budget", middleware.EnterpriseAdmin(), controllerenterprise.CreateDepartmentBudget)
 		enterpriseRoute.POST("/departments/:id/budgets/:budget_id/pause", middleware.EnterpriseAdmin(), controllerenterprise.PauseDepartmentBudget)
 		enterpriseRoute.POST("/departments/:id/budgets/:budget_id/resume", middleware.EnterpriseAdmin(), controllerenterprise.ResumeDepartmentBudget)
 		enterpriseRoute.POST("/departments/:id/budgets/:budget_id/resize", middleware.EnterpriseAdmin(), controllerenterprise.ResizeDepartmentBudget)

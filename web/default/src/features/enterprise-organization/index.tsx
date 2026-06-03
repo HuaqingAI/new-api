@@ -22,8 +22,6 @@ import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
 import {
   Building2,
   CalendarClock,
@@ -43,7 +41,9 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -154,6 +154,7 @@ import {
   formatEnterpriseUserPrimary,
   formatEnterpriseUserSecondary,
 } from './lib/user-display'
+import { QuotaAmountDisplay, QuotaAmountInput } from './quota-amount-controls'
 import {
   enterpriseBudgetStatusLabel,
   formatBudgetType,
@@ -162,10 +163,6 @@ import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from './quota-request-budget-display-components'
-import {
-  QuotaAmountDisplay,
-  QuotaAmountInput,
-} from './quota-amount-controls'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -191,6 +188,12 @@ const enterpriseOrganizationRoute = '/_authenticated/enterprise-organization/'
 
 export function canManageBudgetLifecycle(role: number | null | undefined) {
   return (role ?? 0) >= ROLE.ADMIN
+}
+
+function useCurrentAuthUser() {
+  return (
+    useAuthStore((state) => state.auth.user) ?? useAuthStore.getState().auth.user
+  )
 }
 
 export const enterpriseOrganizationSearchSchema = z.object({
@@ -398,9 +401,12 @@ export function createQuotaRequestSchema(t: (key: string) => string) {
   return z.object({
     tenant_id: z.coerce.number().int().nonnegative(),
     department_id: z.coerce.number().int().positive(),
-    department_budget_id: z.coerce.number().int().positive({
-      message: t('Choose a target budget pool'),
-    }),
+    department_budget_id: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Choose a target budget pool'),
+      }),
     budget_mode: z.literal('department_budget'),
     requested_quota: z.coerce
       .number()
@@ -414,9 +420,12 @@ export function createQuotaRequestSchema(t: (key: string) => string) {
 
 export function createBudgetResizeSchema(t: (key: string) => string) {
   return z.object({
-    quota: z.coerce.number().int().positive({
-      message: t('Budget pool capacity must be greater than 0'),
-    }),
+    quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Budget pool capacity must be greater than 0'),
+      }),
   })
 }
 
@@ -1861,7 +1870,7 @@ function DepartmentBudgetPanel({
   selectedMember: DepartmentMemberItem | null
 }) {
   const { t } = useTranslation()
-  const currentUser = useAuthStore((state) => state.auth.user)
+  const currentUser = useCurrentAuthUser()
   const canManageCurrentBudgetLifecycle = canManageBudgetLifecycle(
     currentUser?.role
   )
@@ -1952,9 +1961,9 @@ function DepartmentBudgetPanel({
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
-  const [supersedeDrafts, setSupersedeDrafts] = useState<Record<number, string>>(
-    {}
-  )
+  const [supersedeDrafts, setSupersedeDrafts] = useState<
+    Record<number, string>
+  >({})
   const [allocationSupersedeDrafts, setAllocationSupersedeDrafts] = useState<
     Record<number, string>
   >({})
@@ -1987,7 +1996,10 @@ function DepartmentBudgetPanel({
 
   const currentBudgetId = budgetQuery.data?.id ?? 0
   const quotaRequestCapabilityQuery = useQuery({
-    queryKey: [...quotaRequestQueryScopeKey(departmentId, normalizedTenantId), 'capability'],
+    queryKey: [
+      ...quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+      'capability',
+    ],
     queryFn: async () => {
       const result = await getQuotaRequestCapability(
         departmentId,
@@ -2142,7 +2154,10 @@ function DepartmentBudgetPanel({
   const delegationListQuery = useQuery({
     queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
     queryFn: async () => {
-      const result = await getBudgetDelegations(departmentId, tenantId || undefined)
+      const result = await getBudgetDelegations(
+        departmentId,
+        tenantId || undefined
+      )
       if (!result.success)
         throw new Error(result.message || t('Request failed'))
       return result.data?.items ?? []
@@ -2181,12 +2196,15 @@ function DepartmentBudgetPanel({
     descendantBudgetListQuery.data?.items ?? []
   ).filter((item) => item.department_id !== departmentId)
   const quotaRequestBudgetOptions =
-    quotaRequestCapabilityQuery.data?.budgets ?? budgetListQuery.data?.items ?? []
+    quotaRequestCapabilityQuery.data?.budgets ??
+    budgetListQuery.data?.items ??
+    []
   const selectedQuotaRequestBudget =
     quotaRequestBudgetOptions.find(
       (item) => item.id === selectedQuotaRequestBudgetId
     ) ?? null
-  const selectedBudget = budgetDetailQuery.data?.budget ?? budgetQuery.data ?? null
+  const selectedBudget =
+    budgetDetailQuery.data?.budget ?? budgetQuery.data ?? null
   const invalidateBudgetLifecycleQueries = async () => {
     await queryClient.invalidateQueries({
       queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
@@ -2212,7 +2230,11 @@ function DepartmentBudgetPanel({
     await queryClient.invalidateQueries({
       queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
     })
-    await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+    await invalidateGovernanceQueries(
+      queryClient,
+      departmentId,
+      normalizedTenantId
+    )
   }
 
   const createMutation = useMutation({
@@ -2358,7 +2380,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation created'))
     },
   })
@@ -2380,7 +2406,11 @@ function DepartmentBudgetPanel({
       await queryClient.invalidateQueries({
         queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Quota request submitted'))
     },
   })
@@ -2422,9 +2452,16 @@ function DepartmentBudgetPanel({
         ),
       })
       await queryClient.invalidateQueries({
-        queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
+        queryKey: quotaAllocationQueryScopeKey(
+          departmentId,
+          normalizedTenantId
+        ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Quota request updated'))
     },
   })
@@ -2497,7 +2534,10 @@ function DepartmentBudgetPanel({
   })
 
   const allocationSupersedeMutation = useMutation({
-    mutationFn: async (params: { allocationId: number; committedQuota: number }) =>
+    mutationFn: async (params: {
+      allocationId: number
+      committedQuota: number
+    }) =>
       supersedeQuotaAllocation(params.allocationId, {
         tenant_id: tenantId || undefined,
         department_id: departmentId,
@@ -2529,7 +2569,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation adjusted'))
     },
   })
@@ -2566,7 +2610,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation cancelled'))
     },
   })
@@ -2603,7 +2651,11 @@ function DepartmentBudgetPanel({
           normalizedTenantId
         ),
       })
-      await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+      await invalidateGovernanceQueries(
+        queryClient,
+        departmentId,
+        normalizedTenantId
+      )
       toast.success(t('Wallet allocation reclaimed'))
     },
   })
@@ -2645,7 +2697,10 @@ function DepartmentBudgetPanel({
     if (delegationForm.getValues('source_department_id') !== departmentId) {
       delegationForm.setValue('source_department_id', departmentId)
     }
-    if (effectiveBudgetId && delegationForm.getValues('source_budget_id') !== effectiveBudgetId) {
+    if (
+      effectiveBudgetId &&
+      delegationForm.getValues('source_budget_id') !== effectiveBudgetId
+    ) {
       delegationForm.setValue('source_budget_id', effectiveBudgetId)
     }
   }, [delegationForm, departmentId, effectiveBudgetId, tenantId])
@@ -2732,196 +2787,205 @@ function DepartmentBudgetPanel({
 
   return (
     <div className='space-y-4'>
-      <div className='grid gap-4 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('Department Budget')}</CardTitle>
-            <CardDescription>
-              {t(
-                'Create a balance or subscription budget pool for {{department}} without leaving the current department context.',
-                {
-                  department: departmentName,
-                }
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form
-                className='flex flex-col gap-4'
-                onSubmit={form.handleSubmit((values) =>
-                  createMutation.mutate(values)
+      <div
+        className={cn(
+          'grid gap-4',
+          canManageCurrentBudgetLifecycle
+            ? 'xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'
+            : 'xl:grid-cols-1'
+        )}
+      >
+        {canManageCurrentBudgetLifecycle ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('Department Budget')}</CardTitle>
+              <CardDescription>
+                {t(
+                  'Create a balance or subscription budget pool for {{department}} without leaving the current department context.',
+                  {
+                    department: departmentName,
+                  }
                 )}
-              >
-                <FormField
-                  control={form.control}
-                  name='tenant_id'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Tenant ID')}</FormLabel>
-                      <FormControl>
-                        <Input inputMode='numeric' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form
+                  className='flex flex-col gap-4'
+                  onSubmit={form.handleSubmit((values) =>
+                    createMutation.mutate(values)
                   )}
-                />
-                <FormField
-                  control={form.control}
-                  name='type'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Budget Type')}</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={(value) =>
-                          field.onChange(value as 'balance' | 'subscription')
-                        }
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value='balance'>
-                            {t('Balance Budget')}
-                          </SelectItem>
-                          <SelectItem value='subscription'>
-                            {t('Subscription Budget')}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {budgetType === 'balance' ? (
+                >
                   <FormField
                     control={form.control}
-                    name='total_quota'
+                    name='tenant_id'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Total Quota')}</FormLabel>
+                        <FormLabel>{t('Tenant ID')}</FormLabel>
                         <FormControl>
-                          <QuotaAmountInput
-                            value={field.value}
-                            onChange={field.onChange}
-                            ariaLabel={t('Total Quota')}
-                          />
+                          <Input inputMode='numeric' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                ) : (
-                  <>
+                  <FormField
+                    control={form.control}
+                    name='type'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Budget Type')}</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={(value) =>
+                            field.onChange(value as 'balance' | 'subscription')
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value='balance'>
+                              {t('Balance Budget')}
+                            </SelectItem>
+                            <SelectItem value='subscription'>
+                              {t('Subscription Budget')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {budgetType === 'balance' ? (
                     <FormField
                       control={form.control}
-                      name='cycle_quota'
+                      name='total_quota'
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t('Cycle Quota')}</FormLabel>
+                          <FormLabel>{t('Total Quota')}</FormLabel>
                           <FormControl>
                             <QuotaAmountInput
                               value={field.value}
                               onChange={field.onChange}
-                              ariaLabel={t('Cycle Quota')}
+                              ariaLabel={t('Total Quota')}
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={form.control}
-                      name='cycle_type'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Cycle Type')}</FormLabel>
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value='daily'>
-                                {t('Daily')}
-                              </SelectItem>
-                              <SelectItem value='weekly'>
-                                {t('Weekly')}
-                              </SelectItem>
-                              <SelectItem value='monthly'>
-                                {t('Monthly')}
-                              </SelectItem>
-                              <SelectItem value='custom'>
-                                {t('Custom (seconds)')}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name='cycle_started_at'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Cycle Start Time')}</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder='2026-05-29T12:00'
-                              type='datetime-local'
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {cycleType === 'custom' ? (
+                  ) : (
+                    <>
                       <FormField
                         control={form.control}
-                        name='custom_seconds'
+                        name='cycle_quota'
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                            <FormLabel>{t('Cycle Quota')}</FormLabel>
                             <FormControl>
-                              <Input inputMode='numeric' {...field} />
+                              <QuotaAmountInput
+                                value={field.value}
+                                onChange={field.onChange}
+                                ariaLabel={t('Cycle Quota')}
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    ) : null}
-                  </>
-                )}
-                <FormField
-                  control={form.control}
-                  name='expires_at'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Expires At (optional)')}</FormLabel>
-                      <FormControl>
-                        <Input type='datetime-local' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                      <FormField
+                        control={form.control}
+                        name='cycle_type'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Cycle Type')}</FormLabel>
+                            <Select
+                              value={field.value}
+                              onValueChange={field.onChange}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value='daily'>
+                                  {t('Daily')}
+                                </SelectItem>
+                                <SelectItem value='weekly'>
+                                  {t('Weekly')}
+                                </SelectItem>
+                                <SelectItem value='monthly'>
+                                  {t('Monthly')}
+                                </SelectItem>
+                                <SelectItem value='custom'>
+                                  {t('Custom (seconds)')}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='cycle_started_at'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Cycle Start Time')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='2026-05-29T12:00'
+                                type='datetime-local'
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {cycleType === 'custom' ? (
+                        <FormField
+                          control={form.control}
+                          name='custom_seconds'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                              <FormControl>
+                                <Input inputMode='numeric' {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ) : null}
+                    </>
                   )}
-                />
-                <Button type='submit' disabled={createMutation.isPending}>
-                  <Coins data-icon='inline-start' />
-                  {t('Create Budget Pool')}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+                  <FormField
+                    control={form.control}
+                    name='expires_at'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Expires At (optional)')}</FormLabel>
+                        <FormControl>
+                          <Input type='datetime-local' {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type='submit' disabled={createMutation.isPending}>
+                    <Coins data-icon='inline-start' />
+                    {t('Create Budget Pool')}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        ) : null}
         <DepartmentBudgetOverviewCard
           item={budgetQuery.data ?? null}
           selectedBudget={budgetDetailQuery.data?.budget ?? null}
@@ -2976,17 +3040,19 @@ function DepartmentBudgetPanel({
         }
         resendPendingId={
           governanceResendMutation.isPending
-            ? governanceResendMutation.variables ?? null
+            ? (governanceResendMutation.variables ?? null)
             : null
         }
         onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
       />
       <Card>
         <CardHeader>
-          <CardTitle>{t('Budget Delegation To Descendant Department')}</CardTitle>
+          <CardTitle>
+            {t('Allocate Budget To Subordinate Department')}
+          </CardTitle>
           <CardDescription>
             {t(
-              'Delegate from the current department budget pool to a descendant department budget pool, while keeping superseded history visible.'
+              'Allocate from the current department budget pool to a subordinate department budget pool, while keeping adjustment history visible.'
             )}
           </CardDescription>
         </CardHeader>
@@ -3003,7 +3069,7 @@ function DepartmentBudgetPanel({
                 name='target_budget_id'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Target Descendant Budget Pool')}</FormLabel>
+                    <FormLabel>{t('Target Subordinate Budget Pool')}</FormLabel>
                     <Select
                       value={field.value ? String(field.value) : undefined}
                       onValueChange={(value) => {
@@ -3021,18 +3087,21 @@ function DepartmentBudgetPanel({
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue
-                            placeholder={t('Choose a descendant budget pool')}
+                            placeholder={t('Choose a subordinate budget pool')}
                           />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {descendantBudgetOptions.map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>
-                            {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
-                              source: departmentName,
-                              target: item.department_name,
-                              budgetId: item.id,
-                            })}
+                            {t(
+                              '{{source}} -> {{target}} -> Budget #{{budgetId}}',
+                              {
+                                source: departmentName,
+                                target: item.department_name,
+                                budgetId: item.id,
+                              }
+                            )}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -3075,7 +3144,7 @@ function DepartmentBudgetPanel({
                   </FormItem>
                 )}
               />
-              <div className='md:col-span-2 flex justify-end'>
+              <div className='flex justify-end md:col-span-2'>
                 <Button
                   type='submit'
                   disabled={
@@ -3085,7 +3154,7 @@ function DepartmentBudgetPanel({
                   }
                 >
                   <Coins data-icon='inline-start' />
-                  {t('Delegate to descendant department')}
+                  {t('Allocate budget to subordinate department')}
                 </Button>
               </div>
             </form>
@@ -3110,7 +3179,7 @@ function DepartmentBudgetPanel({
             }
             supersedePendingId={
               supersedeMutation.isPending
-                ? supersedeMutation.variables?.delegationId ?? null
+                ? (supersedeMutation.variables?.delegationId ?? null)
                 : null
             }
           />
@@ -3154,7 +3223,9 @@ function DepartmentBudgetPanel({
                     {t('Selected request scope')}
                   </div>
                   {selectedQuotaRequestBudget ? (
-                    <QuotaRequestBudgetSummary item={selectedQuotaRequestBudget} />
+                    <QuotaRequestBudgetSummary
+                      item={selectedQuotaRequestBudget}
+                    />
                   ) : (
                     <>
                       <div className='mt-1 text-sm font-medium'>
@@ -3255,7 +3326,9 @@ function DepartmentBudgetPanel({
                 <EmptyMedia variant='icon'>
                   <Coins className='size-4' />
                 </EmptyMedia>
-                <EmptyTitle>{t('No request access in this department')}</EmptyTitle>
+                <EmptyTitle>
+                  {t('No request access in this department')}
+                </EmptyTitle>
                 <EmptyDescription>
                   {t(
                     'You must be an active member of the selected department before submitting a quota request here.'
@@ -3314,7 +3387,7 @@ function DepartmentBudgetPanel({
             }}
             pendingRequestId={
               quotaRequestDecisionMutation.isPending
-                ? quotaRequestDecisionMutation.variables?.requestId ?? null
+                ? (quotaRequestDecisionMutation.variables?.requestId ?? null)
                 : null
             }
             canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
@@ -3458,17 +3531,17 @@ function DepartmentBudgetPanel({
             }
             supersedePendingId={
               allocationSupersedeMutation.isPending
-                ? allocationSupersedeMutation.variables?.allocationId ?? null
+                ? (allocationSupersedeMutation.variables?.allocationId ?? null)
                 : null
             }
             cancelPendingId={
               allocationCancelMutation.isPending
-                ? allocationCancelMutation.variables ?? null
+                ? (allocationCancelMutation.variables ?? null)
                 : null
             }
             reclaimPendingId={
               allocationReclaimMutation.isPending
-                ? allocationReclaimMutation.variables ?? null
+                ? (allocationReclaimMutation.variables ?? null)
                 : null
             }
           />
@@ -3605,7 +3678,9 @@ export function QuotaAllocationTable({
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
+                    onChange={(value) =>
+                      onSupersedeDraftChange?.(item.id, value)
+                    }
                     ariaLabel={t('Allocation Quota')}
                   />
                 ) : null}
@@ -3714,7 +3789,9 @@ export function GovernanceActivityCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('Governance Timeline and Notification Delivery')}</CardTitle>
+        <CardTitle>
+          {t('Governance Timeline and Notification Delivery')}
+        </CardTitle>
         <CardDescription>
           {t(
             'Trace governance actions and DingTalk delivery state for the current department.'
@@ -3756,15 +3833,20 @@ export function GovernanceActivityCard({
                   <TableRow key={`${item.source_type}-${item.source_id}`}>
                     <TableCell>
                       <div className='flex min-w-[180px] flex-col gap-1'>
-                        <span className='font-mono text-xs'>{item.trace_id}</span>
+                        <span className='font-mono text-xs'>
+                          {item.trace_id}
+                        </span>
                         <span className='text-muted-foreground text-xs'>
                           {item.source_type} #{item.source_id}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>{governanceActionLabel(item.action_type, t)}</TableCell>
                     <TableCell>
-                      {item.actor_name || (item.actor_id ? `#${item.actor_id}` : '-')}
+                      {governanceActionLabel(item.action_type, t)}
+                    </TableCell>
+                    <TableCell>
+                      {item.actor_name ||
+                        (item.actor_id ? `#${item.actor_id}` : '-')}
                     </TableCell>
                     <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
                     <TableCell>
@@ -3788,7 +3870,9 @@ export function GovernanceActivityCard({
             </TableBody>
           </Table>
         )}
-        {notificationItems.some((item) => !timelineTraceIds.has(item.trace_id)) ? (
+        {notificationItems.some(
+          (item) => !timelineTraceIds.has(item.trace_id)
+        ) ? (
           <GovernanceNotificationDeliveryList
             items={notificationItems.filter(
               (item) => !timelineTraceIds.has(item.trace_id)
@@ -3852,7 +3936,7 @@ function GovernanceNotificationDeliveryList({
           {item.error_reason ? (
             <div
               className={cn(
-                'mt-1 break-words text-xs',
+                'mt-1 text-xs break-words',
                 item.status === 'failed' || item.status === 'final_failed'
                   ? 'text-destructive'
                   : 'text-muted-foreground'
@@ -3886,39 +3970,55 @@ function formatGovernanceTarget(
     : t('Unknown target')
 }
 
-function governanceActionLabel(
-  actionType: string,
-  t: (key: string) => string
-) {
+function governanceActionLabel(actionType: string, t: (key: string) => string) {
   const labels: Record<string, string> = {
     'enterprise.organization.membership.replace': 'Membership replaced',
     'enterprise.organization.membership.add': 'Membership added',
     'enterprise.organization.membership.disable': 'Membership disabled',
     'enterprise.organization.membership.restore': 'Membership restored',
     'enterprise.organization.membership.rename': 'Membership renamed',
-    'enterprise.organization.department_admin.grant': 'Department admin granted',
-    'enterprise.organization.department_admin.revoke': 'Department admin revoked',
-    'enterprise.organization.department_owner.manual_grant': 'Department owner granted',
-    'enterprise.organization.department_owner.manual_grant.revoke': 'Department owner grant revoked',
-    'enterprise.organization.department_owner.manual_deny': 'Department owner denied',
-    'enterprise.organization.department_owner.manual_deny.revoke': 'Department owner denial revoked',
-    'enterprise.organization.department_owner.dingtalk_sync.update': 'DingTalk owner sync updated',
-    'enterprise.organization.department_owner.resolution.denied': 'Department owner resolution denied',
+    'enterprise.organization.department_admin.grant':
+      'Department admin granted',
+    'enterprise.organization.department_admin.revoke':
+      'Department admin revoked',
+    'enterprise.organization.department_owner.manual_grant':
+      'Department owner granted',
+    'enterprise.organization.department_owner.manual_grant.revoke':
+      'Department owner grant revoked',
+    'enterprise.organization.department_owner.manual_deny':
+      'Department owner denied',
+    'enterprise.organization.department_owner.manual_deny.revoke':
+      'Department owner denial revoked',
+    'enterprise.organization.department_owner.dingtalk_sync.update':
+      'DingTalk owner sync updated',
+    'enterprise.organization.department_owner.resolution.denied':
+      'Department owner resolution denied',
     'enterprise.dingtalk.config.set': 'DingTalk configuration updated',
     'enterprise.dingtalk.connectivity.test': 'DingTalk connectivity tested',
     'enterprise.dingtalk.sync.start': 'DingTalk sync started',
-    'enterprise.dingtalk.sync_conflict.bind_candidate': 'DingTalk sync conflict candidate bound',
+    'enterprise.dingtalk.sync_conflict.bind_candidate':
+      'DingTalk sync conflict candidate bound',
     'enterprise.usage.report.set': 'Usage report configured',
-    'enterprise.organization.department_budget.create': 'Department budget created',
-    'enterprise.organization.department_budget.reject': 'Department budget rejected',
-    'enterprise.organization.department_budget.pause': 'Department budget paused',
-    'enterprise.organization.department_budget.resume': 'Department budget resumed',
-    'enterprise.organization.department_budget.resize': 'Department budget resized',
-    'enterprise.organization.department_budget.resize.reject': 'Department budget resize rejected',
-    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
-    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
-    'enterprise.organization.budget_delegation.revoke': 'Budget delegation revoked',
-    'enterprise.organization.budget_delegation.reject': 'Budget delegation rejected',
+    'enterprise.organization.department_budget.create':
+      'Department budget created',
+    'enterprise.organization.department_budget.reject':
+      'Department budget rejected',
+    'enterprise.organization.department_budget.pause':
+      'Department budget paused',
+    'enterprise.organization.department_budget.resume':
+      'Department budget resumed',
+    'enterprise.organization.department_budget.resize':
+      'Department budget resized',
+    'enterprise.organization.department_budget.resize.reject':
+      'Department budget resize rejected',
+    'enterprise.organization.budget_delegation.create':
+      'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede':
+      'Budget delegation adjusted',
+    'enterprise.organization.budget_delegation.revoke':
+      'Budget delegation revoked',
+    'enterprise.organization.budget_delegation.reject':
+      'Budget delegation rejected',
     'enterprise.organization.quota_request.submit': 'Quota request submitted',
     'enterprise.organization.quota_request.approve': 'Quota request approved',
     'enterprise.organization.quota_request.reject': 'Quota request rejected',
@@ -4058,7 +4158,9 @@ export function QuotaRequestTable({
                   userId: item.requester_user_id,
                 })}
               </TableCell>
-              <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
+              <TableCell>
+                {item.department_name || `#${item.department_id}`}
+              </TableCell>
               <TableCell>
                 {t('Budget #{{budgetId}}', {
                   budgetId: item.department_budget_id,
@@ -4080,7 +4182,9 @@ export function QuotaRequestTable({
                   : '-'}
               </TableCell>
               <TableCell>
-                <Badge variant='secondary'>{enterpriseBudgetStatusLabel(item.status, t)}</Badge>
+                <Badge variant='secondary'>
+                  {enterpriseBudgetStatusLabel(item.status, t)}
+                </Badge>
               </TableCell>
               <TableCell>
                 <div className='flex min-w-[360px] flex-col gap-2'>
@@ -4134,8 +4238,12 @@ export function QuotaRequestTable({
                       })
                     }
                     disabled={!actionable}
-                    placeholder={t('Rejected requests must include a reject reason')}
-                    aria-label={t('Rejected requests must include a reject reason')}
+                    placeholder={t(
+                      'Rejected requests must include a reject reason'
+                    )}
+                    aria-label={t(
+                      'Rejected requests must include a reject reason'
+                    )}
                   />
                 </div>
               </TableCell>
@@ -4177,7 +4285,7 @@ export function BudgetDelegationTable({
           <EmptyTitle>{t('No budget delegations yet')}</EmptyTitle>
           <EmptyDescription>
             {t(
-              'Choose a descendant department budget pool to create the first delegation in this governance chain.'
+              'Choose a subordinate department budget pool to create the first allocation in this governance chain.'
             )}
           </EmptyDescription>
         </EmptyHeader>
@@ -4201,8 +4309,12 @@ export function BudgetDelegationTable({
           <TableRow key={item.id}>
             <TableCell>
               {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
-                source: item.source_department_name || `#${item.source_department_id}`,
-                target: item.target_department_name || `#${item.target_department_id}`,
+                source:
+                  item.source_department_name ||
+                  `#${item.source_department_id}`,
+                target:
+                  item.target_department_name ||
+                  `#${item.target_department_id}`,
                 budgetId: item.target_budget_id,
               })}
             </TableCell>
@@ -4222,7 +4334,9 @@ export function BudgetDelegationTable({
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
+                    onChange={(value) =>
+                      onSupersedeDraftChange?.(item.id, value)
+                    }
                     ariaLabel={t('Delegation Quota')}
                   />
                 ) : null}
@@ -4290,12 +4404,18 @@ export function DepartmentBudgetListCard({
         </CardDescription>
         <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
           <div className='space-y-1'>
-            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-sm font-medium'>
+              {t('Include descendants')}
+            </div>
             <div className='text-muted-foreground text-xs'>
               {includeDescendants
-                ? t('Current scope: {{department}} and all descendant departments', {
-                    department: scopeDepartmentName || t('Current department'),
-                  })
+                ? t(
+                    'Current scope: {{department}} and all descendant departments',
+                    {
+                      department:
+                        scopeDepartmentName || t('Current department'),
+                    }
+                  )
                 : t('Current scope: {{department}} only', {
                     department: scopeDepartmentName || t('Current department'),
                   })}
@@ -4825,7 +4945,11 @@ function BudgetStat({
       <div className='mt-1 flex items-center gap-2 font-medium'>
         <CalendarClock className='text-muted-foreground size-4' />
         {badgeVariant ? (
-          <StatusBadge label={String(value)} variant={badgeVariant} copyable={false} />
+          <StatusBadge
+            label={String(value)}
+            variant={badgeVariant}
+            copyable={false}
+          />
         ) : (
           <span>{value}</span>
         )}
@@ -4846,7 +4970,9 @@ function parseRequiredDateTimeToUnix(value: string) {
   return ts ?? 0
 }
 
-function hasPositiveTimestamp(value: number | undefined | null): value is number {
+function hasPositiveTimestamp(
+  value: number | undefined | null
+): value is number {
   return typeof value === 'number' && value > 0
 }
 

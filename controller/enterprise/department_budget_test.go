@@ -322,30 +322,50 @@ func TestDepartmentBudgetAPIRequiresValidPath(t *testing.T) {
 	require.Equal(t, "common.invalid_params", response.Message)
 }
 
-func TestDepartmentBudgetAPIDeniesNonDepartmentAdmin(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	model.DB = setupEnterpriseBudgetPermissionDB(t)
-	router.Use(func(c *gin.Context) {
-		c.Set("id", 200)
-		c.Set("role", common.RoleCommonUser)
-		c.Next()
-	})
-	router.POST(
-		"/api/enterprise/departments/:id/budget",
-		middleware.EnterpriseDepartmentAdmin("id"),
-		CreateDepartmentBudget,
-	)
+func TestDepartmentBudgetAPIDeniesNonEnterpriseAdmin(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		role      int
+		deptAdmin bool
+	}{
+		{name: "common user", role: common.RoleCommonUser},
+		{name: "department admin", role: common.RoleCommonUser, deptAdmin: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			db := setupEnterpriseBudgetPermissionDB(t)
+			model.DB = db
+			if tc.deptAdmin {
+				require.NoError(t, db.Create(&entmodel.DepartmentRole{
+					UserId:       200,
+					DepartmentId: 1,
+					Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+					Status:       constant.EnterpriseDepartmentRoleStatusActive,
+				}).Error)
+			}
+			router.Use(func(c *gin.Context) {
+				c.Set("id", 200)
+				c.Set("role", tc.role)
+				c.Next()
+			})
+			router.POST(
+				"/api/enterprise/departments/:id/budget",
+				middleware.EnterpriseAdmin(),
+				CreateDepartmentBudget,
+			)
 
-	total := int64(100)
-	body := dtoenterprise.CreateDepartmentBudgetRequest{
-		Type:       entmodel.DepartmentBudgetTypeBalance,
-		TotalQuota: &total,
+			total := int64(100)
+			body := dtoenterprise.CreateDepartmentBudgetRequest{
+				Type:       entmodel.DepartmentBudgetTypeBalance,
+				TotalQuota: &total,
+			}
+			recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budget", body)
+			response := decodeEnterpriseAPIResponse(t, recorder)
+			require.False(t, response.Success)
+			require.Equal(t, "error.enterprise.permission.admin_required", response.Message)
+		})
 	}
-	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budget", body)
-	response := decodeEnterpriseAPIResponse(t, recorder)
-	require.False(t, response.Success)
-	require.Equal(t, "error.enterprise.permission.dept_admin_required", response.Message)
 }
 
 func setupEnterpriseBudgetPermissionDB(t *testing.T) *gorm.DB {

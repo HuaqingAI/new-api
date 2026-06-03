@@ -4343,11 +4343,9 @@ export function DepartmentBudgetDetailTable({
               <div className='flex min-w-[180px] flex-col gap-1 text-sm'>
                 <span>{formatBudgetCycleType(wallet.cycle_type, t)}</span>
                 <span className='text-muted-foreground text-xs'>
-                  {wallet.next_reset_time
+                  {hasPositiveTimestamp(wallet.next_reset_time)
                     ? `${t('Next Reset')}: ${formatTimestamp(wallet.next_reset_time)}`
-                    : wallet.expires_at
-                      ? `${t('Expires At (optional)')}: ${formatTimestamp(wallet.expires_at)}`
-                      : '-'}
+                    : `${t('Expires At (optional)')}: ${formatBudgetExpiry(wallet.expires_at, t)}`}
                 </span>
               </div>
             </TableCell>
@@ -4491,7 +4489,7 @@ export function DepartmentBudgetOverviewCard({
         />
         <BudgetStat
           label={t('Expires At (optional)')}
-          value={budget.expires_at ? formatTimestamp(budget.expires_at) : '-'}
+          value={formatBudgetExpiry(budget.expires_at, t)}
         />
         <BudgetStat
           label={t('Threshold Window')}
@@ -4556,11 +4554,25 @@ function parseRequiredDateTimeToUnix(value: string) {
   return ts ?? 0
 }
 
+function hasPositiveTimestamp(value: number | undefined | null): value is number {
+  return typeof value === 'number' && value > 0
+}
+
 function formatBudgetCycleType(cycleType: string, t: (key: string) => string) {
   if (cycleType === 'daily') return t('Daily')
   if (cycleType === 'weekly') return t('Weekly')
   if (cycleType === 'monthly') return t('Monthly')
   if (cycleType === 'custom') return t('Custom (seconds)')
-  if (cycleType === 'never') return t('No Reset')
-  return cycleType || '-'
+  if (cycleType === 'never') return t('One-time quota')
+  return cycleType ? t('Unknown cycle type') : '-'
+}
+
+function formatBudgetExpiry(
+  expiresAt: number | undefined | null,
+  t: (key: string) => string
+) {
+  if (hasPositiveTimestamp(expiresAt)) {
+    return formatTimestamp(expiresAt)
+  }
+  return t('Never expires')
 }

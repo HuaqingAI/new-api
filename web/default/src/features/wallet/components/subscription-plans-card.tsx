@@ -56,6 +56,7 @@ import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
+  UserSubscription,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 import type { PaymentMethod, TopupInfo } from '../types'
@@ -139,6 +140,109 @@ export function getManagedSubscriptionNote(
     return null
   }
   return `${t('Managed by department')} · ${t('Cannot be deleted by user')}`
+}
+
+function isEnterpriseAllocationSubscription(sub: UserSubscription): boolean {
+  return (
+    sub.source_type === 'enterprise_allocation' ||
+    sub.source === 'enterprise_allocation'
+  )
+}
+
+function hasPositiveTimestamp(value: number | undefined | null): value is number {
+  return typeof value === 'number' && value > 0
+}
+
+export function getSubscriptionRemainingDays(
+  sub: UserSubscription,
+  nowSeconds = Date.now() / 1000
+): number | null {
+  if (!hasPositiveTimestamp(sub.end_time)) {
+    return null
+  }
+  return Math.max(0, Math.ceil((sub.end_time - nowSeconds) / 86400))
+}
+
+export function getSubscriptionStatusDisplay(
+  sub: UserSubscription,
+  t: (key: string) => string,
+  nowSeconds = Date.now() / 1000
+): {
+  label: string
+  variant: 'success' | 'neutral'
+  isActive: boolean
+  isCancelled: boolean
+  isExpired: boolean
+} {
+  const isCancelled = sub.status === 'cancelled'
+  const hasEndTime = hasPositiveTimestamp(sub.end_time)
+  const isEnterpriseNoExpiry =
+    isEnterpriseAllocationSubscription(sub) && !hasEndTime
+  const isExpired =
+    !isCancelled &&
+    !isEnterpriseNoExpiry &&
+    (!hasEndTime || sub.end_time < nowSeconds)
+  const isActive = sub.status === 'active' && !isExpired
+
+  if (isActive) {
+    return {
+      label: t('Active'),
+      variant: 'success',
+      isActive: true,
+      isCancelled: false,
+      isExpired: false,
+    }
+  }
+  if (isCancelled) {
+    return {
+      label: t('Cancelled'),
+      variant: 'neutral',
+      isActive: false,
+      isCancelled: true,
+      isExpired: false,
+    }
+  }
+  return {
+    label: t('Expired'),
+    variant: 'neutral',
+    isActive: false,
+    isCancelled: false,
+    isExpired: true,
+  }
+}
+
+export function getSubscriptionExpiryDisplay(
+  sub: UserSubscription,
+  t: (key: string) => string,
+  nowSeconds = Date.now() / 1000
+): { label: string; value: string } {
+  const status = getSubscriptionStatusDisplay(sub, t, nowSeconds)
+  if (!hasPositiveTimestamp(sub.end_time)) {
+    const isEnterpriseNoExpiry = isEnterpriseAllocationSubscription(sub)
+    const label = isEnterpriseNoExpiry
+      ? t('Until')
+      : status.isCancelled
+        ? t('Cancelled at')
+        : status.isExpired
+          ? t('Expired at')
+          : t('Until')
+
+    return {
+      label,
+      value: isEnterpriseNoExpiry ? t('Never expires') : t('No expiry set'),
+    }
+  }
+
+  const label = status.isActive
+    ? t('Until')
+    : status.isCancelled
+      ? t('Cancelled at')
+      : t('Expired at')
+
+  return {
+    label,
+    value: new Date(sub.end_time * 1000).toLocaleString(),
+  }
 }
 
 export function SubscriptionPlansCard({
@@ -291,13 +395,6 @@ export function SubscriptionPlansCard({
     }
     return map
   }, [plans])
-
-  const getRemainingDays = (sub: UserSubscriptionRecord) => {
-    const endTime = sub?.subscription?.end_time || 0
-    if (!endTime) return 0
-    const now = Date.now() / 1000
-    return Math.max(0, Math.ceil((endTime - now) / 86400))
-  }
 
   const getUsagePercent = (sub: UserSubscriptionRecord) => {
     const total = Number(sub?.subscription?.amount_total || 0)
@@ -474,13 +571,16 @@ export function SubscriptionPlansCard({
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
-                  const remainDays = getRemainingDays(sub)
+                  const remainDays = getSubscriptionRemainingDays(subscription)
                   const usagePercent = getUsagePercent(sub)
-                  const now = Date.now() / 1000
-                  const isExpired = (subscription?.end_time || 0) < now
-                  const isCancelled = subscription?.status === 'cancelled'
-                  const isActive =
-                    subscription?.status === 'active' && !isExpired
+                  const statusDisplay = getSubscriptionStatusDisplay(
+                    subscription,
+                    t
+                  )
+                  const expiryDisplay = getSubscriptionExpiryDisplay(
+                    subscription,
+                    t
+                  )
 
                   return (
                     <div
@@ -496,27 +596,27 @@ export function SubscriptionPlansCard({
                               planTitle
                             )}
                           </span>
-                          {isActive ? (
+                          {statusDisplay.isActive ? (
                             <StatusBadge
-                              label={t('Active')}
-                              variant='success'
+                              label={statusDisplay.label}
+                              variant={statusDisplay.variant}
                               copyable={false}
                             />
-                          ) : isCancelled ? (
+                          ) : statusDisplay.isCancelled ? (
                             <StatusBadge
-                              label={t('Cancelled')}
-                              variant='neutral'
+                              label={statusDisplay.label}
+                              variant={statusDisplay.variant}
                               copyable={false}
                             />
                           ) : (
                             <StatusBadge
-                              label={t('Expired')}
-                              variant='neutral'
+                              label={statusDisplay.label}
+                              variant={statusDisplay.variant}
                               copyable={false}
                             />
                           )}
                         </div>
-                        {isActive && (
+                        {statusDisplay.isActive && remainDays !== null && (
                           <span className='text-muted-foreground'>
                             {t('{{count}} days remaining', {
                               count: remainDays,
@@ -525,23 +625,17 @@ export function SubscriptionPlansCard({
                         )}
                       </div>
                       <div className='text-muted-foreground mt-1.5'>
-                        {isActive
-                          ? t('Until')
-                          : isCancelled
-                            ? t('Cancelled at')
-                            : t('Expired at')}{' '}
-                        {new Date(
-                          (subscription?.end_time || 0) * 1000
-                        ).toLocaleString()}
+                        {expiryDisplay.label} {expiryDisplay.value}
                       </div>
-                      {isActive && (subscription?.next_reset_time ?? 0) > 0 && (
-                        <div className='text-muted-foreground mt-1'>
-                          {t('Next reset')}:{' '}
-                          {new Date(
-                            subscription!.next_reset_time! * 1000
-                          ).toLocaleString()}
-                        </div>
-                      )}
+                      {statusDisplay.isActive &&
+                        (subscription?.next_reset_time ?? 0) > 0 && (
+                          <div className='text-muted-foreground mt-1'>
+                            {t('Next reset')}:{' '}
+                            {new Date(
+                              subscription!.next_reset_time! * 1000
+                            ).toLocaleString()}
+                          </div>
+                        )}
                       <div className='text-muted-foreground mt-1'>
                         {t('Source')}:{' '}
                         {getSubscriptionSourceLabel(
@@ -609,7 +703,7 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
-                      {totalAmount > 0 && isActive && (
+                      {totalAmount > 0 && statusDisplay.isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
                     </div>

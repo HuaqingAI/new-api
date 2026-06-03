@@ -912,6 +912,25 @@ describe('Enterprise organization department tree workflow', () => {
     }
   })
 
+  test('enterprise wallet expiry locale keys exist for every supported language', () => {
+    const requiredKeys = [
+      'One-time quota',
+      'Never expires',
+      'No expiry set',
+      'Unknown cycle type',
+    ] as const
+
+    for (const [language, resource] of Object.entries(resources)) {
+      for (const key of requiredKeys) {
+        assert.notEqual(
+          resource.translation[key],
+          undefined,
+          `${language} missing ${key}`
+        )
+      }
+    }
+  })
+
   test('maps quota request, allocation, wallet status, and budget type without raw fallback', () => {
     for (const [status, expected] of [
       ['submitted', 'Submitted'],
@@ -1230,13 +1249,42 @@ describe('Enterprise organization department tree workflow', () => {
       '640',
       'Total Quota',
       '800',
-      'No Reset',
+      'One-time quota',
+      'Never expires',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
 
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
     assert.doesNotMatch(html, />Weekly</)
     assert.doesNotMatch(html, />Custom \\(seconds\\)</)
+  })
+
+  test('renders non-positive budget expiry and unknown cycles with semantic fallback', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({
+            type: 'balance',
+            cycle_type: 'future_cycle',
+            expires_at: -1,
+          })}
+          selectedBudget={departmentBudget({
+            type: 'balance',
+            cycle_type: 'future_cycle',
+            expires_at: -1,
+          })}
+          thresholds={{ warning: 80, critical: 95 }}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Unknown cycle type/)
+    assert.match(html, /Never expires/)
+    assert.doesNotMatch(html, />future_cycle</)
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
   })
 
   test('renders budget pool list with selectable threshold states and usage metrics', () => {
@@ -1395,6 +1443,45 @@ describe('Enterprise organization department tree workflow', () => {
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('renders one-time derived wallet expiry without raw cycle codes or epoch dates', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetDetailTable
+          loading={false}
+          budget={departmentBudget({
+            id: 17,
+            type: 'balance',
+            status: 'active',
+            cycle_type: 'never',
+            expires_at: 0,
+          })}
+          wallets={[
+            walletDetail({
+              allocation_id: 32,
+              wallet_id: 42,
+              wallet_status: 'active',
+              target_user_id: 2002,
+              target_username: 'bob',
+              target_display_name: 'Bob',
+              cycle_type: 'never',
+              next_reset_time: 0,
+              expires_at: -1,
+              source_parent_budget_id: 17,
+              source_parent_budget_type: 'balance',
+              processed_at: 1700000600,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /One-time quota/)
+    assert.match(html, /Never expires/)
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, />never</)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
   })
 
   test('renders budget detail empty states for unselected and wallet-free pools', () => {

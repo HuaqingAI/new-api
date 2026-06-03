@@ -144,7 +144,9 @@ def _complete_story_key(project_root: str, story_id: str, prefix: str, key: str)
 
 def _story_keys_in_epic_block(content: str, context_slug: str, epic_num: str) -> list[str]:
     lines = content.splitlines()
-    epic_header = f"{context_slug}-epic-{epic_num}"
+    epic_headers = {f"{context_slug}-epic-{epic_num}"}
+    if context_slug == "agent-platform":
+        epic_headers.add(f"ap-epic-{epic_num}")
     keys: list[str] = []
     inside_block = False
     for raw_line in lines:
@@ -153,7 +155,7 @@ def _story_keys_in_epic_block(content: str, context_slug: str, epic_num: str) ->
             continue
         key = line.split(":", 1)[0].strip()
         if not inside_block:
-            inside_block = key == epic_header
+            inside_block = key in epic_headers
             continue
         if _is_epic_marker(key):
             break

@@ -2,11 +2,11 @@
 baseline_commit: e8585fedb
 ---
 
-# Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径
+# Story AP-6.8: 完成 Cherry Studio First / Codex Second 签核路径
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，规划与 sprint-status key 为 `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff`。用户指定输出路径为 `6-8-*.md`，因此本文档文件名按 `6-8-*` 落地；实现和状态同步仍以 `ap-6-8-*` 为真实 sprint key。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，规划与 sprint-status key 为 `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff`。本文档按 AP 命名空间规范落地为 `ap-6-8-*` 文件名；实现和状态同步以 `ap-6-8-*` 为真实 sprint key。
 
 ## Story
 
@@ -64,7 +64,7 @@ so that Agent Platform 的公共契约通用性得到实际验证。
 
 ### Story Source and Scope
 
-- Story 6.8 属于 Agent Platform Epic 6 “下游公共契约冻结与接入签核”。Epic 6 目标是基于正式公共契约、状态矩阵、错误矩阵与 mock / fixture 完成 Cherry Studio 首个消费者签核，并验证 Codex 作为第二消费者时不需要平行协议主干。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic 6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径`]
+- Story AP-6.8 属于 Agent Platform Epic AP-6 “下游公共契约冻结与接入签核”。Epic AP-6 目标是基于正式公共契约、状态矩阵、错误矩阵与 mock / fixture 完成 Cherry Studio 首个消费者签核，并验证 Codex 作为第二消费者时不需要平行协议主干。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic AP-6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.8: 完成 Cherry Studio First / Codex Second 签核路径`]
 - AP-6 是 AP-1 到 AP-5 完成后的 contract/signoff layer，不新增第四个 runtime plane。任何新增 API 必须归属既有 control plane `/api/agent-platform/**`、auth plane `/api/agent-platform/oauth/**` 或 open capability plane `/api/open-capabilities/**`。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-1`; `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.2 2026-06-02 Correct Course 重处理后的定位`]
 - 本故事的主要交付是签核证据、gap 结论和二消费者复用验证。它不是 Cherry Studio 专属适配器，不是 Codex channel/OAuth upstream 改造，也不是重写 Skill / Knowledge / Agent runtime。[Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#2.3 与 Cherry Studio 的边界`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-6`]
 
@@ -72,13 +72,13 @@ so that Agent Platform 的公共契约通用性得到实际验证。
 
 - AP-6 公共契约 source of truth 是三件套：`docs/agent-platform-downstream-contract-spec.md`、`docs/openapi/api.json`、mock / fixture / conformance test artifacts。三者不一致时 AP-6 story 不得 done。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-3`; `docs/agent-platform-downstream-contract-spec.md#3A.1 Source of Truth`]
 - `docs/agent-platform-downstream-contract-spec.md#11.8 Consumer Signoff` 当前仍为 `pending`，owner 为 `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff`。本故事必须把这里从占位改成可审阅签核记录。[Source: `docs/agent-platform-downstream-contract-spec.md#11.8 Consumer Signoff`]
-- AP-6.5 enterprise model discovery 与 AP-6.6 error/client state matrix 如果在实现时仍未冻结，Cherry Studio 不能被标记为完整 `signed off`。可以记录 `blocked` 或分域 `ready for signoff`，但必须明确 blocker 和未满足范围。[Source: `docs/agent-platform-downstream-contract-spec.md#11.5 Enterprise Model Discovery Contract`; `docs/agent-platform-downstream-contract-spec.md#11.6 Error Matrix and Client State Matrix`; `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`]
+- AP-6.5 enterprise model discovery 与 AP-6.6 error/client state matrix 如果在实现时仍未冻结，Cherry Studio 不能被标记为完整 `signed off`。可以记录 `blocked` 或分域 `ready for signoff`，但必须明确 blocker 和未满足范围。[Source: `docs/agent-platform-downstream-contract-spec.md#11.5 Enterprise Model Discovery Contract`; `docs/agent-platform-downstream-contract-spec.md#11.6 Error Matrix and Client State Matrix`; `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`]
 - Cherry Studio 私有字段只能通过 `extensions.cherry_studio` 承载；Codex 私有字段只能通过 `extensions.codex`、向后兼容 optional field 或 contract version 治理。两者都不得改写核心字段语义。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-6`; `docs/agent-platform-downstream-contract-spec.md#3A.3 Contract Versioning`]
 
 ### Existing Assets to Reuse
 
-- 6.7 已交付 `tests/agentplatform/conformance/`，其中 fixture catalog 覆盖 OAuth、discovery/detail/refresh、Skill invoke、Knowledge query、error envelope，并对 AP-6.5 / AP-6.6 缺口使用 explicit pending reason。签核必须引用这些证据，不要重新手写平行 JSON fixture。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`; `tests/agentplatform/conformance/fixtures_test.go`]
-- `controller/agentplatform/open_capabilities_test.go` 已复用 in-memory SQLite、bearer token、stub skill HTTP client、stub knowledge provider，覆盖 TTL/ETag/version diagnostics、revoked/offline、timeout/upstream failure 和 provider-native 字段不外泄。Cherry Studio signoff 应把这些作为 runtime handler evidence。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Previous Story Intelligence`; `controller/agentplatform/open_capabilities_test.go`]
+- 6.7 已交付 `tests/agentplatform/conformance/`，其中 fixture catalog 覆盖 OAuth、discovery/detail/refresh、Skill invoke、Knowledge query、error envelope，并对 AP-6.5 / AP-6.6 缺口使用 explicit pending reason。签核必须引用这些证据，不要重新手写平行 JSON fixture。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`; `tests/agentplatform/conformance/fixtures_test.go`]
+- `controller/agentplatform/open_capabilities_test.go` 已复用 in-memory SQLite、bearer token、stub skill HTTP client、stub knowledge provider，覆盖 TTL/ETag/version diagnostics、revoked/offline、timeout/upstream failure 和 provider-native 字段不外泄。Cherry Studio signoff 应把这些作为 runtime handler evidence。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Previous Story Intelligence`; `controller/agentplatform/open_capabilities_test.go`]
 - `docs/openapi/api.json` 已包含 OAuth 和 open capability public paths：`/api/agent-platform/oauth/authorize`、`/api/agent-platform/oauth/token`、`/api/agent-platform/oauth/revoke`、`/api/open-capabilities/discovery`、`/api/open-capabilities/resources/{id}`、`/api/open-capabilities/refresh`、`/api/open-capabilities/skills/{id}/invoke`、`/api/open-capabilities/knowledge-bases/{id}/query`、`/api/open-capabilities/agents/{id}`。签核文档应引用这些路径而不是发明新 surface。[Source: `tests/agentplatform/conformance/fixtures_test.go#TestCoveredOpenAPIPathsExist`; `docs/openapi/api.json`]
 - 当前 Agent Platform web shell 位于 `web/default/src/features/agent-platform/index.tsx`，只展示 overview、skills、knowledge、agents 和导航/实现焦点；尚未展示 AP-6 signoff 状态。若本故事补 UI，应在该 feature 下扩展，并更新 `web/default/src/features/agent-platform/agent-platform.test.tsx`。[Source: `web/default/src/features/agent-platform/index.tsx`; `web/default/src/features/agent-platform/agent-platform.test.tsx`; `_bmad-output/planning-artifacts/ux-agent-platform.md#3.8 下游契约签核视图`]
 
@@ -92,8 +92,8 @@ so that Agent Platform 的公共契约通用性得到实际验证。
 
 ### Previous Story Intelligence
 
-- 6.7 review 修复过三类漂移：fixture HTTP method 元数据与真实 API 不一致、OAuth revoke 缺少 typed response DTO、OpenAPI data schema 未覆盖 typed response 与 detail/refresh diagnostics。6.8 签核必须检查同类漂移，不要只检查 path 是否存在。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Senior Developer Review (AI)`]
-- 6.7 已确认 AP-6.5 / AP-6.6 依赖仍以 pending reason 固化。6.8 如果仍面对这些 pending，正确输出是签核 blocker，而不是把 pending conformance 当完成证据。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`]
+- 6.7 review 修复过三类漂移：fixture HTTP method 元数据与真实 API 不一致、OAuth revoke 缺少 typed response DTO、OpenAPI data schema 未覆盖 typed response 与 detail/refresh diagnostics。6.8 签核必须检查同类漂移，不要只检查 path 是否存在。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Senior Developer Review (AI)`]
+- 6.7 已确认 AP-6.5 / AP-6.6 依赖仍以 pending reason 固化。6.8 如果仍面对这些 pending，正确输出是签核 blocker，而不是把 pending conformance 当完成证据。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Completion Notes List`]
 - 最近相关提交 `e8585fedb feat(story-6.7): 提供 Mock、Fixture 与 Contract Conformance 套件` 修改了 `docs/agent-platform-downstream-contract-spec.md`、`docs/openapi/api.json`、`tests/agentplatform/conformance/*`、`controller/agentplatform/open_capabilities_test.go`、`dto/agentplatform/oauth.go` 和 `service/agentplatform/open_capability_errors.go`。6.8 应优先读取这些文件再修改，避免破坏刚冻结的三件套。[Source: git log / git show `e8585fedb`]
 
 ### Testing Requirements
@@ -115,13 +115,13 @@ so that Agent Platform 的公共契约通用性得到实际验证。
 
 ### References
 
-- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径`]
+- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.8: 完成 Cherry Studio First / Codex Second 签核路径`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-5`; `#FR-6`; `#FR-13`; `#FR-14`; `#FR-15`; `#SM-1`; `#SM-5`; `#SM-C3`; `#DG-2`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.3 AP-6 MVP Exit Gate`]
 - [Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Architectural Decisions`; `#AP-6 Implementation Handoff`]
 - [Source: `_bmad-output/planning-artifacts/ux-agent-platform.md#3.8 下游契约签核视图`; `#3.9 Model discovery 状态展示`; `#3.10 客户端状态矩阵展示`]
 - [Source: `docs/agent-platform-downstream-contract-spec.md#11.8 Consumer Signoff`]
-- [Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md`]
+- [Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md`]
 
 ## Dev Agent Record
 
@@ -134,7 +134,7 @@ GPT-5 Codex
 - 2026-06-03 10:07 +0800：执行 BMAD create-story workflow；已读取用户指定 `.claude/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
 - 2026-06-03 10:07 +0800：`resolve_customization.py` 因 Python `tomllib` 缺失失败，已按技能 fallback 读取 `.claude/skills/bmad-create-story/customize.toml`；未发现 `_bmad/custom/bmad-create-story*.toml` override。
 - 2026-06-03 10:07 +0800：已读取 `_bmad/bmm/config.yaml`，确认 communication/document language 为 Chinese，user 为 hth，planning/implementation artifacts 位于 `_bmad-output`。
-- 2026-06-03 10:07 +0800：已读取完整 `sprint-status.yaml`，确认真实 sprint key 为 `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog`；用户要求输出文件为 `_bmad-output/implementation-artifacts/6-8-*.md`。
+- 2026-06-03 10:07 +0800：已读取完整 `sprint-status.yaml`，确认真实 sprint key 为 `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog`。
 - 2026-06-03 10:07 +0800：已分析 `epics-agent-platform.md`、Agent Platform PRD/addendum、architecture amendment、UX、`docs/agent-platform-downstream-contract-spec.md`、6.7 story artifact、conformance tests、当前 web/default Agent Platform shell 和最近 git commit。
 - 2026-06-03 10:07 +0800：未发现 `project-context.md` persistent fact 文件。
 - 2026-06-03 10:11 +0800：执行 BMAD dev-story workflow；按 fallback 读取 `.claude/skills/bmad-dev-story/customize.toml`，未发现 `_bmad/custom/bmad-dev-story*.toml` override，`project-context.md` 未命中。
@@ -163,7 +163,7 @@ GPT-5 Codex
 
 ### File List
 
-- `_bmad-output/implementation-artifacts/6-8-complete-cherry-studio-first-and-codex-second-signoff.md`
+- `_bmad-output/implementation-artifacts/ap-6-8-complete-cherry-studio-first-and-codex-second-signoff.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/tests/test-summary.md`
 - `_bmad-output/story-automator/orchestration-6-20260602-152140.md`
@@ -215,7 +215,7 @@ Outcome: Approve after auto-fix
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.8 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.8 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：完成 AP-6 consumer signoff artifact、公共契约 `11.8` 索引、Cherry Studio first-consumer blocker 签核、Codex second-consumer review，以及 conformance 防漂移测试。
 - 2026-06-03：完成 story-automator review 自动修复，补齐 OAuth runtime evidence、防漂移测试和 File List，状态设为 `done`。
 - 2026-06-03：source-of-truth review 将 AP-6.5/AP-6.6 完成后的签核状态收敛为 `signed off`，补强 conformance 防回退并保持 story done。

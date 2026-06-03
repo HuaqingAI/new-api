@@ -1,4 +1,4 @@
-# Story 3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke
+# Story AP-3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke
 
 Status: done
 
@@ -29,13 +29,13 @@ so that 首个消费者和后续消费者都能走同一条集成路径。
 
 - [x] 将 Skill detail 接入真正的 open-capabilities invoke 路径 (AC: 1, 2, 3)
   - [x] 在 `service/agentplatform` 中新增 Skill invoke 服务，读取 `resource_version` + `skill_def` + `exposure`，以 open capability 授权与发布状态为前提执行调用。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1104]
-  - [x] invoke 前强制执行 visibility / callability / contract version / readiness 校验，避免未发布、已撤销、已下线或契约不完整的 Skill 被调用。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.3; _bmad-output/implementation-artifacts/ap-2-4-publish-open-capability-standard-apis-and-error-envelope.md]
+  - [x] invoke 前强制执行 visibility / callability / contract version / readiness 校验，避免未发布、已撤销、已下线或契约不完整的 Skill 被调用。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.3; _bmad-output/implementation-artifacts/ap-2-4-publish-open-capability-standard-apis-and-error-envelope.md]
   - [x] 继续沿用统一 error envelope，没有为 Skill invoke 单独定义另一套错误模型。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#313]
 
 - [x] 为 MVP 提供最小可运行的 Skill binding adapter (AC: 2, 3)
   - [x] 基于 `binding_config_json` 提供了一个受控的 HTTP invoke 适配形态，支持最小 `method` / `url` / `headers` / `timeout_seconds` 组合，让 Skill invoke 具备真实调用闭环。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#278]
   - [x] 调用成功时返回标准 success envelope；调用失败时根据场景映射到 `contractInvalid`、`permissionDenied`、`resourceRevoked`、`resourceOffline`、`timeout`、`upstreamFailed` 等稳定类别。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#656-661]
-  - [x] Skill invoke adapter 只服务 Skill MVP，没有扩展成 Knowledge/Agent 通用 runtime。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.3]
+  - [x] Skill invoke adapter 只服务 Skill MVP，没有扩展成 Knowledge/Agent 通用 runtime。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.3]
 
 - [x] 扩展 open capability controller / DTO / 测试 (AC: 1, 2, 3)
   - [x] 将 `controller/agentplatform/open_capabilities.go` 中 `OpenCapabilitySkillInvoke` 从占位 `contractInvalid` 改成真实调用入口。[Source: controller/agentplatform/open_capabilities.go]
@@ -76,7 +76,7 @@ so that 首个消费者和后续消费者都能走同一条集成路径。
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-8]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#278]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#570]
@@ -91,7 +91,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `3.3` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Skill invoke runtime 边界上继续漂移。
-- 已加载 Story 3.3 验收标准、现有 open capability 层、Skill contract readiness 和统一错误 envelope，准备接通 Skill invoke 最小闭环。
+- 已加载 Story AP-3.3 验收标准、现有 open capability 层、Skill contract readiness 和统一错误 envelope，准备接通 Skill invoke 最小闭环。
 
 ### Completion Notes List
 

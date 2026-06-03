@@ -27,14 +27,14 @@ SPRINT_STATUS = """development_status:
   1-1-view-enterprise-department-tree: done
   1-2-maintain-user-department-memberships: done
 
-  agent-platform-epic-1: done
+  ap-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
 
-  agent-platform-epic-5: done
+  ap-epic-5: done
   ap-5-4-stabilize-agent-platform-web-default-integration: in-progress
 
-  agent-platform-epic-6: in-progress
+  ap-epic-6: in-progress
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
 """
 

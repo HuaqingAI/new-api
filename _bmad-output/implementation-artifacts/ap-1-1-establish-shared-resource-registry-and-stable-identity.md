@@ -1,4 +1,4 @@
-# Story 1.1: 建立共享资源注册表与稳定资源身份
+# Story AP-1.1: 建立共享资源注册表与稳定资源身份
 
 Status: done
 
@@ -36,12 +36,12 @@ so that 平台在三类资源之间拥有稳定资源身份和一致治理语义
 - [x] 提供最小可验证的资源注册写入/读取能力，证明统一注册表可用 (AC: 1, 2)
   - [x] 新增 `dto/agentplatform/resource.go`、`service/agentplatform/resource.go`、`controller/agentplatform/resource.go`（命名可等价），实现最小管理能力：创建资源、按 ID 查看资源、分页/列表查询资源；这些 API 只服务 control plane，不服务开放能力消费面。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Requirements -> Components Mapping; _bmad-output/planning-artifacts/architecture-agent-platform.md#Control plane vs open plane separation]
   - [x] 路由至少包括 `/api/agent-platform/resources` 和 `/api/agent-platform/resources/:id`；响应中必须返回稳定 `resource_id` 与明确 `resource_type`，从而证明三类资源共享同一 registry 模型而非三套彼此孤立的主表。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#549-550; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-3]
-  - [x] 管理路由先复用现有后台鉴权模式（如 `middleware.AdminAuth()`）即可，但不得误接入 dashboard session 以外的开放能力 bearer 鉴权；后续更细粒度 AP 鉴权可在 Epic 2 引入。[Source: router/api-router.go; _bmad-output/planning-artifacts/architecture-agent-platform.md#Control plane vs open plane separation]
+  - [x] 管理路由先复用现有后台鉴权模式（如 `middleware.AdminAuth()`）即可，但不得误接入 dashboard session 以外的开放能力 bearer 鉴权；后续更细粒度 AP 鉴权可在 Epic AP-2 引入。[Source: router/api-router.go; _bmad-output/planning-artifacts/architecture-agent-platform.md#Control plane vs open plane separation]
 
-- [x] 锁定跨库迁移、状态词汇与后续演进边界，避免 Story 1.1 过度扩张 (AC: 2)
+- [x] 锁定跨库迁移、状态词汇与后续演进边界，避免 Story AP-1.1 过度扩张 (AC: 2)
   - [x] 所有迁移和模型声明必须兼容 SQLite、MySQL、PostgreSQL：优先 GORM `AutoMigrate`，避免数据库专属 JSONB / 运算符；如未来需要 JSON 存储，一律通过 `TEXT` + `common.Marshal` / `common.UnmarshalJsonStr` 路线，不在本故事引入 `encoding/json` 直接编解码业务字段。[Source: AGENTS.md#Rule 1: JSON Package — Use common/json.go; AGENTS.md#Rule 2: Database Compatibility — SQLite, MySQL >= 5.7.8, PostgreSQL >= 9.6]
-  - [x] 统一生命周期词汇只允许使用 `draft`、`published`、`disabled`、`revoked`、`offline`、`deprecated`；本故事可以先为 registry 记录默认 `draft`，但不要提前实现完整版本流转、rollback 操作或 exposure 语义，这些分别属于 Story 1.3 / 1.4 / 1.5。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.4; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5]
-  - [x] 不要在 Story 1.1 中实现 typed detail 表、Knowledge provider adapter、OAuth token/consent、open capability invoke/query、或 `web/default` 控制面页面；这些都超出共享 registry 的职责。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Project Structure & Boundaries; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#6-暂不进入-MVP-的内容]
+  - [x] 统一生命周期词汇只允许使用 `draft`、`published`、`disabled`、`revoked`、`offline`、`deprecated`；本故事可以先为 registry 记录默认 `draft`，但不要提前实现完整版本流转、rollback 操作或 exposure 语义，这些分别属于 Story AP-1.3 / 1.4 / 1.5。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.4; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5]
+  - [x] 不要在 Story AP-1.1 中实现 typed detail 表、Knowledge provider adapter、OAuth token/consent、open capability invoke/query、或 `web/default` 控制面页面；这些都超出共享 registry 的职责。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Project Structure & Boundaries; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#6-暂不进入-MVP-的内容]
 
 - [x] 补齐模型、service、controller/route 层测试与文档合同，证明稳定身份不会被后续演进破坏 (AC: 1, 2)
   - [x] 新增 `model/agentplatform/resource_test.go`，覆盖：`resource_id` 唯一/稳定生成、`resource_type` 枚举校验、`draft` 默认状态、三库兼容字段声明与迁移入口接通。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1302-1307; model/enterprise/department_test.go; model/enterprise/text_default_test.go]
@@ -50,12 +50,12 @@ so that 平台在三类资源之间拥有稳定资源身份和一致治理语义
 
 ## Dev Notes
 
-- Story 1.1 的目标不是“把三类资源所有字段都做完”，而是先打下 **共享 registry + 稳定 identity** 这层基线，让后续 typed detail、版本、projection、audit 都能在同一资源主键之上演进。若在 1.1 就把 detail/exposure 混进主表，1.2~1.5 会被迫返工。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.1; _bmad-output/planning-artifacts/architecture-agent-platform.md#CP-AP-9]
+- Story AP-1.1 的目标不是“把三类资源所有字段都做完”，而是先打下 **共享 registry + 稳定 identity** 这层基线，让后续 typed detail、版本、projection、audit 都能在同一资源主键之上演进。若在 1.1 就把 detail/exposure 混进主表，1.2~1.5 会被迫返工。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.1; _bmad-output/planning-artifacts/architecture-agent-platform.md#CP-AP-9]
 - Agent Platform 是新的 bounded context，不是 enterprise 模块的旁支，也不是 relay 的内嵌扩展。后续实现必须落在 `model/service/controller/dto/agentplatform` 目录树，而不是把新逻辑散落进 `enterprise`、`relay/**`、`service/sensitive.go` 这类现有业务域中。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Implementation Rules; _bmad-output/planning-artifacts/architecture-agent-platform.md#Complete Project Directory Structure]
 - 现有仓库已经有成熟的迁移接入模式：`model/main.go` 统一调用子域迁移器，`model/enterprise/migration.go` 在域内集中维护 GORM `AutoMigrate` 与必要的 SQLite/列补偿逻辑。Agent Platform 也应复制这种模式，而不是在 controller/service 启动时偷跑建表逻辑。[Source: model/main.go; model/enterprise/migration.go]
 - `resource_id` 是跨后续故事、客户端投影和审计链路的关键引用锚点。它必须对外稳定、不可从 typed detail 演算、不可因 publish/rollback 变化而变化；因此实现时不要把 `resource_id` 与 `latest_version`、`client_id`、或某类资源内部 slug 绑定死。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-1; _bmad-output/planning-artifacts/architecture-agent-platform.md#Core tables]
 - 本故事应该优先交付 control plane 的最小资源注册读写，而不是先做 UI 或 provider-specific 适配。架构文档已经明确：“Scaffold the core AP bounded context first... Do not start with UI-only work or provider-specific retrieval-provider wiring before the core control-plane and token model exists.”[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1507]
-- Agent Platform 管理面路由属于 `/api/agent-platform/**`，开放消费面才属于 `/api/open-capabilities/**`。Story 1.1 不要提前把 control plane controller 直接拿去服务 open plane，也不要把 dashboard session 鉴权误用于开放能力 bearer auth。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Route naming; _bmad-output/planning-artifacts/architecture-agent-platform.md#Control plane vs open plane separation]
+- Agent Platform 管理面路由属于 `/api/agent-platform/**`，开放消费面才属于 `/api/open-capabilities/**`。Story AP-1.1 不要提前把 control plane controller 直接拿去服务 open plane，也不要把 dashboard session 鉴权误用于开放能力 bearer auth。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Route naming; _bmad-output/planning-artifacts/architecture-agent-platform.md#Control plane vs open plane separation]
 - 当前仓库的 `router/enterprise-router.go` 展示了一个成熟的后台管理路由注册模式：在 `router/api-router.go` 下挂子 router，复用现有认证中间件。Agent Platform 在 1.1 可采用相同接入方式，但路径和包名必须保持独立，避免 domain 污染。[Source: router/api-router.go; router/enterprise-router.go]
 - 本故事还不需要 `web/default` 页面，但 UI 方向上的术语和信息架构已经冻结：后续 1.6 及之后的前端实现必须围绕 Overview / Clients / Skills / Knowledge / Agents / Publishing / Audit & Diagnostics 构建，术语使用 `visible` / `callable` 和统一生命周期词汇。1.1 中新增的 DTO / API 命名应提前与这些术语一致。[Source: _bmad-output/planning-artifacts/ux-agent-platform.md]
 - 本次 story 创建未发现 `project-context.md` 持久事实文件，因此实现约束主要以 `AGENTS.md`、Agent Platform PRD/addendum、architecture-agent-platform.md、ux-agent-platform.md 以及当前仓库真实结构为准。
@@ -86,7 +86,7 @@ so that 平台在三类资源之间拥有稳定资源身份和一致治理语义
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.1: 建立共享资源注册表与稳定资源身份]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.1: 建立共享资源注册表与稳定资源身份]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#4-1-统一资源控制面]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#UJ-1-林涛将-Cherry-Studio-接入平台并跑通首个-Skill-闭环]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#2-关键边界]
@@ -115,11 +115,11 @@ GPT-5 Codex
 
 - Story Automator 对 Agent Platform 的 `1.1 -> ap-1-1-*` key 映射与 epic source 解析已修正；本 story 文件由 manual create-story takeover 补齐，用于解除 create-story 连续 stall。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md`、`addendum.md`、`ux-agent-platform.md`、`model/main.go`、`router/api-router.go`、`router/enterprise-router.go` 作为当前故事的主要上下文源。
-- 当前仓库尚未存在 `model/service/controller/dto/agentplatform` 目录树，也未看到 `/api/agent-platform/**` 相关实现，说明 Story 1.1 仍是 Agent Platform bounded context 的真实起点。
+- 当前仓库尚未存在 `model/service/controller/dto/agentplatform` 目录树，也未看到 `/api/agent-platform/**` 相关实现，说明 Story AP-1.1 仍是 Agent Platform bounded context 的真实起点。
 
 ### Completion Notes List
 
-- 已手工补齐 Story 1.1 的开发上下文，明确本故事聚焦 shared registry + stable identity，不提前做 typed detail、projection/exposure、OAuth、open-capability 或 UI。
+- 已手工补齐 Story AP-1.1 的开发上下文，明确本故事聚焦 shared registry + stable identity，不提前做 typed detail、projection/exposure、OAuth、open-capability 或 UI。
 - 已将目录落点、迁移接入模式、control plane 路由边界、跨库/JSON 约束和测试要求写入 story，供后续 `dev-story` 直接执行。
 - 已落地 Agent Platform bounded context 最小骨架，新增共享 `agent_platform_resources` registry、`res_` opaque `resource_id` 生成规则、管理面 `/api/agent-platform/resources` 路由与 DTO/service/controller 基线。
 - 已在 `model/main.go` 迁移链路接入 Agent Platform migration，并补充模型、service、controller 层的定向测试文件与 `docs/openapi/api.json` 管理面契约条目。
@@ -154,9 +154,9 @@ GPT-5 Codex
 
 ### Scope Reviewed
 
-- 直接审查了 Story 1.1 对应的实现文件：`model/agentplatform/resource.go`、`model/agentplatform/migration.go`、`service/agentplatform/resource.go`、`controller/agentplatform/resource.go`、`router/agentplatform-router.go`、`router/api-router.go`、`model/main.go`、相关测试，以及 `docs/openapi/api.json` 的 Agent Platform 管理面契约。
+- 直接审查了 Story AP-1.1 对应的实现文件：`model/agentplatform/resource.go`、`model/agentplatform/migration.go`、`service/agentplatform/resource.go`、`controller/agentplatform/resource.go`、`router/agentplatform-router.go`、`router/api-router.go`、`model/main.go`、相关测试，以及 `docs/openapi/api.json` 的 Agent Platform 管理面契约。
 - 交叉核对了故事 Acceptance Criteria、Tasks/Subtasks、Dev Agent Record -> File List 与当前源代码变更；本次 review 未发现需要阻塞交付的 git/story 源码清单不一致问题。
-- 未执行外部 MCP / web 文档检索；本次审查以仓库内 `AGENTS.md`、Agent Platform PRD/addendum、architecture、epic 与源码为准，已足够覆盖 Story 1.1 的实现边界。
+- 未执行外部 MCP / web 文档检索；本次审查以仓库内 `AGENTS.md`、Agent Platform PRD/addendum、architecture、epic 与源码为准，已足够覆盖 Story AP-1.1 的实现边界。
 
 ### Findings Fixed Automatically
 

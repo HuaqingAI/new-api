@@ -2,11 +2,11 @@
 baseline_commit: 0a90354a060d0747d3234452cb5a0334c507446c
 ---
 
-# Story 6.7: 提供 Mock、Fixture 与 Contract Conformance 套件
+# Story AP-6.7: 提供 Mock、Fixture 与 Contract Conformance 套件
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，规划与 sprint-status key 为 `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`。用户指定输出路径为 `6-7-*.md`，因此本文档文件名按 `6-7-*` 落地；实现和状态同步仍以 `ap-6-7-*` 为真实 sprint key。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，规划与 sprint-status key 为 `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`。本文档按 AP 命名空间规范落地为 `ap-6-7-*` 文件名；实现和状态同步以 `ap-6-7-*` 为真实 sprint key。
 
 ## Story
 
@@ -61,7 +61,7 @@ so that 我可以在真实环境前验证 OAuth、discovery、detail、refresh�
 
 ### Story Source and Scope
 
-- Story 6.7 属于 Agent Platform Epic 6 “下游公共契约冻结与接入签核”。AP-6 的目标不是重建 control plane / auth plane / open capability plane，而是把 AP-1 到 AP-5 已完成能力冻结成下游可签核公共契约，并补齐 model discovery、错误/状态矩阵、mock fixture、conformance tests 与 onboarding 缺口。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.7`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#V1.4 Architecture Amendment: AP-6 Public Contract Freeze`]
+- Story AP-6.7 属于 Agent Platform Epic AP-6 “下游公共契约冻结与接入签核”。AP-6 的目标不是重建 control plane / auth plane / open capability plane，而是把 AP-1 到 AP-5 已完成能力冻结成下游可签核公共契约，并补齐 model discovery、错误/状态矩阵、mock fixture、conformance tests 与 onboarding 缺口。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.7`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#V1.4 Architecture Amendment: AP-6 Public Contract Freeze`]
 - 本故事不新增第四个 runtime plane。所有实现必须归属既有三类 surface：control plane `/api/agent-platform/**`、auth plane `/api/agent-platform/oauth/**`、open capability plane `/api/open-capabilities/**`。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-1`]
 - 本故事优先交付 fixture、mock 和 conformance 资产；只有在契约验证暴露当前代码缺口时，才做最小代码补齐。不要借此重写 OAuth、open capability、Skill、Knowledge、Agent 或 relay 实现。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Implementation Handoff`]
 
@@ -93,9 +93,9 @@ so that 我可以在真实环境前验证 OAuth、discovery、detail、refresh�
 
 ### Previous Story Intelligence
 
-- Agent Platform Epic 1 retro 指出自动化最容易在 create/dev 早期漂移回旧 enterprise 域。实现本故事时必须先锁定 Agent Platform 文件树和 AP-6 source-of-truth，不要泛化到 enterprise governance 或 relay 代码。[Source: `_bmad-output/implementation-artifacts/agent-platform-epic-1-retro-2026-06-01.md#Significant Discoveries`]
-- Epic 1 retro 还要求后续故事复用 `visible` / `callable`、projection / exposure、resource version 与 lifecycle 词汇，不允许另起近义模型。Fixture 和 conformance 的状态命名必须沿用这些词汇。[Source: `_bmad-output/implementation-artifacts/agent-platform-epic-1-retro-2026-06-01.md#Team Agreements`]
-- 最近相关实现持续使用 `controller/service/dto/model/agentplatform` 和 `web/default/src/features/agent-platform` 作为主实现面。当前 story 不应把 conformance 逻辑放入 `enterprise` 或 `oauth` 杂项目录。[Source: recent git log: `ap-5-*` Agent Platform stories; `_bmad-output/implementation-artifacts/agent-platform-epic-1-retro-2026-06-01.md`]
+- Agent Platform Epic AP-1 retro 指出自动化最容易在 create/dev 早期漂移回旧 enterprise 域。实现本故事时必须先锁定 Agent Platform 文件树和 AP-6 source-of-truth，不要泛化到 enterprise governance 或 relay 代码。[Source: `_bmad-output/implementation-artifacts/ap-epic-1-retro-2026-06-01.md#Significant Discoveries`]
+- Epic AP-1 retro 还要求后续故事复用 `visible` / `callable`、projection / exposure、resource version 与 lifecycle 词汇，不允许另起近义模型。Fixture 和 conformance 的状态命名必须沿用这些词汇。[Source: `_bmad-output/implementation-artifacts/ap-epic-1-retro-2026-06-01.md#Team Agreements`]
+- 最近相关实现持续使用 `controller/service/dto/model/agentplatform` 和 `web/default/src/features/agent-platform` 作为主实现面。当前 story 不应把 conformance 逻辑放入 `enterprise` 或 `oauth` 杂项目录。[Source: recent git log: `ap-5-*` Agent Platform stories; `_bmad-output/implementation-artifacts/ap-epic-1-retro-2026-06-01.md`]
 
 ### Testing Requirements
 
@@ -111,7 +111,7 @@ so that 我可以在真实环境前验证 OAuth、discovery、detail、refresh�
 
 ### References
 
-- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.7: 提供 Mock、Fixture 与 Contract Conformance 套件`]
+- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.7: 提供 Mock、Fixture 与 Contract Conformance 套件`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-5`; `#FR-6`; `#FR-15`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.2 2026-06-02 Correct Course 重处理后的定位`; `#5.3 AP-6 MVP Exit Gate`]
 - [Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#API & Communication Patterns`; `#AP-6 Architectural Decisions`; `#AP-6 Implementation Handoff`]
@@ -130,7 +130,7 @@ GPT-5 Codex
 - 2026-06-03 03:37 +0800：执行 BMAD create-story workflow；已读取 `.claude/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
 - 2026-06-03 03:37 +0800：`resolve_customization.py` 因 Python `tomllib` 缺失失败，已按技能回退规则手动读取 `.claude/skills/bmad-create-story/customize.toml`；未发现 team/user override。
 - 2026-06-03 03:37 +0800：已读取 `_bmad/bmm/config.yaml`，确认 communication/document language 为 Chinese，planning artifacts 和 implementation artifacts 均位于 `_bmad-output`。
-- 2026-06-03 03:37 +0800：已读取完整 `sprint-status.yaml`，确认真实 sprint key 为 `ap-6-7-provide-mock-fixture-and-contract-conformance-suite: backlog`；用户要求输出文件为 `6-7-*.md`。
+- 2026-06-03 03:37 +0800：已读取完整 `sprint-status.yaml`，确认真实 sprint key 为 `ap-6-7-provide-mock-fixture-and-contract-conformance-suite: backlog`。
 - 2026-06-03 03:37 +0800：已分析 `epics-agent-platform.md`、Agent Platform PRD/addendum、architecture、UX、downstream contract spec、现有 Agent Platform DTO/service/controller 测试和 OpenAPI 路径。
 - 2026-06-03 03:45 +0800：执行 BMAD dev-story workflow；已读取 `.claude/skills/bmad-dev-story/SKILL.md` 和 `checklist.md`。
 - 2026-06-03 03:45 +0800：`resolve_customization.py` 因 Python `tomllib` 缺失失败；已按技能回退规则读取 `.claude/skills/bmad-dev-story/customize.toml`，未发现 team/user override，activation prepend/append 为空。
@@ -171,9 +171,9 @@ Outcome: Approve / done
 
 #### Review Checklist
 
-- [x] Story file loaded from `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md`
+- [x] Story file loaded from `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md`
 - [x] Story Status verified as reviewable (`review`)
-- [x] Epic and Story IDs resolved (`6.7`, sprint key `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`)
+- [x] Epic and Story IDs resolved (`AP-6.7`, sprint key `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`)
 - [x] Story Context located or warning recorded
 - [x] Epic Tech Spec located or warning recorded
 - [x] Architecture/standards docs loaded as available
@@ -193,7 +193,7 @@ Outcome: Approve / done
 
 ### File List
 
-- `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md`
+- `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `tests/agentplatform/conformance/fixtures.go`
 - `tests/agentplatform/conformance/fixtures_test.go`
@@ -206,6 +206,6 @@ Outcome: Approve / done
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.7 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.7 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：实现 AP-6 mock fixture / conformance suite，补齐 frozen OAuth/open-capabilities 覆盖；AP-6.5/AP-6.6 依赖项以 pending reason 固化；更新 OpenAPI 与 downstream contract spec，状态设为 `review`。
 - 2026-06-03：完成 story-automator review，自动修复 fixture method、OAuth revoke DTO、OpenAPI response schema / diagnostics 漂移，并将状态设为 `done`。

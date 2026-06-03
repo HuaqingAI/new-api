@@ -1,4 +1,4 @@
-# Story 5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime
+# Story AP-5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime
 
 Status: done
 
@@ -33,7 +33,7 @@ so that 我可以消费可复用的 `Agent` 元数据，而不要求平台替我
   - [x] `/api/open-capabilities/agents/:id` 不再只是复用通用 resource detail，而是带着 Agent 依赖边界语义输出更清晰的 detail 结构。[Source: controller/agentplatform/open_capabilities.go]
 
 - [x] 把 visible-but-not-callable 判定接入 Agent 依赖边界 (AC: 2, 3)
-  - [x] 当 Agent 的某个依赖未发布、被撤销、状态不兼容或对当前客户端不可见时，平台会将该 Agent 判定为 visible but not callable，而不是简单 permission denied。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.3]
+  - [x] 当 Agent 的某个依赖未发布、被撤销、状态不兼容或对当前客户端不可见时，平台会将该 Agent 判定为 visible but not callable，而不是简单 permission denied。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.3]
   - [x] 复用现有 `callable_state` / diagnostics 语义表达 `contract_invalid`、依赖未满足等原因，让客户端和平台都能读出边界失败来源。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#337; #631]
   - [x] 没有引入任何服务端 Agent 执行能力；依赖边界校验仅服务于 definition 可读性和可用性判定。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#SM-6]
 
@@ -57,7 +57,7 @@ so that 我可以消费可复用的 `Agent` 元数据，而不要求平台替我
 - `5.3` 要实现：
   - Agent discovery/detail 的边界语义
   - dependency-aware callable 判定
-  - 最终 Epic 5 的验证闭环
+  - 最终 Epic AP-5 的验证闭环
 
 ### Testing
 
@@ -74,7 +74,7 @@ so that 我可以消费可复用的 `Agent` 元数据，而不要求平台替我
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1004-1008]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#899-904]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#SM-6]
@@ -89,7 +89,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `5.3` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent detail/runtime 边界上继续漂移。
-- 已加载 Story 5.3 验收标准、Agent dependency validation 结果与现有 open capability 层，准备接通 Agent detail 的最终边界输出。
+- 已加载 Story AP-5.3 验收标准、Agent dependency validation 结果与现有 open capability 层，准备接通 Agent detail 的最终边界输出。
 
 ### Completion Notes List
 

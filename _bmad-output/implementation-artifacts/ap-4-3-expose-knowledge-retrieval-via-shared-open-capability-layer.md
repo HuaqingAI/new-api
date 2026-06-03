@@ -1,4 +1,4 @@
-# Story 4.3: 通过共享能力层暴露 Knowledge 检索行为
+# Story AP-4.3: 通过共享能力层暴露 Knowledge 检索行为
 
 Status: done
 
@@ -34,7 +34,7 @@ so that retrieval 能成为可复用的平台能力，而不是消费者特例�
 
 - [x] 为 MVP 提供最小 provider-neutral retrieval adapter (AC: 2, 3)
   - [x] 基于 `knowledge_def` 中的 provider binding，先提供了一个最小 query adapter 入口，返回标准化 retrieval 结果结构：包含 `items` / `citations` 的公共语义。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#996-1001; #1060]
-  - [x] 在 4.3 范围内，query adapter 先支持最小内建/mock 路径，真正的外部 `http_retrieval` provider 接入继续留给 4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.4]
+  - [x] 在 4.3 范围内，query adapter 先支持最小内建/mock 路径，真正的外部 `http_retrieval` provider 接入继续留给 4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.4]
   - [x] 调用成功时返回标准 success envelope；调用失败时根据场景映射到 `contractInvalid`、`permissionDenied`、`resourceRevoked`、`resourceOffline`、`timeout`、`upstreamFailed` 等稳定类别。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#656-661]
 
 - [x] 扩展 open capability controller / DTO / 测试 (AC: 1, 2, 3)
@@ -79,7 +79,7 @@ so that retrieval 能成为可复用的平台能力，而不是消费者特例�
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.3: 通过共享能力层暴露 Knowledge 检索行为]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.3: 通过共享能力层暴露 Knowledge 检索行为]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-10]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#996-1001]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1060]
@@ -94,7 +94,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `4.3` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Knowledge query runtime 边界上继续漂移。
-- 已加载 Story 4.3 验收标准、retrieval-only 契约和现有 open capability 层，准备接通 Knowledge query 最小闭环。
+- 已加载 Story AP-4.3 验收标准、retrieval-only 契约和现有 open capability 层，准备接通 Knowledge query 最小闭环。
 
 ### Completion Notes List
 

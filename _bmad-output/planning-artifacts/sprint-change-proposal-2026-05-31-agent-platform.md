@@ -86,7 +86,7 @@ artifacts_modified:
 
 根据 `_bmad-output/implementation-artifacts/sprint-status.yaml`，截至 2026-06-01：
 
-- Agent Platform Epic 1-5 均为 `done`
+- Agent Platform Epic AP-1 到 AP-5 均为 `done`
 - AP-2 OAuth / client / open capability / freshness 已完成
 - AP-3 Skill、AP-4 Knowledge、AP-5 Agent 也已完成 MVP 闭环
 
@@ -96,7 +96,7 @@ artifacts_modified:
 
 ### 2.2 Current Epic Impact
 
-#### Agent Platform Epic 1: 资源治理基线
+#### Agent Platform Epic AP-1: 资源治理基线
 
 状态：不建议重开。
 
@@ -104,7 +104,7 @@ artifacts_modified:
 
 Epic 1 的 registry、typed detail、lifecycle、exposure、web/default shell 仍然有效。后续只需要复用其资源身份、版本、exposure 与 audit 基线来支撑公共规格和状态矩阵，不需要重做基础模型。
 
-#### Agent Platform Epic 2: 客户端接入与开放能力标准层
+#### Agent Platform Epic AP-2: 客户端接入与开放能力标准层
 
 状态：主要受影响。
 
@@ -121,7 +121,7 @@ Epic 2 已完成 OAuth、client registration、token、open capability、freshne
 
 Epic 2 不必推翻，但需要新增 follow-up story 或新 epic 承接“公共契约冻结”。
 
-#### Agent Platform Epic 3: Skill 库管理与调用
+#### Agent Platform Epic AP-3: Skill 库管理与调用
 
 状态：保留完成态。
 
@@ -129,7 +129,7 @@ Epic 2 不必推翻，但需要新增 follow-up story 或新 epic 承接“公�
 
 Skill 管理与 invoke 已完成，但下游仍缺正式 metadata + invoke request/response spec。若 Cherry Studio P0 需要 async skill、任务状态或取消接口，需要明确 P0 是否只支持 sync；否则容易在接入期扩大范围。
 
-#### Agent Platform Epic 4: Knowledge 库管理与检索契约
+#### Agent Platform Epic AP-4: Knowledge 库管理与检索契约
 
 状态：保留完成态。
 
@@ -137,7 +137,7 @@ Skill 管理与 invoke 已完成，但下游仍缺正式 metadata + invoke reque
 
 Knowledge retrieval-only 和 provider-neutral `http_retrieval` 边界有效。后续需要把 query request/response、citations/items、provider failure、metadata 字段冻结成公共规格。当前不建议把 Knowledge 扩成完整 RAG / ingestion / chat grounding。
 
-#### Agent Platform Epic 5: Agent 定义库与依赖边界
+#### Agent Platform Epic AP-5: Agent 定义库与依赖边界
 
 状态：保留完成态。
 
@@ -225,7 +225,7 @@ AP-1 到 AP-5 不应重开。新增 AP-6 更清晰：
 
 当前 AP-1 到 AP-5 均为 `done`。批准 AP-6 后，应新增：
 
-- `agent-platform-epic-6: backlog`
+- `ap-epic-6: backlog`
 - `ap-6-*` story keys: `backlog`
 
 不改 AP-1 到 AP-5 状态。
@@ -434,8 +434,8 @@ New stories:
 4. `Story 6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec`
 5. `Story 6.5: 冻结 Enterprise Model Discovery 公共契约`
 6. `Story 6.6: 冻结错误码矩阵与客户端状态矩阵`
-7. `Story 6.7: 提供 Mock、Fixture 与 Contract Conformance 套件`
-8. `Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径`
+7. `Story AP-6.7: 提供 Mock、Fixture 与 Contract Conformance 套件`
+8. `Story AP-6.8: 完成 Cherry Studio First / Codex Second 签核路径`
 
 Rationale:
 
@@ -452,15 +452,15 @@ Status: approved and applied
 
 Change:
 
-- 新增 `agent-platform-epic-6: backlog`
+- 新增 `ap-epic-6: backlog`
 - 新增 AP-6.1 到 AP-6.8 story keys，全部为 `backlog`
-- 新增 `agent-platform-epic-6-retrospective: optional`
+- 新增 `ap-epic-6-retrospective: optional`
 - AP-1 到 AP-5 状态保持不变
 
 New status entries:
 
 ```yaml
-agent-platform-epic-6: backlog
+ap-epic-6: backlog
 ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
 ap-6-2-freeze-client-registration-schema-and-onboarding-flow: backlog
 ap-6-3-freeze-discovery-detail-and-refresh-public-fields: backlog
@@ -469,7 +469,7 @@ ap-6-5-freeze-enterprise-model-discovery-contract: backlog
 ap-6-6-freeze-error-code-and-client-state-matrices: backlog
 ap-6-7-provide-mock-fixture-and-contract-conformance-suite: backlog
 ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog
-agent-platform-epic-6-retrospective: optional
+ap-epic-6-retrospective: optional
 ```
 
 Rationale:

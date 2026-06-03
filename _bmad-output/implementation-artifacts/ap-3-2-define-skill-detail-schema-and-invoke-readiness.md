@@ -1,4 +1,4 @@
-# Story 3.2: 定义 Skill 契约 detail、schema 与调用准备度
+# Story AP-3.2: 定义 Skill 契约 detail、schema 与调用准备度
 
 Status: done
 
@@ -33,12 +33,12 @@ so that 客户端无需猜测请求和返回结构就能准备调用。
   - [x] 保持 Skill detail 仍作为 typed table 存储，而不是退回 consumers 私有文档或松散 comment 字段。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Typed detail shape]
 
 - [x] 在 Skill resource version 创建与发布前增加 invoke readiness 校验 (AC: 1, 2)
-  - [x] `service/agentplatform/resource_version.go` 在创建 Skill 版本时明确校验：输入/输出 schema 存在、invoke mode 合法、timeout 为正值、binding config 具备最小可调用形态。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.2]
+  - [x] `service/agentplatform/resource_version.go` 在创建 Skill 版本时明确校验：输入/输出 schema 存在、invoke mode 合法、timeout 为正值、binding config 具备最小可调用形态。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.2]
   - [x] 当 Skill 契约不完整时，平台阻止其被视为可发布或可调用候选，并返回 `contract validation error`，而不是让问题拖到 invoke 时才暴露。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-8]
-  - [x] 本故事聚焦“准备度”与契约有效性，没有提前实现真实 invoke 执行；真实 invoke 继续留给 3.3。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.3]
+  - [x] 本故事聚焦“准备度”与契约有效性，没有提前实现真实 invoke 执行；真实 invoke 继续留给 3.3。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.3]
 
 - [x] 提升 Skill control-plane 读取结果对调用准备的表达能力 (AC: 1, 3)
-  - [x] Skill detail 查询结果继续稳定返回 invoke schema、output schema、invoke mode、timeout 与 binding metadata，足以支持客户端“调用前准备”。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.2]
+  - [x] Skill detail 查询结果继续稳定返回 invoke schema、output schema、invoke mode、timeout 与 binding metadata，足以支持客户端“调用前准备”。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.2]
   - [x] 当前未额外引入 Skill 专用 readiness 字段；现有控制面 detail + 严格 validation 已能表达 invoke readiness，避免在 3.2 提前扩散过多专用状态字段。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-8]
 
 - [x] 补定向测试，锁住 contract validation 行为 (AC: 1, 2, 3)
@@ -79,7 +79,7 @@ so that 客户端无需猜测请求和返回结构就能准备调用。
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.2: 定义 Skill 契约 detail、schema 与调用准备度]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.2: 定义 Skill 契约 detail、schema 与调用准备度]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-8]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#278]
 - [Source: _bmad-output/implementation-artifacts/ap-3-1-provide-skill-management-in-control-plane.md]
@@ -93,7 +93,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `3.2` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Skill contract 语义上继续漂移。
-- 已加载 Story 3.2 验收标准、Skill typed detail 模型和 resource version 实现，准备补 Skill 契约校验与 invoke readiness。
+- 已加载 Story AP-3.2 验收标准、Skill typed detail 模型和 resource version 实现，准备补 Skill 契约校验与 invoke readiness。
 
 ### Completion Notes List
 

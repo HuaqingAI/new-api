@@ -2,11 +2,11 @@
 baseline_commit: 33ad91e09
 ---
 
-# Story 6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract
+# Story AP-6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-1-*.md`。注意：同一 epic 中既有 6.7 / 6.8 artifact 使用了 `6-7-*`、`6-8-*` 文件名，但 sprint key 仍是 `ap-6-*`；实现和状态同步必须以 sprint-status 中的 `ap-6-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract`。本文件按 AP 命名空间规范落地为 `_bmad-output/implementation-artifacts/ap-6-1-*.md`；实现和状态同步必须以 sprint-status 中的 `ap-6-*` key 为准。
 
 ## Story
 
@@ -73,8 +73,8 @@ so that 下游可以稳定实现企业登录与授权回调，而不是依赖当
 
 ### Story Source and Scope
 
-- Story 6.1 属于 Agent Platform Epic 6 “下游公共契约冻结与接入签核”。Epic 6 不是建设新 runtime plane，而是把 AP-1 到 AP-5 已完成能力冻结成下游可签核的公共契约。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic 6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-1`]
-- 本故事只冻结 auth plane 的 wire contract：`/api/agent-platform/oauth/authorize`、`/api/agent-platform/oauth/token`、`/api/agent-platform/oauth/revoke`，以及 callback / redirect URI allowlist、PKCE、grant、refresh、revoke、consent 可见性。不要借此重写 discovery、Skill invoke、Knowledge query、model discovery、错误/状态矩阵或 web/default 全量 Clients 工作区。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract`; `docs/agent-platform-downstream-contract-spec.md#11.1 OAuth / Token / Revoke Wire Contract`]
+- Story AP-6.1 属于 Agent Platform Epic AP-6 “下游公共契约冻结与接入签核”。Epic AP-6 不是建设新 runtime plane，而是把 AP-1 到 AP-5 已完成能力冻结成下游可签核的公共契约。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic AP-6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-1`]
+- 本故事只冻结 auth plane 的 wire contract：`/api/agent-platform/oauth/authorize`、`/api/agent-platform/oauth/token`、`/api/agent-platform/oauth/revoke`，以及 callback / redirect URI allowlist、PKCE、grant、refresh、revoke、consent 可见性。不要借此重写 discovery、Skill invoke、Knowledge query、model discovery、错误/状态矩阵或 web/default 全量 Clients 工作区。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract`; `docs/agent-platform-downstream-contract-spec.md#11.1 OAuth / Token / Revoke Wire Contract`]
 - 当前 authorize 实现返回 JSON authorization code，而不是最终完整浏览器 302 callback / consent page UX。AP-6.1 必须把这种关系讲清楚：当前冻结的是可用 wire capability 和契约边界，完整 operator-friendly OAuth 产品流不应被伪装成已完成。[Source: `docs/agent-platform-downstream-contract-spec.md#4.1 OAuth / 企业登录态`; `_bmad-output/planning-artifacts/ux-agent-platform.md#3.7 OAuth / consent 可见性`]
 
 ### Existing Runtime Behavior to Preserve
@@ -104,8 +104,8 @@ so that 下游可以稳定实现企业登录与授权回调，而不是依赖当
 
 ### Previous Story Intelligence
 
-- 6.7 已建立 `tests/agentplatform/conformance/`，并在 review 中修复过 fixture method 漂移、OAuth revoke typed response 缺失、OpenAPI data schema 漂移。AP-6.1 必须继续用 DTO + OpenAPI + fixture 自动断言防漂移，不要只更新 markdown。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Senior Developer Review (AI)`]
-- 6.8 已建立 `docs/agent-platform-consumer-signoff.md` 和 `TestConsumerSignoffArtifactAlignsWithContractSources`。AP-6.1 更新签核状态时必须保持 AP-6.5 / AP-6.6 blocker 不被误标为完成。[Source: `_bmad-output/implementation-artifacts/6-8-complete-cherry-studio-first-and-codex-second-signoff.md#Completion Notes List`; `tests/agentplatform/conformance/fixtures_test.go#TestConsumerSignoffArtifactAlignsWithContractSources`]
+- 6.7 已建立 `tests/agentplatform/conformance/`，并在 review 中修复过 fixture method 漂移、OAuth revoke typed response 缺失、OpenAPI data schema 漂移。AP-6.1 必须继续用 DTO + OpenAPI + fixture 自动断言防漂移，不要只更新 markdown。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Senior Developer Review (AI)`]
+- 6.8 已建立 `docs/agent-platform-consumer-signoff.md` 和 `TestConsumerSignoffArtifactAlignsWithContractSources`。AP-6.1 更新签核状态时必须保持 AP-6.5 / AP-6.6 blocker 不被误标为完成。[Source: `_bmad-output/implementation-artifacts/ap-6-8-complete-cherry-studio-first-and-codex-second-signoff.md#Completion Notes List`; `tests/agentplatform/conformance/fixtures_test.go#TestConsumerSignoffArtifactAlignsWithContractSources`]
 - 最近提交 `e8585fedb` 和 `33ad91e09` 分别改动了 OAuth/conformance/OpenAPI/signoff 文档。实现前读这些文件，避免覆盖刚修复的 AP-6 三件套。[Source: git log `e8585fedb`; `33ad91e09`]
 
 ### Testing Requirements
@@ -114,7 +114,7 @@ so that 下游可以稳定实现企业登录与授权回调，而不是依赖当
   - `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform`
 - 如修改 OpenAPI、DTO、controller、service、router 或 conformance，运行受影响包测试；如触碰共享 auth/middleware/model 行为，扩大到：
   - `GOCACHE=/private/tmp/go-build-cache go test ./...`
-- 已知历史全量回归风险：6.7 / 6.8 记录过 `go test ./...` 在未触碰包中存在既有失败，主要集中于 `model` 测试库缺表、`relay/channel/claude` 文件内容转换断言、`relay/helper` stream scanner status 断言。若全量仍失败，记录为既有无关失败，不要掩盖本故事目标包结果。[Source: `_bmad-output/implementation-artifacts/6-7-provide-mock-fixture-and-contract-conformance-suite.md#Debug Log References`; `_bmad-output/implementation-artifacts/6-8-complete-cherry-studio-first-and-codex-second-signoff.md#Completion Notes List`]
+- 已知历史全量回归风险：6.7 / 6.8 记录过 `go test ./...` 在未触碰包中存在既有失败，主要集中于 `model` 测试库缺表、`relay/channel/claude` 文件内容转换断言、`relay/helper` stream scanner status 断言。若全量仍失败，记录为既有无关失败，不要掩盖本故事目标包结果。[Source: `_bmad-output/implementation-artifacts/ap-6-7-provide-mock-fixture-and-contract-conformance-suite.md#Debug Log References`; `_bmad-output/implementation-artifacts/ap-6-8-complete-cherry-studio-first-and-codex-second-signoff.md#Completion Notes List`]
 - 若新增 web/default OAuth / consent 可见性 UI，必须运行：
   - `cd web/default && bun test src/features/agent-platform/agent-platform.test.tsx`
   - `cd web/default && bun run typecheck`
@@ -131,7 +131,7 @@ so that 下游可以稳定实现企业登录与授权回调，而不是依赖当
 
 ### References
 
-- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract`]
+- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-5`; `#FR-6`; `#FR-13`; `#FR-14`; `#FR-15`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5. AP-6 的具体定位`; `#5.3 AP-6 MVP Exit Gate`]
 - [Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#Authentication & Security`; `#API & Communication Patterns`; `#AP-6 Architectural Decisions`; `#AP-6 Implementation Handoff`]
@@ -151,7 +151,7 @@ GPT-5 Codex
 - 2026-06-03 17:44 +0800：执行 BMAD create-story workflow；已读取用户指定 `.agents/skills/bmad-create-story/SKILL.md`、`discover-inputs.md`、`template.md`、`checklist.md`。
 - 2026-06-03 17:44 +0800：`resolve_customization.py` 因当前 `python3` 缺少 `tomllib` 失败；已按技能 fallback 手动读取 `.agents/skills/bmad-create-story/customize.toml`，未发现 `_bmad/custom/bmad-create-story*.toml` override。
 - 2026-06-03 17:44 +0800：已读取 `_bmad/bmm/config.yaml`，确认 user 为 `hth`，communication/document language 为 Chinese，planning/implementation artifacts 均位于 `_bmad-output`。
-- 2026-06-03 17:44 +0800：已读取完整 `_bmad-output/implementation-artifacts/sprint-status.yaml`，确认 `ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog`，并发现既有 6.7 / 6.8 文件名与 sprint key 的 `ap-6-*` 前缀不一致。
+- 2026-06-03 17:44 +0800：已读取完整 `_bmad-output/implementation-artifacts/sprint-status.yaml`，确认 `ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog`。
 - 2026-06-03 17:44 +0800：已分析 Agent Platform epic、PRD、addendum、architecture、UX、downstream contract spec、OAuth DTO/controller/service/tests、OpenAPI、conformance suite、6.7 / 6.8 previous story artifacts 和最近相关 git commits。
 - 2026-06-03 17:50 +0800：执行 BMAD dev-story workflow；读取 `.agents/skills/bmad-dev-story/SKILL.md`、`checklist.md`、`_bmad/bmm/config.yaml`、完整 story 与 sprint-status。`project-context.md` 未发现；workflow customization 无 prepend/append。
 - 2026-06-03 17:50 +0800：按 TDD 先扩展 `tests/agentplatform/conformance/fixtures_test.go`，确认 `go test ./tests/agentplatform/conformance` 因缺少 `oauth_refresh_rotation_success` 等 AP-6.1 OAuth fixtures 失败。
@@ -183,5 +183,5 @@ GPT-5 Codex
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.1 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.1 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：实现 AP-6.1 OAuth/token/revoke/callback/allowlist contract freeze，扩展 conformance fixture、防漂移测试、OpenAPI schema freeze 与 consumer signoff OAuth 子域签核状态；story 状态设为 `done`。

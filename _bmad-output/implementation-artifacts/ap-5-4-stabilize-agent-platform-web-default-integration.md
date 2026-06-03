@@ -1,4 +1,4 @@
-# Story 5.4: 收口 Agent Platform `web/default` 控制面集成与体验一致性
+# Story AP-5.4: 收口 Agent Platform `web/default` 控制面集成与体验一致性
 
 Status: done
 

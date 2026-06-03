@@ -2,11 +2,11 @@
 baseline_commit: b9c268b832682b5beca6a860a869e15ab52d3f79
 ---
 
-# Story 6.5: 冻结 Enterprise Model Discovery 公共契约
+# Story AP-6.5: 冻结 Enterprise Model Discovery 公共契约
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-5-freeze-enterprise-model-discovery-contract`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-5-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-5-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-5-freeze-enterprise-model-discovery-contract`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-5-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-5-*` key 为准。
 
 ## Story
 
@@ -114,5 +114,5 @@ Outcome: Approve after auto-fix
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.5 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.5 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：source-of-truth review 修复 default unavailable 状态漂移，新增 conformance 防回归断言并保持 story done。

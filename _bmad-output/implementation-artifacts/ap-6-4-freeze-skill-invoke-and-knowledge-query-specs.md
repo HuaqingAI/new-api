@@ -2,11 +2,11 @@
 baseline_commit: 7ebc1da33d0bb5b6cc8f28dd15d28417fcf99288
 ---
 
-# Story 6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec
+# Story AP-6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-4-freeze-skill-invoke-and-knowledge-query-specs`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-4-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-4-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-4-freeze-skill-invoke-and-knowledge-query-specs`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-4-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-4-*` key 为准。
 
 ## Story
 
@@ -107,4 +107,4 @@ GPT-5 Codex
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.4 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.4 context artifact，状态设为 `ready-for-dev`。

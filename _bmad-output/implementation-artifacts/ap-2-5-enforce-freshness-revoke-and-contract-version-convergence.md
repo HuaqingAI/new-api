@@ -1,4 +1,4 @@
-# Story 2.5: 强制 freshness、revoke 与契约版本收敛规则
+# Story AP-2.5: 强制 freshness、revoke 与契约版本收敛规则
 
 Status: done
 
@@ -43,7 +43,7 @@ so that 客户端可以一致地收敛发布投影，平台也能诊断陈旧状
 
 - [x] 把 contract version 兼容判断接入开放能力层 (AC: 4)
   - [x] open capability detail/refresh 前校验 client 声明的 `contract_version` 与资源版本的 `contract_version` 是否兼容；breaking change 不兼容时返回 `contractInvalid`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#602-608; #666-667]
-  - [x] 平台不让 breaking contract change 在不变更 `contract_version` 的情况下发布为“兼容”；至少显式阻断不兼容 client 读取 detail/invoke/query。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.5]
+  - [x] 平台不让 breaking contract change 在不变更 `contract_version` 的情况下发布为“兼容”；至少显式阻断不兼容 client 读取 detail/invoke/query。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.5]
   - [x] 保持 client-specific 扩展仍在 namespaced `extensions` 下，不让扩展字段绕开 contract version 治理。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#608]
 
 - [x] 扩展测试与最小文档 (AC: 1, 2, 3, 4)
@@ -83,7 +83,7 @@ so that 客户端可以一致地收敛发布投影，平台也能诊断陈旧状
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.5: 强制 freshness、revoke 与契约版本收敛规则]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.5: 强制 freshness、revoke 与契约版本收敛规则]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#582-608]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#620-667]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#218-222]
@@ -97,7 +97,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- Story Automator 继续作为总编排状态源，但 `2.5` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic 2 上继续漂移。
+- Story Automator 继续作为总编排状态源，但 `2.5` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic AP-2 上继续漂移。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md`，并基于 `2.4` 的 open capability 层继续补 freshness / contract-version 收敛规则。
 
 ### Completion Notes List

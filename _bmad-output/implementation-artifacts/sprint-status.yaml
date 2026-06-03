@@ -105,44 +105,44 @@ development_status:
   7a-3-relax-budget-pool-type-locking-to-per-budget-invariance: backlog
   epic-7a-retrospective: optional
 
-  agent-platform-epic-1: done
+  ap-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
   ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: done
   ap-1-4-establish-projection-baseline-decoupled-from-client-registration: done
   ap-1-5-build-publication-projection-and-exposure-model: done
   ap-1-6-deliver-web-default-control-plane-shell: done
-  agent-platform-epic-1-retrospective: done
+  ap-epic-1-retrospective: done
 
-  agent-platform-epic-2: done
+  ap-epic-2: done
   ap-2-1-register-clients-and-capability-declarations: done
   ap-2-2-implement-browser-delegated-auth-main-flow: done
   ap-2-3-implement-token-lifecycle-and-revocation: done
   ap-2-4-publish-open-capability-standard-apis-and-error-envelope: done
   ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: done
-  agent-platform-epic-2-retrospective: optional
+  ap-epic-2-retrospective: optional
 
-  agent-platform-epic-3: done
+  ap-epic-3: done
   ap-3-1-provide-skill-management-in-control-plane: done
   ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
   ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: done
-  agent-platform-epic-3-retrospective: optional
+  ap-epic-3-retrospective: optional
 
-  agent-platform-epic-4: done
+  ap-epic-4: done
   ap-4-1-manage-knowledge-resources-with-provider-metadata: done
   ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: done
   ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: done
   ap-4-4-integrate-first-http-retrieval-provider-adapter: done
-  agent-platform-epic-4-retrospective: optional
+  ap-epic-4-retrospective: optional
 
-  agent-platform-epic-5: done
+  ap-epic-5: done
   ap-5-1-provide-agent-definition-management-in-control-plane: done
   ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
   ap-5-4-stabilize-agent-platform-web-default-integration: done
-  agent-platform-epic-5-retrospective: optional
+  ap-epic-5-retrospective: optional
 
-  agent-platform-epic-6: done
+  ap-epic-6: done
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
   ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
   ap-6-3-freeze-discovery-detail-and-refresh-public-fields: done
@@ -151,4 +151,4 @@ development_status:
   ap-6-6-freeze-error-code-and-client-state-matrices: done
   ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done
   ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: done
-  agent-platform-epic-6-retrospective: optional
+  ap-epic-6-retrospective: optional

@@ -2,11 +2,11 @@
 baseline_commit: 1623c7f35af3be29aafe128a2775d2bb6c9f52bb
 ---
 
-# Story 6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程
+# Story AP-6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-2-freeze-client-registration-schema-and-onboarding-flow`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-2-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-2-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-2-freeze-client-registration-schema-and-onboarding-flow`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-2-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-2-*` key 为准。
 
 ## Story
 
@@ -57,7 +57,7 @@ so that 运维人员可以为 Cherry Studio / Codex 注册客户端并解释每�
 
 ### Story Source and Scope
 
-- Story 6.2 属于 Agent Platform Epic 6 “下游公共契约冻结与接入签核”。它聚焦冻结 client registration schema 与 onboarding 最小闭环，而不是重建 control plane 或完整前端工作区。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.2`; `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.2 2026-06-02 Correct Course 重处理后的定位`]
+- Story AP-6.2 属于 Agent Platform Epic AP-6 “下游公共契约冻结与接入签核”。它聚焦冻结 client registration schema 与 onboarding 最小闭环，而不是重建 control plane 或完整前端工作区。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.2`; `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.2 2026-06-02 Correct Course 重处理后的定位`]
 - 本故事默认是 contract-freeze / docs / tests / signoff story。只有在冻结现状时发现 runtime 与 DTO/OpenAPI 不一致，才做最小代码修补；不要顺手扩展大块 `web/default` Clients 产品化 UI。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Implementation Handoff`; `_bmad-output/planning-artifacts/ux-agent-platform.md#3.6 AP-6 Clients onboarding`]
 
 ### Existing Runtime Behavior to Preserve
@@ -112,7 +112,7 @@ so that 运维人员可以为 Cherry Studio / Codex 注册客户端并解释每�
 
 ### References
 
-- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程`]
+- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-4`; `#FR-5`; `#FR-15`; `#SM-1`; `#SM-5`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#5.2 2026-06-02 Correct Course 重处理后的定位`; `#5.3 AP-6 MVP Exit Gate`]
 - [Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Architectural Decisions`; `#AP-6 Implementation Handoff`]
@@ -158,5 +158,5 @@ GPT-5 Codex
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.2 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.2 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：冻结 AP-6.2 client registration schema 与 onboarding 最小流程，补齐 Clients OpenAPI schema、runtime 最小校验、测试覆盖、signoff/UX 边界说明，状态推进到 `done`。

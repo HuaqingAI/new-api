@@ -2,11 +2,11 @@
 baseline_commit: 77132bd2d98be71d63640648657e4d588ea221fb
 ---
 
-# Story 6.6: 冻结错误码矩阵与客户端状态矩阵
+# Story AP-6.6: 冻结错误码矩阵与客户端状态矩阵
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-6-freeze-error-code-and-client-state-matrices`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-6-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-6-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-6-freeze-error-code-and-client-state-matrices`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-6-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-6-*` key 为准。
 
 ## Story
 
@@ -83,4 +83,4 @@ GPT-5 Codex
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.6 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.6 context artifact，状态设为 `ready-for-dev`。

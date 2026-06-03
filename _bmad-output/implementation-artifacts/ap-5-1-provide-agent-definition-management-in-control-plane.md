@@ -1,4 +1,4 @@
-# Story 5.1: 在控制面提供 Agent 定义管理能力
+# Story AP-5.1: 在控制面提供 Agent 定义管理能力
 
 Status: done
 
@@ -34,7 +34,7 @@ so that `Agent` 成为一等治理资源，而不是被误当成平台必须执�
 
 - [x] 保持 Agent 管理边界不越界到 runtime (AC: 1, 2, 3)
   - [x] 管理面读取建立在现有 `agent_def` typed detail（manifest / dependencies / prompt metadata / compatibility metadata）之上，但本 story 不实现服务端执行状态或 runtime 控制逻辑。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#280; #899-904]
-  - [x] 复用已有 publish / disable / revoke / rollback lifecycle 能力，但没有在控制面文案或结构上暗示平台能执行 Agent runtime。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.1]
+  - [x] 复用已有 publish / disable / revoke / rollback lifecycle 能力，但没有在控制面文案或结构上暗示平台能执行 Agent runtime。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.1]
 
 - [x] 在 web/default 的 Agent Platform shell 中接入 Agent 管理承接面 (AC: 1, 2)
   - [x] 将 `web/default/src/features/agent-platform` 中当前 Agent 区域从纯静态占位升级为最小真实列表/承接视图，展示已存在 Agent 的名称、状态、当前版本和 owner 信息。[Source: web/default/src/features/agent-platform/index.tsx]
@@ -82,7 +82,7 @@ so that `Agent` 成为一等治理资源，而不是被误当成平台必须执�
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.1: 在控制面提供 Agent 定义管理能力]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.1: 在控制面提供 Agent 定义管理能力]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-11]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#280]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#899-904]
@@ -97,7 +97,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `5.1` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent runtime 边界上继续漂移。
-- 已加载 Story 5.1 验收标准、Agent typed detail 模型和 Agent Platform shell，准备补 Agent 控制面入口与最小前端承接面。
+- 已加载 Story AP-5.1 验收标准、Agent typed detail 模型和 Agent Platform shell，准备补 Agent 控制面入口与最小前端承接面。
 
 ### Completion Notes List
 

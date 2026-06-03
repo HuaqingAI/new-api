@@ -2,11 +2,11 @@
 baseline_commit: 3896f3352b69a3d269ec94a1425cdf6325da0914
 ---
 
-# Story 6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集
+# Story AP-6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集
 
 Status: done
 
-> Sprint key 映射：本故事来自 Agent Platform Epic 6，真实 sprint-status key 为 `ap-6-3-freeze-discovery-detail-and-refresh-public-fields`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-3-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-3-*` key 为准。
+> Sprint key 映射：本故事来自 Agent Platform Epic AP-6，真实 sprint-status key 为 `ap-6-3-freeze-discovery-detail-and-refresh-public-fields`。本文件按用户要求落地为 `_bmad-output/implementation-artifacts/ap-6-3-*.md`。实现和状态同步必须以 sprint-status 中的 `ap-6-3-*` key 为准。
 
 ## Story
 
@@ -63,8 +63,8 @@ so that 下游可以稳定展示资源列表、详情、freshness 与撤销状�
 
 ### Story Source and Scope
 
-- Story 6.3 属于 Agent Platform Epic 6 “下游公共契约冻结与接入签核”。Epic 6 的目标不是重建 control plane / auth plane / open capability plane，而是把 AP-1 到 AP-5 已实现能力冻结成可签核公共契约。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic 6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Architectural Decisions`]
-- 本故事只覆盖 resource discovery/detail/refresh 字段集与 freshness/revoke 收敛语义。Skill invoke / Knowledge query 属于 6.4，enterprise model discovery 属于 6.5，error/client state matrix 属于 6.6。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.3`; `docs/agent-platform-downstream-contract-spec.md#11.3 Discovery / Detail / Refresh Contract`]
+- Story AP-6.3 属于 Agent Platform Epic AP-6 “下游公共契约冻结与接入签核”。Epic AP-6 的目标不是重建 control plane / auth plane / open capability plane，而是把 AP-1 到 AP-5 已实现能力冻结成可签核公共契约。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Epic AP-6: 下游公共契约冻结与接入签核`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Architectural Decisions`]
+- 本故事只覆盖 resource discovery/detail/refresh 字段集与 freshness/revoke 收敛语义。Skill invoke / Knowledge query 属于 6.4，enterprise model discovery 属于 6.5，error/client state matrix 属于 6.6。[Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.3`; `docs/agent-platform-downstream-contract-spec.md#11.3 Discovery / Detail / Refresh Contract`]
 - AP-6 公共契约 source of truth 是三件套：`docs/agent-platform-downstream-contract-spec.md`、`docs/openapi/api.json`、mock / fixture / conformance artifacts。三者不一致时本故事不得 done。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-3`; `docs/agent-platform-downstream-contract-spec.md#3A.1 Source of Truth`]
 
 ### Existing Runtime Behavior to Preserve
@@ -89,7 +89,7 @@ so that 下游可以稳定展示资源列表、详情、freshness 与撤销状�
 
 ### Field-Level Decisions the Dev Agent Must Not Miss
 
-- `diagnostics` 不应强行加入 discovery 列表响应。现有 DTO 只在 detail/refresh 返回 diagnostics；story AC 中的字段清单是公共字段总体候选集，必须在 contract 中标清“哪个端点返回哪个字段”。[Source: `dto/agentplatform/open_capabilities.go`; `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.3`]
+- `diagnostics` 不应强行加入 discovery 列表响应。现有 DTO 只在 detail/refresh 返回 diagnostics；story AC 中的字段清单是公共字段总体候选集，必须在 contract 中标清“哪个端点返回哪个字段”。[Source: `dto/agentplatform/open_capabilities.go`; `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.3`]
 - `source`、`accountId`、`tenantId`、`disabledReason`、`fetchedAt`、`expiresAt` 必须做显式 P0 决策。除非本故事同步完成 DTO/OpenAPI/fixtures/runtime 支持，否则应明确排除出 AP-6.3 P0 core resource fields，并说明可通过 `extensions.<namespace>` 或后续 AP-6.5/6.6 承接。[Source: `docs/agent-platform-downstream-contract-spec.md#11.3 Discovery / Detail / Refresh Contract`; `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-2`]
 - `extensions` 必须 namespaced，且不得覆盖核心字段语义。Cherry Studio / Codex 私有字段只能走 `extensions.cherry_studio` / `extensions.codex` 或更细 namespace。[Source: `docs/agent-platform-downstream-contract-spec.md#3A.3 Contract Versioning`; `docs/agent-platform-consumer-signoff.md#Extension Governance`]
 - 不要修改 `service/codex_*`、`controller/codex_*`、`relay/**`、`/v1/**` 或 `docs/openapi/relay.json`。AP-6.3 是 Agent Platform open capability contract freeze，不是 Codex channel 或 relay 模型发现故事。[Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP6-AD-1`; `AGENTS.md#Architecture`]
@@ -135,7 +135,7 @@ so that 下游可以稳定展示资源列表、详情、freshness 与撤销状�
 
 ### References
 
-- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story 6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集`]
+- [Source: `_bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集`]
 - [Source: `_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-5`; `#FR-6`; `#SM-4`]
 - [Source: `_bmad-output/planning-artifacts/architecture-agent-platform.md#AP-6 Architectural Decisions`; `#Freshness and convergence`; `#Open capability endpoints`]
 - [Source: `_bmad-output/planning-artifacts/ux-agent-platform.md#3.8 下游契约签核视图`]
@@ -174,4 +174,4 @@ GPT-5 Codex
 
 ## Change Log
 
-- 2026-06-03：创建 Story 6.3 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：创建 Story AP-6.3 context artifact，状态设为 `ready-for-dev`。

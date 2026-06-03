@@ -1,4 +1,4 @@
-# Story 1.6: 在 `web/default` 交付管理控制面骨架
+# Story AP-1.6: 在 `web/default` 交付管理控制面骨架
 
 Status: done
 

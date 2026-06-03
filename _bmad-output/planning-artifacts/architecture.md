@@ -24,6 +24,15 @@ revisionNotes: |
     enterprise_quota_allocations 承接，relay/billing 主链路保持不变。
   - 新增 quota request workflow：员工申请 -> 部门负责人单步审批 -> 复用现有 allocation service 自动分配。
   - 新增治理通知约束：通知失败不得阻塞核心治理事务提交，必须记录投递状态与错误原因。
+  V1.3A 修订（基于 Epic 7 验证与企业治理体验纠偏，2026-06-02）：
+  - 员工额度申请入口应贴近余额 / 钱包用户场景，而不是仅依赖企业组织管理工作台。
+  - 预算池类型不可变约束作用于单个预算池实例；同一部门可并存 balance 与 subscription 预算池。
+  - delegation、quota request、allocation 继续以显式 budget id 作为操作边界，不回退到 latest/default budget 推断。
+  V1.3B 修订（基于额度申请后续排障与 Epic 7B 实施，2026-06-03）：
+  - 治理动作结果与通知投递结果独立；通知未配置记录为非阻塞状态，真实投递失败才进入失败/重试语义。
+  - quota request 预算池选项必须可辨识，并在选中后展示已选请求范围 / 预算池摘要。
+  - 企业派生 wallet 的一次性周期与非正过期时间先按业务语义展示，避免 epoch 时间和错误过期判断。
+  - 企业预算治理前端支持 quota / 金额双视角；后端存储、约束和 API contract 仍保持 quota 单位。
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md"
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/addendum.md"

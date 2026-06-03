@@ -3,39 +3,40 @@
 ## Generated Tests
 
 ### API Tests
-- [x] `tests/api/enterprise_department_budget_test.go` - Replaced the stale department-level type-switch rejection regression with an API workflow that creates `balance` then `subscription` budget pools in the same department, verifies both types are returned by the budget list, and confirms admin action output does not contain the obsolete immutable-type rejection.
+- [x] `controller/enterprise/governance_controller_test.go` - Added coverage for listing `unconfigured` governance notification deliveries and rejecting resend without creating a manual delivery.
+
+### Service Tests
+- [x] `service/enterprise/governance_notification_dispatch_test.go` - Added the missing configuration path: no enabled DingTalk governance channel records `unconfigured`, keeps `next_retry_at=0`, does not count as `final_failed`, and does not call the webhook sender.
+- [x] `service/enterprise/quota_request_test.go` - Added quota approval coverage proving the request remains `fulfilled`, allocation remains active, and the delivery status is independently `unconfigured` when no notification channel exists.
 
 ### E2E Tests
-- [x] Existing `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` coverage already includes same-department mixed budget pool rendering and explicit `resolveBudgetSelection` behavior without type filtering.
+- [x] `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx` - Added UI coverage for a fulfilled governance timeline row displayed separately from an `unconfigured` delivery, with no `Final failed` label and no `Resend` action.
 
 ## Coverage
-- Story 7A.3 acceptance criteria covered: 4/4
-  - AC1: same-department mixed `balance` -> `subscription` creation covered by service/controller/API tests.
-  - AC2: no budget update API/UI was found in scope; existing tests preserve create-only behavior and no generated test added unsupported edit behavior.
-  - AC3: explicit selected-budget validation covered by budget delegation, quota request capability, quota allocation/service, and frontend budget selection tests.
-  - AC4: governance notification async/failure behavior was not changed; targeted enterprise service/controller suites covering quota request/allocation paths pass.
-- API endpoints generated/updated: 1/1 discovered stale API regression for Story 7A.3.
-- UI features generated/updated: 0 new files; existing bundled enterprise organization E2E coverage already satisfied the discovered UI gap.
+- Story 7B.1 acceptance criteria covered: 2/2
+- Backend dispatch paths covered: missing configuration, real webhook retry/final failure regression.
+- API delivery status paths covered: `unconfigured` list filtering and resend boundary.
+- UI delivery status paths covered: `unconfigured`, `final_failed`, unknown fallback, and locale key presence across en/zh/fr/ru/ja/vi.
 
 ## Validation
-- [x] `go test ./service/enterprise -run 'DepartmentBudget|BudgetDelegation|QuotaRequest|QuotaAllocation'` - passed.
-- [x] `go test ./controller/enterprise -run 'DepartmentBudget|BudgetDelegation|QuotaRequest|QuotaAllocation'` - passed.
-- [x] `go test ./tests/api -run 'TestEnterpriseDepartmentBudgetAPIAllowsMixedTypeCreatesForDepartment' -count=1 -v` - passed.
+- [x] `GOCACHE=/private/tmp/new-api-go-cache go test ./service/enterprise -run 'GovernanceNotification|QuotaRequest|QuotaAllocation'` - passed.
+- [x] `GOCACHE=/private/tmp/new-api-go-cache go test ./controller/enterprise -run 'GovernanceNotification|GovernanceTimeline|QuotaRequest'` - passed.
+- [x] `cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` - passed.
 - [x] `cd web/default && bun run typecheck` - passed.
+- [x] `cd web/default && bun run i18n:sync` - passed; the tool produced unrelated key-order/escaped-key churn, which was reverted to preserve protected project metadata and keep the diff scoped.
 - [x] `cd web/default && bun run test:e2e` - passed; Rsbuild emitted the existing optional `supports-color` warning from `debug/src/node.js`.
-- [ ] `go test ./tests/api -run 'EnterpriseDepartmentBudget'` - failed in pre-existing `TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow` with `common.database_error` instead of the expected `error.enterprise.permission.dept_admin_required`; the generated mixed-type API test passes independently.
 
 ## Checklist Validation
-- [x] API tests generated/updated where applicable.
-- [x] E2E tests verified for UI behavior.
-- [x] Tests use existing standard Go and bundled frontend test framework APIs.
-- [x] Happy path covered for same-department mixed budget pool creation.
-- [x] Critical error/regression coverage preserved by targeted enterprise service/controller suites.
-- [x] Tests have clear descriptions and remain independent.
+- [x] API tests generated where applicable.
+- [x] E2E tests generated where UI exists.
+- [x] Tests use existing Go test/testify and bundled frontend node:test APIs.
+- [x] Tests cover the happy path: approval/allocation remain successful while delivery is independently unconfigured.
+- [x] Tests cover critical error cases: true webhook failure remains retry/final-failed; unconfigured delivery cannot be resent.
+- [x] All generated tests run successfully.
+- [x] Tests use semantic rendered text assertions for UI behavior.
+- [x] Tests have clear descriptions.
 - [x] No hardcoded waits or sleeps added.
-- [x] Tests saved to the existing appropriate directories.
+- [x] Tests are independent.
+- [x] Test summary created.
+- [x] Tests saved to appropriate directories.
 - [x] Summary includes coverage metrics.
-
-## Next Steps
-- Investigate the unrelated `TestEnterpriseDepartmentBudgetAPITenantScopedDepartmentAdminFlow` database error before relying on the whole `EnterpriseDepartmentBudget` API group as a green suite.
-- Keep the generated mixed-type API regression in CI alongside existing service/controller/frontend Story 7A.3 coverage.

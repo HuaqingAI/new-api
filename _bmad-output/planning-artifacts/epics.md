@@ -1316,3 +1316,68 @@ So that 我能用更直观的金额视角理解预算和钱包额度，同时保
 **When** 页面展示额度相关列
 **Then** 在保留 quota 原值的同时补充金额（$）显示
 **And** 显示方式尽量与钱包额度语义保持一致。
+
+### Story 7B.6: 企业管理员补齐预算池暂停、恢复与扩缩容治理闭环
+
+**Requirements:** follow-up to FR9, FR10, FR12, FR23, FR25
+
+As an 企业管理员（映射到当前 `EnterpriseAdmin` 权限）,
+I want 对已创建预算池执行正式暂停、恢复、容量扩缩容，
+So that 预算池生命周期保持集中治理，同时部门管理员只消费和分配既有预算，不自行造池。
+
+**Acceptance Criteria:**
+
+**Given** 某预算池已创建且当前不应再继续对外分配
+**When** 企业管理员执行暂停动作
+**Then** 系统将该预算池状态更新为 `paused` 并记录治理审计
+**And** 前端不再把该池作为新的 allocation / delegation / quota request 可选 active 池。
+
+**Given** 某预算池当前处于 `paused`
+**When** 企业管理员执行恢复动作
+**Then** 系统将该预算池状态恢复为 `active`
+**And** 后续新建 allocation / delegation / quota request 可重新选择该池。
+
+**Given** 某预算池已存在派生 wallet、allocation 或预算委派事实
+**When** 企业管理员暂停该预算池
+**Then** 系统按既有父池状态联动语义处理子项
+**And** 不物理删除既有事实，历史链路仍可追溯。
+
+**Given** 某预算池仍然有效且企业管理员只需要调整容量
+**When** 企业管理员执行扩容或缩容
+**Then** 系统允许在不改变 `type` 的前提下原地修改容量字段
+**And** 缩容不得突破当前已承诺 / 已使用边界，失败时返回可测试错误且无副作用。
+
+**Given** 企业管理员需要调整原预算池的类型
+**When** 企业管理员查看当前预算池治理入口
+**Then** UI 明确表达“类型不可编辑，需暂停旧池并新建新池”
+**And** 本故事不要求实现完整 successor cutover workflow。
+
+### Story 7B.7: 收紧预算池创建权限并重命名下级部门预算分配语义
+
+**Requirements:** follow-up to FR9, FR23, FR25
+
+As an 企业管理员或部门管理员,
+I want 由企业管理员统一创建预算池，而部门管理员只基于当前部门已有预算池继续向下级部门分配预算,
+So that 预算池供给权与预算使用/分配权分离，治理边界更清晰，UI 文案也更符合业务心智。
+
+**Acceptance Criteria:**
+
+**Given** 普通部门管理员进入本部门预算工作区
+**When** 页面渲染预算池治理入口
+**Then** 不显示 “Create Budget Pool” 入口
+**And** 其只能查看既有预算池并执行被授权的下级预算分配或成员分配动作。
+
+**Given** 部门管理员直接调用 `POST /departments/:id/budget`
+**When** 后端执行权限校验
+**Then** 请求被拒绝并返回项目既有错误响应语义（HTTP 200 + `success=false`）
+**And** 错误消息与 `EnterpriseAdmin` 权限要求一致。
+
+**Given** 企业管理员进入任意部门预算工作区
+**When** 需要为该部门建立预算池
+**Then** 系统允许创建预算池
+**And** 创建接口权限明确从 `EnterpriseDepartmentAdmin("id")` 收敛到 `EnterpriseAdmin()`。
+
+**Given** 负责人或部门管理员把当前部门预算继续分给下级部门
+**When** 页面展示该治理动作
+**Then** UI 与文案不再强调“descendant / 后代部门”
+**And** 改为“向下级部门分配预算”或等价更自然的话术。

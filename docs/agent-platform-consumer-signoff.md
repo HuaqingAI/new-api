@@ -1,6 +1,6 @@
 # Agent Platform Consumer Signoff
 
-Status: blocked
+Status: signed off
 contract_version: 2026-06
 owner_story: ap-6-8-complete-cherry-studio-first-and-codex-second-signoff
 updated_at: 2026-06-03
@@ -16,7 +16,7 @@ updated_at: 2026-06-03
 - `tests/agentplatform/conformance/`，并包含 runtime handler 证据 `controller/agentplatform/open_capabilities_test.go`
 - OAuth runtime handler 与 allowlist 证据：`controller/agentplatform/oauth_test.go`、`service/agentplatform/oauth_authorize_test.go`、`service/agentplatform/oauth_token_test.go`
 
-本签核 artifact 不新增新的业务主干、DTO、controller、service、router 或数据库对象。AP-6.1 对 `docs/openapi/api.json` 做 OAuth schema freeze；AP-6.2 对现有 Clients API 做 schema freeze：补齐 `GET/POST /api/agent-platform/clients` 与 `GET/PUT /api/agent-platform/clients/{id}` 的 OpenAPI path/schema，使其对齐当前 DTO 与 runtime。AP-6.5 model discovery 与 AP-6.6 error/client state matrix 尚未冻结，不能通过提前写入 OpenAPI 伪造签核完成。
+本签核 artifact 不新增新的业务主干、DTO、controller、service、router 或数据库对象。AP-6.1 对 `docs/openapi/api.json` 做 OAuth schema freeze；AP-6.2 对现有 Clients API 做 schema freeze：补齐 `GET/POST /api/agent-platform/clients` 与 `GET/PUT /api/agent-platform/clients/{id}` 的 OpenAPI path/schema，使其对齐当前 DTO 与 runtime。AP-6.5 model discovery 与 AP-6.6 error/client state matrix 已冻结，并由 OpenAPI、fixture/conformance 与 runtime tests 锁定。
 
 ## 2. Signoff Status Rules
 
@@ -27,15 +27,15 @@ updated_at: 2026-06-03
 - `signed off`
 - `blocked`
 
-当前总体状态为 `blocked`，原因是 AP-6.5 enterprise model discovery contract 与 AP-6.6 error/client state matrix 仍未冻结。已冻结或已有实现证据的域可以单独记录为 `signed off` 或 `ready for signoff`，但 Cherry Studio 整体 first-consumer signoff 不能标记为 `signed off`。
+当前总体状态为 `signed off`。AP-6.1 到 AP-6.6 的公共契约域均已有 source-of-truth 文档、OpenAPI/fixture/conformance 或 runtime test 证据；后续完整 Clients 自助 UI 与浏览器 redirect/consent 产品化仍是后续产品层工作，不阻塞 AP-6 wire-contract signoff。
 
 ## 3. Cherry Studio First-Consumer Signoff
 
 ### 3.1 Result
 
-Status: blocked
+Status: signed off
 
-Cherry Studio 可以基于当前 AP-6 公共契约接入 OAuth、resource discovery/detail/refresh、Skill invoke 与 Knowledge query 的基础闭环。OAuth 子域已完成 AP-6.1 wire contract freeze，可以标记为 `signed off`。Cherry Studio 的完整 first-consumer signoff 仍被 AP-6.5 与 AP-6.6 阻塞，因此总体不得标记为 `signed off`。
+Cherry Studio 可以基于当前 AP-6 公共契约接入 OAuth、resource discovery/detail/refresh、Skill invoke、Knowledge query、enterprise model discovery 与错误/客户端状态矩阵。AP-6.1 到 AP-6.6 的 wire-contract 域均已冻结，因此 Cherry Studio first-consumer signoff 可以标记为 `signed off`。
 
 Client registration / onboarding 已完成 AP-6.2 client registration schema freeze。Cherry Studio 可以复用现有 `client_id`、`slug`、`client_type`、`allowed_grant_types`、`redirect_uris`、`allowed_scopes`、`contract_version`、`capabilities`、`extensions`、`allow_client_credentials` 字段；无效配置必须落到 `invalid_integration`、`disabled` 或 OAuth allowlist/scope/callback 明确失败，不得只呈现 generic failure。
 
@@ -52,7 +52,7 @@ Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio` namespac
 | Knowledge query | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go`; `service/agentplatform/knowledge_query_test.go` | AP-6.4 已冻结 retrieval-only query request/response、`items` / `citations` shape、provider failure 与 provider-native field non-leakage。 |
 | Enterprise model discovery | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go`; `service/agentplatform/model_discovery_test.go` | AP-6.5 已冻结 downstream public projection，覆盖 default / no default / multiple defaults / default disabled / provider offline / unavailable / account-tenant mismatch；不得复用 `/api/models`、`/api/user/models` 或 `/v1/models` 冒充签核。 |
 | Error matrix and client state matrix | signed off | `docs/agent-platform-downstream-contract-spec.md`; `tests/agentplatform/conformance/fixtures.go`; `tests/agentplatform/conformance/fixtures_test.go` | AP-6.6 已冻结 error-code matrix 与 payload-state matrix，覆盖 `loginExpired`、`empty`、`loadFailed`、`networkFailed`、`noAssignedResource`、`visibleButNotCallable`、`stale`、`revoked`、`offline`。 |
-| Mock fixture and conformance | ready for signoff | `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | 覆盖 OAuth、open capability、Skill、Knowledge、error envelope，并对 AP-6.5 / AP-6.6 缺口保留 explicit pending reason。 |
+| Mock fixture and conformance | signed off | `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | 覆盖 OAuth、open capability、Skill、Knowledge、enterprise model discovery、error envelope 和 client-state matrix；AP-6.5 / AP-6.6 不再有 pending fixture。 |
 
 ### 3.3 Local Verification
 
@@ -62,7 +62,7 @@ Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio` namespac
 GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform
 ```
 
-`TestConsumerSignoffArtifactAlignsWithContractSources` 与 `TestConsumerSignoffCoverageMatrixMatchesFixtures` 用于发现 consumer signoff artifact、contract spec、OpenAPI 路径和 fixture/conformance 状态的明显漂移。只要 AP-6.5 / AP-6.6 仍是 pending fixture，Cherry Studio 整体状态就必须保持 `blocked`。
+`TestConsumerSignoffArtifactAlignsWithContractSources` 与 `TestConsumerSignoffCoverageMatrixMatchesFixtures` 用于发现 consumer signoff artifact、contract spec、OpenAPI 路径和 fixture/conformance 状态的明显漂移。AP-6.5 / AP-6.6 已无 pending fixture；如果未来任一冻结域重新出现 pending fixture，Cherry Studio 整体状态必须重新降级。
 
 `./service/agentplatform` 与 `./controller/agentplatform` 包测试覆盖 Clients registration/onboarding、OAuth authorize/token/revoke、PKCE、redirect URI allowlist、scope allowlist、refresh rotation、grant revoke 与 bearer error convergence。`./tests/agentplatform/conformance` 负责把这些 runtime 证据索引到签核 artifact 与公共契约三件套。
 
@@ -103,11 +103,13 @@ AP-6.2 不交付完整 `web/default` Clients 产品化工作区。当前 onboard
 
 ## 6. Final Conclusion
 
-- Cherry Studio first-consumer signoff: `blocked`
+- Cherry Studio first-consumer signoff: `signed off`
 - Client registration / onboarding signoff: `signed off`
 - Cherry Studio OAuth subdomain signoff: `signed off`
 - Resource discovery/detail/refresh signoff: `signed off`
+- Enterprise model discovery signoff: `signed off`
+- Error/client state matrix signoff: `signed off`
 - Codex second-consumer review: `signed off`
 - Extension namespaces used or reserved: `extensions.cherry_studio`, `extensions.codex`
-- OpenAPI change: OAuth schema freeze plus AP-6.2 existing Clients API schema freeze
+- OpenAPI change: OAuth schema freeze, AP-6.2 existing Clients API schema freeze, and AP-6.5 model discovery projection schema
 - Protocol conclusion: no parallel core protocol, no parallel resource model, and no independent open capability endpoint are required

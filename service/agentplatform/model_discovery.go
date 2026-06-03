@@ -21,6 +21,7 @@ const (
 	OpenCapabilityModelDefaultNoDefault        = "no_default"
 	OpenCapabilityModelDefaultMultipleDefaults = "multiple_defaults"
 	OpenCapabilityModelDefaultDisabled         = "default_disabled"
+	OpenCapabilityModelDefaultUnavailable      = "default_unavailable"
 )
 
 const modelDiscoveryConfigExtensionKey = "model_discovery.config"
@@ -232,6 +233,7 @@ func normalizeModelStatus(status string) string {
 func resolveModelDefaultState(items []ModelDiscoveryItem) string {
 	defaultCount := 0
 	disabledDefault := false
+	unavailableDefault := false
 	for _, item := range items {
 		if !item.IsDefault {
 			continue
@@ -239,6 +241,9 @@ func resolveModelDefaultState(items []ModelDiscoveryItem) string {
 		defaultCount++
 		if item.Status == OpenCapabilityModelStatusDisabled {
 			disabledDefault = true
+		}
+		if item.Status == OpenCapabilityModelStatusUnavailable {
+			unavailableDefault = true
 		}
 	}
 	switch {
@@ -248,6 +253,8 @@ func resolveModelDefaultState(items []ModelDiscoveryItem) string {
 		return OpenCapabilityModelDefaultMultipleDefaults
 	case disabledDefault:
 		return OpenCapabilityModelDefaultDisabled
+	case unavailableDefault:
+		return OpenCapabilityModelDefaultUnavailable
 	default:
 		return OpenCapabilityModelDefaultResolved
 	}

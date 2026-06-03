@@ -355,7 +355,7 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	contract := string(contractBytes)
 
 	for _, required := range []string{
-		"Status: blocked",
+		"Status: signed off",
 		"Client registration / onboarding",
 		"contract_version: 2026-06",
 		"docs/openapi/api.json",
@@ -377,10 +377,14 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	assertAllowedSignoffStatuses(t, markdownSection(contract, "### 11.8 Consumer Signoff"))
 
 	require.Contains(t, signoff, "Cherry Studio OAuth subdomain signoff: `signed off`")
-	require.Contains(t, signoff, "Cherry Studio first-consumer signoff: `blocked`")
+	require.Contains(t, signoff, "Cherry Studio first-consumer signoff: `signed off`")
 	require.Contains(t, signoff, "Resource discovery/detail/refresh signoff: `signed off`")
 	require.Contains(t, signoff, "Codex second-consumer review: `signed off`")
 	require.Contains(t, signoff, "OpenAPI change: OAuth schema freeze")
+	require.NotContains(t, signoff, "AP-6.5 model discovery 与 AP-6.6 error/client state matrix 尚未冻结")
+	require.NotContains(t, signoff, "AP-6.5 enterprise model discovery contract 与 AP-6.6 error/client state matrix 仍未冻结")
+	require.NotContains(t, signoff, "AP-6.5 与 AP-6.6 阻塞")
+	require.NotContains(t, signoff, "只要 AP-6.5 / AP-6.6 仍是 pending fixture")
 
 	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
 	require.Contains(t, contract, "Status: frozen")
@@ -398,8 +402,12 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	require.Contains(t, contract, "extensions.cherry_studio")
 	require.Contains(t, contract, "extensions.codex")
 	require.Contains(t, contract, "no parallel core protocol")
-	require.Contains(t, contract, "Cherry Studio overall first-consumer signoff remains `blocked`")
+	require.Contains(t, contract, "Cherry Studio overall first-consumer signoff is `signed off`")
 	require.Contains(t, contract, "Codex second-consumer review")
+	require.NotContains(t, markdownSection(contract, "### 11.7 Mock / Fixture / Conformance"), "pending with AP-6.5")
+	require.NotContains(t, markdownSection(contract, "### 11.7 Mock / Fixture / Conformance"), "pending with AP-6.6")
+	require.NotContains(t, markdownSection(contract, "### 11.8 Consumer Signoff"), "AP-6.5 is not frozen")
+	require.NotContains(t, markdownSection(contract, "### 11.8 Consumer Signoff"), "AP-6.6 is not frozen")
 
 	fixtures := FixtureCatalog()
 	require.NotEmpty(t, fixtures)
@@ -769,7 +777,7 @@ func assertOpenAPIModelDiscoverySchema(t *testing.T, paths map[string]any) {
 		require.Contains(t, properties, field, "OpenAPI model discovery response missing %s", field)
 	}
 	defaultState := properties["default_state"].(map[string]any)
-	assertOpenAPIEnum(t, defaultState, "resolved", "no_default", "multiple_defaults", "default_disabled")
+	assertOpenAPIEnum(t, defaultState, "resolved", "no_default", "multiple_defaults", "default_disabled", "default_unavailable")
 
 	items := properties["items"].(map[string]any)
 	itemSchema := items["items"].(map[string]any)
@@ -779,6 +787,20 @@ func assertOpenAPIModelDiscoverySchema(t *testing.T, paths map[string]any) {
 	}
 	status := itemProperties["status"].(map[string]any)
 	assertOpenAPIEnum(t, status, "available", "disabled", "provider_offline", "unavailable", "account_tenant_mismatch")
+}
+
+func TestModelDiscoveryUnavailableDefaultIsNotResolved(t *testing.T) {
+	fixtures := fixturesByName(FixtureCatalog())
+	fixture, ok := fixtures["model_discovery_model_unavailable"]
+	require.True(t, ok)
+
+	payload, ok := fixture.Payload.(dtoagentplatform.OpenCapabilityModelDiscoveryResponse)
+	require.True(t, ok)
+	require.Equal(t, "default_unavailable", payload.DefaultState)
+	require.Len(t, payload.Items, 1)
+	require.True(t, payload.Items[0].IsDefault)
+	require.Equal(t, "unavailable", payload.Items[0].Status)
+	require.Equal(t, "model_unavailable", payload.Items[0].DisabledReason)
 }
 
 func TestErrorClientStateMatrixFixtureCoversRequiredStates(t *testing.T) {

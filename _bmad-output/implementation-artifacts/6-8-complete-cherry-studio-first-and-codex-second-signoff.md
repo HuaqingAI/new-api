@@ -49,11 +49,11 @@ so that Agent Platform 的公共契约通用性得到实际验证。
   - [x] 如果 Codex 需要额外字段，只允许通过 `extensions.codex`、向后兼容 optional field 或提升 `contract_version` 治理。
   - [x] 区分本故事中的 Codex second-consumer review 与仓库已有 Codex channel/OAuth upstream 能力；不得修改 `service/codex_*`、`controller/codex_*`、Codex channel affinity 或 relay channel 逻辑来“完成签核”。
 
-- [x] 若需要前端签核状态展示，按 web/default 现有管理页模式补齐最小 UI (AC: 1, 2)
-  - [x] 在 `web/default/src/features/agent-platform/` 中展示 AP-6 signoff 状态，至少覆盖 Cherry Studio first consumer 与 Codex second-consumer review。
-  - [x] UI 状态必须区分 `draft`、`ready for signoff`、`signed off`、`blocked`，并展示当前 contract version 与核心契约域覆盖情况。
-  - [x] 新增文案必须使用 `useTranslation()` / `t('English key')`，并运行 `cd web/default && bun run i18n:sync`。
-  - [x] 不得用 narrative shell 或静态说明卡片替代真实状态表达；若本故事决定只交付文档签核而暂不做 UI，必须在签核 artifact 中说明等价展示路径和后续产品化边界。
+- [x] 若需要前端签核状态展示，按 web/default 现有管理页模式补齐最小 UI；本故事最终选择文档签核路径 (AC: 1, 2)
+  - [x] 未新增 `web/default` signoff UI；签核 artifact 已说明后续产品化可在 `web/default/src/features/agent-platform/` 增加 Clients 工作区和 signoff 状态视图。
+  - [x] 签核 artifact 已定义 UI 状态必须区分 `draft`、`ready for signoff`、`signed off`、`blocked`，并展示当前 contract version 与核心契约域覆盖情况。
+  - [x] 本次未新增前端文案，因此无需运行 `cd web/default && bun run i18n:sync`。
+  - [x] 已避免用 narrative shell 替代 runtime scope；本故事只交付签核文档、contract spec、OpenAPI/conformance 防漂移和后续 UI 边界说明。
 
 - [x] 增加防漂移验证与测试覆盖 (AC: 1, 2)
   - [x] 运行 `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform`。
@@ -150,7 +150,7 @@ GPT-5 Codex
 - Ultimate context engine analysis completed - comprehensive developer guide created.
 - Validation checklist applied manually：story 包含 BDD AC、任务分解、依赖/blocker、复用资产、禁止范围、测试入口、前端/i18n 要求和三件套一致性要求。
 - 已明确 6.8 输出应优先落在签核 artifact 与公共契约更新，避免重建 runtime plane、Cherry Studio 专属协议或 Codex upstream/channel 改造。
-- 新增稳定签核 artifact `docs/agent-platform-consumer-signoff.md`，记录 Cherry Studio first-consumer 为 `blocked`，原因是 AP-6.5 / AP-6.6 仍未冻结；已冻结域按覆盖矩阵记录为 `ready for signoff` 或 `signed off`。
+- 新增稳定签核 artifact `docs/agent-platform-consumer-signoff.md`；初始记录 Cherry Studio first-consumer 为 `blocked`，后续 AP-6.5 / AP-6.6 完成后由 source-of-truth review 收敛为 `signed off`。
 - Codex second-consumer review 已记录为 `signed off`：Codex 可复用同一 AP-6 公共契约，不需要平行资源主模型、平行核心协议主干或独立 open capability endpoint；额外字段只能走 `extensions.codex`、optional field 或 `contract_version`。
 - 未修改 OpenAPI、DTO、controller、service、router、relay、Codex upstream/channel 或 web/default UI；本故事只交付文档签核与 conformance 防漂移验证。UI 后续产品化边界已写入签核 artifact。
 - 新增 `TestConsumerSignoffArtifactAlignsWithContractSources`，校验 signoff artifact、contract spec、OpenAPI 路径引用、extension namespace 和 AP-6.5 / AP-6.6 pending fixture 状态，防止把 pending 缺口误标为 `signed off`。
@@ -159,6 +159,7 @@ GPT-5 Codex
 - 2026-06-03 10:27 +0800：执行 story-automator review workflow；已读取 `.claude/skills/bmad-story-automator-review/SKILL.md`、`workflow.yaml`、`instructions.xml` 和 `checklist.md`。
 - 2026-06-03 10:27 +0800：自动修复 review 发现的问题：补齐 OAuth runtime/allowlist 证据引用，加强 signoff status 防漂移断言，并补齐 File List 中遗漏的 BMad 输出文件。
 - 2026-06-03 10:27 +0800：review 验证 `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform` 通过；无 CRITICAL 遗留，story 推进为 `done`。
+- 2026-06-03：orchestration-5 source-of-truth review 发现 AP-6.5/AP-6.6 已冻结后，consumer signoff artifact 和 contract spec 仍残留 blocked/pending 结论；已同步为 signed off，并补充 conformance 防回退断言。
 
 ### File List
 
@@ -168,6 +169,10 @@ GPT-5 Codex
 - `_bmad-output/story-automator/orchestration-6-20260602-152140.md`
 - `docs/agent-platform-consumer-signoff.md`
 - `docs/agent-platform-downstream-contract-spec.md`
+- `docs/openapi/api.json`
+- `service/agentplatform/model_discovery.go`
+- `service/agentplatform/model_discovery_test.go`
+- `tests/agentplatform/conformance/fixtures.go`
 - `tests/agentplatform/conformance/fixtures_test.go`
 
 ## Senior Developer Review (AI)
@@ -185,7 +190,7 @@ Outcome: Approve after auto-fix
 
 ### Acceptance Criteria Verification
 
-- AC1：Cherry Studio first-consumer 签核 artifact 覆盖 OAuth、resource discovery/detail/refresh、Skill invoke、Knowledge query、错误/状态矩阵、mock fixture；AP-6.5 / AP-6.6 未冻结域保持 `blocked`，未伪造 `signed off`；Cherry Studio 私有字段限定在 `extensions.cherry_studio`。
+- AC1：Cherry Studio first-consumer 签核 artifact 覆盖 OAuth、resource discovery/detail/refresh、Skill invoke、Knowledge query、enterprise model discovery、错误/状态矩阵、mock fixture；AP-6.5 / AP-6.6 完成后签核状态已收敛为 `signed off`；Cherry Studio 私有字段限定在 `extensions.cherry_studio`。
 - AC2：Codex second-consumer review 复用同一 AP-6 公共契约，未新增平行资源主模型、平行核心协议主干或独立 open capability endpoint；扩展治理限定为 `extensions.codex`、optional field 或 `contract_version`。
 
 ### Verification
@@ -193,8 +198,24 @@ Outcome: Approve after auto-fix
 - `git diff --check` 通过。
 - `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform` 通过。
 
+## Senior Developer Review (AI) - Orchestration 5 Source-of-Truth Sweep
+
+Reviewer: GPT-5 Codex
+Date: 2026-06-03
+Outcome: Approve after auto-fix
+
+### Findings Fixed
+
+- [HIGH] `docs/agent-platform-consumer-signoff.md` 与 `docs/agent-platform-downstream-contract-spec.md#11.8` 在 AP-6.5 / AP-6.6 已冻结后仍保留 Cherry Studio first-consumer `blocked`、model discovery pending、error matrix pending 的旧结论，和同文件 coverage matrix / fixture reality 冲突。已将 AP-6 wire-contract signoff 收敛为 `signed off`，并加入 conformance 断言禁止旧 pending 文案回流。
+- [MEDIUM] Story 的可选前端签核状态展示任务记录容易被误读为已经新增 UI。已把任务记录改为“本故事选择文档签核路径”，并明确后续 `web/default` signoff UI 属于产品化边界。
+
+### Verification
+
+- `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform` 通过。
+
 ## Change Log
 
 - 2026-06-03：创建 Story 6.8 context artifact，状态设为 `ready-for-dev`。
 - 2026-06-03：完成 AP-6 consumer signoff artifact、公共契约 `11.8` 索引、Cherry Studio first-consumer blocker 签核、Codex second-consumer review，以及 conformance 防漂移测试。
 - 2026-06-03：完成 story-automator review 自动修复，补齐 OAuth runtime evidence、防漂移测试和 File List，状态设为 `done`。
+- 2026-06-03：source-of-truth review 将 AP-6.5/AP-6.6 完成后的签核状态收敛为 `signed off`，补强 conformance 防回退并保持 story done。

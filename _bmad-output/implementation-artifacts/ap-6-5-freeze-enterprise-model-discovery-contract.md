@@ -48,7 +48,7 @@ so that Cherry Studio P0 可以展示可用模型并解释不可用原因。
 
 - [x] 同步 signoff 与 UX 边界 (AC: 2)
   - [x] 更新 `docs/agent-platform-consumer-signoff.md` 与 contract spec 中 enterprise model discovery 条目。
-  - [x] 保持 Cherry Studio overall first-consumer signoff 仅在 6.5 与 6.6 都完成后才能解除 blocked。
+  - [x] 保持 Cherry Studio overall first-consumer signoff 仅在 6.5 与 6.6 都完成后解除 blocked；6.6 完成后由 6.8 统一收敛为 signed off。
 
 ## Dev Notes
 
@@ -80,6 +80,7 @@ GPT-5 Codex
 - 2026-06-03 19:41 +0800：基于 AP-6 architecture amendment、contract gap matrix、pending conformance fixtures 与现有 router/model surfaces 创建 AP-6.5 story artifact；结论是必须新增真实 downstream model discovery projection，而非复用 `/api/models`、`/api/user/models` 或 `/v1/models`。
 - 2026-06-03 19:58 +0800：新增 `GET /api/open-capabilities/models` downstream public projection，使用 client namespaced extension `model_discovery.config` 生成 enterprise model discovery contract，并冻结 default/no-default/multiple-default/default-disabled/provider-offline/unavailable/account-tenant-mismatch 公共语义。
 - 2026-06-03 19:59 +0800：目标验证通过：`GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance`、`GOCACHE=/private/tmp/go-build-cache go test ./service/agentplatform ./controller/agentplatform`。
+- 2026-06-03：orchestration-5 source-of-truth review 自动修复 default model 不在有效列表时仍返回 `default_state=resolved` 的合同漂移；新增 `default_unavailable`，同步 service、fixture、OpenAPI、contract spec 与 conformance 防漂移测试。
 
 ### File List
 
@@ -97,6 +98,21 @@ GPT-5 Codex
 - `tests/agentplatform/conformance/fixtures.go`
 - `tests/agentplatform/conformance/fixtures_test.go`
 
+## Senior Developer Review (AI) - Orchestration 5 Source-of-Truth Sweep
+
+Reviewer: GPT-5 Codex
+Date: 2026-06-03
+Outcome: Approve after auto-fix
+
+### Findings Fixed
+
+- [HIGH] `model_discovery_model_unavailable` fixture 和 runtime 把 configured default 不在有效模型列表的场景返回为 `default_state=resolved`，但 contract 对 `resolved` 的定义是“exactly one effective default model is present”。这会让下游把不可用默认模型误判为可用默认模型。已新增 `default_unavailable`，并同步 `service/agentplatform/model_discovery.go`、OpenAPI enum、contract spec、fixture 与 `TestModelDiscoveryUnavailableDefaultIsNotResolved`。
+
+### Verification
+
+- `GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform` 通过。
+
 ## Change Log
 
 - 2026-06-03：创建 Story 6.5 context artifact，状态设为 `ready-for-dev`。
+- 2026-06-03：source-of-truth review 修复 default unavailable 状态漂移，新增 conformance 防回归断言并保持 story done。

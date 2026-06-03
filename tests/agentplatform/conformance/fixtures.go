@@ -195,7 +195,7 @@ func FixtureCatalog() []Fixture {
 		modelDiscoveryFixture("model_discovery_provider_offline", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
 			modelDiscoveryItem("claude-3-5-sonnet", "anthropic", "Claude 3.5 Sonnet", true, "provider_offline", "provider_offline", map[string]any{"chat": true}, AccountID, TenantID),
 		}),
-		modelDiscoveryFixture("model_discovery_model_unavailable", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+		modelDiscoveryFixture("model_discovery_model_unavailable", "default_unavailable", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
 			modelDiscoveryItem(ModelID, ProviderStableID, "Default Model", true, "unavailable", "model_unavailable", map[string]any{"chat": true}, AccountID, TenantID),
 		}),
 		modelDiscoveryFixture("model_discovery_account_tenant_mismatch", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{

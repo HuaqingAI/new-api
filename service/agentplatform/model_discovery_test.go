@@ -75,7 +75,7 @@ func TestModelDiscoveryServiceSynthesizesUnavailableConfiguredDefault(t *testing
 
 	result, err := svc.List(clientID)
 	require.NoError(t, err)
-	require.Equal(t, OpenCapabilityModelDefaultResolved, result.DefaultState)
+	require.Equal(t, OpenCapabilityModelDefaultUnavailable, result.DefaultState)
 	require.Len(t, result.Items, 2)
 
 	last := result.Items[1]

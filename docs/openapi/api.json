@@ -7320,7 +7320,8 @@
                             "resolved",
                             "no_default",
                             "multiple_defaults",
-                            "default_disabled"
+                            "default_disabled",
+                            "default_unavailable"
                           ]
                         },
                         "items": {

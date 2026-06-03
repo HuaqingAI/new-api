@@ -552,11 +552,12 @@ AP-6.2 不要求完整 Clients 产品化工作区。当前必须在 API / fixtur
 - Skill invoke 路由存在
 - Knowledge query 路由存在
 - Agent definition read 路由存在
+- Enterprise model discovery 公共投影已冻结
+- 错误码矩阵与客户端状态矩阵已冻结
 
 ### 8.2 部分满足
 
 - 企业登录产品流：后端能跑，但前端运营工作流未产品化
-- 模型发现：当前 Agent Platform 并未单独冻结你要求的 enterprise model discovery 公共规格
 - Knowledge metadata：后端资源模型存在，但还未整理成正式下游公共文档
 - Skill metadata 与 invoke 契约：后端可支撑，但尚未抽成正式下游规格包
 - 诊断与 trace：有部分字段，但还未形成签核级对外说明
@@ -567,7 +568,6 @@ AP-6.2 不要求完整 Clients 产品化工作区。当前必须在 API / fixtur
 - 当前 Agent Platform UI 没有完整 `Clients` 工作区
 - 资源 authoring / exposure / auth onboarding 还没有完整运营流
 - host allowlist / mock server / fixture 分发机制未正式冻结
-- 模型发现还没有冻结成你需求中那样的正式契约
 
 ## 9. 给下游团队的当前接入建议
 
@@ -578,12 +578,13 @@ AP-6.2 不要求完整 Clients 产品化工作区。当前必须在 API / fixtur
 - open capability discovery 集成
 - detail 加载
 - refresh / stale / revoked 处理
+- AP-6.5 enterprise model discovery 集成
+- AP-6.6 error/client-state matrix 映射
 
 下游团队当前不应直接假设：
 
 - 授权 UX 已定型
 - 运营人员能完全通过当前 UI 完成 client onboarding
-- model discovery 已冻结成最终公共协议
 - 当前 web/default Agent Platform UI 已覆盖全部后端能力
 
 ## 10. 建议的下一份正式冻结文档
@@ -1018,7 +1019,7 @@ Top-level fields:
 | Field | Level | Notes |
 | --- | --- | --- |
 | `contract_version` | MUST | Shared AP contract version. |
-| `default_state` | MUST | Enum: `resolved`, `no_default`, `multiple_defaults`, `default_disabled`. |
+| `default_state` | MUST | Enum: `resolved`, `no_default`, `multiple_defaults`, `default_disabled`, `default_unavailable`. |
 | `items` | MUST | Enterprise model discovery items. |
 | `total` | MUST | Item count. |
 
@@ -1061,6 +1062,7 @@ This means `account_id`, `tenant_id`, default-model selection, and disabled-stat
 - `no_default`: no model is marked/configured as default
 - `multiple_defaults`: more than one model is marked/configured as default
 - `default_disabled`: the selected default exists but is in `disabled` status
+- `default_unavailable`: the configured default model is not present in the effective model list and is synthesized as an `unavailable` item with `disabled_reason=model_unavailable`
 
 `status` meanings:
 
@@ -1145,7 +1147,7 @@ Responsibility boundary guidance:
 
 ### 11.7 Mock / Fixture / Conformance
 
-Status: provided for frozen OAuth and open capability surfaces; AP-6.5 / AP-6.6 dependent cases are explicit pending fixtures
+Status: provided for all AP-6 frozen OAuth, open capability, model discovery, and error/client-state surfaces
 
 Owner story: `ap-6-7-provide-mock-fixture-and-contract-conformance-suite`
 
@@ -1169,19 +1171,19 @@ Synthetic fixture coverage:
 - refresh fresh / stale / revoked / offline / observed ETag-version mismatch / TTL over 300 seconds non-compliance diagnostics
 - Skill invoke sync success / contract invalid / timeout / upstream provider failure
 - Knowledge query retrieval success with items and citations / provider offline / upstream provider failure / no provider-native field leakage
-- model discovery default / no default / multiple defaults / default disabled / provider offline / unavailable / account-tenant mismatch: pending with AP-6.5 reason because enterprise model discovery is not frozen
-- error matrix states: pending with AP-6.6 reason because the client state matrix artifact is not frozen
+- model discovery default / no default / multiple defaults / default disabled / default unavailable / provider offline / unavailable / account-tenant mismatch
+- error matrix states and payload-derived client states
 
 Safety constraints:
 
 - Fixtures use synthetic IDs such as `client_cherry_mock`, `tenant_demo`, `acct_demo`, `res_skill_demo`, `res_knowledge_demo`, `res_agent_demo`, and `model_demo_default`.
 - Fixtures must not contain real access tokens, refresh tokens, provider secrets, tenant secrets, real user information, or real enterprise data.
 - OAuth token examples use synthetic placeholders only; provider-native Knowledge fields and provider config are not exposed in conformance payloads.
-- Model discovery pending fixtures must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`.
+- Model discovery fixtures must remain backed by `/api/open-capabilities/models`; they must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`.
 
 ### 11.8 Consumer Signoff
 
-Status: blocked
+Status: signed off
 
 Owner story: `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff`
 
@@ -1196,8 +1198,8 @@ Current coverage matrix:
 | Cherry Studio OAuth authorize/token/revoke/callback/allowlist | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | Current wire contract is JSON authorize plus token/revoke APIs. Final browser redirect UX is productization over the same OAuth contract, not a separate core protocol. |
 | Cherry Studio resource discovery/detail/refresh | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers TTL, freshness, ETag, revoked/offline/stale convergence, visibility/callable state, diagnostics, and contract compatibility. |
 | Cherry Studio Skill invoke and Knowledge query | signed off | `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers success, timeout, upstream failure, contract invalid, provider offline, standardized items/citations, and provider-native field non-leakage. |
-| Cherry Studio enterprise model discovery | blocked | `tests/agentplatform/conformance/fixtures.go` pending AP-6.5 fixtures | AP-6.5 is not frozen; this must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`. |
-| Cherry Studio error/client state matrix | blocked | `tests/agentplatform/conformance/fixtures.go` pending AP-6.6 fixture | AP-6.6 is not frozen; pending fixture cannot be treated as completed signoff. |
+| Cherry Studio enterprise model discovery | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go`; `service/agentplatform/model_discovery_test.go` | AP-6.5 is frozen through `/api/open-capabilities/models`; this must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`. |
+| Cherry Studio error/client state matrix | signed off | `docs/agent-platform-downstream-contract-spec.md`; `tests/agentplatform/conformance/fixtures.go`; `tests/agentplatform/conformance/fixtures_test.go` | AP-6.6 freezes both error-code matrix and payload-derived client states. |
 | Codex second-consumer review | signed off | `docs/agent-platform-consumer-signoff.md` | Codex can reuse `client`, `contract_version`, `capabilities`, open capability resources, error envelope, OpenAPI, and fixture/conformance assets. |
 
 Extension namespaces:
@@ -1207,29 +1209,29 @@ Extension namespaces:
 
 Conclusion:
 
-- Cherry Studio overall first-consumer signoff remains `blocked` until AP-6.5 and AP-6.6 are frozen.
+- Cherry Studio overall first-consumer signoff is `signed off` for AP-6 wire-contract scope.
 - Codex second-consumer review does not require a parallel resource model, parallel core protocol trunk, or independent open capability endpoint; no parallel core protocol is required.
-- No `docs/openapi/api.json` update is required for this story because it adds only signoff documentation and conformance drift checks, not a new public API or schema.
+- `docs/openapi/api.json` covers OAuth, Clients, open capability resources, Skill invoke, Knowledge query, and AP-6.5 model discovery projection schemas.
 
 ## 12. 当前 readiness verdict
 
 对于“授权给客户端登录并接入下游 newapi enterprise provider 的能力”这一问题，当前结论是：
 
 - 后端接入底座：**usable**
-- 下游公共契约成熟度：**partial**
+- 下游 AP-6 wire contract 成熟度：**signed off**
 - 运营/控制台工作流完整度：**not yet complete**
 
 换句话说：
 
-- 现在已经不是“完全没做”
-- 但也还不能说“下游只看一份完全冻结的正式公共规格就能无歧义接入全部能力”
+- AP-6.1 到 AP-6.6 的 OAuth、Clients、resource discovery/detail/refresh、Skill invoke、Knowledge query、enterprise model discovery、error/client-state matrix 已有签核级公共契约
+- 但完整运营控制台、Clients 自助 onboarding、浏览器 redirect/consent 产品化和资源 authoring/exposure 工作流仍需后续产品化 story 承接
 
 ## 13. 审阅建议
 
 你可以重点带着下面三个问题看这份文档：
 
-1. Cherry Studio 这类下游当前最关心的是不是 OAuth + discovery + invoke/query 的基础闭环？
-2. 他们是否必须在 Phase 0 就拿到“模型发现”的正式公共规格，而不是后续补冻结？
-3. 他们是否接受“后端能力先接入、运营控制台后补齐”的推进顺序？
+1. Cherry Studio 这类下游是否可以按 AP-6 signed-off wire contract 开始集成？
+2. 后续产品化是否优先补齐完整 Clients 工作区、浏览器 redirect/consent UX 和 signoff 状态视图？
+3. 是否接受“公共契约已冻结、运营控制台后补齐”的推进顺序？
 
-如果这三个问题里有任何一个答案是否定的，就应该继续发起下一轮 CC，把下游公共契约进一步冻结。  
+如果这三个问题里有任何一个答案是否定的，就应该继续发起下一轮 CC，把 AP-6 signed-off contract 与后续产品化边界重新拆分。

@@ -7285,6 +7285,177 @@
         ]
       }
     },
+    "/api/open-capabilities/models": {
+      "get": {
+        "summary": "读取企业模型发现公共投影",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "default_state": {
+                          "type": "string",
+                          "enum": [
+                            "resolved",
+                            "no_default",
+                            "multiple_defaults",
+                            "default_disabled"
+                          ]
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "model_id": {
+                                "type": "string"
+                              },
+                              "provider_stable_id": {
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "is_default": {
+                                "type": "boolean"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "available",
+                                  "disabled",
+                                  "provider_offline",
+                                  "unavailable",
+                                  "account_tenant_mismatch"
+                                ]
+                              },
+                              "disabled_reason": {
+                                "type": "string"
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "account_id": {
+                                "type": "string"
+                              },
+                              "tenant_id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "model_id",
+                              "provider_stable_id",
+                              "display_name",
+                              "is_default",
+                              "status",
+                              "disabled_reason",
+                              "capabilities",
+                              "account_id",
+                              "tenant_id"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "contract_version",
+                        "default_state",
+                        "items",
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/open-capabilities/refresh": {
       "post": {
         "summary": "刷新并对账开放能力投影视图",

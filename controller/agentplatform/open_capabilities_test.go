@@ -83,6 +83,7 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		AllowedScopesJSON:      `["ap.resources.read","ap.skills.invoke","ap.knowledge.query","ap.agents.read"]`,
 		ContractVersion:        "2026-06",
 		CapabilitiesJSON:       `{"discovery":true}`,
+		ExtensionsJSON:         `{"model_discovery.config":{"default_model":"gpt-4o-mini","account_id":"acct_demo","tenant_id":"tenant_demo","models":[{"model_id":"gpt-4o-mini","provider_stable_id":"openai","display_name":"GPT-4o Mini","capabilities":{"chat":true},"is_default":true},{"model_id":"claude-3-5-sonnet","provider_stable_id":"anthropic","display_name":"Claude 3.5 Sonnet","status":"provider_offline","disabled_reason":"provider_offline","capabilities":{"chat":true}},{"model_id":"gemini-1.5-pro","provider_stable_id":"gemini","display_name":"Gemini 1.5 Pro","account_id":"acct_other","tenant_id":"tenant_demo","capabilities":{"chat":true}}]}}`,
 		AllowClientCredentials: true,
 	}
 	require.NoError(t, db.Create(&client).Error)
@@ -211,11 +212,50 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 	router.Use(middleware.RequestId())
 	router.GET("/api/open-capabilities/discovery", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityDiscovery)
 	router.GET("/api/open-capabilities/resources/:id", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityResourceDetail)
+	router.GET("/api/open-capabilities/models", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityModelDiscovery)
 	router.POST("/api/open-capabilities/refresh", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityRefresh)
 	router.POST("/api/open-capabilities/skills/:id/invoke", middleware.AgentPlatformBearer("ap.skills.invoke"), OpenCapabilitySkillInvoke)
 	router.POST("/api/open-capabilities/knowledge-bases/:id/query", middleware.AgentPlatformBearer("ap.knowledge.query"), OpenCapabilityKnowledgeQuery)
 	router.GET("/api/open-capabilities/agents/:id", middleware.AgentPlatformBearer("ap.agents.read"), OpenCapabilityAgentDetail)
 	return router, db, tokenResult.AccessToken, resource, knowledge, agent
+}
+
+func TestOpenCapabilityModelDiscoveryReturnsEnterpriseProjection(t *testing.T) {
+	router, _, token, _, _, _ := setupOpenCapabilityControllerTest(t)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/models", token, nil)
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.True(t, apiResponse.Success)
+
+	var data struct {
+		ContractVersion string `json:"contract_version"`
+		DefaultState    string `json:"default_state"`
+		Items           []struct {
+			ModelID          string         `json:"model_id"`
+			ProviderStableID string         `json:"provider_stable_id"`
+			DisplayName      string         `json:"display_name"`
+			IsDefault        bool           `json:"is_default"`
+			Status           string         `json:"status"`
+			DisabledReason   string         `json:"disabled_reason"`
+			Capabilities     map[string]any `json:"capabilities"`
+			AccountID        string         `json:"account_id"`
+			TenantID         string         `json:"tenant_id"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, "2026-06", data.ContractVersion)
+	require.Equal(t, "resolved", data.DefaultState)
+	require.Equal(t, 3, data.Total)
+	require.Len(t, data.Items, 3)
+	require.Equal(t, "gpt-4o-mini", data.Items[0].ModelID)
+	require.True(t, data.Items[0].IsDefault)
+	require.Equal(t, "available", data.Items[0].Status)
+	require.Equal(t, "acct_demo", data.Items[0].AccountID)
+	require.Equal(t, "tenant_demo", data.Items[0].TenantID)
+	require.Equal(t, "provider_offline", data.Items[1].Status)
+	require.Equal(t, "account_tenant_mismatch", data.Items[2].Status)
+	require.NotContains(t, string(apiResponse.Data), "/v1/models")
 }
 
 func performOpenCapabilityRequest(t *testing.T, router *gin.Engine, method string, target string, token string, body any) *httptest.ResponseRecorder {

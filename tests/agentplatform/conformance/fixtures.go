@@ -3,6 +3,7 @@ package conformance
 import (
 	"encoding/json"
 
+	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 )
@@ -177,13 +178,29 @@ func FixtureCatalog() []Fixture {
 		},
 		errorFixture("knowledge_query_provider_offline", "open-capabilities", "POST", "/api/open-capabilities/knowledge-bases/"+KnowledgeResourceID+"/query", apservice.OpenCapabilityCodeResourceOffline, "offline knowledge provider is rejected", true),
 		errorFixture("knowledge_query_upstream_failure", "open-capabilities", "POST", "/api/open-capabilities/knowledge-bases/"+KnowledgeResourceID+"/query", apservice.OpenCapabilityCodeUpstreamFailed, "knowledge provider failure is retryable", true),
-		pendingFixture("model_discovery_default_model", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; do not reuse /api/models, /api/user/models, or /v1/models."),
-		pendingFixture("model_discovery_no_default_model", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; no default semantics are pending."),
-		pendingFixture("model_discovery_multiple_default_models", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; multiple default handling is pending."),
-		pendingFixture("model_discovery_default_disabled", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; disabledReason semantics are pending."),
-		pendingFixture("model_discovery_provider_offline", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; provider status semantics are pending."),
-		pendingFixture("model_discovery_model_unavailable", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; availability semantics are pending."),
-		pendingFixture("model_discovery_account_tenant_mismatch", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; accountId/tenantId source semantics are pending."),
+		modelDiscoveryFixture("model_discovery_default_model", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("gpt-4o-mini", "openai", "GPT-4o Mini", true, "available", "", map[string]any{"chat": true}, AccountID, TenantID),
+			modelDiscoveryItem("claude-3-5-sonnet", "anthropic", "Claude 3.5 Sonnet", false, "available", "", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_no_default_model", "no_default", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("gpt-4o-mini", "openai", "GPT-4o Mini", false, "available", "", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_multiple_default_models", "multiple_defaults", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("gpt-4o-mini", "openai", "GPT-4o Mini", true, "available", "", map[string]any{"chat": true}, AccountID, TenantID),
+			modelDiscoveryItem("claude-3-5-sonnet", "anthropic", "Claude 3.5 Sonnet", true, "available", "", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_default_disabled", "default_disabled", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("gpt-4o-mini", "openai", "GPT-4o Mini", true, "disabled", "default_model_disabled", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_provider_offline", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("claude-3-5-sonnet", "anthropic", "Claude 3.5 Sonnet", true, "provider_offline", "provider_offline", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_model_unavailable", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem(ModelID, ProviderStableID, "Default Model", true, "unavailable", "model_unavailable", map[string]any{"chat": true}, AccountID, TenantID),
+		}),
+		modelDiscoveryFixture("model_discovery_account_tenant_mismatch", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			modelDiscoveryItem("gemini-1.5-pro", "gemini", "Gemini 1.5 Pro", true, "account_tenant_mismatch", "account_tenant_mismatch", map[string]any{"chat": true}, "acct_other", TenantID),
+		}),
 		pendingFixture("error_client_state_matrix", "error-matrix", "AP-6.6 error code and client state matrix artifact is missing; state mapping assertions are pending."),
 	}
 }
@@ -267,6 +284,37 @@ func refreshFixture(name string, freshness string, etag string, diagnostics dtoa
 			ContractCompatible:  true,
 			Diagnostics:         diagnostics,
 		},
+	}
+}
+
+func modelDiscoveryFixture(name string, defaultState string, items []dtoagentplatform.OpenCapabilityModelDiscoveryItem) Fixture {
+	return Fixture{
+		Name:        name,
+		Surface:     "model-discovery",
+		Method:      "GET",
+		Path:        "/api/open-capabilities/models",
+		Description: "Enterprise model discovery response for " + name + ".",
+		Payload: dtoagentplatform.OpenCapabilityModelDiscoveryResponse{
+			ContractVersion: ContractVersion,
+			DefaultState:    defaultState,
+			Items:           items,
+			Total:           len(items),
+		},
+	}
+}
+
+func modelDiscoveryItem(modelID string, providerStableID string, displayName string, isDefault bool, status string, disabledReason string, capabilities map[string]any, accountID string, tenantID string) dtoagentplatform.OpenCapabilityModelDiscoveryItem {
+	capabilitiesJSON, _ := common.Marshal(capabilities)
+	return dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+		ModelID:          modelID,
+		ProviderStableID: providerStableID,
+		DisplayName:      displayName,
+		IsDefault:        isDefault,
+		Status:           status,
+		DisabledReason:   disabledReason,
+		Capabilities:     json.RawMessage(capabilitiesJSON),
+		AccountID:        accountID,
+		TenantID:         tenantID,
 	}
 }
 

@@ -80,6 +80,9 @@ func TestPendingPrerequisiteFixturesHaveExplicitReasons(t *testing.T) {
 		if fixture.Surface != "model-discovery" && fixture.Surface != "error-matrix" {
 			continue
 		}
+		if fixture.Surface == "model-discovery" && fixture.PendingReason == "" {
+			continue
+		}
 
 		require.Equal(t, "PENDING", fixture.Method, fixture.Name)
 		require.NotEmpty(t, fixture.PendingReason, fixture.Name)
@@ -215,6 +218,12 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			require.NotEmpty(t, decoded.Items, fixture.Name)
 			require.NotContains(t, fields, "provider_config", fixture.Name)
 			require.NotContains(t, fields, "provider_native", fixture.Name)
+		case dtoagentplatform.OpenCapabilityModelDiscoveryResponse:
+			var decoded dtoagentplatform.OpenCapabilityModelDiscoveryResponse
+			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
+			assertJSONFields(t, fixture.Name, fields, "contract_version", "default_state", "items", "total")
+			require.NotEmpty(t, decoded.Items, fixture.Name)
+			require.NotContains(t, fields, "data", fixture.Name)
 		case map[string]any:
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
 		default:
@@ -285,6 +294,7 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 		"/api/agent-platform/oauth/token",
 		"/api/agent-platform/oauth/revoke",
 		"/api/open-capabilities/discovery",
+		"/api/open-capabilities/models",
 		"/api/open-capabilities/resources/{id}",
 		"/api/open-capabilities/refresh",
 		"/api/open-capabilities/skills/{id}/invoke",
@@ -293,12 +303,6 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	}
 	for _, path := range expectedPaths {
 		require.Contains(t, spec.Paths, path, "OpenAPI path missing for conformance coverage: %s", path)
-	}
-
-	for _, fixture := range FixtureCatalog() {
-		if fixture.Surface == "model-discovery" {
-			require.Equal(t, "pending", fixture.Path, fixture.Name)
-		}
 	}
 
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/clients", "id", "client_id", "slug", "display_name", "client_type", "status", "contract_version", "allow_client_credentials", "created_at", "updated_at")
@@ -312,10 +316,12 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh", "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/skills/{id}/invoke", "resource_id", "resource_version", "contract_version", "output")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/knowledge-bases/{id}/query", "resource_id", "resource_version", "contract_version", "items", "citations")
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/models", "contract_version", "default_state", "items", "total")
 	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}")
 	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh")
 	assertOpenAPISkillInvokeSchema(t, spec.Paths)
 	assertOpenAPIKnowledgeQuerySchema(t, spec.Paths)
+	assertOpenAPIModelDiscoverySchema(t, spec.Paths)
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientUpdateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientItem")
@@ -393,7 +399,7 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 
 	fixtures := FixtureCatalog()
 	require.NotEmpty(t, fixtures)
-	require.True(t, hasPendingSurface(fixtures, "model-discovery"), "signoff blocker requires AP-6.5 pending model-discovery fixtures")
+	require.False(t, hasPendingSurface(fixtures, "model-discovery"), "AP-6.5 should freeze model-discovery fixtures once contract is implemented")
 	require.True(t, hasPendingSurface(fixtures, "error-matrix"), "signoff blocker requires AP-6.6 pending error-matrix fixtures")
 }
 
@@ -460,7 +466,7 @@ func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
 		},
 		{
 			domain: "Enterprise model discovery",
-			status: "blocked",
+			status: "signed off",
 			evidence: []string{
 				"model_discovery_default_model",
 				"model_discovery_default_disabled",
@@ -747,6 +753,28 @@ func assertOpenAPIKnowledgeQuerySchema(t *testing.T, paths map[string]any) {
 	require.Contains(t, requestProperties, "query")
 	requiredSet := stringSetFromAny(requestSchema["required"].([]any))
 	require.Contains(t, requiredSet, "query")
+}
+
+func assertOpenAPIModelDiscoverySchema(t *testing.T, paths map[string]any) {
+	t.Helper()
+
+	dataSchema := openAPIResponseDataSchema(t, paths, nil, "get", "/api/open-capabilities/models")
+	properties, ok := dataSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI model discovery response must define properties")
+	for _, field := range []string{"contract_version", "default_state", "items", "total"} {
+		require.Contains(t, properties, field, "OpenAPI model discovery response missing %s", field)
+	}
+	defaultState := properties["default_state"].(map[string]any)
+	assertOpenAPIEnum(t, defaultState, "resolved", "no_default", "multiple_defaults", "default_disabled")
+
+	items := properties["items"].(map[string]any)
+	itemSchema := items["items"].(map[string]any)
+	itemProperties := itemSchema["properties"].(map[string]any)
+	for _, field := range []string{"model_id", "provider_stable_id", "display_name", "is_default", "status", "disabled_reason", "capabilities", "account_id", "tenant_id"} {
+		require.Contains(t, itemProperties, field, "OpenAPI model discovery item missing %s", field)
+	}
+	status := itemProperties["status"].(map[string]any)
+	assertOpenAPIEnum(t, status, "available", "disabled", "provider_offline", "unavailable", "account_tenant_mismatch")
 }
 
 func assertOpenAPIRequiredSchemaNodeFields(t *testing.T, schema map[string]any, requiredFields ...string) {

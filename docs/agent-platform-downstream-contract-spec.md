@@ -999,23 +999,89 @@ Frozen P0 examples must cover:
 
 ### 11.5 Enterprise Model Discovery Contract
 
-Status: missing / must add
+Status: frozen
 
 Owner story: `ap-6-5-freeze-enterprise-model-discovery-contract`
 
 This is not equivalent to `/api/models`, `/api/user/models`, or `/v1/models`.
 
-Must freeze:
+AP-6.5 freezes a downstream public projection under the existing open capability plane:
 
-- `modelId`
-- `providerStableId`
-- `displayName`
-- `isDefault`
-- `status`
-- `disabledReason`
-- `capabilities`
-- `accountId` / `tenantId` source semantics
-- no default / multiple default / default disabled states
+- `GET /api/open-capabilities/models`
+
+This endpoint is a consumer-facing enterprise model discovery projection. It reuses existing platform metadata and client configuration, but it is not a relay-compatible model list and not a dashboard management list.
+
+#### 11.5.1 Response Contract
+
+Top-level fields:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `contract_version` | MUST | Shared AP contract version. |
+| `default_state` | MUST | Enum: `resolved`, `no_default`, `multiple_defaults`, `default_disabled`. |
+| `items` | MUST | Enterprise model discovery items. |
+| `total` | MUST | Item count. |
+
+Model item fields:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `model_id` | MUST | Stable downstream model identifier. |
+| `provider_stable_id` | MUST | Stable provider family identifier, such as `openai`, `anthropic`, `gemini`. |
+| `display_name` | MUST | Human-readable display name. |
+| `is_default` | MUST | Whether the item is currently the configured default model in the public projection. |
+| `status` | MUST | Enum: `available`, `disabled`, `provider_offline`, `unavailable`, `account_tenant_mismatch`. |
+| `disabled_reason` | MUST | Stable disabled/unavailable reason string; empty when `status=available`. |
+| `capabilities` | MUST | Public capability object; provider-safe and consumer-readable. |
+| `account_id` | MUST | Projected enterprise account identifier for downstream model routing context. |
+| `tenant_id` | MUST | Projected tenant identifier for downstream model routing context. |
+
+#### 11.5.2 Source and Non-Equivalence Rules
+
+Frozen non-equivalence:
+
+- `/api/models` remains a dashboard/admin-oriented model surface
+- `/api/user/models` remains a user-facing legacy/dashboard surface
+- `/v1/models` remains a relay-compatible surface
+- none of the above can substitute for AP-6.5 signoff
+
+Current AP-6.5 projection sources:
+
+- enabled/group-usable model names
+- preferred owner/provider selection
+- client namespaced extension configuration under `extensions["model_discovery.config"]`
+
+This means `account_id`, `tenant_id`, default-model selection, and disabled-state explanations are public projection semantics, not proof that the legacy model APIs already carried the same contract.
+
+#### 11.5.3 Default and Failure State Semantics
+
+`default_state` meanings:
+
+- `resolved`: exactly one effective default model is present and not disabled by default-state rules
+- `no_default`: no model is marked/configured as default
+- `multiple_defaults`: more than one model is marked/configured as default
+- `default_disabled`: the selected default exists but is in `disabled` status
+
+`status` meanings:
+
+- `available`: model is usable in the public projection
+- `disabled`: model is intentionally disabled; `disabled_reason` explains why
+- `provider_offline`: provider currently unavailable
+- `unavailable`: configured/default model not present in the effective list
+- `account_tenant_mismatch`: item-level account/tenant context diverges from the configured projection context
+
+#### 11.5.4 UX and Consumer Guidance
+
+Consumers must distinguish at least:
+
+- no default model
+- multiple default models
+- default model disabled
+- provider offline
+- model unavailable
+- account / tenant mismatch
+
+UI guidance aligns with `_bmad-output/planning-artifacts/ux-agent-platform.md#3.9` and must not display a raw `/v1/models` relay list as enterprise model discovery signoff evidence.
 
 ### 11.6 Error Matrix and Client State Matrix
 

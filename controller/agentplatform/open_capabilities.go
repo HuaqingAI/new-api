@@ -117,6 +117,39 @@ func OpenCapabilityRefresh(c *gin.Context) {
 	})
 }
 
+func OpenCapabilityModelDiscovery(c *gin.Context) {
+	claims, ok := openCapabilityClaims(c)
+	if !ok {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityPermissionDenied, "", "")
+		return
+	}
+	result, err := modelDiscoveryService().List(claims.ClientId)
+	if err != nil {
+		writeOpenCapabilityError(c, err, "", "")
+		return
+	}
+	items := make([]dtoagentplatform.OpenCapabilityModelDiscoveryItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			ModelID:          item.ModelID,
+			ProviderStableID: item.ProviderStableID,
+			DisplayName:      item.DisplayName,
+			IsDefault:        item.IsDefault,
+			Status:           item.Status,
+			DisabledReason:   item.DisabledReason,
+			Capabilities:     jsonTextToRawMessage(item.CapabilitiesJSON),
+			AccountID:        item.AccountID,
+			TenantID:         item.TenantID,
+		})
+	}
+	common.ApiSuccess(c, dtoagentplatform.OpenCapabilityModelDiscoveryResponse{
+		ContractVersion: result.ContractVersion,
+		DefaultState:    result.DefaultState,
+		Items:           items,
+		Total:           result.Total,
+	})
+}
+
 func OpenCapabilitySkillInvoke(c *gin.Context) {
 	claims, ok := openCapabilityClaims(c)
 	if !ok {
@@ -210,6 +243,10 @@ var skillInvokeService = func() *apservice.SkillInvokeService {
 
 var knowledgeQueryService = func() *apservice.KnowledgeQueryService {
 	return apservice.NewKnowledgeQueryService(model.DB)
+}
+
+var modelDiscoveryService = func() *apservice.ModelDiscoveryService {
+	return apservice.NewModelDiscoveryService(model.DB)
 }
 
 func writeOpenCapabilityError(c *gin.Context, err error, resourceID string, resourceVersion string) {

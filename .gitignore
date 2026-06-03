@@ -24,6 +24,8 @@ tiktoken_cache
 .cache
 plans
 # .claude
+.claude/launch.json
+.codex/hooks.json
 .cursor
 
 electron/node_modules

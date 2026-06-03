@@ -142,7 +142,7 @@ development_status:
   ap-5-4-stabilize-agent-platform-web-default-integration: done
   agent-platform-epic-5-retrospective: optional
 
-  agent-platform-epic-6: in-progress
+  agent-platform-epic-6: done
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
   ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
   ap-6-3-freeze-discovery-detail-and-refresh-public-fields: done

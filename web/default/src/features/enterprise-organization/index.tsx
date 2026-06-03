@@ -4480,7 +4480,7 @@ export function DepartmentBudgetListCard({
               <EmptyTitle>{t('No budget pools yet')}</EmptyTitle>
               <EmptyDescription>
                 {t(
-                  'Create the first pool for this department to unlock health monitoring and wallet tracing.'
+                  'Budget pools created by enterprise administrators will appear here for health monitoring and wallet tracing.'
                 )}
               </EmptyDescription>
             </EmptyHeader>

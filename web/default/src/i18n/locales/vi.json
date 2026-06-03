@@ -1060,6 +1060,7 @@
     "Create": "Tạo",
     "Create a balance or subscription budget pool for {{department}} without leaving the current department context.": "Tao quy ngan sach co dinh hoac theo chu ky cho {{department}} ma khong can roi khoi ngu canh phong ban hien tai.",
     "Create a balance or subscription budget pool for the selected department.": "Tạo quỹ ngân sách cố định hoặc theo chu kỳ cho phòng ban đã chọn.",
+    "Budget pools created by enterprise administrators will appear here for health monitoring and wallet tracing.": "Các quỹ ngân sách do quản trị viên doanh nghiệp tạo sẽ xuất hiện tại đây để theo dõi tình trạng và truy vết ví.",
     "Create a budget pool to view the department budget state here.": "Tạo quỹ ngân sách để xem trạng thái ngân sách phòng ban tại đây.",
     "Create a copy of:": "Tạo bản sao của:",
     "Create a key for your app or service": "Tạo khóa cho ứng dụng hoặc dịch vụ của bạn",

@@ -1329,7 +1329,7 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(valid.success, true)
   })
 
-  test('delegation schema rejects missing descendant target and quota, then accepts valid input', () => {
+  test('delegation schema rejects missing subordinate target and quota, then accepts valid input', () => {
     const schema = createDelegationSchema((key) => key)
 
     const invalid = schema.safeParse({
@@ -1496,6 +1496,26 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders budget pool list with selectable threshold states and usage metrics', () => {
+    const emptyHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          loading={false}
+          selectedBudgetId={null}
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onSelectBudget={() => undefined}
+          onSortByChange={() => undefined}
+          onSortOrderChange={() => undefined}
+          items={[]}
+        />
+      </I18nextProvider>
+    )
+    assert.match(
+      emptyHtml,
+      /Budget pools created by enterprise administrators will appear here/
+    )
+    assert.doesNotMatch(emptyHtml, /Create the first pool for this department/)
+
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <DepartmentBudgetListCard

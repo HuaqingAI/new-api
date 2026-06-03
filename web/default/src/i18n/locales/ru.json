@@ -1060,6 +1060,7 @@
     "Create": "Создать",
     "Create a balance or subscription budget pool for {{department}} without leaving the current department context.": "Создайте разовый или подписочный бюджетный пул для {{department}}, не покидая текущий контекст отдела.",
     "Create a balance or subscription budget pool for the selected department.": "Создайте разовый или периодический бюджетный пул для выбранного отдела.",
+    "Budget pools created by enterprise administrators will appear here for health monitoring and wallet tracing.": "Бюджетные пулы, созданные администраторами предприятия, появятся здесь для мониторинга состояния и отслеживания кошельков.",
     "Create a budget pool to view the department budget state here.": "Создайте бюджетный пул, чтобы видеть здесь состояние бюджета отдела.",
     "Create a copy of:": "Создать копию:",
     "Create a key for your app or service": "Создайте ключ для приложения или сервиса",

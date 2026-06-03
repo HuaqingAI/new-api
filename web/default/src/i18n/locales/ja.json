@@ -1060,6 +1060,7 @@
     "Create": "新規作成",
     "Create a balance or subscription budget pool for {{department}} without leaving the current department context.": "現在の部門コンテキストを離れずに、{{department}} の固定またはサブスクリプション予算プールを作成します。",
     "Create a balance or subscription budget pool for the selected department.": "選択した部門に固定または周期型の予算プールを作成します。",
+    "Budget pools created by enterprise administrators will appear here for health monitoring and wallet tracing.": "企業管理者が作成した予算プールがここに表示され、健全性監視とウォレット追跡に利用できます。",
     "Create a budget pool to view the department budget state here.": "予算プールを作成すると、ここで部門予算の状態を確認できます。",
     "Create a copy of:": "コピーを作成:",
     "Create a key for your app or service": "アプリまたはサービス用のキーを作成",

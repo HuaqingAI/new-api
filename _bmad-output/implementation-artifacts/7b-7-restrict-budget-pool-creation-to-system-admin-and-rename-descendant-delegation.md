@@ -233,6 +233,7 @@ GPT-5 Codex
 - 2026-06-03 23:36:08 +0800: First `GOCACHE=/private/tmp/new-api-go-build go test ./controller/enterprise ./tests/api` run passed `controller/enterprise` but exposed a `tests/api` lifecycle workflow expectation mismatch; adjusted the test to assert resize-below-committed while the budget is active.
 - 2026-06-03 23:39:16 +0800: Final validation passed: `GOCACHE=/private/tmp/new-api-go-build go test ./controller/enterprise ./tests/api`, `bun test src/features/enterprise-organization/enterprise-organization.test.tsx`, `bun run typecheck`, and `bun run i18n:sync`.
 - 2026-06-03 23:53:06 +0800: Senior Developer Review (AI) executed via `bmad-story-automator-review`; story/file-list/git reality cross-check completed, source review excluded `_bmad-output` except required story/status updates, one medium UI layout issue auto-fixed, and validation rerun.
+- 2026-06-04 00:25:14 +0800: Follow-up Senior Developer Review (AI) executed via `bmad-story-automator-review`; verified 7B.7 commit/file-list reality, auto-fixed non-admin empty-state copy and stale descendant test naming, then reran frontend test, typecheck, and i18n sync.
 
 ### Completion Notes List
 
@@ -247,6 +248,7 @@ GPT-5 Codex
 - Reworded the budget delegation UI to "Allocate Budget To Subordinate Department" semantics across en/zh/fr/ru/ja/vi, while preserving backend descendant validation and analytical descendant-scope copy.
 - Validation passed: Go enterprise controller/API tests, enterprise organization frontend test, TypeScript typecheck, and i18n sync.
 - Senior review auto-fix: non-admin budget workspaces now render the budget overview in a full-width single-column grid after the create-budget card is hidden, avoiding a narrow empty control-plane column.
+- Follow-up senior review auto-fix: budget list empty state now uses neutral enterprise-admin-created pool guidance instead of telling non-admin users to create the first pool; frontend tests now assert the neutral copy and no longer keep descendant wording in the delegation schema test name.
 
 ### File List
 
@@ -269,6 +271,7 @@ GPT-5 Codex
 - 2026-06-03: Created Story 7B.7 context document and marked sprint story ready-for-dev.
 - 2026-06-03: Implemented Story 7B.7: restricted budget-pool creation to enterprise admins, preserved department-admin budget viewing/allocation surfaces, renamed visible budget delegation action copy to subordinate allocation semantics, updated six frontend locales, and added backend/API/frontend regression coverage.
 - 2026-06-03: Senior Developer Review (AI) completed; fixed non-admin budget overview grid layout, reran required Go/frontend/i18n validations, and marked story done.
+- 2026-06-04: Follow-up Senior Developer Review (AI) completed; fixed non-admin empty-state budget pool copy, removed stale descendant wording from a frontend test name, reran frontend test/typecheck/i18n validation, and kept story done.
 
 ## Senior Developer Review (AI)
 
@@ -277,12 +280,14 @@ GPT-5 Codex
 - Outcome: Approve after auto-fix.
 - Critical issues remaining: 0.
 - High issues remaining: 0.
-- Medium issues found: 1 fixed.
+- Medium issues found: 3 fixed.
 - Git/story File List discrepancy: no source-code discrepancy requiring action; untracked story-automator artifacts remain outside application source review scope.
 
 ### Findings and Fixes
 
 - [x] [AI-Review][Medium] When the create-budget card was hidden for non-admin roles, the parent grid still used the admin two-column layout, leaving the budget overview constrained to the former 360px create-card column on wide screens. Fixed `DepartmentBudgetPanel` to switch to `xl:grid-cols-1` for non-admin users while preserving the two-column admin layout. [`web/default/src/features/enterprise-organization/index.tsx`]
+- [x] [AI-Review][Medium] The budget-pool list empty state still told users to "Create the first pool" even after creation was restricted to enterprise administrators. Replaced the empty-state guidance with neutral enterprise-admin-created pool copy and added a regression assertion. [`web/default/src/features/enterprise-organization/index.tsx`, `web/default/src/features/enterprise-organization/enterprise-organization.test.tsx`, `web/default/src/i18n/locales/{en,zh,fr,ru,ja,vi}.json`]
+- [x] [AI-Review][Medium] A frontend test name still described delegation as a "descendant target" despite the story requiring subordinate allocation language in visible/testing surfaces. Renamed the test to subordinate target semantics. [`web/default/src/features/enterprise-organization/enterprise-organization.test.tsx`]
 
 ### Validation
 
@@ -290,6 +295,9 @@ GPT-5 Codex
 - [x] `cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` - passed.
 - [x] `cd web/default && bun run typecheck` - passed.
 - [x] `cd web/default && bun run i18n:sync` - passed.
+- [x] `cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` - passed on follow-up review.
+- [x] `cd web/default && bun run typecheck` - passed on follow-up review.
+- [x] `cd web/default && bun run i18n:sync` - passed on follow-up review.
 
 ### Checklist
 

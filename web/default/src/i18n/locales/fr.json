@@ -1060,6 +1060,7 @@
     "Create": "Créer",
     "Create a balance or subscription budget pool for {{department}} without leaving the current department context.": "Creez un budget fixe ou par abonnement pour {{department}} sans quitter le contexte du departement actuel.",
     "Create a balance or subscription budget pool for the selected department.": "Créez un pool de budget fixe ou récurrent pour le département sélectionné.",
+    "Budget pools created by enterprise administrators will appear here for health monitoring and wallet tracing.": "Les pools de budget créés par les administrateurs d'entreprise apparaîtront ici pour le suivi de santé et la traçabilité des portefeuilles.",
     "Create a budget pool to view the department budget state here.": "Créez un pool de budget pour afficher ici l’état budgétaire du département.",
     "Create a copy of:": "Créer une copie de :",
     "Create a key for your app or service": "Créer une clé pour votre application ou service",

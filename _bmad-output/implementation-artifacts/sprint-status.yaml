@@ -1,9 +1,9 @@
-# generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-03 10:27 +0800
+# generated: 2026-06-03 15:49 +0800
+# last_updated: 2026-06-03 15:49 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
+# story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
@@ -34,12 +34,12 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-03 10:27 +0800
+generated: 2026-06-03 15:49 +0800
+last_updated: 2026-06-03 15:49 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
-story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
+story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
 
 development_status:
   epic-1: done
@@ -98,7 +98,7 @@ development_status:
   7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
   7-6-audit-governance-actions-and-send-dingtalk-notifications: done
   epic-7-retrospective: done
-  
+
   epic-7a: in-progress
   7a-1-complete-enterprise-governance-i18n-and-action-label-mapping: ready-for-dev
   7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: backlog
@@ -139,6 +139,7 @@ development_status:
   ap-5-1-provide-agent-definition-management-in-control-plane: done
   ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
+  ap-5-4-stabilize-agent-platform-web-default-integration: in-progress
   agent-platform-epic-5-retrospective: optional
 
   agent-platform-epic-6: in-progress

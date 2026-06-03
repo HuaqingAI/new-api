@@ -80,7 +80,7 @@ func TestPendingPrerequisiteFixturesHaveExplicitReasons(t *testing.T) {
 		if fixture.Surface != "model-discovery" && fixture.Surface != "error-matrix" {
 			continue
 		}
-		if fixture.Surface == "model-discovery" && fixture.PendingReason == "" {
+		if (fixture.Surface == "model-discovery" || fixture.Surface == "error-matrix") && fixture.PendingReason == "" {
 			continue
 		}
 
@@ -225,7 +225,11 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			require.NotEmpty(t, decoded.Items, fixture.Name)
 			require.NotContains(t, fields, "data", fixture.Name)
 		case map[string]any:
-			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
+			if fixture.Surface == "error-matrix" {
+				assertJSONFields(t, fixture.Name, fields, "error_code_matrix", "payload_state_matrix")
+			} else {
+				assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
+			}
 		default:
 			t.Fatalf("fixture %s uses unsupported payload type %T", fixture.Name, fixture.Payload)
 		}
@@ -400,7 +404,7 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	fixtures := FixtureCatalog()
 	require.NotEmpty(t, fixtures)
 	require.False(t, hasPendingSurface(fixtures, "model-discovery"), "AP-6.5 should freeze model-discovery fixtures once contract is implemented")
-	require.True(t, hasPendingSurface(fixtures, "error-matrix"), "signoff blocker requires AP-6.6 pending error-matrix fixtures")
+	require.False(t, hasPendingSurface(fixtures, "error-matrix"), "AP-6.6 should freeze error-matrix fixtures once contract is implemented")
 }
 
 func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
@@ -476,7 +480,7 @@ func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
 		},
 		{
 			domain:   "Error matrix and client state matrix",
-			status:   "blocked",
+			status:   "signed off",
 			evidence: []string{"error_client_state_matrix"},
 		},
 	}
@@ -775,6 +779,51 @@ func assertOpenAPIModelDiscoverySchema(t *testing.T, paths map[string]any) {
 	}
 	status := itemProperties["status"].(map[string]any)
 	assertOpenAPIEnum(t, status, "available", "disabled", "provider_offline", "unavailable", "account_tenant_mismatch")
+}
+
+func TestErrorClientStateMatrixFixtureCoversRequiredStates(t *testing.T) {
+	fixtures := fixturesByName(FixtureCatalog())
+	fixture, ok := fixtures["error_client_state_matrix"]
+	require.True(t, ok)
+
+	payload, ok := fixture.Payload.(map[string]any)
+	require.True(t, ok)
+	errorRows, ok := payload["error_code_matrix"].([]map[string]any)
+	require.True(t, ok)
+	stateRows, ok := payload["payload_state_matrix"].([]map[string]any)
+	require.True(t, ok)
+
+	errorStates := map[string]string{}
+	for _, row := range errorRows {
+		code, _ := row["code"].(string)
+		state, _ := row["recommended_client_state"].(string)
+		boundary, _ := row["boundary"].(string)
+		require.NotEmpty(t, code)
+		require.NotEmpty(t, state)
+		require.NotEmpty(t, boundary)
+		errorStates[code+"->"+state] = boundary
+	}
+	require.Contains(t, errorStates, "permissionDenied->loginExpired")
+	require.Contains(t, errorStates, "permissionDenied->noAssignedResource")
+	require.Contains(t, errorStates, "resourceRevoked->revoked")
+	require.Contains(t, errorStates, "resourceOffline->offline")
+	require.Contains(t, errorStates, "quotaOrRateLimited->loadFailed")
+	require.Contains(t, errorStates, "timeout->networkFailed")
+	require.Contains(t, errorStates, "upstreamFailed->loadFailed")
+	require.Contains(t, errorStates, "contractInvalid->visibleButNotCallable")
+
+	payloadStates := map[string]string{}
+	for _, row := range stateRows {
+		sourceState, _ := row["source_state"].(string)
+		state, _ := row["recommended_client_state"].(string)
+		payloadStates[sourceState+"->"+state] = row["boundary"].(string)
+	}
+	require.Contains(t, payloadStates, "stale->stale")
+	require.Contains(t, payloadStates, "revoked->revoked")
+	require.Contains(t, payloadStates, "offline->offline")
+	require.Contains(t, payloadStates, "provider_offline->offline")
+	require.Contains(t, payloadStates, "account_tenant_mismatch->noAssignedResource")
+	require.Contains(t, payloadStates, "empty->empty")
 }
 
 func assertOpenAPIRequiredSchemaNodeFields(t *testing.T, schema map[string]any, requiredFields ...string) {

@@ -201,7 +201,33 @@ func FixtureCatalog() []Fixture {
 		modelDiscoveryFixture("model_discovery_account_tenant_mismatch", "resolved", []dtoagentplatform.OpenCapabilityModelDiscoveryItem{
 			modelDiscoveryItem("gemini-1.5-pro", "gemini", "Gemini 1.5 Pro", true, "account_tenant_mismatch", "account_tenant_mismatch", map[string]any{"chat": true}, "acct_other", TenantID),
 		}),
-		pendingFixture("error_client_state_matrix", "error-matrix", "AP-6.6 error code and client state matrix artifact is missing; state mapping assertions are pending."),
+		{
+			Name:        "error_client_state_matrix",
+			Surface:     "error-matrix",
+			Method:      "GET",
+			Path:        "matrix://agent-platform/error-client-state",
+			Description: "Stable mapping between platform error codes, payload states, and client-visible states.",
+			Payload: map[string]any{
+				"error_code_matrix": []map[string]any{
+					{"code": "permissionDenied", "retryable": false, "boundary": "permission", "recommended_client_state": "loginExpired", "when": "expired, revoked, malformed, or invalid bearer token"},
+					{"code": "permissionDenied", "retryable": false, "boundary": "resource", "recommended_client_state": "noAssignedResource", "when": "resource not published or scope missing for an otherwise valid integration"},
+					{"code": "resourceRevoked", "retryable": false, "boundary": "resource", "recommended_client_state": "revoked", "when": "resource or exposure has been revoked"},
+					{"code": "resourceOffline", "retryable": false, "boundary": "resource", "recommended_client_state": "offline", "when": "resource or provider has been taken offline"},
+					{"code": "quotaOrRateLimited", "retryable": true, "boundary": "platform", "recommended_client_state": "loadFailed", "when": "quota exceeded or rate limited"},
+					{"code": "timeout", "retryable": true, "boundary": "provider", "recommended_client_state": "networkFailed", "when": "skill invoke or provider request timed out"},
+					{"code": "upstreamFailed", "retryable": true, "boundary": "provider", "recommended_client_state": "loadFailed", "when": "upstream/provider execution failed"},
+					{"code": "contractInvalid", "retryable": false, "boundary": "contract", "recommended_client_state": "visibleButNotCallable", "when": "binding invalid, dependency not callable, or request contract malformed"},
+				},
+				"payload_state_matrix": []map[string]any{
+					{"source_surface": "discovery_or_refresh", "source_state": "stale", "recommended_client_state": "stale", "boundary": "client"},
+					{"source_surface": "resource_or_refresh", "source_state": "revoked", "recommended_client_state": "revoked", "boundary": "resource"},
+					{"source_surface": "resource_or_refresh", "source_state": "offline", "recommended_client_state": "offline", "boundary": "resource"},
+					{"source_surface": "model_discovery", "source_state": "provider_offline", "recommended_client_state": "offline", "boundary": "provider"},
+					{"source_surface": "model_discovery", "source_state": "account_tenant_mismatch", "recommended_client_state": "noAssignedResource", "boundary": "contract"},
+					{"source_surface": "collection_response", "source_state": "empty", "recommended_client_state": "empty", "boundary": "resource"},
+				},
+			},
+		},
 	}
 }
 

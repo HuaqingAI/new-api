@@ -1085,19 +1085,63 @@ UI guidance aligns with `_bmad-output/planning-artifacts/ux-agent-platform.md#3.
 
 ### 11.6 Error Matrix and Client State Matrix
 
-Status: pending freeze
+Status: frozen
 
 Owner story: `ap-6-6-freeze-error-code-and-client-state-matrices`
 
-Must freeze mappings from platform errors to client states:
+AP-6.6 freezes both:
 
-- `permissionDenied` -> `loginExpired` or `noAssignedResource` depending on auth/resource context
-- `resourceRevoked` -> `revoked`
-- `resourceOffline` -> `offline`
-- `quotaOrRateLimited` -> retryable quota/rate limited state
-- `timeout` -> retryable timeout state
-- `upstreamFailed` -> provider/platform failure state
-- `contractInvalid` -> visible-but-not-callable / integration invalid state
+- the stable error-code matrix for the open capability error envelope
+- the client-state matrix derived from both error envelopes and successful payload states
+
+#### 11.6.1 Error Code Matrix
+
+| Platform signal | Retryable | Boundary | Recommended client state | Frozen interpretation |
+| --- | --- | --- | --- | --- |
+| `permissionDenied` | no | permission | `loginExpired` | expired, revoked, malformed, or invalid bearer token |
+| `permissionDenied` | no | resource | `noAssignedResource` | resource not published for client, or valid integration lacks required scope/publication |
+| `resourceRevoked` | no | resource | `revoked` | resource/exposure revoked and should not be retried silently |
+| `resourceOffline` | no | resource | `offline` | resource or provider intentionally unavailable |
+| `quotaOrRateLimited` | yes | platform | `loadFailed` | retryable quota/rate-limit failure; client may show quota/rate substate |
+| `timeout` | yes | provider | `networkFailed` | upstream/provider timeout |
+| `upstreamFailed` | yes | provider | `loadFailed` | provider/platform execution failure without a stronger semantic state |
+| `contractInvalid` | no | contract | `visibleButNotCallable` | resource visible but not safely callable due to contract, binding, or dependency issues |
+
+#### 11.6.2 Payload State Matrix
+
+Not every client-visible state comes from an error envelope. AP-6.6 also freezes payload-derived states:
+
+| Source surface | Source state | Boundary | Recommended client state | Frozen interpretation |
+| --- | --- | --- | --- | --- |
+| discovery / refresh success payload | `stale` | client | `stale` | client must reconcile on refresh or within TTL ceiling |
+| detail / refresh success payload | `revoked` | resource | `revoked` | resource state converged to revoked |
+| detail / refresh success payload | `offline` | resource | `offline` | resource state converged to offline |
+| enterprise model discovery payload | `provider_offline` | provider | `offline` | provider unavailable at model-discovery layer |
+| enterprise model discovery payload | `account_tenant_mismatch` | contract | `noAssignedResource` | model projection context mismatches assigned account/tenant |
+| collection/list success payload | empty collection | resource | `empty` | request succeeded but no eligible resource/model is assigned |
+
+#### 11.6.3 UI State Set
+
+The frozen client-visible state set is:
+
+- `loginExpired`
+- `empty`
+- `loadFailed`
+- `networkFailed`
+- `noAssignedResource`
+- `visibleButNotCallable`
+- `stale`
+- `revoked`
+- `offline`
+
+Responsibility boundary guidance:
+
+- `permission`: auth/session/scopes
+- `resource`: publication, lifecycle, assignment
+- `contract`: visible but contract-invalid, binding-invalid, or assignment-mismatch
+- `provider`: upstream/provider timeout or offline
+- `platform`: quota/rate or generic platform load failures
+- `client`: stale view retained beyond convergence window
 
 ### 11.7 Mock / Fixture / Conformance
 

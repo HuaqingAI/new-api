@@ -95,6 +95,90 @@ describe('Employee quota request wallet entry', () => {
     }
   })
 
+  test('formats wallet quota request budget surfaces with zh locale translations', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const budget = {
+        ...quotaRequestBudget({
+          id: 31,
+          department_id: 11,
+          department_name: 'Engineering',
+          remaining: 1250,
+        }),
+        type: 'future_budget',
+        status: 'future_status',
+      } as unknown as QuotaRequestCapabilityBudgetItem
+      const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+
+      assert.deepEqual(display, {
+        departmentName: 'Engineering',
+        identity: '预算池 #31',
+        typeLabel: '未知预算类型',
+        remainingLabel: '剩余额度 1,250',
+        statusLabel: '未知状态',
+      })
+
+      const optionHtml = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <QuotaRequestBudgetOption item={budget} />
+        </I18nextProvider>
+      )
+      const summaryHtml = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <QuotaRequestBudgetSummary item={budget} />
+        </I18nextProvider>
+      )
+
+      for (const html of [optionHtml, summaryHtml]) {
+        for (const expected of [
+          'Engineering',
+          '预算池 #31',
+          '未知预算类型',
+          '剩余额度 1,250',
+          '未知状态',
+        ]) {
+          assert.match(html, new RegExp(escapeRegExp(expected)))
+        }
+        assert.doesNotMatch(html, />future_budget</)
+        assert.doesNotMatch(html, />future_status</)
+      }
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
+  })
+
+  test('renders wallet quota request form labels with zh locale translations', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const html = renderToStaticMarkup(
+        <QueryClientProvider client={new QueryClient()}>
+          <I18nextProvider i18n={i18n}>
+            <EmployeeQuotaRequestCard user={userWallet()} />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+
+      for (const expected of [
+        '需要更多额度？',
+        '从钱包申请额度',
+        '目标部门',
+        '目标预算池',
+        '已选申请范围',
+        '未选择预算池',
+        '申请额度',
+        '提交额度申请',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+      assert.doesNotMatch(html, /Target Budget Pool/)
+      assert.doesNotMatch(html, /Submit quota request/)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
+  })
+
   test('renders wallet-side quota request guidance without enterprise organization navigation dependency', () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}>

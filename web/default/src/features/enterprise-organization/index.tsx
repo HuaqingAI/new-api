@@ -3791,7 +3791,7 @@ function governanceDeliveryStatusVariant(status: string) {
   }
 }
 
-function QuotaRequestTable({
+export function QuotaRequestTable({
   items,
   loading,
   decisionDrafts,
@@ -3879,7 +3879,11 @@ function QuotaRequestTable({
                 })}
               </TableCell>
               <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
-              <TableCell>#{item.department_budget_id}</TableCell>
+              <TableCell>
+                {t('Budget #{{budgetId}}', {
+                  budgetId: item.department_budget_id,
+                })}
+              </TableCell>
               <TableCell>{item.requested_quota}</TableCell>
               <TableCell>{item.approved_quota || '-'}</TableCell>
               <TableCell>

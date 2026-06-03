@@ -31,18 +31,26 @@ export function enterpriseBudgetStatusLabel(
   status: string,
   t: (key: string) => string
 ) {
-  if (status === 'active') return t('Active')
-  if (status === 'paused') return t('Paused')
-  if (status === 'revoked') return t('Revoked')
-  if (status === 'expired') return t('Expired')
-  if (status === 'superseded') return t('Superseded')
-  if (status === 'closed') return t('Closed')
-  if (status === 'cancelled') return t('Cancelled')
-  return status || '-'
+  const labels: Record<string, string> = {
+    active: 'Active',
+    approved: 'Approved',
+    cancelled: 'Cancelled',
+    closed: 'Closed',
+    expired: 'Expired',
+    fulfilled: 'Fulfilled',
+    paused: 'Paused',
+    rejected: 'Rejected',
+    revoked: 'Revoked',
+    submitted: 'Submitted',
+    superseded: 'Superseded',
+  }
+  return t(labels[status] ?? 'Unknown status')
 }
 
 export function formatBudgetType(type: string, t: (key: string) => string) {
-  return type === 'balance' ? t('Balance Budget') : t('Subscription Budget')
+  if (type === 'balance') return t('Balance Budget')
+  if (type === 'subscription') return t('Subscription Budget')
+  return t('Unknown budget type')
 }
 
 export function getQuotaRequestBudgetDisplayText(
@@ -59,4 +67,3 @@ export function getQuotaRequestBudgetDisplayText(
     statusLabel: enterpriseBudgetStatusLabel(item.status, t),
   }
 }
-

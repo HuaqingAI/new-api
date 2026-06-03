@@ -73,7 +73,7 @@ function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   )
 }
 
-function getBillingPreferenceLabel(
+export function getBillingPreferenceLabel(
   preference: string,
   t: (key: string) => string
 ): string {
@@ -87,7 +87,33 @@ function getBillingPreferenceLabel(
     case 'wallet_only':
       return t('Wallet Only')
     default:
-      return preference
+      return t('Unknown billing preference')
+  }
+}
+
+export function getSubscriptionSourceLabel(
+  source: string | undefined,
+  t: (key: string) => string
+): string {
+  switch (source) {
+    case 'enterprise_allocation':
+      return t('Enterprise allocation')
+    case 'admin':
+      return t('Admin')
+    case 'user':
+      return t('User')
+    case 'system':
+      return t('System')
+    case 'payment':
+      return t('Payment')
+    case 'manual':
+      return t('Manual')
+    case 'subscription':
+      return t('Subscription')
+    case 'wallet':
+      return t('Wallet')
+    default:
+      return source ? t('Unknown source') : '-'
   }
 }
 
@@ -518,9 +544,10 @@ export function SubscriptionPlansCard({
                       )}
                       <div className='text-muted-foreground mt-1'>
                         {t('Source')}:{' '}
-                        {subscription?.source_type ||
-                          subscription?.source ||
-                          '-'}{' '}
+                        {getSubscriptionSourceLabel(
+                          subscription?.source_type || subscription?.source,
+                          t
+                        )}{' '}
                         · {t('Subscription Priority')}:{' '}
                         {subscription?.sort_order ?? 0}
                       </div>

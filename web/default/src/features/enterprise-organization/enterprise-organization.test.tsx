@@ -33,6 +33,7 @@ import {
   DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
   GovernanceActivityCard,
+  QuotaRequestTable,
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
@@ -43,7 +44,11 @@ import {
   resolveBudgetSelection,
   syncAllocationFormDraft,
 } from './index'
-import { getQuotaRequestBudgetDisplayText } from './quota-request-budget-display'
+import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+  getQuotaRequestBudgetDisplayText,
+} from './quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
@@ -759,7 +764,7 @@ describe('Enterprise organization department tree workflow', () => {
     )
 
     assert.match(html, /Quota request approved/)
-    assert.match(html, />fulfilled</)
+    assert.match(html, /Fulfilled/)
     assert.match(html, /Not configured/)
     assert.match(html, /governance notification channel is not configured/)
     assert.match(html, /Attempt 0\/4/)
@@ -867,6 +872,12 @@ describe('Enterprise organization department tree workflow', () => {
       'Quota request submitted',
       'Quota request approved',
       'Quota request rejected',
+      'Submitted',
+      'Approved',
+      'Rejected',
+      'Fulfilled',
+      'Unknown status',
+      'Unknown budget type',
       'Allocation created',
       'Allocation reclaimed',
       'Allocation cancelled',
@@ -881,6 +892,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Unknown delivery status',
       'Employee Quota Requests',
       'Target Budget Pool',
+      'Allocation #{{id}}',
       'Selected request scope',
       'No budget pool selected',
       'Budget #{{budgetId}}',
@@ -898,6 +910,30 @@ describe('Enterprise organization department tree workflow', () => {
         )
       }
     }
+  })
+
+  test('maps quota request, allocation, wallet status, and budget type without raw fallback', () => {
+    for (const [status, expected] of [
+      ['submitted', 'Submitted'],
+      ['approved', 'Approved'],
+      ['rejected', 'Rejected'],
+      ['fulfilled', 'Fulfilled'],
+      ['active', 'Active'],
+      ['paused', 'Paused'],
+      ['revoked', 'Revoked'],
+      ['expired', 'Expired'],
+      ['superseded', 'Superseded'],
+      ['closed', 'Closed'],
+      ['cancelled', 'Cancelled'],
+      ['future_status', 'Unknown status'],
+      ['', 'Unknown status'],
+    ] as const) {
+      assert.equal(enterpriseBudgetStatusLabel(status, i18n.t), expected)
+    }
+
+    assert.equal(formatBudgetType('balance', i18n.t), 'Balance Budget')
+    assert.equal(formatBudgetType('subscription', i18n.t), 'Subscription Budget')
+    assert.equal(formatBudgetType('future_budget', i18n.t), 'Unknown budget type')
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -1548,25 +1584,120 @@ describe('Enterprise organization department tree workflow', () => {
     }
   })
 
-  test('renders quota request rows with explicit target department, approved quota, and fulfillment result', () => {
+  test('renders quota request rows with localized budget identity and request statuses', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
-        <table>
-          <tbody>
-            <tr>
-              <td>{quotaRequest().department_name}</td>
-              <td>{quotaRequest().requested_quota}</td>
-              <td>{quotaRequest({ approved_quota: 80 }).approved_quota}</td>
-              <td>{quotaRequest({ allocation_id: 21 }).allocation_id}</td>
-              <td>{quotaRequest({ status: 'fulfilled' }).status}</td>
-            </tr>
-          </tbody>
-        </table>
+        <QuotaRequestTable
+          loading={false}
+          items={[
+            quotaRequest({
+              id: 1,
+              status: 'submitted',
+              department_budget_id: 11,
+            }),
+            quotaRequest({
+              id: 2,
+              approved_quota: 80,
+              allocation_id: 21,
+              status: 'fulfilled',
+              department_budget_id: 12,
+            }),
+            quotaRequest({
+              id: 3,
+              status: 'mystery_status',
+              department_budget_id: 13,
+            }),
+          ]}
+          decisionDrafts={{}}
+          onDecisionDraftChange={() => undefined}
+          onApprove={() => undefined}
+          onReject={() => undefined}
+          pendingRequestId={null}
+          canGovern={true}
+        />
       </I18nextProvider>
     )
 
-    for (const expected of ['Engineering', '120', '80', '21', 'fulfilled']) {
+    for (const expected of [
+      'Requester',
+      'Target Budget Pool',
+      'Engineering',
+      'Budget #11',
+      'Budget #12',
+      'Budget #13',
+      '120',
+      '80',
+      'Allocation #21',
+      'Submitted',
+      'Fulfilled',
+      'Unknown status',
+      'Approve',
+      'Reject',
+    ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+    assert.doesNotMatch(html, />submitted</)
+    assert.doesNotMatch(html, />fulfilled</)
+    assert.doesNotMatch(html, />mystery_status</)
+    assert.doesNotMatch(html, />#11</)
+  })
+
+  test('renders quota request governance surfaces with zh locale without internal status fallback', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const html = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <QuotaRequestTable
+            loading={false}
+            items={[
+              quotaRequest({
+                id: 1,
+                status: 'submitted',
+                department_budget_id: 11,
+              }),
+              quotaRequest({
+                id: 2,
+                status: 'fulfilled',
+                allocation_id: 21,
+                department_budget_id: 12,
+              }),
+              quotaRequest({
+                id: 3,
+                status: 'mystery_status',
+                department_budget_id: 13,
+              }),
+            ]}
+            decisionDrafts={{}}
+            onDecisionDraftChange={() => undefined}
+            onApprove={() => undefined}
+            onReject={() => undefined}
+            pendingRequestId={null}
+            canGovern={true}
+          />
+        </I18nextProvider>
+      )
+
+      for (const expected of [
+        '申请人',
+        '目标预算池',
+        '预算池 #11',
+        '预算池 #12',
+        '已提交',
+        '已完成',
+        '未知状态',
+        '分配 #21',
+        '批准',
+        '拒绝',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+      assert.doesNotMatch(html, />submitted</)
+      assert.doesNotMatch(html, />fulfilled</)
+      assert.doesNotMatch(html, />mystery_status</)
+      assert.doesNotMatch(html, />#11</)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
     }
   })
 

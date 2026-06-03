@@ -113,7 +113,7 @@ def review_completion(
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     review_contract = _load_review_contract(project_root, contract or {})
     done_values = {value.lower() for value in review_contract["doneValues"]}
-    sprint = sprint_status_get(project_root, story_key)
+    sprint = sprint_status_get(project_root, story_key, state_file=state_file)
     selected_story = _selected_review_story(sprint.story, norm) if sprint.found else norm.key
     story_file = _story_artifact_path(
         project_root,
@@ -162,9 +162,9 @@ def epic_complete(
     epic = _epic_identifier(project_root, story_key, state_file=state_file)
     if not epic:
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is not None and _is_explicit_full_key(story_key, norm):
-        sprint = sprint_status_get(project_root, story_key)
+        sprint = sprint_status_get(project_root, story_key, state_file=state_file)
         if not sprint.found or not sprint.done:
             return {
                 "verified": False,
@@ -313,10 +313,10 @@ def _parse_int(value: Any, field: str, *, minimum: int | None = None) -> int:
 def _epic_identifier(project_root: str, story_key: str, state_file: str | Path | None = None) -> str:
     if re.fullmatch(r"\d+", story_key):
         return story_key
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is not None:
         return norm.id.split(".", 1)[0]
-    if re.fullmatch(r"[A-Za-z][\w-]*", story_key) and sprint_status_epic(project_root, story_key)[0]:
+    if re.fullmatch(r"[A-Za-z0-9][\w-]*", story_key) and sprint_status_epic(project_root, story_key, state_file=state_file)[0]:
         return story_key
     return ""
 

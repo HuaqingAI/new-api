@@ -101,9 +101,9 @@ def _usage(code: int) -> int:
     print("  state-summary <file>", file=target)
     print("  state-update <file> --set k=v", file=target)
     print("  escalate <trigger> <context>", file=target)
-    print("  commit-ready <story_id>", file=target)
-    print("  normalize-key <input> [--to id|key|prefix|json]", file=target)
-    print("  story-file-status <story>", file=target)
+    print("  commit-ready <story_id> [--state-file path]", file=target)
+    print("  normalize-key <input> [--state-file path] [--to id|key|prefix|json]", file=target)
+    print("  story-file-status <story> [--state-file path]", file=target)
     print("  verify-step <step> <story_or_epic> [--state-file path] [--output-file path]", file=target)
     print("  verify-code-review <story>", file=target)
     print("  check-epic-complete <epic> <story> [--state-file path]", file=target)
@@ -120,11 +120,20 @@ def _sprint_status(args: list[str]) -> int:
         print("Usage: orchestrator-helper sprint-status <get|exists|check-epic> [args]", file=__import__("sys").stderr)
         return 1
     project_root = get_project_root()
+    state_file = ""
+    tail = args[1:]
+    idx = 0
+    while idx < len(tail):
+        if tail[idx] == "--state-file" and idx + 1 < len(tail):
+            state_file = tail[idx + 1]
+            idx += 2
+            continue
+        idx += 1
     if args[0] == "get":
         if len(args) < 2:
             print("Usage: orchestrator-helper sprint-status get <story_key>", file=__import__("sys").stderr)
             return 1
-        status = sprint_status_get(project_root, args[1])
+        status = sprint_status_get(project_root, args[1], state_file=state_file or None)
         if not status.found and status.reason:
             print_json({"found": False, "status": status.status, "reason": status.reason})
             return 0
@@ -140,7 +149,7 @@ def _sprint_status(args: list[str]) -> int:
         if len(args) < 2:
             print("Usage: orchestrator-helper sprint-status check-epic <epic>", file=__import__("sys").stderr)
             return 1
-        stories, done = sprint_status_epic(project_root, args[1])
+        stories, done = sprint_status_epic(project_root, args[1], state_file=state_file or None)
         if not stories:
             print_json({"ok": False, "epic": args[1], "allStoriesDone": False, "reason": "no_stories_found", "count": 0})
             return 0
@@ -361,16 +370,30 @@ def _commit_ready(args: list[str]) -> int:
     if not args:
         print_json({"ready": False, "reason": "story_id required"})
         return 1
+    story_id = args[0]
+    state_file = ""
+    tail = args[1:]
+    try:
+        idx = 0
+        while idx < len(tail):
+            if tail[idx] == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"ready": False, "reason": str(exc), "story": story_id})
+        return 1
     project_root = get_project_root()
-    status = sprint_status_get(project_root, args[0])
+    status = sprint_status_get(project_root, story_id, state_file=state_file or None)
     if status.done:
         out, _ = run_cmd("git", "-C", project_root, "status", "--porcelain")
         if out.strip():
-            print_json({"ready": True, "story": args[0], "status": "done", "uncommitted_changes": True})
+            print_json({"ready": True, "story": status.story, "status": "done", "uncommitted_changes": True})
             return 0
-        print_json({"ready": False, "reason": "No uncommitted changes", "story": args[0]})
+        print_json({"ready": False, "reason": "No uncommitted changes", "story": status.story})
         return 0
-    print_json({"ready": False, "reason": "Story not done yet", "story": args[0], "current_status": status.status})
+    print_json({"ready": False, "reason": "Story not done yet", "story": status.story or story_id, "current_status": status.status})
     return 0
 
 
@@ -379,9 +402,25 @@ def _normalize_key(args: list[str]) -> int:
         print_json({"ok": False, "error": "input required"})
         return 1
     fmt = "json"
-    if len(args) >= 3 and args[1] == "--to":
-        fmt = args[2]
-    result = normalize_story_key(get_project_root(), args[0])
+    state_file = ""
+    tail = args[1:]
+    try:
+        idx = 0
+        while idx < len(tail):
+            arg = tail[idx]
+            if arg == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            if arg == "--to":
+                fmt = _flag_value(tail, idx, "--to")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"ok": False, "error": str(exc), "input": args[0]})
+        return 1
+    result = normalize_story_key(get_project_root(), args[0], state_file=state_file or None)
     if result is None:
         print_json({"ok": False, "error": "unrecognized format", "input": args[0]})
         return 1
@@ -400,7 +439,20 @@ def _story_file_status(args: list[str]) -> int:
     if not args:
         print_json({"ok": False, "error": "story input required"})
         return 1
-    norm = normalize_story_key(get_project_root(), args[0])
+    state_file = ""
+    tail = args[1:]
+    try:
+        idx = 0
+        while idx < len(tail):
+            if tail[idx] == "--state-file":
+                state_file = _flag_value(tail, idx, "--state-file")
+                idx += 2
+                continue
+            idx += 1
+    except PolicyError as exc:
+        print_json({"ok": False, "error": str(exc), "input": args[0]})
+        return 1
+    norm = normalize_story_key(get_project_root(), args[0], state_file=state_file or None)
     if norm is None:
         print_json({"ok": False, "error": "could not normalize story key", "input": args[0]})
         return 1
@@ -466,6 +518,7 @@ def _verify_step(args: list[str]) -> int:
             story_key=story_key,
             output_file=output_file,
             contract=contract,
+            state_file=state_file or None,
         )
         exit_code = 0
     except (FileNotFoundError, PolicyError, ValueError) as exc:

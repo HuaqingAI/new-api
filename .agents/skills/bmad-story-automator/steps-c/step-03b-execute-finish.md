@@ -37,14 +37,14 @@ ok=$(echo "$commit" | jq -r '.ok')
 
 ```bash
 # Check sprint-status with story file fallback (v1.4.0)
-normalized=$("{scriptsDir}" orchestrator-helper normalize-key {story_id})
+normalized=$("{scriptsDir}" orchestrator-helper normalize-key {story_id} --state-file "{outputFile}")
 story_key=$(echo "$normalized" | jq -r '.key')
-status=$("{scriptsDir}" orchestrator-helper sprint-status get "$story_key")
+status=$("{scriptsDir}" orchestrator-helper sprint-status get "$story_key" --state-file "{outputFile}")
 is_done=$(echo "$status" | jq -r '.done')
 
 # Fallback: trust story file if sprint-status disagrees
 if [ "$is_done" != "true" ]; then
-    file_done=$("{scriptsDir}" orchestrator-helper story-file-status {story_id} | jq -r '.status')
+    file_done=$("{scriptsDir}" orchestrator-helper story-file-status {story_id} --state-file "{outputFile}" | jq -r '.status')
     [ "$file_done" = "done" ] && is_done="true"
 fi
 ```
@@ -74,7 +74,7 @@ After each story completes, check if ALL stories in this epic are now done. Retr
 ```bash
 # Run epic-level check in parallel with per-story checks
 tmp_epic_status=$(mktemp)
-("{scriptsDir}" orchestrator-helper sprint-status check-epic {epic_number} > "$tmp_epic_status") &
+("{scriptsDir}" orchestrator-helper sprint-status check-epic {epic_number} --state-file "{outputFile}" > "$tmp_epic_status") &
 epic_status_pid=$!
 
 # Get all stories for this epic and verify each is done
@@ -89,7 +89,7 @@ else
     tmp_story_checks=$(mktemp)
     echo "$epic_stories" | jq -r '.stories[]' \
       | xargs -I{} -P 4 sh -c '
-          status=$("'"{scriptsDir}"'" orchestrator-helper sprint-status get "{}")
+          status=$("'"{scriptsDir}"'" orchestrator-helper sprint-status get "{}" --state-file '"{outputFile}"')
           done=$(echo "$status" | jq -r ".done")
           [ "$done" = "true" ] && echo "{}|done" || echo "{}|not_done"
         ' > "$tmp_story_checks"

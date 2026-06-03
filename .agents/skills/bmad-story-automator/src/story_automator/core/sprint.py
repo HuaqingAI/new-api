@@ -16,7 +16,7 @@ class SprintStatus:
     reason: str = ""
 
 
-def sprint_status_get(project_root: str, story_key: str) -> SprintStatus:
+def sprint_status_get(project_root: str, story_key: str, state_file: str | None = None) -> SprintStatus:
     status_file = sprint_status_file(project_root)
     if not file_exists(status_file):
         return SprintStatus(False, story_key, "unknown", False, "sprint-status.yaml not found")
@@ -33,7 +33,7 @@ def sprint_status_get(project_root: str, story_key: str) -> SprintStatus:
     return SprintStatus(False, story_key, "not_found", False)
 
 
-def sprint_status_epic(project_root: str, epic: str) -> tuple[list[str], int]:
+def sprint_status_epic(project_root: str, epic: str, state_file: str | None = None) -> tuple[list[str], int]:
     status_file = sprint_status_file(project_root)
     if not file_exists(status_file):
         return ([], 0)

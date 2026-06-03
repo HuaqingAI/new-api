@@ -118,6 +118,65 @@ func GetDepartmentBudget(c *gin.Context) {
 	})
 }
 
+func PauseDepartmentBudget(c *gin.Context) {
+	mutateDepartmentBudgetStatus(c, entservice.AdminActionDepartmentBudgetPause, "Paused department budget pool", entmodelStatusActive(), entmodelStatusPaused())
+}
+
+func ResumeDepartmentBudget(c *gin.Context) {
+	mutateDepartmentBudgetStatus(c, entservice.AdminActionDepartmentBudgetResume, "Resumed department budget pool", entmodelStatusPaused(), entmodelStatusActive())
+}
+
+func ResizeDepartmentBudget(c *gin.Context) {
+	departmentId, budgetId, ok := parseDepartmentBudgetPath(c)
+	if !ok {
+		return
+	}
+	var req dtoenterprise.ResizeDepartmentBudgetRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	var before *entservice.DepartmentBudgetItem
+	var item entservice.DepartmentBudgetItem
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		detail, err := entservice.NewDepartmentBudgetService(tx).GetDetail(departmentId, budgetId, tenantId)
+		if err != nil {
+			return err
+		}
+		before = &detail.Budget
+		item, err = entservice.NewDepartmentBudgetService(tx).Resize(departmentId, budgetId, tenantId, entservice.ResizeDepartmentBudgetInput{
+			TotalQuota: req.TotalQuota,
+			CycleQuota: req.CycleQuota,
+		})
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    item.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  entservice.AdminActionDepartmentBudgetResize,
+			ObjectType:  entservice.AdminObjectDepartmentBudget,
+			ObjectId:    strconv.Itoa(item.Id),
+			DiffSummary: "Resized department budget pool",
+			Payload:     buildDepartmentBudgetResizePayload(departmentId, budgetId, before, item, nil),
+		})
+	})
+	if err != nil {
+		auditDepartmentBudgetResizeReject(c, tenantId, departmentId, budgetId, req, err)
+		writeDepartmentBudgetError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentBudgetResponse{
+		Item: mapDepartmentBudgetItemDTO(item),
+	})
+}
+
 func ListDepartmentBudgets(c *gin.Context) {
 	departmentId, ok := parsePathInt(c, "id")
 	if !ok {
@@ -221,6 +280,71 @@ func GetDepartmentBudgetDetail(c *gin.Context) {
 	})
 }
 
+func mutateDepartmentBudgetStatus(c *gin.Context, actionType string, diffSummary string, beforeStatus string, afterStatus string) {
+	departmentId, budgetId, ok := parseDepartmentBudgetPath(c)
+	if !ok {
+		return
+	}
+	var req dtoenterprise.DepartmentBudgetLifecycleRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+
+	var item entservice.DepartmentBudgetItem
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		svc := entservice.NewDepartmentBudgetService(tx)
+		var err error
+		if actionType == entservice.AdminActionDepartmentBudgetPause {
+			item, err = svc.Pause(departmentId, budgetId, tenantId)
+		} else {
+			item, err = svc.Resume(departmentId, budgetId, tenantId)
+		}
+		if err != nil {
+			return err
+		}
+		return writeAdminAction(tx, c, entservice.AdminActionInput{
+			TenantId:    item.TenantId,
+			ActorId:     c.GetInt("id"),
+			ActionType:  actionType,
+			ObjectType:  entservice.AdminObjectDepartmentBudget,
+			ObjectId:    strconv.Itoa(item.Id),
+			DiffSummary: diffSummary,
+			Payload: map[string]any{
+				"department_id": departmentId,
+				"budget_id":     budgetId,
+				"type":          item.Type,
+				"before_status": beforeStatus,
+				"after_status":  afterStatus,
+			},
+		})
+	})
+	if err != nil {
+		writeDepartmentBudgetError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentBudgetResponse{
+		Item: mapDepartmentBudgetItemDTO(item),
+	})
+}
+
+func parseDepartmentBudgetPath(c *gin.Context) (int, int, bool) {
+	departmentId, ok := parsePathInt(c, "id")
+	if !ok {
+		return 0, 0, false
+	}
+	budgetId, ok := parsePathInt(c, "budget_id")
+	if !ok {
+		return 0, 0, false
+	}
+	return departmentId, budgetId, true
+}
+
 func writeDepartmentBudgetError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrDepartmentNotFound):
@@ -243,11 +367,71 @@ func writeDepartmentBudgetError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetTypeImmutable)
 	case errors.Is(err, entservice.ErrDepartmentBudgetThresholdInvalid):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetThresholdInvalid)
+	case errors.Is(err, entservice.ErrDepartmentBudgetStatusTransitionInvalid):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetStatusTransition)
+	case errors.Is(err, entservice.ErrDepartmentBudgetResizeBelowCommitted):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetResizeBelowCommitted)
 	case errors.Is(err, entservice.ErrInvalidDepartmentBudgetInput):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func auditDepartmentBudgetResizeReject(c *gin.Context, tenantId int, departmentId int, budgetId int, req dtoenterprise.ResizeDepartmentBudgetRequest, err error) {
+	if !shouldAuditDepartmentBudgetResizeFailure(err) {
+		return
+	}
+	_ = writeAdminAction(model.DB, c, entservice.AdminActionInput{
+		TenantId:    tenantId,
+		ActorId:     c.GetInt("id"),
+		ActionType:  entservice.AdminActionDepartmentBudgetResizeReject,
+		ObjectType:  entservice.AdminObjectDepartmentBudget,
+		ObjectId:    strconv.Itoa(budgetId),
+		DiffSummary: "Rejected department budget resize",
+		Payload: map[string]any{
+			"department_id":         departmentId,
+			"budget_id":             budgetId,
+			"requested_total_quota": int64PtrValueOrZero(req.TotalQuota),
+			"requested_cycle_quota": int64PtrValueOrZero(req.CycleQuota),
+			"error":                 err.Error(),
+		},
+	})
+}
+
+func shouldAuditDepartmentBudgetResizeFailure(err error) bool {
+	return errors.Is(err, entservice.ErrDepartmentBudgetInvalidQuota) ||
+		errors.Is(err, entservice.ErrDepartmentBudgetInvalidCycleQuota) ||
+		errors.Is(err, entservice.ErrDepartmentBudgetTypeImmutable) ||
+		errors.Is(err, entservice.ErrDepartmentBudgetResizeBelowCommitted)
+}
+
+func buildDepartmentBudgetResizePayload(departmentId int, budgetId int, before *entservice.DepartmentBudgetItem, after entservice.DepartmentBudgetItem, err error) map[string]any {
+	payload := map[string]any{
+		"department_id": departmentId,
+		"budget_id":     budgetId,
+		"type":          after.Type,
+	}
+	if before != nil {
+		payload["before_total_quota"] = before.TotalQuota
+		payload["before_cycle_quota"] = before.CycleQuota
+		payload["before_remaining"] = before.Remaining
+	}
+	payload["after_total_quota"] = after.TotalQuota
+	payload["after_cycle_quota"] = after.CycleQuota
+	payload["after_remaining"] = after.Remaining
+	if err != nil {
+		payload["error"] = err.Error()
+	}
+	return payload
+}
+
+func entmodelStatusActive() string {
+	return "active"
+}
+
+func entmodelStatusPaused() string {
+	return "paused"
 }
 
 func shouldAuditDepartmentBudgetFailure(err error) bool {

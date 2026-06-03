@@ -5011,6 +5011,19 @@
     "Quota view": "Vue quota",
     "Raw quota": "Quota brut",
     "Stored as quota units": "Stocké en unités de quota",
-    "{{quota}} quota": "{{quota}} quota"
+    "{{quota}} quota": "{{quota}} quota",
+    "Budget pool governance": "Gouvernance du pool budgétaire",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "Le type du pool budgétaire ne peut pas être modifié. Mettez ce pool en pause et créez un nouveau pool pour un autre type.",
+    "Pause budget pool": "Mettre le pool budgétaire en pause",
+    "Resume budget pool": "Reprendre le pool budgétaire",
+    "Resize budget pool": "Redimensionner le pool budgétaire",
+    "Budget pool paused": "Pool budgétaire mis en pause",
+    "Budget pool resumed": "Pool budgétaire repris",
+    "Budget pool resized": "Pool budgétaire redimensionné",
+    "Budget pool capacity must be greater than 0": "La capacité du pool budgétaire doit être supérieure à 0",
+    "Department budget paused": "Budget du département mis en pause",
+    "Department budget resumed": "Budget du département repris",
+    "Department budget resized": "Budget du département redimensionné",
+    "Department budget resize rejected": "Redimensionnement du budget du département refusé"
   }
 }

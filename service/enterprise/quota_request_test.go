@@ -348,6 +348,15 @@ func TestQuotaRequestCapabilityReturnsMixedActiveBudgetPools(t *testing.T) {
 	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, byID[1])
 	require.Equal(t, entmodel.DepartmentBudgetTypeSubscription, byID[2])
 	require.NotContains(t, byID, 3)
+
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 3).Update("status", entmodel.DepartmentBudgetStatusActive).Error)
+	resumedCapability, err := entservice.NewQuotaRequestService(db).GetCapability(0, 1, 2001)
+	require.NoError(t, err)
+	resumedByID := map[int]string{}
+	for _, budget := range resumedCapability.Budgets {
+		resumedByID[budget.Id] = budget.Status
+	}
+	require.Equal(t, entmodel.DepartmentBudgetStatusActive, resumedByID[3])
 }
 
 func init() {

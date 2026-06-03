@@ -11,6 +11,8 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+import { useForm, type Resolver } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import {
   departmentOwnersQueryKey,
   governanceNotificationQueryKey,
@@ -35,6 +37,8 @@ import {
   GovernanceActivityCard,
   QuotaRequestTable,
   QuotaAllocationTable,
+  canManageBudgetLifecycle,
+  createBudgetResizeSchema,
   createBudgetSchema,
   createAllocationSchema,
   createDelegationSchema,
@@ -213,6 +217,72 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /Include descendants/)
     assert.match(html, /Engineering and all descendant departments/)
     assert.match(html, /Platform/)
+  })
+
+  test('budget overview exposes lifecycle controls and immutable type guidance', () => {
+    function LifecycleOverview() {
+      const resizeSchema = createBudgetResizeSchema((key) => key)
+      const resizeForm = useForm<{ quota: number }>({
+        resolver: zodResolver(resizeSchema) as unknown as Resolver<{
+          quota: number
+        }>,
+        defaultValues: { quota: 1000 },
+      })
+      return (
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({
+            type: 'balance',
+            status: 'active',
+            total_quota: 1000,
+            remaining: 700,
+          })}
+          selectedBudget={null}
+          thresholds={{ warning: 80, critical: 95 }}
+          resizeForm={resizeForm}
+          onPause={() => {}}
+          onResume={() => {}}
+          onResize={() => {}}
+        />
+      )
+    }
+
+    const activeHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <LifecycleOverview />
+      </I18nextProvider>
+    )
+
+    assert.match(activeHtml, /Budget pool governance/)
+    assert.match(activeHtml, /Pause budget pool/)
+    assert.match(activeHtml, /Resize budget pool/)
+    assert.match(
+      activeHtml,
+      /Budget type cannot be changed\. Pause this pool and create a new pool for a different type\./
+    )
+    assert.doesNotMatch(activeHtml, /Subscription Budget/)
+
+    const pausedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({ status: 'paused' })}
+          selectedBudget={null}
+          thresholds={{ warning: 80, critical: 95 }}
+          onPause={() => {}}
+          onResume={() => {}}
+          onResize={() => {}}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(pausedHtml, /Resume budget pool/)
+    assert.doesNotMatch(pausedHtml, /Pause budget pool/)
+  })
+
+  test('budget lifecycle governance is limited to enterprise administrators', () => {
+    assert.equal(canManageBudgetLifecycle(undefined), false)
+    assert.equal(canManageBudgetLifecycle(1), false)
+    assert.equal(canManageBudgetLifecycle(10), true)
+    assert.equal(canManageBudgetLifecycle(100), true)
   })
 
   test('normalizes stale search state for empty trees and invalid department ids', () => {

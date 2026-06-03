@@ -3,7 +3,6 @@ package enterprise_test
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,19 +11,21 @@ import (
 )
 
 func TestDingTalkOAuthUsesNewAPIBaseURLAndCamelCaseTokenResponse(t *testing.T) {
-	openAPIServer := httptest.NewServer(http.NotFoundHandler())
-	t.Cleanup(openAPIServer.Close)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/v1.0/oauth2/userAccessToken", r.URL.Path)
-		require.Equal(t, http.MethodPost, r.Method)
-		_, _ = w.Write([]byte(`{"accessToken":" user-token ","expireIn":7200,"refreshToken":"refresh-token","refreshExpireIn":604800,"openId":"open-1","unionId":"union-1"}`))
-	}))
-	t.Cleanup(apiServer.Close)
+	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "https://api.example.test/v1.0/oauth2/userAccessToken", req.URL.String())
+		require.Equal(t, "api.example.test", req.Host)
+		require.Equal(t, "/v1.0/oauth2/userAccessToken", req.URL.Path)
+		require.Equal(t, http.MethodPost, req.Method)
+		return dingTalkJSONResponse(`{"accessToken":" user-token ","expireIn":7200,"refreshToken":"refresh-token","refreshExpireIn":604800,"openId":"open-1","unionId":"union-1"}`), nil
+	})
 
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL(openAPIServer.URL),
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkOpenAPIBaseURL("https://openapi.example.test"),
+		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
+		entservice.WithDingTalkHTTPClient(&http.Client{
+			Timeout:   time.Second,
+			Transport: httpClient,
+		}),
 	)
 
 	token, err := client.ExchangeOAuthCode(context.Background(), "app-key", "plain-secret", "code-1")
@@ -39,19 +40,20 @@ func TestDingTalkOAuthUsesNewAPIBaseURLAndCamelCaseTokenResponse(t *testing.T) {
 }
 
 func TestDingTalkOAuthUserInfoUsesNewAPIBaseURLAndCamelCaseIdentity(t *testing.T) {
-	openAPIServer := httptest.NewServer(http.NotFoundHandler())
-	t.Cleanup(openAPIServer.Close)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/v1.0/contact/users/me", r.URL.Path)
-		require.Equal(t, "user-token", r.Header.Get("x-acs-dingtalk-access-token"))
-		_, _ = w.Write([]byte(`{"nick":"Zhang San","openId":"open-1","unionId":"union-1","email":"zhangsan@example.com","mobile":"155****3240"}`))
-	}))
-	t.Cleanup(apiServer.Close)
+	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "https://api.example.test/v1.0/contact/users/me", req.URL.String())
+		require.Equal(t, "/v1.0/contact/users/me", req.URL.Path)
+		require.Equal(t, "user-token", req.Header.Get("x-acs-dingtalk-access-token"))
+		return dingTalkJSONResponse(`{"nick":"Zhang San","openId":"open-1","unionId":"union-1","email":"zhangsan@example.com","mobile":"155****3240"}`), nil
+	})
 
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL(openAPIServer.URL),
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkOpenAPIBaseURL("https://openapi.example.test"),
+		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
+		entservice.WithDingTalkHTTPClient(&http.Client{
+			Timeout:   time.Second,
+			Transport: httpClient,
+		}),
 	)
 
 	user, err := client.GetOAuthUserInfo(context.Background(), "user-token")

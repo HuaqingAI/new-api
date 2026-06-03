@@ -5011,6 +5011,19 @@
     "Quota view": "クォータ表示",
     "Raw quota": "元のクォータ",
     "Stored as quota units": "クォータ単位で保存",
-    "{{quota}} quota": "{{quota}} クォータ"
+    "{{quota}} quota": "{{quota}} クォータ",
+    "Budget pool governance": "予算プールのガバナンス",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "予算プールのタイプは変更できません。別のタイプにするには、このプールを一時停止して新しいプールを作成してください。",
+    "Pause budget pool": "予算プールを一時停止",
+    "Resume budget pool": "予算プールを再開",
+    "Resize budget pool": "予算プール容量を変更",
+    "Budget pool paused": "予算プールを一時停止しました",
+    "Budget pool resumed": "予算プールを再開しました",
+    "Budget pool resized": "予算プール容量を変更しました",
+    "Budget pool capacity must be greater than 0": "予算プール容量は 0 より大きい必要があります",
+    "Department budget paused": "部門予算を一時停止しました",
+    "Department budget resumed": "部門予算を再開しました",
+    "Department budget resized": "部門予算容量を変更しました",
+    "Department budget resize rejected": "部門予算容量の変更は拒否されました"
   }
 }

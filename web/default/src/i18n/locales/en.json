@@ -5011,6 +5011,19 @@
     "Quota view": "Quota view",
     "Raw quota": "Raw quota",
     "Stored as quota units": "Stored as quota units",
-    "{{quota}} quota": "{{quota}} quota"
+    "{{quota}} quota": "{{quota}} quota",
+    "Budget pool governance": "Budget pool governance",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "Budget type cannot be changed. Pause this pool and create a new pool for a different type.",
+    "Pause budget pool": "Pause budget pool",
+    "Resume budget pool": "Resume budget pool",
+    "Resize budget pool": "Resize budget pool",
+    "Budget pool paused": "Budget pool paused",
+    "Budget pool resumed": "Budget pool resumed",
+    "Budget pool resized": "Budget pool resized",
+    "Budget pool capacity must be greater than 0": "Budget pool capacity must be greater than 0",
+    "Department budget paused": "Department budget paused",
+    "Department budget resumed": "Department budget resumed",
+    "Department budget resized": "Department budget resized",
+    "Department budget resize rejected": "Department budget resize rejected"
   }
 }

@@ -5011,6 +5011,19 @@
     "Quota view": "Chế độ hạn mức",
     "Raw quota": "Hạn mức gốc",
     "Stored as quota units": "Lưu theo đơn vị hạn mức",
-    "{{quota}} quota": "{{quota}} hạn mức"
+    "{{quota}} quota": "{{quota}} hạn mức",
+    "Budget pool governance": "Quản trị nhóm ngân sách",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "Không thể thay đổi loại nhóm ngân sách. Hãy tạm dừng nhóm này và tạo nhóm mới cho loại khác.",
+    "Pause budget pool": "Tạm dừng nhóm ngân sách",
+    "Resume budget pool": "Khôi phục nhóm ngân sách",
+    "Resize budget pool": "Điều chỉnh dung lượng nhóm ngân sách",
+    "Budget pool paused": "Đã tạm dừng nhóm ngân sách",
+    "Budget pool resumed": "Đã khôi phục nhóm ngân sách",
+    "Budget pool resized": "Đã điều chỉnh dung lượng nhóm ngân sách",
+    "Budget pool capacity must be greater than 0": "Dung lượng nhóm ngân sách phải lớn hơn 0",
+    "Department budget paused": "Đã tạm dừng ngân sách phòng ban",
+    "Department budget resumed": "Đã khôi phục ngân sách phòng ban",
+    "Department budget resized": "Đã điều chỉnh ngân sách phòng ban",
+    "Department budget resize rejected": "Đã từ chối điều chỉnh ngân sách phòng ban"
   }
 }

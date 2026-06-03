@@ -74,6 +74,132 @@ func TestSyncWalletStatesPausesChildrenForPausedBudget(t *testing.T) {
 	require.Equal(t, "paused", wallet.Status)
 }
 
+func TestSyncWalletStatesResumesPausedChildrenForActiveBudget(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Updates(map[string]any{
+		"type":             entmodel.DepartmentBudgetTypeSubscription,
+		"remaining":        int64(600),
+		"allocated_total":  int64(0),
+		"cycle_quota":      int64(600),
+		"cycle_type":       "weekly",
+		"cycle_started_at": time.Now().Unix(),
+	}).Error)
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Update("status", entmodel.DepartmentBudgetStatusPaused).Error)
+	_, err = entservice.SyncWalletStates(db, 50)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Update("status", entmodel.DepartmentBudgetStatusActive).Error)
+	count, err := entservice.SyncWalletStates(db, 50)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	var allocation entmodel.QuotaAllocation
+	require.NoError(t, db.Where("id = ?", item.Id).First(&allocation).Error)
+	require.Equal(t, entmodel.QuotaAllocationStatusActive, allocation.Status)
+
+	var wallet model.UserSubscription
+	require.NoError(t, db.Where("id = ?", item.WalletId).First(&wallet).Error)
+	require.Equal(t, "active", wallet.Status)
+}
+
+func TestSyncWalletStatesResumeDoesNotReviveTerminalChildren(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.NoError(t, err)
+
+	terminalStatuses := []string{
+		entmodel.QuotaAllocationStatusRevoked,
+		entmodel.QuotaAllocationStatusExpired,
+		entmodel.QuotaAllocationStatusClosed,
+		entmodel.QuotaAllocationStatusCanceled,
+		entmodel.QuotaAllocationStatusSuperseded,
+	}
+	for index, status := range terminalStatuses {
+		allocationId := item.Id + index + 1
+		walletId := item.WalletId + index + 1
+		require.NoError(t, db.Create(&model.UserSubscription{
+			Id:                 walletId,
+			UserId:             2001,
+			AmountTotal:        100,
+			Status:             status,
+			SourceType:         model.SubscriptionSourceTypeEnterprise,
+			SourceAllocationId: allocationId,
+		}).Error)
+		require.NoError(t, db.Create(&entmodel.QuotaAllocation{
+			Id:                 allocationId,
+			TenantId:           0,
+			DepartmentBudgetId: 1,
+			DepartmentId:       1,
+			TargetUserId:       2001,
+			WalletId:           walletId,
+			CommittedQuota:     100,
+			Status:             status,
+		}).Error)
+	}
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Update("status", entmodel.DepartmentBudgetStatusPaused).Error)
+	_, err = entservice.SyncWalletStates(db, 50)
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Update("status", entmodel.DepartmentBudgetStatusActive).Error)
+	_, err = entservice.SyncWalletStates(db, 50)
+	require.NoError(t, err)
+
+	var allocation entmodel.QuotaAllocation
+	require.NoError(t, db.Where("id = ?", item.Id).First(&allocation).Error)
+	require.Equal(t, entmodel.QuotaAllocationStatusActive, allocation.Status)
+
+	for index, status := range terminalStatuses {
+		var terminalAllocation entmodel.QuotaAllocation
+		require.NoError(t, db.Where("id = ?", item.Id+index+1).First(&terminalAllocation).Error)
+		require.Equal(t, status, terminalAllocation.Status)
+
+		var wallet model.UserSubscription
+		require.NoError(t, db.Where("id = ?", item.WalletId+index+1).First(&wallet).Error)
+		require.Equal(t, status, wallet.Status)
+	}
+}
+
+func TestSyncWalletStatesResumeDoesNotRevivePausedAllocationWithActiveWallet(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+	item, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 1,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&entmodel.QuotaAllocation{}).Where("id = ?", item.Id).Update("status", entmodel.QuotaAllocationStatusPaused).Error)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Update("status", entmodel.DepartmentBudgetStatusActive).Error)
+
+	_, err = entservice.SyncWalletStates(db, 50)
+	require.NoError(t, err)
+
+	var allocation entmodel.QuotaAllocation
+	require.NoError(t, db.Where("id = ?", item.Id).First(&allocation).Error)
+	require.Equal(t, entmodel.QuotaAllocationStatusPaused, allocation.Status)
+
+	var wallet model.UserSubscription
+	require.NoError(t, db.Where("id = ?", item.WalletId).First(&wallet).Error)
+	require.Equal(t, "active", wallet.Status)
+}
+
 func TestSyncWalletStatesRevokedBudgetIsIdempotentAcrossRuns(t *testing.T) {
 	svc, db := newQuotaAllocationTestService(t)
 

@@ -5011,6 +5011,19 @@
     "Quota view": "额度视图",
     "Raw quota": "原始额度",
     "Stored as quota units": "按额度单位存储",
-    "{{quota}} quota": "{{quota}} 额度"
+    "{{quota}} quota": "{{quota}} 额度",
+    "Budget pool governance": "预算池治理",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "预算池类型不可编辑。需要切换类型时，请暂停当前池并新建预算池。",
+    "Pause budget pool": "暂停预算池",
+    "Resume budget pool": "恢复预算池",
+    "Resize budget pool": "调整预算池容量",
+    "Budget pool paused": "预算池已暂停",
+    "Budget pool resumed": "预算池已恢复",
+    "Budget pool resized": "预算池容量已调整",
+    "Budget pool capacity must be greater than 0": "预算池容量必须大于 0",
+    "Department budget paused": "部门预算已暂停",
+    "Department budget resumed": "部门预算已恢复",
+    "Department budget resized": "部门预算容量已调整",
+    "Department budget resize rejected": "部门预算容量调整已拒绝"
   }
 }

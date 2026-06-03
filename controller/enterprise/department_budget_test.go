@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -126,6 +127,84 @@ func TestDepartmentBudgetListAndDetailAPI(t *testing.T) {
 	require.Equal(t, "budget-alice", detailData.Wallets[0].TargetUsername)
 	require.Equal(t, int64(275), detailData.Wallets[0].RemainQuota)
 	require.Equal(t, entmodel.DepartmentBudgetStatusActive, detailData.Wallets[0].SourceParentBudgetStatus)
+}
+
+func TestDepartmentBudgetLifecycleAPIWritesAdminActions(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/departments/:id/budgets/:budget_id/pause", PauseDepartmentBudget)
+	router.POST("/api/enterprise/departments/:id/budgets/:budget_id/resume", ResumeDepartmentBudget)
+	router.POST("/api/enterprise/departments/:id/budgets/:budget_id/resize", ResizeDepartmentBudget)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           20,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    700,
+	}).Error)
+
+	pauseRecorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budgets/20/pause", dtoenterprise.DepartmentBudgetLifecycleRequest{})
+	pauseResponse := decodeEnterpriseAPIResponse(t, pauseRecorder)
+	require.True(t, pauseResponse.Success, pauseResponse.Message)
+	pauseData := decodeEnterpriseData[dtoenterprise.DepartmentBudgetResponse](t, pauseResponse)
+	require.Equal(t, entmodel.DepartmentBudgetStatusPaused, pauseData.Item.Status)
+
+	resumeRecorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budgets/20/resume", dtoenterprise.DepartmentBudgetLifecycleRequest{})
+	resumeResponse := decodeEnterpriseAPIResponse(t, resumeRecorder)
+	require.True(t, resumeResponse.Success, resumeResponse.Message)
+	resumeData := decodeEnterpriseData[dtoenterprise.DepartmentBudgetResponse](t, resumeResponse)
+	require.Equal(t, entmodel.DepartmentBudgetStatusActive, resumeData.Item.Status)
+
+	total := int64(1200)
+	resizeRecorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budgets/20/resize", dtoenterprise.ResizeDepartmentBudgetRequest{TotalQuota: &total})
+	resizeResponse := decodeEnterpriseAPIResponse(t, resizeRecorder)
+	require.True(t, resizeResponse.Success, resizeResponse.Message)
+	resizeData := decodeEnterpriseData[dtoenterprise.DepartmentBudgetResponse](t, resizeResponse)
+	require.Equal(t, int64(1200), resizeData.Item.TotalQuota)
+	require.Equal(t, int64(900), resizeData.Item.Remaining)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 3)
+	require.Equal(t, "enterprise.organization.department_budget.pause", actions[0].ActionType)
+	require.Contains(t, actions[0].Payload, `"before_status":"active"`)
+	require.Contains(t, actions[0].Payload, `"after_status":"paused"`)
+	require.Equal(t, "enterprise.organization.department_budget.resume", actions[1].ActionType)
+	require.Equal(t, "enterprise.organization.department_budget.resize", actions[2].ActionType)
+	require.Contains(t, actions[2].Payload, `"before_total_quota":1000`)
+	require.Contains(t, actions[2].Payload, `"after_total_quota":1200`)
+}
+
+func TestDepartmentBudgetResizeAPIRejectsBelowCommittedAndAudits(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	router.POST("/api/enterprise/departments/:id/budgets/:budget_id/resize", ResizeDepartmentBudget)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           21,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    600,
+	}).Error)
+
+	total := int64(399)
+	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/departments/1/budgets/21/resize", dtoenterprise.ResizeDepartmentBudgetRequest{TotalQuota: &total})
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Equal(t, "enterprise.organization.department_budget_resize_below_committed", response.Message)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 21).First(&budget).Error)
+	require.Equal(t, int64(1000), budget.TotalQuota)
+	require.Equal(t, int64(600), budget.Remaining)
+
+	var actions []entmodel.AdminAction
+	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
+	require.Len(t, actions, 1)
+	require.Equal(t, "enterprise.organization.department_budget.resize.reject", actions[0].ActionType)
+	require.True(t, strings.Contains(actions[0].Payload, "resize below committed"))
 }
 
 func TestDepartmentBudgetListAPIIncludesDescendantsAndScopeMetadata(t *testing.T) {

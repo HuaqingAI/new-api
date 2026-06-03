@@ -5011,6 +5011,19 @@
     "Quota view": "Вид квоты",
     "Raw quota": "Исходная квота",
     "Stored as quota units": "Хранится в единицах квоты",
-    "{{quota}} quota": "{{quota}} квоты"
+    "{{quota}} quota": "{{quota}} квоты",
+    "Budget pool governance": "Управление бюджетным пулом",
+    "Budget type cannot be changed. Pause this pool and create a new pool for a different type.": "Тип бюджетного пула нельзя изменить. Приостановите этот пул и создайте новый пул другого типа.",
+    "Pause budget pool": "Приостановить бюджетный пул",
+    "Resume budget pool": "Возобновить бюджетный пул",
+    "Resize budget pool": "Изменить размер бюджетного пула",
+    "Budget pool paused": "Бюджетный пул приостановлен",
+    "Budget pool resumed": "Бюджетный пул возобновлен",
+    "Budget pool resized": "Размер бюджетного пула изменен",
+    "Budget pool capacity must be greater than 0": "Емкость бюджетного пула должна быть больше 0",
+    "Department budget paused": "Бюджет отдела приостановлен",
+    "Department budget resumed": "Бюджет отдела возобновлен",
+    "Department budget resized": "Размер бюджета отдела изменен",
+    "Department budget resize rejected": "Изменение размера бюджета отдела отклонено"
   }
 }

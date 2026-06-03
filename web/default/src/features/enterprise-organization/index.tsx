@@ -23,12 +23,15 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import {
   Building2,
   CalendarClock,
   Coins,
   CreditCard,
   History,
+  PauseCircle,
+  PlayCircle,
   Send,
   ShieldCheck,
   RefreshCw,
@@ -126,8 +129,11 @@ import {
   quotaAllocationQueryScopeKey,
   reclaimQuotaAllocation,
   renameDepartmentMember,
+  resizeDepartmentBudget,
+  resumeDepartmentBudget,
   resendGovernanceNotification,
   restoreDepartmentMember,
+  pauseDepartmentBudget,
   cancelQuotaAllocation,
   revokeDepartmentOwnerDeny,
   revokeDepartmentOwnerGrant,
@@ -182,6 +188,10 @@ import type {
 } from './types'
 
 const enterpriseOrganizationRoute = '/_authenticated/enterprise-organization/'
+
+export function canManageBudgetLifecycle(role: number | null | undefined) {
+  return (role ?? 0) >= ROLE.ADMIN
+}
 
 export const enterpriseOrganizationSearchSchema = z.object({
   dept_id: z.coerce.number().int().positive().optional().catch(undefined),
@@ -399,6 +409,14 @@ export function createQuotaRequestSchema(t: (key: string) => string) {
         message: t('Requested quota must be greater than 0'),
       }),
     request_reason: z.string().trim().max(500).default(''),
+  })
+}
+
+export function createBudgetResizeSchema(t: (key: string) => string) {
+  return z.object({
+    quota: z.coerce.number().int().positive({
+      message: t('Budget pool capacity must be greater than 0'),
+    }),
   })
 }
 
@@ -1844,6 +1862,9 @@ function DepartmentBudgetPanel({
 }) {
   const { t } = useTranslation()
   const currentUser = useAuthStore((state) => state.auth.user)
+  const canManageCurrentBudgetLifecycle = canManageBudgetLifecycle(
+    currentUser?.role
+  )
   const queryClient = useQueryClient()
   const renderApiMessage = (result: ApiResponse<unknown> | null | undefined) =>
     __testRenderApiMessage(result, t)
@@ -1851,10 +1872,12 @@ function DepartmentBudgetPanel({
   const allocationSchema = createAllocationSchema(t)
   const delegationSchema = createDelegationSchema(t)
   const quotaRequestSchema = createQuotaRequestSchema(t)
+  const resizeSchema = createBudgetResizeSchema(t)
   type BudgetFormValues = z.infer<typeof budgetSchema>
   type AllocationFormValues = z.infer<typeof allocationSchema>
   type DelegationFormValues = z.infer<typeof delegationSchema>
   type QuotaRequestFormValues = z.infer<typeof quotaRequestSchema>
+  type ResizeFormValues = z.infer<typeof resizeSchema>
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(
@@ -1910,6 +1933,14 @@ function DepartmentBudgetPanel({
       budget_mode: 'department_budget',
       requested_quota: 0,
       request_reason: '',
+    },
+  })
+  const resizeForm = useForm<ResizeFormValues>({
+    resolver: zodResolver(
+      resizeSchema
+    ) as unknown as Resolver<ResizeFormValues>,
+    defaultValues: {
+      quota: 0,
     },
   })
   const tenantId = form.watch('tenant_id')
@@ -2155,6 +2186,34 @@ function DepartmentBudgetPanel({
     quotaRequestBudgetOptions.find(
       (item) => item.id === selectedQuotaRequestBudgetId
     ) ?? null
+  const selectedBudget = budgetDetailQuery.data?.budget ?? budgetQuery.data ?? null
+  const invalidateBudgetLifecycleQueries = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: departmentBudgetQueryKey(departmentId, normalizedTenantId),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: departmentBudgetListQueryScopeKey(
+        departmentId,
+        normalizedTenantId
+      ),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: departmentBudgetDetailQueryScopeKey(
+        departmentId,
+        normalizedTenantId
+      ),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: quotaAllocationQueryScopeKey(departmentId, normalizedTenantId),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: budgetDelegationQueryKey(departmentId, normalizedTenantId),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: quotaRequestQueryScopeKey(departmentId, normalizedTenantId),
+    })
+    await invalidateGovernanceQueries(queryClient, departmentId, normalizedTenantId)
+  }
 
   const createMutation = useMutation({
     mutationFn: async (values: BudgetFormValues) => {
@@ -2205,6 +2264,61 @@ function DepartmentBudgetPanel({
       const budgetId = result.data?.item?.id ?? null
       onSelectedBudgetIdChange(budgetId)
       toast.success(t('Department budget saved'))
+    },
+  })
+
+  const pauseBudgetMutation = useMutation({
+    mutationFn: async (budgetId: number) =>
+      pauseDepartmentBudget(departmentId, budgetId, {
+        tenant_id: tenantId || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await invalidateBudgetLifecycleQueries()
+      toast.success(t('Budget pool paused'))
+    },
+  })
+
+  const resumeBudgetMutation = useMutation({
+    mutationFn: async (budgetId: number) =>
+      resumeDepartmentBudget(departmentId, budgetId, {
+        tenant_id: tenantId || undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await invalidateBudgetLifecycleQueries()
+      toast.success(t('Budget pool resumed'))
+    },
+  })
+
+  const resizeBudgetMutation = useMutation({
+    mutationFn: async (values: ResizeFormValues) => {
+      if (!selectedBudget) throw new Error(t('Select a budget pool'))
+      const payload =
+        selectedBudget.type === 'balance'
+          ? {
+              tenant_id: tenantId || undefined,
+              total_quota: Number(values.quota),
+            }
+          : {
+              tenant_id: tenantId || undefined,
+              cycle_quota: Number(values.quota),
+            }
+      return resizeDepartmentBudget(departmentId, selectedBudget.id, payload)
+    },
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(renderApiMessage(result))
+        return
+      }
+      await invalidateBudgetLifecycleQueries()
+      toast.success(t('Budget pool resized'))
     },
   })
 
@@ -2552,6 +2666,19 @@ function DepartmentBudgetPanel({
   }, [departmentId, effectiveBudgetId, quotaRequestForm, tenantId])
 
   useEffect(() => {
+    if (!selectedBudget) {
+      resizeForm.reset({ quota: 0 })
+      return
+    }
+    resizeForm.reset({
+      quota:
+        selectedBudget.type === 'balance'
+          ? selectedBudget.total_quota
+          : selectedBudget.cycle_quota,
+    })
+  }, [resizeForm, selectedBudget])
+
+  useEffect(() => {
     if (previousDepartmentIdRef.current === departmentId) return
     allocationForm.reset(
       syncAllocationFormDraft({
@@ -2801,6 +2928,27 @@ function DepartmentBudgetPanel({
           thresholds={
             budgetDetailQuery.data?.thresholds ??
             budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 }
+          }
+          resizeForm={resizeForm}
+          onPause={
+            canManageCurrentBudgetLifecycle
+              ? (budgetId) => pauseBudgetMutation.mutate(budgetId)
+              : undefined
+          }
+          onResume={
+            canManageCurrentBudgetLifecycle
+              ? (budgetId) => resumeBudgetMutation.mutate(budgetId)
+              : undefined
+          }
+          onResize={
+            canManageCurrentBudgetLifecycle
+              ? (values) => resizeBudgetMutation.mutate(values)
+              : undefined
+          }
+          lifecyclePending={
+            pauseBudgetMutation.isPending ||
+            resumeBudgetMutation.isPending ||
+            resizeBudgetMutation.isPending
           }
         />
       </div>
@@ -3763,6 +3911,10 @@ function governanceActionLabel(
     'enterprise.usage.report.set': 'Usage report configured',
     'enterprise.organization.department_budget.create': 'Department budget created',
     'enterprise.organization.department_budget.reject': 'Department budget rejected',
+    'enterprise.organization.department_budget.pause': 'Department budget paused',
+    'enterprise.organization.department_budget.resume': 'Department budget resumed',
+    'enterprise.organization.department_budget.resize': 'Department budget resized',
+    'enterprise.organization.department_budget.resize.reject': 'Department budget resize rejected',
     'enterprise.organization.budget_delegation.create': 'Budget delegation created',
     'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
     'enterprise.organization.budget_delegation.revoke': 'Budget delegation revoked',
@@ -4433,10 +4585,20 @@ export function DepartmentBudgetOverviewCard({
   item,
   selectedBudget,
   thresholds,
+  resizeForm,
+  onPause,
+  onResume,
+  onResize,
+  lifecyclePending = false,
 }: {
   item: DepartmentBudgetItem | null
   selectedBudget: DepartmentBudgetItem | null
   thresholds: { warning: number; critical: number }
+  resizeForm?: ReturnType<typeof useForm<{ quota: number }>>
+  onPause?: (budgetId: number) => void
+  onResume?: (budgetId: number) => void
+  onResize?: (values: { quota: number }) => void
+  lifecyclePending?: boolean
 }) {
   const { t } = useTranslation()
   const budget = selectedBudget ?? item
@@ -4479,70 +4641,156 @@ export function DepartmentBudgetOverviewCard({
           )}
         </CardDescription>
       </CardHeader>
-      <CardContent className='grid gap-3 sm:grid-cols-2'>
-        <BudgetStat
-          label={t('Budget Type')}
-          value={formatBudgetType(budget.type, t)}
-        />
-        <BudgetStat
-          label={t('Budget Status')}
-          value={enterpriseBudgetStatusLabel(budget.status, t)}
-        />
-        <BudgetStat
-          label={t('Threshold State')}
-          value={thresholdStateLabel(budget.threshold_state, t)}
-          badgeVariant={thresholdStateVariant(budget.threshold_state)}
-        />
-        <BudgetStat
-          label={t('Usage Ratio')}
-          value={formatPercent(budget.usage_ratio)}
-        />
-        <BudgetStat
-          label={t('Remaining Quota')}
-          value={<QuotaAmountDisplay quota={budget.remaining} />}
-        />
-        <BudgetStat
-          label={t('Allocated Total')}
-          value={<QuotaAmountDisplay quota={budget.allocated_total} />}
-        />
-        <BudgetStat
-          label={t('Total Quota')}
-          value={<QuotaAmountDisplay quota={budget.total_quota} />}
-        />
-        <BudgetStat
-          label={t('Cycle Quota')}
-          value={<QuotaAmountDisplay quota={budget.cycle_quota} />}
-        />
-        <BudgetStat
-          label={t('Cycle Type')}
-          value={formatBudgetCycleType(budget.cycle_type, t)}
-        />
-        <BudgetStat
-          label={t('Cycle Start Time')}
-          value={
-            budget.cycle_started_at
-              ? formatTimestamp(budget.cycle_started_at)
-              : '-'
-          }
-        />
-        <BudgetStat
-          label={t('Custom Cycle Seconds')}
-          value={
-            budget.custom_seconds ? formatNumber(budget.custom_seconds) : '-'
-          }
-        />
-        <BudgetStat
-          label={t('Expires At (optional)')}
-          value={formatBudgetExpiry(budget.expires_at, t)}
-        />
-        <BudgetStat
-          label={t('Threshold Window')}
-          value={`${thresholds.warning}% / ${thresholds.critical}%`}
-        />
-        <BudgetStat
-          label={t('Parent Status')}
-          value={enterpriseBudgetStatusLabel(budget.parent_status, t)}
-        />
+      <CardContent className='space-y-4'>
+        <div className='grid gap-3 sm:grid-cols-2'>
+          <BudgetStat
+            label={t('Budget Type')}
+            value={formatBudgetType(budget.type, t)}
+          />
+          <BudgetStat
+            label={t('Budget Status')}
+            value={enterpriseBudgetStatusLabel(budget.status, t)}
+          />
+          <BudgetStat
+            label={t('Threshold State')}
+            value={thresholdStateLabel(budget.threshold_state, t)}
+            badgeVariant={thresholdStateVariant(budget.threshold_state)}
+          />
+          <BudgetStat
+            label={t('Usage Ratio')}
+            value={formatPercent(budget.usage_ratio)}
+          />
+          <BudgetStat
+            label={t('Remaining Quota')}
+            value={<QuotaAmountDisplay quota={budget.remaining} />}
+          />
+          <BudgetStat
+            label={t('Allocated Total')}
+            value={<QuotaAmountDisplay quota={budget.allocated_total} />}
+          />
+          <BudgetStat
+            label={t('Total Quota')}
+            value={<QuotaAmountDisplay quota={budget.total_quota} />}
+          />
+          <BudgetStat
+            label={t('Cycle Quota')}
+            value={<QuotaAmountDisplay quota={budget.cycle_quota} />}
+          />
+          <BudgetStat
+            label={t('Cycle Type')}
+            value={formatBudgetCycleType(budget.cycle_type, t)}
+          />
+          <BudgetStat
+            label={t('Cycle Start Time')}
+            value={
+              budget.cycle_started_at
+                ? formatTimestamp(budget.cycle_started_at)
+                : '-'
+            }
+          />
+          <BudgetStat
+            label={t('Custom Cycle Seconds')}
+            value={
+              budget.custom_seconds ? formatNumber(budget.custom_seconds) : '-'
+            }
+          />
+          <BudgetStat
+            label={t('Expires At (optional)')}
+            value={formatBudgetExpiry(budget.expires_at, t)}
+          />
+          <BudgetStat
+            label={t('Threshold Window')}
+            value={`${thresholds.warning}% / ${thresholds.critical}%`}
+          />
+          <BudgetStat
+            label={t('Parent Status')}
+            value={enterpriseBudgetStatusLabel(budget.parent_status, t)}
+          />
+        </div>
+        {onPause || onResume || (resizeForm && onResize) ? (
+          <div className='rounded-md border p-3'>
+            <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+              <div>
+                <p className='text-sm font-medium'>
+                  {t('Budget pool governance')}
+                </p>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Budget type cannot be changed. Pause this pool and create a new pool for a different type.'
+                  )}
+                </p>
+              </div>
+              <div className='flex flex-wrap gap-2'>
+                {budget.status === 'active' && onPause ? (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={lifecyclePending}
+                    onClick={() => onPause(budget.id)}
+                  >
+                    <PauseCircle data-icon='inline-start' />
+                    {t('Pause budget pool')}
+                  </Button>
+                ) : null}
+                {budget.status === 'paused' && onResume ? (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={lifecyclePending}
+                    onClick={() => onResume(budget.id)}
+                  >
+                    <PlayCircle data-icon='inline-start' />
+                    {t('Resume budget pool')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {budget.status === 'active' && resizeForm && onResize ? (
+              <Form {...resizeForm}>
+                <form
+                  className='grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]'
+                  onSubmit={resizeForm.handleSubmit(onResize)}
+                >
+                  <FormField
+                    control={resizeForm.control}
+                    name='quota'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {budget.type === 'balance'
+                            ? t('Total Quota')
+                            : t('Cycle Quota')}
+                        </FormLabel>
+                        <FormControl>
+                          <QuotaAmountInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            ariaLabel={
+                              budget.type === 'balance'
+                                ? t('Total Quota')
+                                : t('Cycle Quota')
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button
+                    className='self-end'
+                    type='submit'
+                    disabled={lifecyclePending}
+                  >
+                    <Settings data-icon='inline-start' />
+                    {t('Resize budget pool')}
+                  </Button>
+                </form>
+              </Form>
+            ) : null}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

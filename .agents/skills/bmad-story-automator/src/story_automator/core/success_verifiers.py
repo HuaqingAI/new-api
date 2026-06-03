@@ -113,7 +113,7 @@ def review_completion(
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     review_contract = _load_review_contract(project_root, contract or {})
     done_values = {value.lower() for value in review_contract["doneValues"]}
-    sprint = sprint_status_get(project_root, story_key)
+    sprint = sprint_status_get(project_root, story_key, state_file=str(state_file) if state_file else None)
     selected_story = _selected_review_story(sprint.story, norm) if sprint.found else norm.key
     story_file = _story_artifact_path(
         project_root,
@@ -164,7 +164,7 @@ def epic_complete(
         return {"verified": False, "reason": "could_not_normalize_key", "input": story_key}
     norm = normalize_story_key(project_root, story_key)
     if norm is not None and _is_explicit_full_key(story_key, norm):
-        sprint = sprint_status_get(project_root, story_key)
+        sprint = sprint_status_get(project_root, story_key, state_file=str(state_file) if state_file else None)
         if not sprint.found or not sprint.done:
             return {
                 "verified": False,
@@ -174,7 +174,7 @@ def epic_complete(
                 "source": "sprint-status.yaml",
                 "reason": "story_not_done",
             }
-    stories, done = sprint_status_epic(project_root, epic)
+    stories, done = sprint_status_epic(project_root, epic, state_file=str(state_file) if state_file else None)
     if not stories:
         return {"verified": False, "epic": epic, "reason": "no_stories_found", "source": "sprint-status.yaml"}
     return {

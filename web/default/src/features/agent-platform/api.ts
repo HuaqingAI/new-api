@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { AxiosError } from 'axios'
+import axios from 'axios'
 import { api } from '@/lib/api'
 
 export type AgentPlatformResourceType = 'skill' | 'knowledge' | 'agent'
@@ -52,24 +52,26 @@ type ResourceEndpointConfig = {
   resourceType: AgentPlatformResourceType
 }
 
-const RESOURCE_ENDPOINTS: Record<AgentPlatformResourceType, ResourceEndpointConfig> =
-  {
-    skill: {
-      endpoint: '/api/agent-platform/skills',
-      resourceType: 'skill',
-    },
-    knowledge: {
-      endpoint: '/api/agent-platform/knowledge-bases',
-      resourceType: 'knowledge',
-    },
-    agent: {
-      endpoint: '/api/agent-platform/agents',
-      resourceType: 'agent',
-    },
-  }
+const RESOURCE_ENDPOINTS: Record<
+  AgentPlatformResourceType,
+  ResourceEndpointConfig
+> = {
+  skill: {
+    endpoint: '/api/agent-platform/skills',
+    resourceType: 'skill',
+  },
+  knowledge: {
+    endpoint: '/api/agent-platform/knowledge-bases',
+    resourceType: 'knowledge',
+  },
+  agent: {
+    endpoint: '/api/agent-platform/agents',
+    resourceType: 'agent',
+  },
+}
 
 function isNotFoundError(error: unknown): boolean {
-  return error instanceof AxiosError && error.response?.status === 404
+  return axios.isAxiosError(error) && error.response?.status === 404
 }
 
 async function fetchResourceList(
@@ -81,6 +83,7 @@ async function fetchResourceList(
   try {
     const res = await api.get<AgentPlatformListResponse>(config.endpoint, {
       params,
+      skipErrorHandler: true,
     })
     return res.data
   } catch (error) {

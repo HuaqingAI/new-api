@@ -56,6 +56,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   },
   admin: {
     enabled: true,
+    agent_platform: true,
     channel: true,
     enterprise_usage: true,
     models: true,
@@ -112,6 +113,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
   '/users': { section: 'admin', module: 'user' },
+  '/agent-platform': { section: 'admin', module: 'agent_platform' },
   '/enterprise-usage': { section: 'admin', module: 'enterprise_usage' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },
@@ -255,6 +257,25 @@ function filterNavItems(
       return item
     })
     .filter((item) => isNavItemVisible(item, adminConfig, userConfig))
+}
+
+export function filterSidebarNavGroupsForConfig(
+  navGroups: NavGroup[],
+  adminConfigValue?: string | null,
+  userConfigValue?: string | null,
+  userCanConfigureSidebar = true
+): NavGroup[] {
+  const adminConfig = parseSidebarConfig(adminConfigValue)
+  const userConfig = userCanConfigureSidebar
+    ? parseUserSidebarConfig(userConfigValue)
+    : null
+
+  return navGroups
+    .map((group) => ({
+      ...group,
+      items: filterNavItems(group.items, adminConfig, userConfig),
+    }))
+    .filter((group) => group.items.length > 0)
 }
 
 /**

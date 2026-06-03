@@ -16,25 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
-  AlertTriangle,
   BookOpen,
   Bot,
   Boxes,
-  Compass,
   Layers3,
-  Network,
+  PanelRightOpen,
   Puzzle,
   RefreshCw,
-  ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { ErrorState } from '@/components/error-state'
-import { SectionPageLayout } from '@/components/layout'
-import { LoadingState } from '@/components/loading-state'
-import { StatusBadge } from '@/components/status-badge'
+import { formatTimestamp } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,10 +38,31 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ErrorState } from '@/components/error-state'
+import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge } from '@/components/status-badge'
 import type {
   AgentPlatformItem,
   AgentPlatformListResponse,
+  AgentPlatformResourceType,
 } from './api'
 import {
   getAgentPlatformAgents,
@@ -59,12 +74,15 @@ type ResourceListCardProps = {
   badgeLabel: string
   description: string
   emptyDescription: string
+  error?: unknown
   errorPrefix: string
   icon: React.ElementType
+  isError: boolean
   isLoading: boolean
   onRetry: () => void
   response?: AgentPlatformListResponse
   title: string
+  typeLabel: string
 }
 
 type SummaryMetric = {
@@ -75,7 +93,10 @@ type SummaryMetric = {
   icon: React.ElementType
 }
 
-function formatStatusLabel(status: string, t: ReturnType<typeof useTranslation>['t']) {
+function formatStatusLabel(
+  status: string,
+  t: ReturnType<typeof useTranslation>['t']
+) {
   const value = status.trim().toLowerCase()
   if (!value) {
     return t('Unknown')
@@ -105,14 +126,31 @@ function getItems(response?: AgentPlatformListResponse) {
     : []
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  if (
+    error != null &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.length > 0
+  ) {
+    return error.message
+  }
+  return fallback
+}
+
 function ResourceListCard(props: ResourceListCardProps) {
   const { t } = useTranslation()
   const Icon = props.icon
   const items = getItems(props.response)
   const loadFailed =
-    props.response != null &&
-    props.response.success === false &&
-    !!props.response.message
+    props.isError ||
+    (props.response != null && props.response.success === false)
+  const errorMessage =
+    props.response?.message ?? getErrorMessage(props.error, t('Request failed'))
 
   return (
     <Card>
@@ -132,66 +170,142 @@ function ResourceListCard(props: ResourceListCardProps) {
       </CardHeader>
       <CardContent className='pt-4'>
         {props.isLoading ? (
-          <LoadingState message={t('Loading...')} className='min-h-[240px]' />
+          <ResourceTableSkeleton />
         ) : loadFailed ? (
           <ErrorState
             className='min-h-[240px]'
             title={t('Failed to load data')}
-            description={`${props.errorPrefix}: ${props.response?.message ?? t('Request failed')}`}
+            description={`${props.errorPrefix}: ${errorMessage}`}
             onRetry={props.onRetry}
           />
         ) : items.length === 0 ? (
-          <div className='flex min-h-[240px] items-center justify-center rounded-xl border border-dashed'>
-            <div className='space-y-2 px-6 text-center'>
-              <AlertTriangle className='text-muted-foreground mx-auto size-5' />
-              <p className='font-medium'>{t('No Data')}</p>
-              <p className='text-muted-foreground text-sm'>
-                {props.emptyDescription}
-              </p>
-            </div>
-          </div>
+          <Empty className='min-h-[240px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Icon className='text-muted-foreground size-5' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No resources found')}</EmptyTitle>
+              <EmptyDescription>{props.emptyDescription}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent />
+          </Empty>
         ) : (
-          <div className='space-y-3'>
-            {items.map((item) => (
-              <ResourceRow key={item.resource_id} item={item} />
-            ))}
-          </div>
+          <ResourceTable items={items} typeLabel={props.typeLabel} />
         )}
       </CardContent>
     </Card>
   )
 }
 
-function ResourceRow(props: { item: AgentPlatformItem }) {
+function ResourceTable(props: {
+  items: AgentPlatformItem[]
+  typeLabel: string
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='overflow-x-auto rounded-md border'>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('Resource')}</TableHead>
+            <TableHead>{t('Type')}</TableHead>
+            <TableHead>{t('Status')}</TableHead>
+            <TableHead>{t('Owner')}</TableHead>
+            <TableHead>{t('Latest version')}</TableHead>
+            <TableHead>{t('Tenant')}</TableHead>
+            <TableHead>{t('Updated At')}</TableHead>
+            <TableHead className='text-right'>{t('Actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {props.items.map((item) => (
+            <ResourceRow
+              key={item.resource_id}
+              item={item}
+              typeLabel={props.typeLabel}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function ResourceTableSkeleton() {
+  return (
+    <div className='space-y-3'>
+      <Skeleton className='h-10 w-full' />
+      <Skeleton className='h-12 w-full' />
+      <Skeleton className='h-12 w-full' />
+      <Skeleton className='h-12 w-4/5' />
+    </div>
+  )
+}
+
+function ResourceRow(props: { item: AgentPlatformItem; typeLabel: string }) {
   const { t } = useTranslation()
   const item = props.item
 
   return (
-    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
-      <div className='flex items-start justify-between gap-3'>
-        <div className='space-y-1'>
-          <p className='font-medium'>{item.display_name}</p>
-          <p className='text-muted-foreground text-xs'>{item.resource_id}</p>
+    <TableRow>
+      <TableCell>
+        <div className='min-w-[220px] space-y-1'>
+          <div className='font-medium'>{item.display_name}</div>
+          <div className='text-muted-foreground text-xs'>
+            {item.resource_id}
+          </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant='outline'>{props.typeLabel}</Badge>
+      </TableCell>
+      <TableCell>
         <StatusBadge
           label={formatStatusLabel(item.status, t)}
           variant={statusVariantFor(item.status)}
           copyable={false}
         />
-      </div>
-      <div className='text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs'>
-        <span>
-          {t('Owner')}: {item.owner_user_id}
-        </span>
-        <span>
-          {t('Latest version')}: {item.latest_version || t('Not versioned')}
-        </span>
-        <span>
-          {t('Tenant')}: {item.tenant_id || t('Global')}
-        </span>
-      </div>
-    </div>
+      </TableCell>
+      <TableCell>#{item.owner_user_id}</TableCell>
+      <TableCell>{item.latest_version || t('Not versioned')}</TableCell>
+      <TableCell>{item.tenant_id || t('Global')}</TableCell>
+      <TableCell>{formatTimestamp(item.updated_at)}</TableCell>
+      <TableCell className='text-right'>
+        <Button variant='outline' size='sm' disabled>
+          <PanelRightOpen className='size-4' />
+          {t('Details')}
+        </Button>
+      </TableCell>
+    </TableRow>
   )
+}
+
+function countResourcesByStatus(
+  resourceSets: AgentPlatformItem[][],
+  status: string
+) {
+  return resourceSets.reduce(
+    (total, items) =>
+      total +
+      items.filter((item) => item.status.trim().toLowerCase() === status)
+        .length,
+    0
+  )
+}
+
+function resourceTypeLabel(
+  type: AgentPlatformResourceType,
+  t: (key: string) => string
+) {
+  switch (type) {
+    case 'skill':
+      return t('Skill')
+    case 'knowledge':
+      return t('Knowledge')
+    case 'agent':
+      return t('Agent')
+  }
 }
 
 export function AgentPlatformShell() {
@@ -213,6 +327,7 @@ export function AgentPlatformShell() {
   const skillItems = getItems(skillsQuery.data)
   const knowledgeItems = getItems(knowledgeQuery.data)
   const agentItems = getItems(agentsQuery.data)
+  const resourceSets = [skillItems, knowledgeItems, agentItems]
 
   const metrics: SummaryMetric[] = [
     {
@@ -237,10 +352,10 @@ export function AgentPlatformShell() {
       icon: Bot,
     },
     {
-      key: 'domains',
-      label: t('Workspace domains'),
-      value: 7,
-      helper: t('Overview to diagnostics'),
+      key: 'published',
+      label: t('Published resources'),
+      value: countResourcesByStatus(resourceSets, 'published'),
+      helper: t('Ready for open capability exposure'),
       icon: Layers3,
     },
   ]
@@ -285,10 +400,10 @@ export function AgentPlatformShell() {
                   <Boxes className='size-5' />
                 </span>
                 <div className='space-y-1'>
-                  <CardTitle>{t('Agent Platform Overview')}</CardTitle>
+                  <CardTitle>{t('Resource control plane')}</CardTitle>
                   <CardDescription>
                     {t(
-                      'The Agent Platform control plane now uses live admin routes, live control-plane data, and the same interaction language as the existing web/default governance modules.'
+                      'Manage Skill, Knowledge, and Agent resources from the live Agent Platform control-plane endpoints.'
                     )}
                   </CardDescription>
                 </div>
@@ -301,7 +416,7 @@ export function AgentPlatformShell() {
                   return (
                     <div
                       key={metric.key}
-                      className='rounded-xl border bg-muted/20 px-4 py-3'
+                      className='bg-muted/20 rounded-xl border px-4 py-3'
                     >
                       <div className='flex items-center justify-between gap-3'>
                         <span className='text-muted-foreground text-sm font-medium'>
@@ -322,116 +437,12 @@ export function AgentPlatformShell() {
             </CardContent>
           </Card>
 
-          <Tabs
-            defaultValue='overview'
-            className='space-y-6'
-          >
-            <TabsList className='grid w-full grid-cols-4 md:w-[560px]'>
-              <TabsTrigger value='overview'>{t('Overview')}</TabsTrigger>
+          <Tabs defaultValue='skills' className='space-y-6'>
+            <TabsList className='grid w-full grid-cols-3 md:w-[420px]'>
               <TabsTrigger value='skills'>{t('Skills')}</TabsTrigger>
               <TabsTrigger value='knowledge'>{t('Knowledge')}</TabsTrigger>
               <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
             </TabsList>
-
-            <TabsContent value='overview' className='space-y-6'>
-              <div className='grid gap-4 xl:grid-cols-[1.2fr_1fr]'>
-                <Card>
-                  <CardHeader className='gap-3 border-b'>
-                    <CardTitle>{t('Navigation contract')}</CardTitle>
-                    <CardDescription>
-                      {t(
-                        'The management navigation order remains fixed so that later Clients, Publishing, and Audit slices can extend this page without reworking the information architecture.'
-                      )}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className='pt-4'>
-                    <div className='grid gap-3 sm:grid-cols-2'>
-                      {[
-                        {
-                          icon: Compass,
-                          label: t('Overview'),
-                        },
-                        {
-                          icon: Network,
-                          label: t('Clients'),
-                        },
-                        {
-                          icon: Puzzle,
-                          label: t('Skills'),
-                        },
-                        {
-                          icon: BookOpen,
-                          label: t('Knowledge'),
-                        },
-                        {
-                          icon: Bot,
-                          label: t('Agents'),
-                        },
-                        {
-                          icon: Layers3,
-                          label: t('Publishing'),
-                        },
-                        {
-                          icon: ShieldCheck,
-                          label: t('Audit & Diagnostics'),
-                        },
-                      ].map((entry, index) => {
-                        const Icon = entry.icon
-                        return (
-                          <div
-                            key={entry.label}
-                            className='flex items-center gap-3 rounded-xl border bg-muted/20 px-4 py-3'
-                          >
-                            <span className='text-muted-foreground text-sm font-medium'>
-                              {index + 1}.
-                            </span>
-                            <Icon className='text-muted-foreground size-4' />
-                            <span className='font-medium'>{entry.label}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className='gap-3 border-b'>
-                    <CardTitle>{t('Current implementation focus')}</CardTitle>
-                    <CardDescription>
-                      {t(
-                        'This stabilization pass closes the gap between planned control-plane capabilities and the live web/default admin experience.'
-                      )}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className='space-y-3 pt-4'>
-                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
-                      <p className='font-medium'>{t('Live route surface')}</p>
-                      <p className='text-muted-foreground mt-1 text-sm'>
-                        {t(
-                          'The Agent Platform entry now needs to be validated against the generated router tree, not just local feature code.'
-                        )}
-                      </p>
-                    </div>
-                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
-                      <p className='font-medium'>{t('Control-plane API wiring')}</p>
-                      <p className='text-muted-foreground mt-1 text-sm'>
-                        {t(
-                          'Skill, Knowledge, and Agent data should come from live control-plane endpoints, with explicit compatibility fallback only when required.'
-                        )}
-                      </p>
-                    </div>
-                    <div className='rounded-xl border bg-muted/20 px-4 py-3'>
-                      <p className='font-medium'>{t('UI parity')}</p>
-                      <p className='text-muted-foreground mt-1 text-sm'>
-                        {t(
-                          'Agent Platform pages must use the same loading, empty, error, and status expression patterns as the existing enterprise admin surfaces.'
-                        )}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
 
             <TabsContent value='skills'>
               <ResourceListCard
@@ -441,7 +452,10 @@ export function AgentPlatformShell() {
                 )}
                 badgeLabel={t('Epic 3 active')}
                 icon={Puzzle}
+                typeLabel={resourceTypeLabel('skill', t)}
                 response={skillsQuery.data}
+                isError={skillsQuery.isError}
+                error={skillsQuery.error}
                 isLoading={skillsQuery.isLoading}
                 onRetry={() => void skillsQuery.refetch()}
                 errorPrefix={t('Skill API request failed')}
@@ -459,7 +473,10 @@ export function AgentPlatformShell() {
                 )}
                 badgeLabel={t('Epic 4 active')}
                 icon={BookOpen}
+                typeLabel={resourceTypeLabel('knowledge', t)}
                 response={knowledgeQuery.data}
+                isError={knowledgeQuery.isError}
+                error={knowledgeQuery.error}
                 isLoading={knowledgeQuery.isLoading}
                 onRetry={() => void knowledgeQuery.refetch()}
                 errorPrefix={t('Knowledge API request failed')}
@@ -477,7 +494,10 @@ export function AgentPlatformShell() {
                 )}
                 badgeLabel={t('Epic 5 active')}
                 icon={Bot}
+                typeLabel={resourceTypeLabel('agent', t)}
                 response={agentsQuery.data}
+                isError={agentsQuery.isError}
+                error={agentsQuery.error}
                 isLoading={agentsQuery.isLoading}
                 onRetry={() => void agentsQuery.refetch()}
                 errorPrefix={t('Agent API request failed')}

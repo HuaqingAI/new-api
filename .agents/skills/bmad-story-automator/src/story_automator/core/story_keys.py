@@ -47,11 +47,21 @@ def normalize_story_key(project_root: str, value: str, state_file: str | Path | 
         prefix = f"{epic_part}-{story_num}"
         key = ""
     elif re.fullmatch(r"[A-Za-z][\w-]*-\d+", value):
+        contextual_story_id = _contextual_story_id_from_value(project_root, value, state_file=state_file)
+        if contextual_story_id:
+            story_id = contextual_story_id
+            prefix = value
+            key = contextual_story_key(project_root, story_id, state_file=state_file)
+            return _complete_story_key(project_root, story_id, prefix, key)
         prefix = value
         epic_part, _, story_num = value.rpartition("-")
         story_id = f"{epic_part}.{story_num}"
         key = ""
     elif re.fullmatch(r"[A-Za-z][\w-]*-\d+-.+", value):
+        contextual_story_id = _contextual_story_id_from_value(project_root, value, state_file=state_file)
+        if contextual_story_id:
+            prefix = _story_prefix_from_key(value, value)
+            return StoryKey(id=contextual_story_id, prefix=prefix, key=value)
         split = _split_non_numeric_full_key(project_root, value)
         if split is None:
             return None
@@ -62,12 +72,15 @@ def normalize_story_key(project_root: str, value: str, state_file: str | Path | 
     else:
         return None
 
+    if not key:
+        key = contextual_story_key(project_root, story_id, state_file=state_file)
+
     return _complete_story_key(project_root, story_id, prefix, key)
 
 
-def normalize_story_key_for_epic(project_root: str, epic: str, value: str) -> StoryKey | None:
+def normalize_story_key_for_epic(project_root: str, epic: str, value: str, state_file: str | Path | None = None) -> StoryKey | None:
     if "." in value:
-        norm = normalize_story_key(project_root, value)
+        norm = normalize_story_key(project_root, value, state_file=state_file)
         if norm is None or norm.id.rsplit(".", 1)[0] != epic:
             return None
         return norm
@@ -79,14 +92,34 @@ def normalize_story_key_for_epic(project_root: str, epic: str, value: str) -> St
 
     dashed = re.fullmatch(rf"{re.escape(epic)}-(\d+)(?:-.+)?", value)
     if dashed:
-        if _has_known_longer_epic(project_root, epic, value) or _story_prefix_claimed_by_parent_epic(project_root, epic, value):
+        if _has_known_longer_epic(project_root, epic, value) or _story_prefix_claimed_by_parent_epic(project_root, epic, value, state_file=state_file):
             return None
         story_num = dashed.group(1)
         prefix = f"{epic}-{story_num}"
         key = value if value != prefix else ""
         return _complete_story_key(project_root, f"{epic}.{story_num}", prefix, key)
 
-    return normalize_story_key(project_root, value)
+    return normalize_story_key(project_root, value, state_file=state_file)
+
+
+def contextual_story_key(project_root: str, story_id: str, state_file: str | Path | None = None) -> str:
+    context_slug = _context_product_slug(project_root, state_file=state_file)
+    if not context_slug or not re.fullmatch(r"\d+\.\d+", story_id):
+        return ""
+    for key in contextual_epic_story_keys(project_root, story_id.split(".", 1)[0], state_file=state_file):
+        if _story_id_from_key(key) == story_id:
+            return key
+    return ""
+
+
+def contextual_epic_story_keys(project_root: str, epic_num: str, state_file: str | Path | None = None) -> list[str]:
+    context_slug = _context_product_slug(project_root, state_file=state_file)
+    if not context_slug:
+        return []
+    status_file = sprint_status_file(project_root)
+    if not file_exists(status_file):
+        return []
+    return _story_keys_in_epic_block(read_text(status_file), context_slug, epic_num)
 
 
 def _complete_story_key(project_root: str, story_id: str, prefix: str, key: str) -> StoryKey:
@@ -107,6 +140,64 @@ def _complete_story_key(project_root: str, story_id: str, prefix: str, key: str)
         key = prefix
     prefix = _story_prefix_from_key(key, prefix)
     return StoryKey(id=story_id, prefix=prefix, key=key)
+
+
+def _story_keys_in_epic_block(content: str, context_slug: str, epic_num: str) -> list[str]:
+    lines = content.splitlines()
+    epic_header = f"{context_slug}-epic-{epic_num}"
+    keys: list[str] = []
+    inside_block = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key = line.split(":", 1)[0].strip()
+        if not inside_block:
+            inside_block = key == epic_header
+            continue
+        if _is_epic_marker(key):
+            break
+        if _story_id_from_key(key):
+            keys.append(key)
+    return keys
+
+
+def _story_id_from_key(key: str) -> str:
+    match = re.match(r"^(?:[a-z0-9]+-)*(\d+)-(\d+)-", key, re.IGNORECASE)
+    if not match:
+        return ""
+    return f"{match.group(1)}.{match.group(2)}"
+
+
+def _story_prefix_from_key(key: str, fallback: str) -> str:
+    match = re.match(r"^((?:[a-z0-9]+-)*\d+-\d+)-.+$", key, re.IGNORECASE)
+    if not match:
+        return fallback
+    return match.group(1)
+
+
+def _contextual_story_id_from_value(project_root: str, value: str, state_file: str | Path | None = None) -> str:
+    context_slug = _context_product_slug(project_root, state_file=state_file)
+    if not context_slug:
+        return ""
+    match = re.match(r"^(?:[a-z0-9]+-)*(\d+)-(\d+)(?:-.+)?$", value, re.IGNORECASE)
+    if not match:
+        return ""
+    story_id = f"{match.group(1)}.{match.group(2)}"
+    epic_num = match.group(1)
+    known_keys = contextual_epic_story_keys(project_root, epic_num, state_file=state_file)
+    if not known_keys:
+        return ""
+    if value in known_keys:
+        return story_id
+    value_prefix = _story_prefix_from_key(value, value)
+    if any(_story_prefix_from_key(key, key) == value_prefix for key in known_keys):
+        return story_id
+    return ""
+
+
+def _is_epic_marker(key: str) -> bool:
+    return bool(re.fullmatch(r"(?:[a-z0-9][a-z0-9-]*-)?epic-\d+(?:-retrospective)?", key, re.IGNORECASE))
 
 
 def _split_non_numeric_full_key(project_root: str, value: str) -> tuple[str, str] | None:
@@ -236,14 +327,56 @@ def _known_parent_epic(project_root: str, candidate_epic: str) -> bool:
     return bool(parent_epic and story_num.isdigit() and _epic_exists(project_root, parent_epic))
 
 
-def _story_prefix_claimed_by_parent_epic(project_root: str, epic: str, value: str) -> bool:
+def _story_prefix_claimed_by_parent_epic(project_root: str, epic: str, value: str, state_file: str | Path | None = None) -> bool:
     parent_epic, _, story_num = epic.rpartition("-")
     return bool(
         parent_epic
         and story_num.isdigit()
         and not _epic_exists(project_root, epic)
-        and normalize_story_key_for_epic(project_root, parent_epic, value) is not None
+        and normalize_story_key_for_epic(project_root, parent_epic, value, state_file=state_file) is not None
     )
+
+
+def _context_product_slug(project_root: str, state_file: str | Path | None = None) -> str:
+    fields = _load_context_state_fields(project_root, state_file=state_file)
+    epic_source = str(fields.get("epicSource") or "").strip()
+    if epic_source:
+        match = re.fullmatch(r"epics-(.+)\.md", Path(epic_source).name, re.IGNORECASE)
+        if match:
+            return _slugify(match.group(1))
+    return ""
+
+
+def _load_context_state_fields(project_root: str, state_file: str | Path | None = None) -> dict[str, object]:
+    path = _resolve_context_state_file(project_root, state_file=state_file)
+    if path is None or not path.is_file():
+        return {}
+    try:
+        return parse_simple_frontmatter(read_text(path))
+    except OSError:
+        return {}
+
+
+def _resolve_context_state_file(project_root: str, state_file: str | Path | None = None) -> Path | None:
+    root = Path(project_root).resolve()
+    if state_file:
+        return Path(state_file).expanduser().resolve()
+    env_state = os.environ.get("STORY_AUTOMATOR_STATE_FILE", "").strip()
+    if env_state:
+        path = Path(env_state).expanduser()
+        return (path if path.is_absolute() else (root / path)).resolve()
+    marker = active_marker_path(root)
+    if not marker.is_file():
+        return None
+    try:
+        payload = json.loads(read_text(marker))
+    except (OSError, json.JSONDecodeError):
+        return None
+    marker_state = str(payload.get("stateFile") or "").strip()
+    if not marker_state:
+        return None
+    path = Path(marker_state).expanduser()
+    return (path if path.is_absolute() else (root / path)).resolve()
 
 
 def _last_epic_segment_is_numeric(epic: str) -> bool:
@@ -272,3 +405,8 @@ def _epic_file_exists(project_root: str, epic: str) -> bool:
         if (base / f"epic-{epic}.md").is_file() or next(base.glob(f"epic-{epic}-*.md"), None) is not None:
             return True
     return False
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    return slug.strip("-")

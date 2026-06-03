@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 from story_automator.commands.orchestrator import _normalize_key, _story_file_status, _verify_step
 from story_automator.core.review_verify import verify_code_review_completion
-from story_automator.core.story_keys import normalize_story_key
+from story_automator.core.sprint import sprint_status_get
+from story_automator.core.story_keys import normalize_story_key, normalize_story_key_for_epic
 
 
 STATE_FRONTMATTER = """---
@@ -29,6 +30,12 @@ SPRINT_STATUS = """development_status:
   agent-platform-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
+
+  agent-platform-epic-5: done
+  ap-5-4-stabilize-agent-platform-web-default-integration: in-progress
+
+  agent-platform-epic-6: in-progress
+  ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
 """
 
 
@@ -106,6 +113,30 @@ class ContextualStoryKeyTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(captured[-1]["story_key"], "ap-1-1-establish-shared-resource-registry-and-stable-identity")
         self.assertTrue(str(captured[-1]["file"]).endswith("ap-1-1-establish-shared-resource-registry-and-stable-identity.md"))
+
+    def test_normalize_ap_story_keys_back_to_numeric_ids(self) -> None:
+        result = normalize_story_key(str(self.root), "ap-5-4-stabilize-agent-platform-web-default-integration", state_file=self.state_file)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.id, "5.4")
+        self.assertEqual(result.prefix, "ap-5-4")
+
+        epic_result = normalize_story_key_for_epic(
+            str(self.root),
+            "6",
+            "ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract",
+            state_file=self.state_file,
+        )
+        self.assertIsNotNone(epic_result)
+        assert epic_result is not None
+        self.assertEqual(epic_result.id, "6.1")
+        self.assertEqual(epic_result.prefix, "ap-6-1")
+
+    def test_sprint_status_get_uses_contextual_ap_keys(self) -> None:
+        status = sprint_status_get(str(self.root), "5.4", state_file=str(self.state_file))
+        self.assertTrue(status.found)
+        self.assertEqual(status.story, "ap-5-4-stabilize-agent-platform-web-default-integration")
+        self.assertEqual(status.status, "in-progress")
 
 
 if __name__ == "__main__":

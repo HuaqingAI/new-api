@@ -21,9 +21,9 @@ def sprint_status_get(project_root: str, story_key: str, state_file: str | None 
     if not file_exists(status_file):
         return SprintStatus(False, story_key, "unknown", False, "sprint-status.yaml not found")
     content = read_text(status_file)
-    norm = normalize_story_key(project_root, story_key)
+    norm = normalize_story_key(project_root, story_key, state_file=state_file)
     if norm is not None:
-        result = _best_status_match(project_root, content, story_key, norm)
+        result = _best_status_match(project_root, content, story_key, norm, state_file=state_file)
         if result is not None:
             return result
     match = _exact_status_match(content, story_key)
@@ -47,7 +47,7 @@ def sprint_status_epic(project_root: str, epic: str, state_file: str | None = No
         if len(parts) < 2:
             continue
         key = parts[0].strip()
-        norm = normalize_story_key_for_epic(project_root, epic, key)
+        norm = normalize_story_key_for_epic(project_root, epic, key, state_file=state_file)
         if norm is None or norm.id.rsplit(".", 1)[0] != epic:
             continue
         status = parts[1].strip().split()
@@ -68,7 +68,14 @@ def _status_key_rank(key: str, norm: StoryKey) -> int:
     return 1
 
 
-def _best_status_match(project_root: str, content: str, story_key: str, norm: StoryKey) -> SprintStatus | None:
+def _best_status_match(
+    project_root: str,
+    content: str,
+    story_key: str,
+    norm: StoryKey,
+    *,
+    state_file: str | None = None,
+) -> SprintStatus | None:
     candidates: list[tuple[int, int, str, str]] = []
     explicit_full_key = story_key == norm.key and story_key not in {norm.id, norm.prefix}
     requested_rank = 5 if explicit_full_key else 3
@@ -79,7 +86,7 @@ def _best_status_match(project_root: str, content: str, story_key: str, norm: St
     for key, status in _status_rows(content):
         if explicit_full_key and key != story_key:
             continue
-        if key.startswith(f"{norm.prefix}-") and _status_key_matches_story(project_root, key, norm.id):
+        if key.startswith(f"{norm.prefix}-") and _status_key_matches_story(project_root, key, norm.id, state_file=state_file):
             candidates.append((4, len(candidates), key, status))
     if not candidates:
         return None
@@ -104,8 +111,8 @@ def _status_rows(content: str) -> list[tuple[str, str]]:
     return rows
 
 
-def _status_key_matches_story(project_root: str, key: str, story_id: str) -> bool:
-    norm = normalize_story_key(project_root, key)
+def _status_key_matches_story(project_root: str, key: str, story_id: str, *, state_file: str | None = None) -> bool:
+    norm = normalize_story_key(project_root, key, state_file=state_file)
     if norm is not None:
         return norm.id == story_id
     prefix = story_id.replace(".", "-")

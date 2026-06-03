@@ -139,7 +139,7 @@ development_status:
   ap-5-1-provide-agent-definition-management-in-control-plane: done
   ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
-  ap-5-4-stabilize-agent-platform-web-default-integration: in-progress
+  ap-5-4-stabilize-agent-platform-web-default-integration: done
   agent-platform-epic-5-retrospective: optional
 
   agent-platform-epic-6: in-progress

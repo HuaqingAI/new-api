@@ -1,10 +1,13 @@
 package enterprise_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
@@ -77,6 +80,68 @@ func TestQuotaRequestApproveFallsBackToAdminWhenNoOwner(t *testing.T) {
 	require.Equal(t, result.Request.AllocationId, result.Allocation.Id)
 	require.NotZero(t, result.Request.ApprovedAt)
 	require.NotZero(t, result.Request.ProcessedAt)
+}
+
+func TestQuotaRequestApproveKeepsFulfilledWhenNotificationChannelMissing(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	reqSvc := entservice.NewQuotaRequestService(db)
+
+	item, err := reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 1,
+		BudgetMode:         entservice.QuotaRequestBudgetModeDepartment,
+		RequesterUserId:    2001,
+		RequestedQuota:     200,
+		RequestReason:      "need more quota",
+	})
+	require.NoError(t, err)
+
+	result, err := reqSvc.Approve(entservice.DecideQuotaRequestInput{
+		TenantId:       0,
+		RequestId:      item.Id,
+		ActorId:        1001,
+		ApprovedQuota:  quotaRequestInt64Ptr(150),
+		ApprovalReason: "approved by admin fallback",
+	})
+	require.NoError(t, err)
+	require.Equal(t, entmodel.QuotaRequestStatusFulfilled, result.Request.Status)
+	require.NotNil(t, result.Allocation)
+	require.Equal(t, result.Request.AllocationId, result.Allocation.Id)
+
+	dispatchSvc := entservice.NewGovernanceNotificationDispatchServiceForTest(
+		db,
+		func() time.Time { return time.Unix(time.Now().Unix()+10, 0) },
+		func(string, string, dto.Notify) error {
+			t.Fatal("webhook sender should not run without a configured governance channel")
+			return nil
+		},
+	)
+	_, err = dispatchSvc.DispatchDueDeliveries(context.Background(), 10)
+	require.NoError(t, err)
+
+	var storedRequest entmodel.QuotaRequest
+	require.NoError(t, db.Where("id = ?", item.Id).First(&storedRequest).Error)
+	require.Equal(t, entmodel.QuotaRequestStatusFulfilled, storedRequest.Status)
+	require.Equal(t, result.Request.AllocationId, storedRequest.AllocationId)
+
+	var allocation entmodel.QuotaAllocation
+	require.NoError(t, db.Where("id = ?", result.Request.AllocationId).First(&allocation).Error)
+	require.Equal(t, entmodel.QuotaAllocationStatusActive, allocation.Status)
+
+	var delivery entmodel.GovernanceNotificationDelivery
+	require.NoError(t, db.Where(
+		"source_type = ? AND source_id = ? AND action_type = ?",
+		entservice.GovernanceSourceQuotaRequest,
+		item.Id,
+		entservice.GovernanceActionQuotaRequestApproved,
+	).First(&delivery).Error)
+	require.Equal(t, entmodel.GovernanceNotificationStatusUnconfigured, delivery.Status)
+	require.Equal(t, int64(0), delivery.NextRetryAt)
+	trace, err := delivery.ParsedTracePayload()
+	require.NoError(t, err)
+	require.NotNil(t, trace)
+	require.Equal(t, entmodel.QuotaRequestStatusFulfilled, trace.Status)
 }
 
 func TestQuotaRequestApproveByDepartmentOwnerCreatesAllocationOnce(t *testing.T) {

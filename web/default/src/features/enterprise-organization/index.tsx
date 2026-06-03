@@ -41,6 +41,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -3658,7 +3659,14 @@ function GovernanceNotificationDeliveryList({
             })}
           </div>
           {item.error_reason ? (
-            <div className='text-destructive mt-1 break-words text-xs'>
+            <div
+              className={cn(
+                'mt-1 break-words text-xs',
+                item.status === 'failed' || item.status === 'final_failed'
+                  ? 'text-destructive'
+                  : 'text-muted-foreground'
+              )}
+            >
               {item.error_reason}
             </div>
           ) : null}
@@ -3745,6 +3753,8 @@ function governanceDeliveryStatusLabel(
       return t('Failed')
     case 'final_failed':
       return t('Final failed')
+    case 'unconfigured':
+      return t('Not configured')
     default:
       return t('Unknown delivery status')
   }
@@ -3757,6 +3767,8 @@ function governanceDeliveryStatusVariant(status: string) {
       return 'success' as const
     case 'failed':
       return 'warning' as const
+    case 'unconfigured':
+      return 'grey' as const
     case 'final_failed':
       return 'red' as const
     default:

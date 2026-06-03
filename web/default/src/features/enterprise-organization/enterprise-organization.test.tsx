@@ -681,6 +681,45 @@ describe('Enterprise organization department tree workflow', () => {
     assert.doesNotMatch(html, /enterprise\.alert\.delivery\.resend/)
   })
 
+  test('renders fulfilled governance action separately from unconfigured delivery', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[
+            governanceTimelineItem({
+              source_id: 42,
+              trace_id: 'quota_request:42',
+              action_type: 'enterprise.organization.quota_request.approve',
+              actor_name: 'Owner Alice',
+              quota_delta: 150,
+              status: 'fulfilled',
+            }),
+          ]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 7,
+              trace_id: 'quota_request:42',
+              status: 'unconfigured',
+              attempt_count: 0,
+              error_reason: 'governance notification channel is not configured',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Quota request approved/)
+    assert.match(html, />fulfilled</)
+    assert.match(html, /Not configured/)
+    assert.match(html, /governance notification channel is not configured/)
+    assert.match(html, /Attempt 0\/4/)
+    assert.doesNotMatch(html, /Final failed/)
+    assert.doesNotMatch(html, /Resend/)
+  })
+
   test('renders governance activity with zh locale translations and safe fallbacks', async () => {
     const previousLanguage = i18n.language
     await i18n.changeLanguage('zh')
@@ -754,6 +793,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Action',
       'Notification Status',
       'Final failed',
+      'Not configured',
       'Resend',
       'Attempt {{count}}/{{max}}',
       'Membership replaced',

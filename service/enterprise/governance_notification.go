@@ -593,7 +593,8 @@ func isKnownGovernanceNotificationStatus(status string) bool {
 		entmodel.GovernanceNotificationStatusSent,
 		entmodel.GovernanceNotificationStatusFailed,
 		entmodel.GovernanceNotificationStatusFinalFailed,
-		entmodel.GovernanceNotificationStatusResent:
+		entmodel.GovernanceNotificationStatusResent,
+		entmodel.GovernanceNotificationStatusUnconfigured:
 		return true
 	default:
 		return false

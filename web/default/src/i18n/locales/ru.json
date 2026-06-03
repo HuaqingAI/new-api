@@ -5002,6 +5002,15 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Amount view": "Вид суммы",
+    "Amount value": "Значение суммы",
+    "Approx. {{amount}}": "Примерно {{amount}}",
+    "Equivalent amount": "Эквивалентная сумма",
+    "Quota units": "Единицы квоты",
+    "Quota view": "Вид квоты",
+    "Raw quota": "Исходная квота",
+    "Stored as quota units": "Хранится в единицах квоты",
+    "{{quota}} quota": "{{quota}} квоты"
   }
 }

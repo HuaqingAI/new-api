@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatNumber } from '@/lib/format'
+import { formatEnterpriseQuotaAmount } from './quota-amount-controls'
 import type { QuotaRequestCapabilityBudgetItem } from './types'
 
 export type QuotaRequestBudgetDisplayText = {
@@ -24,6 +24,7 @@ export type QuotaRequestBudgetDisplayText = {
   identity: string
   typeLabel: string
   remainingLabel: string
+  remainingAmountLabel: string
   statusLabel: string
 }
 
@@ -57,13 +58,15 @@ export function getQuotaRequestBudgetDisplayText(
   item: QuotaRequestCapabilityBudgetItem,
   t: (key: string, options?: Record<string, unknown>) => string
 ): QuotaRequestBudgetDisplayText {
+  const remaining = formatEnterpriseQuotaAmount(item.remaining, t)
   return {
     departmentName: item.department_name || `#${item.department_id}`,
     identity: t('Budget #{{budgetId}}', { budgetId: item.id }),
     typeLabel: formatBudgetType(item.type, t),
     remainingLabel: t('Remaining {{remaining}}', {
-      remaining: formatNumber(item.remaining),
+      remaining: remaining.quotaLabel,
     }),
+    remainingAmountLabel: remaining.auxiliaryLabel,
     statusLabel: enterpriseBudgetStatusLabel(item.status, t),
   }
 }

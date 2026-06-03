@@ -50,6 +50,12 @@ import {
   getQuotaRequestBudgetDisplayText,
 } from './quota-request-budget-display'
 import {
+  convertEnterpriseQuotaInputMode,
+  formatEnterpriseQuotaAmount,
+  parseEnterpriseQuotaInput,
+  QuotaAmountDisplay,
+} from './quota-amount-controls'
+import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from './quota-request-budget-display-components'
@@ -393,7 +399,8 @@ describe('Enterprise organization department tree workflow', () => {
       departmentName: 'Engineering',
       identity: 'Budget #31',
       typeLabel: 'Subscription Budget',
-      remainingLabel: 'Remaining 300',
+      remainingLabel: 'Remaining 300 quota',
+      remainingAmountLabel: 'Approx. $0.0006',
       statusLabel: 'Paused',
     })
 
@@ -413,7 +420,8 @@ describe('Enterprise organization department tree workflow', () => {
         'Engineering',
         'Budget #31',
         'Subscription Budget',
-        'Remaining 300',
+        'Remaining 300 quota',
+        'Approx. $0.0006',
         'Paused',
       ]) {
         assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -701,6 +709,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Final failed',
       'webhook request failed',
       'Resend',
+      '80 quota',
+      'Approx. $0.0002',
       ...knownActions.map(([, label]) => label),
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -955,6 +965,51 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(formatBudgetType('future_budget', i18n.t), 'Unknown budget type')
   })
 
+  test('formats enterprise quota amounts and parses amount view through wallet helpers', () => {
+    const display = formatEnterpriseQuotaAmount(1_000_000, i18n.t)
+
+    assert.equal(display.rawQuota, 1_000_000)
+    assert.equal(display.quotaLabel, '1,000,000 quota')
+    assert.equal(display.amount, 2)
+    assert.equal(display.amountLabel, '$2')
+    assert.equal(display.auxiliaryLabel, 'Approx. $2')
+
+    assert.equal(parseEnterpriseQuotaInput('2', 'amount'), 1_000_000)
+    assert.equal(parseEnterpriseQuotaInput('0.5', 'amount'), 250_000)
+    assert.equal(parseEnterpriseQuotaInput('250000', 'quota'), 250_000)
+    assert.equal(parseEnterpriseQuotaInput('1.5', 'quota'), null)
+    assert.equal(parseEnterpriseQuotaInput('abc', 'amount'), null)
+
+    assert.deepEqual(
+      convertEnterpriseQuotaInputMode({
+        value: '1000000',
+        from: 'quota',
+        to: 'amount',
+      }),
+      { value: '2', quota: 1_000_000 }
+    )
+    assert.deepEqual(
+      convertEnterpriseQuotaInputMode({
+        value: '2',
+        from: 'amount',
+        to: 'quota',
+      }),
+      { value: '1000000', quota: 1_000_000 }
+    )
+  })
+
+  test('quota amount display preserves negative governance deltas', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAmountDisplay quota={-500_000} />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /-500,000 quota/)
+    assert.match(html, /Approx\. -\$1/)
+    assert.doesNotMatch(html, />0 quota</)
+  })
+
   test('renders department budget empty state and latest budget details', () => {
     const emptyHtml = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -974,6 +1029,8 @@ describe('Enterprise organization department tree workflow', () => {
     for (const expected of [
       'Subscription Budget',
       'Remaining Quota',
+      '300 quota',
+      'Approx. $0.0006',
       'Cycle Quota',
       'Weekly',
       'Custom Cycle Seconds',
@@ -1246,9 +1303,10 @@ describe('Enterprise organization department tree workflow', () => {
     for (const expected of [
       'Balance Budget',
       'Remaining Quota',
-      '640',
+      '640 quota',
+      'Approx. $0.0013',
       'Total Quota',
-      '800',
+      '800 quota',
       'One-time quota',
       'Never expires',
     ]) {
@@ -1431,8 +1489,10 @@ describe('Enterprise organization department tree workflow', () => {
       'Alice',
       'alice · User ID #2001',
       '#41',
-      '300',
-      '180',
+      '300 quota',
+      '180 quota',
+      'Approx. $0.0006',
+      'Approx. $0.0004',
       'Monthly',
       'Next Reset',
       'Expired',
@@ -1575,7 +1635,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Delegation Route',
       'Delegation Quota',
       'Engineering -&gt; Platform -&gt; Budget #23',
-      '450',
+      '450 quota',
+      'Approx. $0.0009',
       'Active',
       'Close old delegation and create a new one',
       'Superseded',
@@ -1616,7 +1677,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Actions',
       'Alice',
       'alice · User ID #2001',
-      '300',
+      '300 quota',
+      'Approx. $0.0006',
       '301',
       'Active',
       'Close old allocation and create a new one',
@@ -1662,7 +1724,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Supersedes Allocation #7',
       'Superseded By Allocation #10',
       'Reclaimed Quota',
-      '175',
+      '175 quota',
+      'Approx. $0.0004',
       'Close old allocation and create a new one',
       'Historical allocation',
       'Reclaim allocation',
@@ -1712,8 +1775,9 @@ describe('Enterprise organization department tree workflow', () => {
       'Budget #11',
       'Budget #12',
       'Budget #13',
-      '120',
-      '80',
+      '120 quota',
+      '80 quota',
+      'Approx. $0.0002',
       'Allocation #21',
       'Submitted',
       'Fulfilled',

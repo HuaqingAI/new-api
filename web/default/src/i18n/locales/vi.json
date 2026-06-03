@@ -5002,6 +5002,15 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Amount view": "Chế độ số tiền",
+    "Amount value": "Giá trị số tiền",
+    "Approx. {{amount}}": "Xấp xỉ {{amount}}",
+    "Equivalent amount": "Số tiền tương đương",
+    "Quota units": "Đơn vị hạn mức",
+    "Quota view": "Chế độ hạn mức",
+    "Raw quota": "Hạn mức gốc",
+    "Stored as quota units": "Lưu theo đơn vị hạn mức",
+    "{{quota}} quota": "{{quota}} hạn mức"
   }
 }

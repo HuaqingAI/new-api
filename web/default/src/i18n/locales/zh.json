@@ -5002,6 +5002,15 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Amount view": "金额视图",
+    "Amount value": "金额值",
+    "Approx. {{amount}}": "约 {{amount}}",
+    "Equivalent amount": "等价金额",
+    "Quota units": "额度单位",
+    "Quota view": "额度视图",
+    "Raw quota": "原始额度",
+    "Stored as quota units": "按额度单位存储",
+    "{{quota}} quota": "{{quota}} 额度"
   }
 }

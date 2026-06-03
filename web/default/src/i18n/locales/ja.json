@@ -5002,6 +5002,15 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Amount view": "金額表示",
+    "Amount value": "金額値",
+    "Approx. {{amount}}": "約 {{amount}}",
+    "Equivalent amount": "相当金額",
+    "Quota units": "クォータ単位",
+    "Quota view": "クォータ表示",
+    "Raw quota": "元のクォータ",
+    "Stored as quota units": "クォータ単位で保存",
+    "{{quota}} quota": "{{quota}} クォータ"
   }
 }

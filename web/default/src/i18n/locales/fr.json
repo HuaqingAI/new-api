@@ -5002,6 +5002,15 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Amount view": "Vue montant",
+    "Amount value": "Valeur du montant",
+    "Approx. {{amount}}": "Env. {{amount}}",
+    "Equivalent amount": "Montant équivalent",
+    "Quota units": "Unités de quota",
+    "Quota view": "Vue quota",
+    "Raw quota": "Quota brut",
+    "Stored as quota units": "Stocké en unités de quota",
+    "{{quota}} quota": "{{quota}} quota"
   }
 }

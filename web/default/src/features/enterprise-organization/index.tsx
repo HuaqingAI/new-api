@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { z } from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -156,6 +156,10 @@ import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from './quota-request-budget-display-components'
+import {
+  QuotaAmountDisplay,
+  QuotaAmountInput,
+} from './quota-amount-controls'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -2673,7 +2677,11 @@ function DepartmentBudgetPanel({
                       <FormItem>
                         <FormLabel>{t('Total Quota')}</FormLabel>
                         <FormControl>
-                          <Input inputMode='numeric' {...field} />
+                          <QuotaAmountInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            ariaLabel={t('Total Quota')}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -2688,7 +2696,11 @@ function DepartmentBudgetPanel({
                         <FormItem>
                           <FormLabel>{t('Cycle Quota')}</FormLabel>
                           <FormControl>
-                            <Input inputMode='numeric' {...field} />
+                            <QuotaAmountInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              ariaLabel={t('Cycle Quota')}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -2888,7 +2900,11 @@ function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Delegation Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Delegation Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3043,7 +3059,11 @@ function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Requested Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Requested Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3205,7 +3225,11 @@ function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Allocation Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Allocation Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3391,7 +3415,9 @@ export function QuotaAllocationTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.committed_quota} />
+            </TableCell>
             <TableCell>{item.wallet_id}</TableCell>
             <TableCell>
               <Badge variant='secondary'>
@@ -3416,7 +3442,9 @@ export function QuotaAllocationTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{item.reclaimed_quota || 0}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.reclaimed_quota || 0} />
+            </TableCell>
             <TableCell>
               {item.processed_at ? formatTimestamp(item.processed_at) : '-'}
             </TableCell>
@@ -3424,14 +3452,11 @@ export function QuotaAllocationTable({
             <TableCell>
               <div className='flex min-w-[320px] items-center gap-2'>
                 {item.status === 'active' ? (
-                  <Input
-                    inputMode='numeric'
+                  <QuotaAmountInput
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(event) =>
-                      onSupersedeDraftChange?.(item.id, event.target.value)
-                    }
+                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
                     aria-label={t('Allocation Quota')}
                   />
                 ) : null}
@@ -3593,7 +3618,9 @@ export function GovernanceActivityCard({
                       {item.actor_name || (item.actor_id ? `#${item.actor_id}` : '-')}
                     </TableCell>
                     <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
-                    <TableCell>{formatNumber(item.quota_delta)}</TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.quota_delta} />
+                    </TableCell>
                     <TableCell>
                       <Badge variant='secondary'>
                         {enterpriseBudgetStatusLabel(item.status, t)}
@@ -3884,8 +3911,16 @@ export function QuotaRequestTable({
                   budgetId: item.department_budget_id,
                 })}
               </TableCell>
-              <TableCell>{item.requested_quota}</TableCell>
-              <TableCell>{item.approved_quota || '-'}</TableCell>
+              <TableCell>
+                <QuotaAmountDisplay quota={item.requested_quota} />
+              </TableCell>
+              <TableCell>
+                {item.approved_quota ? (
+                  <QuotaAmountDisplay quota={item.approved_quota} />
+                ) : (
+                  '-'
+                )}
+              </TableCell>
               <TableCell>
                 {item.allocation_id
                   ? t('Allocation #{{id}}', { id: item.allocation_id })
@@ -3897,12 +3932,11 @@ export function QuotaRequestTable({
               <TableCell>
                 <div className='flex min-w-[360px] flex-col gap-2'>
                   <div className='flex items-center gap-2'>
-                    <Input
-                      inputMode='numeric'
+                    <QuotaAmountInput
                       value={draft.approvedQuota}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         onDecisionDraftChange(item.id, {
-                          approvedQuota: event.target.value,
+                          approvedQuota: value,
                         })
                       }
                       disabled={!actionable}
@@ -4018,7 +4052,9 @@ export function BudgetDelegationTable({
                 budgetId: item.target_budget_id,
               })}
             </TableCell>
-            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.committed_quota} />
+            </TableCell>
             <TableCell>
               <Badge variant='secondary'>
                 {enterpriseBudgetStatusLabel(item.status, t)}
@@ -4027,14 +4063,11 @@ export function BudgetDelegationTable({
             <TableCell>
               <div className='flex min-w-[260px] items-center gap-2'>
                 {item.status === 'active' ? (
-                  <Input
-                    inputMode='numeric'
+                  <QuotaAmountInput
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(event) =>
-                      onSupersedeDraftChange?.(item.id, event.target.value)
-                    }
+                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
                     aria-label={t('Delegation Quota')}
                   />
                 ) : null}
@@ -4211,8 +4244,12 @@ export function DepartmentBudgetListCard({
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>{formatNumber(item.remaining)}</TableCell>
-                    <TableCell>{formatNumber(item.allocated_total)}</TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.remaining} />
+                    </TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.allocated_total} />
+                    </TableCell>
                     <TableCell>{formatPercent(item.usage_ratio)}</TableCell>
                     <TableCell>
                       <StatusBadge
@@ -4337,8 +4374,12 @@ export function DepartmentBudgetDetailTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{formatNumber(wallet.quota)}</TableCell>
-            <TableCell>{formatNumber(wallet.remain_quota)}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={wallet.quota} />
+            </TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={wallet.remain_quota} />
+            </TableCell>
             <TableCell>
               <div className='flex min-w-[180px] flex-col gap-1 text-sm'>
                 <span>{formatBudgetCycleType(wallet.cycle_type, t)}</span>
@@ -4455,19 +4496,19 @@ export function DepartmentBudgetOverviewCard({
         />
         <BudgetStat
           label={t('Remaining Quota')}
-          value={formatNumber(budget.remaining)}
+          value={<QuotaAmountDisplay quota={budget.remaining} />}
         />
         <BudgetStat
           label={t('Allocated Total')}
-          value={formatNumber(budget.allocated_total)}
+          value={<QuotaAmountDisplay quota={budget.allocated_total} />}
         />
         <BudgetStat
           label={t('Total Quota')}
-          value={formatNumber(budget.total_quota)}
+          value={<QuotaAmountDisplay quota={budget.total_quota} />}
         />
         <BudgetStat
           label={t('Cycle Quota')}
-          value={formatNumber(budget.cycle_quota)}
+          value={<QuotaAmountDisplay quota={budget.cycle_quota} />}
         />
         <BudgetStat
           label={t('Cycle Type')}
@@ -4524,7 +4565,7 @@ function BudgetStat({
   badgeVariant,
 }: {
   label: string
-  value: string
+  value: ReactNode
   badgeVariant?: 'success' | 'warning' | 'danger' | 'neutral'
 }) {
   return (
@@ -4533,7 +4574,7 @@ function BudgetStat({
       <div className='mt-1 flex items-center gap-2 font-medium'>
         <CalendarClock className='text-muted-foreground size-4' />
         {badgeVariant ? (
-          <StatusBadge label={value} variant={badgeVariant} copyable={false} />
+          <StatusBadge label={String(value)} variant={badgeVariant} copyable={false} />
         ) : (
           <span>{value}</span>
         )}

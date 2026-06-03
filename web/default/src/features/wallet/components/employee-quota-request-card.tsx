@@ -47,7 +47,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -72,6 +71,7 @@ import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from '@/features/enterprise-organization/quota-request-budget-display-components'
+import { QuotaAmountInput } from '@/features/enterprise-organization/quota-amount-controls'
 import type { UserWalletData } from '../types'
 
 const activeMembershipStatus = 1
@@ -353,7 +353,11 @@ export function EmployeeQuotaRequestCard({
                 <FormItem>
                   <FormLabel>{t('Requested Quota')}</FormLabel>
                   <FormControl>
-                    <Input inputMode='numeric' {...field} />
+                    <QuotaAmountInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      ariaLabel={t('Requested Quota')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

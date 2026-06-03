@@ -38,6 +38,7 @@ export function QuotaRequestBudgetOption({
       <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs'>
         <span>{display.typeLabel}</span>
         <span>{display.remainingLabel}</span>
+        <span>{display.remainingAmountLabel}</span>
         <span>{display.statusLabel}</span>
       </div>
     </div>
@@ -62,6 +63,7 @@ export function QuotaRequestBudgetSummary({
       <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs'>
         <span>{display.typeLabel}</span>
         <span>{display.remainingLabel}</span>
+        <span>{display.remainingAmountLabel}</span>
         <span>{display.statusLabel}</span>
       </div>
     </div>

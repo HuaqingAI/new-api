@@ -20,6 +20,10 @@ import {
   QuotaRequestBudgetSummary,
 } from '@/features/enterprise-organization/quota-request-budget-display-components'
 import {
+  convertEnterpriseQuotaInputMode,
+  parseEnterpriseQuotaInput,
+} from '@/features/enterprise-organization/quota-amount-controls'
+import {
   EmployeeQuotaRequestCard,
   getEmployeeQuotaRequestDepartmentOptions,
   invalidateQuotaRequestGovernanceQueries,
@@ -67,7 +71,8 @@ describe('Employee quota request wallet entry', () => {
       departmentName: 'Engineering',
       identity: 'Budget #31',
       typeLabel: 'Balance Budget',
-      remainingLabel: 'Remaining 1,250',
+      remainingLabel: 'Remaining 1,250 quota',
+      remainingAmountLabel: 'Approx. $0.0025',
       statusLabel: 'Active',
     })
 
@@ -87,7 +92,8 @@ describe('Employee quota request wallet entry', () => {
         'Engineering',
         'Budget #31',
         'Balance Budget',
-        'Remaining 1,250',
+        'Remaining 1,250 quota',
+        'Approx. $0.0025',
         'Active',
       ]) {
         assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -115,7 +121,8 @@ describe('Employee quota request wallet entry', () => {
         departmentName: 'Engineering',
         identity: '预算池 #31',
         typeLabel: '未知预算类型',
-        remainingLabel: '剩余额度 1,250',
+        remainingLabel: '剩余额度 1,250 额度',
+        remainingAmountLabel: '约 $0.0025',
         statusLabel: '未知状态',
       })
 
@@ -135,7 +142,8 @@ describe('Employee quota request wallet entry', () => {
           'Engineering',
           '预算池 #31',
           '未知预算类型',
-          '剩余额度 1,250',
+          '剩余额度 1,250 额度',
+          '约 $0.0025',
           '未知状态',
         ]) {
           assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -168,6 +176,9 @@ describe('Employee quota request wallet entry', () => {
         '已选申请范围',
         '未选择预算池',
         '申请额度',
+        '额度视图',
+        '金额视图',
+        '按额度单位存储',
         '提交额度申请',
       ]) {
         assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -197,6 +208,9 @@ describe('Employee quota request wallet entry', () => {
       'Selected request scope',
       'No budget pool selected',
       'Requested Quota',
+      'Quota view',
+      'Amount view',
+      'Stored as quota units',
       'Submit quota request',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
@@ -297,6 +311,19 @@ describe('Employee quota request wallet entry', () => {
       api.get = originalGet
       api.post = originalPost
     }
+  })
+
+  test('wallet quota request amount view still resolves to quota-unit payload values', () => {
+    assert.equal(parseEnterpriseQuotaInput('2', 'amount'), 1_000_000)
+    assert.equal(parseEnterpriseQuotaInput('0.25', 'amount'), 125_000)
+    assert.deepEqual(
+      convertEnterpriseQuotaInputMode({
+        value: '2',
+        from: 'amount',
+        to: 'quota',
+      }),
+      { value: '1000000', quota: 1_000_000 }
+    )
   })
 
   test('invalidates governance timeline and notification caches after wallet submission', async () => {

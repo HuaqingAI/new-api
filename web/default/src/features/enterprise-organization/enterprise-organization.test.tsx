@@ -43,6 +43,11 @@ import {
   resolveBudgetSelection,
   syncAllocationFormDraft,
 } from './index'
+import { getQuotaRequestBudgetDisplayText } from './quota-request-budget-display'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from './quota-request-budget-display-components'
 import {
   getAncestorDepartmentIds,
   getDefaultExpandedDepartmentIds,
@@ -367,6 +372,48 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /Balance Budget/)
     assert.match(html, /Subscription Budget/)
     assert.match(html, /Engineering/)
+  })
+
+  test('formats organization quota request budget options with department, identity, type, remaining, and status', () => {
+    const budget = departmentBudget({
+      id: 31,
+      department_name: 'Engineering',
+      type: 'subscription',
+      remaining: 300,
+      status: 'paused',
+    })
+    const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+
+    assert.deepEqual(display, {
+      departmentName: 'Engineering',
+      identity: 'Budget #31',
+      typeLabel: 'Subscription Budget',
+      remainingLabel: 'Remaining 300',
+      statusLabel: 'Paused',
+    })
+
+    const optionHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetOption item={budget} />
+      </I18nextProvider>
+    )
+    const summaryHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetSummary item={budget} />
+      </I18nextProvider>
+    )
+
+    for (const html of [optionHtml, summaryHtml]) {
+      for (const expected of [
+        'Engineering',
+        'Budget #31',
+        'Subscription Budget',
+        'Remaining 300',
+        'Paused',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+    }
   })
 
   test('clears stale selected members when the current department member list changes', () => {
@@ -834,6 +881,11 @@ describe('Enterprise organization department tree workflow', () => {
       'Unknown delivery status',
       'Employee Quota Requests',
       'Target Budget Pool',
+      'Selected request scope',
+      'No budget pool selected',
+      'Budget #{{budgetId}}',
+      '{{department}} · {{budget}}',
+      'Remaining {{remaining}}',
       'Trace ID',
     ] as const
 

@@ -66,9 +66,12 @@ import {
   governanceTimelineQueryKey,
 } from '@/features/enterprise-organization/api'
 import type {
-  QuotaRequestCapabilityBudgetItem,
   UserDepartmentItem,
 } from '@/features/enterprise-organization/types'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from '@/features/enterprise-organization/quota-request-budget-display-components'
 import type { UserWalletData } from '../types'
 
 const activeMembershipStatus = 1
@@ -184,6 +187,10 @@ export function EmployeeQuotaRequestCard({
     enabled: Boolean(selectedDepartmentId),
   })
   const budgets = capabilityQuery.data?.budgets ?? []
+  const selectedBudget = useMemo(
+    () => budgets.find((item) => item.id === selectedBudgetId) ?? null,
+    [budgets, selectedBudgetId]
+  )
 
   useEffect(() => {
     const resolvedBudgetId = resolveEmployeeQuotaRequestBudgetId(
@@ -325,8 +332,12 @@ export function EmployeeQuotaRequestCard({
                     </FormControl>
                     <SelectContent>
                       {budgets.map((item) => (
-                        <SelectItem key={item.id} value={String(item.id)}>
-                          {formatBudgetOption(item, t)}
+                        <SelectItem
+                          key={item.id}
+                          value={String(item.id)}
+                          className='items-start py-2'
+                        >
+                          <QuotaRequestBudgetOption item={item} />
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -352,9 +363,19 @@ export function EmployeeQuotaRequestCard({
               <div className='text-muted-foreground text-xs'>
                 {t('Selected request scope')}
               </div>
-              <div className='mt-1 text-sm font-medium'>
-                {currentDepartment?.department_name ?? t('No department selected')}
-              </div>
+              {selectedBudget ? (
+                <QuotaRequestBudgetSummary item={selectedBudget} />
+              ) : (
+                <>
+                  <div className='mt-1 text-sm font-medium'>
+                    {currentDepartment?.department_name ??
+                      t('No department selected')}
+                  </div>
+                  <div className='text-muted-foreground mt-1 text-xs'>
+                    {t('No budget pool selected')}
+                  </div>
+                </>
+              )}
             </div>
             <FormField
               control={form.control}
@@ -424,14 +445,4 @@ export async function invalidateQuotaRequestGovernanceQueries(
       queryKey: governanceNotificationQueryKey(departmentId, tenantId),
     }),
   ])
-}
-
-function formatBudgetOption(
-  item: QuotaRequestCapabilityBudgetItem,
-  t: (key: string, options?: Record<string, unknown>) => string
-) {
-  return t('{{department}} · Budget #{{budgetId}}', {
-    department: item.department_name || `#${item.department_id}`,
-    budgetId: item.id,
-  })
 }

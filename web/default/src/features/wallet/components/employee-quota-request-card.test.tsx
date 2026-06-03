@@ -14,6 +14,11 @@ import {
   submitQuotaRequest,
   userDepartmentsQueryKey,
 } from '@/features/enterprise-organization/api'
+import { getQuotaRequestBudgetDisplayText } from '@/features/enterprise-organization/quota-request-budget-display'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from '@/features/enterprise-organization/quota-request-budget-display-components'
 import {
   EmployeeQuotaRequestCard,
   getEmployeeQuotaRequestDepartmentOptions,
@@ -21,6 +26,7 @@ import {
   resolveEmployeeQuotaRequestBudgetId,
 } from './employee-quota-request-card'
 import type { UserDepartmentItem } from '@/features/enterprise-organization/types'
+import type { QuotaRequestCapabilityBudgetItem } from '@/features/enterprise-organization/types'
 import type { UserWalletData } from '../types'
 
 i18n.changeLanguage('en')
@@ -46,6 +52,49 @@ describe('Employee quota request wallet entry', () => {
     assert.equal(resolveEmployeeQuotaRequestBudgetId([31], null), null)
   })
 
+  test('formats wallet budget options and selected summary with identifiable budget details', () => {
+    const budget = quotaRequestBudget({
+      id: 31,
+      department_id: 11,
+      department_name: 'Engineering',
+      type: 'balance',
+      status: 'active',
+      remaining: 1250,
+    })
+    const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+
+    assert.deepEqual(display, {
+      departmentName: 'Engineering',
+      identity: 'Budget #31',
+      typeLabel: 'Balance Budget',
+      remainingLabel: 'Remaining 1,250',
+      statusLabel: 'Active',
+    })
+
+    const optionHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetOption item={budget} />
+      </I18nextProvider>
+    )
+    const summaryHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetSummary item={budget} />
+      </I18nextProvider>
+    )
+
+    for (const html of [optionHtml, summaryHtml]) {
+      for (const expected of [
+        'Engineering',
+        'Budget #31',
+        'Balance Budget',
+        'Remaining 1,250',
+        'Active',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+    }
+  })
+
   test('renders wallet-side quota request guidance without enterprise organization navigation dependency', () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}>
@@ -61,6 +110,8 @@ describe('Employee quota request wallet entry', () => {
       'Choose an active department and one of its available budget pools before submitting.',
       'Target Department',
       'Target Budget Pool',
+      'Selected request scope',
+      'No budget pool selected',
       'Requested Quota',
       'Submit quota request',
     ]) {
@@ -185,6 +236,11 @@ describe('Employee quota request wallet entry', () => {
     ])
   })
 
+  test('clears stale wallet budget selection when department capability changes', () => {
+    assert.equal(resolveEmployeeQuotaRequestBudgetId([41], 31), null)
+    assert.equal(resolveEmployeeQuotaRequestBudgetId([41], 41), 41)
+  })
+
   test('renders empty guidance for employees without requestable department memberships', () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData(userDepartmentsQueryKey(2001), [])
@@ -215,6 +271,32 @@ function userWallet(overrides: Partial<UserWalletData> = {}): UserWalletData {
     aff_history_quota: overrides.aff_history_quota ?? 0,
     aff_count: overrides.aff_count ?? 0,
     group: overrides.group ?? 'default',
+  }
+}
+
+function quotaRequestBudget(
+  overrides: Partial<QuotaRequestCapabilityBudgetItem> = {}
+): QuotaRequestCapabilityBudgetItem {
+  return {
+    id: overrides.id ?? 31,
+    tenant_id: overrides.tenant_id ?? 0,
+    department_id: overrides.department_id ?? 11,
+    department_name: overrides.department_name ?? 'Engineering',
+    type: overrides.type ?? 'balance',
+    status: overrides.status ?? 'active',
+    total_quota: overrides.total_quota ?? 0,
+    remaining: overrides.remaining ?? 500,
+    allocated_total: overrides.allocated_total ?? 0,
+    cycle_quota: overrides.cycle_quota ?? 0,
+    cycle_type: overrides.cycle_type ?? '',
+    cycle_started_at: overrides.cycle_started_at ?? 0,
+    custom_seconds: overrides.custom_seconds ?? 0,
+    expires_at: overrides.expires_at ?? 0,
+    parent_status: overrides.parent_status ?? '',
+    usage_ratio: overrides.usage_ratio ?? 0,
+    threshold_state: overrides.threshold_state ?? 'healthy',
+    created_at: overrides.created_at ?? 1700000000,
+    updated_at: overrides.updated_at ?? 1700000001,
   }
 }
 

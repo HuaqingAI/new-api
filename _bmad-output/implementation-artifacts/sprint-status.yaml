@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-03 00:00:00 +0800
+# last_updated: 2026-06-03 14:30:26 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-03 00:00:00 +0800
+last_updated: 2026-06-03 14:44:14 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -107,7 +107,7 @@ development_status:
 
   epic-7b: in-progress
   7b-1-decouple-governance-action-result-from-notification-delivery: done
-  7b-2-redesign-budget-pool-selection-and-selected-summary: backlog
+  7b-2-redesign-budget-pool-selection-and-selected-summary: done
   7b-3-complete-quota-request-governance-wallet-i18n-coverage: backlog
   7b-4-normalize-one-time-wallet-and-non-positive-expiry-display: backlog
   7b-5-add-quota-amount-toggle-and-dollar-display-for-budget-governance: backlog

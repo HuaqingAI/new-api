@@ -148,6 +148,14 @@ import {
   formatEnterpriseUserPrimary,
   formatEnterpriseUserSecondary,
 } from './lib/user-display'
+import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+} from './quota-request-budget-display'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from './quota-request-budget-display-components'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -487,20 +495,6 @@ function statusLabel(status: MembershipStatus, t: (key: string) => string) {
   return t('Pending')
 }
 
-function enterpriseBudgetStatusLabel(
-  status: string,
-  t: (key: string) => string
-) {
-  if (status === 'active') return t('Active')
-  if (status === 'paused') return t('Paused')
-  if (status === 'revoked') return t('Revoked')
-  if (status === 'expired') return t('Expired')
-  if (status === 'superseded') return t('Superseded')
-  if (status === 'closed') return t('Closed')
-  if (status === 'cancelled') return t('Cancelled')
-  return status || '-'
-}
-
 function enterpriseBudgetStatusVariant(status: string) {
   if (status === 'active') return 'success' as const
   if (status === 'paused') return 'warning' as const
@@ -519,10 +513,6 @@ function thresholdStateVariant(status: string) {
   if (status === 'critical') return 'danger' as const
   if (status === 'warning') return 'warning' as const
   return 'success' as const
-}
-
-function formatBudgetType(type: string, t: (key: string) => string) {
-  return type === 'balance' ? t('Balance Budget') : t('Subscription Budget')
 }
 
 function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
@@ -1921,6 +1911,9 @@ function DepartmentBudgetPanel({
   const tenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
+  const selectedQuotaRequestBudgetId = quotaRequestForm.watch(
+    'department_budget_id'
+  )
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
@@ -2152,6 +2145,12 @@ function DepartmentBudgetPanel({
   const descendantBudgetOptions = (
     descendantBudgetListQuery.data?.items ?? []
   ).filter((item) => item.department_id !== departmentId)
+  const quotaRequestBudgetOptions =
+    quotaRequestCapabilityQuery.data?.budgets ?? budgetListQuery.data?.items ?? []
+  const selectedQuotaRequestBudget =
+    quotaRequestBudgetOptions.find(
+      (item) => item.id === selectedQuotaRequestBudgetId
+    ) ?? null
 
   const createMutation = useMutation({
     mutationFn: async (values: BudgetFormValues) => {
@@ -2986,6 +2985,23 @@ function DepartmentBudgetPanel({
                 <div className='text-muted-foreground mt-1 text-xs'>
                   {t('Target Department')} {departmentName}
                 </div>
+                <div className='mt-3 border-t pt-3'>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Selected request scope')}
+                  </div>
+                  {selectedQuotaRequestBudget ? (
+                    <QuotaRequestBudgetSummary item={selectedQuotaRequestBudget} />
+                  ) : (
+                    <>
+                      <div className='mt-1 text-sm font-medium'>
+                        {departmentName}
+                      </div>
+                      <div className='text-muted-foreground mt-1 text-xs'>
+                        {t('No budget pool selected')}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <FormField
                 control={quotaRequestForm.control}
@@ -3005,14 +3021,13 @@ function DepartmentBudgetPanel({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(quotaRequestCapabilityQuery.data?.budgets ??
-                          budgetListQuery.data?.items ??
-                          []).map((item) => (
-                          <SelectItem key={item.id} value={String(item.id)}>
-                            {t('{{department}} · Budget #{{budgetId}}', {
-                              department: item.department_name,
-                              budgetId: item.id,
-                            })}
+                        {quotaRequestBudgetOptions.map((item) => (
+                          <SelectItem
+                            key={item.id}
+                            value={String(item.id)}
+                            className='items-start py-2'
+                          >
+                            <QuotaRequestBudgetOption item={item} />
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -34,6 +34,10 @@ func GetDepartmentTree(c *gin.Context) {
 			for _, item := range membershipResult.Items {
 				memberDepartmentIds = append(memberDepartmentIds, item.DepartmentId)
 			}
+			if len(memberDepartmentIds) == 0 {
+				common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
+				return
+			}
 			items, err = departmentService.GetDepartmentTreeByIds(memberDepartmentIds)
 		} else {
 			items, err = departmentService.GetDepartmentTreeByIds(manageableDepartmentIds)

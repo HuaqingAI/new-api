@@ -38,6 +38,11 @@ func EnterpriseDepartmentAdmin(departmentParam string) gin.HandlerFunc {
 				c.Abort()
 				return
 			}
+			if errors.Is(err, entservice.ErrDepartmentNotFound) {
+				common.ApiErrorI18n(c, i18n.MsgEnterprisePermissionDeptAdminRequired)
+				c.Abort()
+				return
+			}
 			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 			c.Abort()
 			return

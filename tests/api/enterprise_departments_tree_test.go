@@ -321,8 +321,8 @@ func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
 	actions := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/admin-actions?page=1&page_size=20", adminCookies)
 	actionsPayload := decodeAdminActionsAPIResponse(t, actions)
 	require.True(t, actionsPayload.Success, actionsPayload.Message)
-	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.grant")
-	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_admin.revoke")
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_owner.manual_grant")
+	require.Contains(t, string(actionsPayload.Data), "enterprise.organization.department_owner.manual_grant.revoke")
 }
 
 func TestEnterpriseAdminActionsAPIRejectsInvalidQuery(t *testing.T) {
@@ -374,7 +374,18 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, modelenterprise.Migrate(db))
+	require.NoError(t, db.Create(&model.User{
+		Id:          1001,
+		Username:    "enterprise-admin",
+		DisplayName: "Enterprise Admin",
+		Password:    "password123",
+		Group:       "default",
+		AffCode:     "enterprise-admin-api-fixture",
+		Status:      common.UserStatusEnabled,
+		Role:        common.RoleAdminUser,
+	}).Error)
 	model.DB = db
 	model.LOG_DB = db
 

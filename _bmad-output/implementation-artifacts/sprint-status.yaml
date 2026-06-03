@@ -1,5 +1,5 @@
 # generated: 2026-05-28 13:47:30 +08:00
-# last_updated: 2026-06-03 10:01 +0800
+# last_updated: 2026-06-03 10:27 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-28 13:47:30 +08:00
-last_updated: 2026-06-03 10:01 +0800
+last_updated: 2026-06-03 10:27 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -141,7 +141,7 @@ development_status:
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
   agent-platform-epic-5-retrospective: optional
 
-  agent-platform-epic-6: backlog
+  agent-platform-epic-6: in-progress
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
   ap-6-2-freeze-client-registration-schema-and-onboarding-flow: backlog
   ap-6-3-freeze-discovery-detail-and-refresh-public-fields: backlog
@@ -149,5 +149,5 @@ development_status:
   ap-6-5-freeze-enterprise-model-discovery-contract: backlog
   ap-6-6-freeze-error-code-and-client-state-matrices: backlog
   ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done
-  ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog
+  ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: done
   agent-platform-epic-6-retrospective: optional

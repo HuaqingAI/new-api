@@ -222,6 +222,171 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthRevokeResponse")
 }
 
+func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
+	signoffBytes, err := os.ReadFile("../../../docs/agent-platform-consumer-signoff.md")
+	require.NoError(t, err)
+	signoff := string(signoffBytes)
+
+	contractBytes, err := os.ReadFile("../../../docs/agent-platform-downstream-contract-spec.md")
+	require.NoError(t, err)
+	contract := string(contractBytes)
+
+	for _, required := range []string{
+		"Status: blocked",
+		"contract_version: 2026-06",
+		"docs/openapi/api.json",
+		"tests/agentplatform/conformance/",
+		"controller/agentplatform/open_capabilities_test.go",
+		"controller/agentplatform/oauth_test.go",
+		"service/agentplatform/oauth_authorize_test.go",
+		"service/agentplatform/oauth_token_test.go",
+		"extensions.cherry_studio",
+		"extensions.codex",
+		"AP-6.5",
+		"AP-6.6",
+		"no parallel core protocol",
+	} {
+		require.Contains(t, signoff, required)
+	}
+	assertAllowedSignoffStatuses(t, signoff)
+	assertAllowedSignoffStatuses(t, markdownSection(contract, "### 11.8 Consumer Signoff"))
+
+	require.Contains(t, signoff, "Cherry Studio first-consumer signoff: `blocked`")
+	require.NotContains(t, signoff, "Cherry Studio first-consumer signoff: `signed off`")
+	require.Contains(t, signoff, "Codex second-consumer review: `signed off`")
+	require.Contains(t, signoff, "OpenAPI change: not required")
+
+	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
+	require.Contains(t, contract, "controller/agentplatform/oauth_test.go")
+	require.Contains(t, contract, "service/agentplatform/oauth_authorize_test.go")
+	require.Contains(t, contract, "service/agentplatform/oauth_token_test.go")
+	require.Contains(t, contract, "extensions.cherry_studio")
+	require.Contains(t, contract, "extensions.codex")
+	require.Contains(t, contract, "no parallel core protocol")
+	require.Contains(t, contract, "Cherry Studio overall first-consumer signoff remains `blocked`")
+	require.Contains(t, contract, "Codex second-consumer review")
+
+	fixtures := FixtureCatalog()
+	require.NotEmpty(t, fixtures)
+	require.True(t, hasPendingSurface(fixtures, "model-discovery"), "signoff blocker requires AP-6.5 pending model-discovery fixtures")
+	require.True(t, hasPendingSurface(fixtures, "error-matrix"), "signoff blocker requires AP-6.6 pending error-matrix fixtures")
+}
+
+func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
+	signoffBytes, err := os.ReadFile("../../../docs/agent-platform-consumer-signoff.md")
+	require.NoError(t, err)
+	signoff := string(signoffBytes)
+
+	requiredRows := []struct {
+		domain   string
+		status   string
+		evidence []string
+	}{
+		{
+			domain: "OAuth authorize/token/revoke/callback/allowlist",
+			status: "ready for signoff",
+			evidence: []string{
+				"oauth_authorize_success",
+				"oauth_token_success",
+				"oauth_revoke_success",
+				"oauth_expired_token",
+				"oauth_revoked_grant_token",
+				"oauth_missing_scope_permission_denied",
+			},
+		},
+		{
+			domain: "Resource discovery/detail/refresh",
+			status: "signed off",
+			evidence: []string{
+				"discovery_empty",
+				"discovery_success_multi_resource",
+				"detail_visible_callable",
+				"detail_resource_revoked",
+				"detail_resource_offline",
+				"refresh_fresh",
+				"refresh_stale",
+				"refresh_revoked",
+				"refresh_offline",
+			},
+		},
+		{
+			domain: "Skill invoke",
+			status: "signed off",
+			evidence: []string{
+				"skill_invoke_sync_success",
+				"skill_invoke_contract_invalid",
+				"skill_invoke_timeout",
+				"skill_invoke_upstream_provider_failure",
+			},
+		},
+		{
+			domain: "Knowledge query",
+			status: "signed off",
+			evidence: []string{
+				"knowledge_query_retrieval_success_items_citations",
+				"knowledge_query_provider_offline",
+				"knowledge_query_upstream_failure",
+			},
+		},
+		{
+			domain: "Enterprise model discovery",
+			status: "blocked",
+			evidence: []string{
+				"model_discovery_default_model",
+				"model_discovery_default_disabled",
+				"model_discovery_model_unavailable",
+				"model_discovery_account_tenant_mismatch",
+			},
+		},
+		{
+			domain:   "Error matrix and client state matrix",
+			status:   "blocked",
+			evidence: []string{"error_client_state_matrix"},
+		},
+	}
+
+	byName := fixturesByName(FixtureCatalog())
+	for _, row := range requiredRows {
+		require.Contains(t, signoff, row.domain)
+		require.Contains(t, signoff, "| "+row.domain+" | "+row.status+" |")
+		for _, fixtureName := range row.evidence {
+			require.Contains(t, byName, fixtureName)
+		}
+	}
+}
+
+func TestConsumerSignoffExtensionGovernanceMatchesFixtures(t *testing.T) {
+	signoffBytes, err := os.ReadFile("../../../docs/agent-platform-consumer-signoff.md")
+	require.NoError(t, err)
+	signoff := string(signoffBytes)
+
+	require.Contains(t, signoff, "Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio`")
+	require.Contains(t, signoff, "`extensions.codex`")
+
+	fixtures := FixtureCatalog()
+	require.True(t, fixtureHasExtensionNamespace(t, fixtures, "cherry_studio"), "Cherry Studio signoff requires a namespaced extension fixture")
+	require.False(t, fixtureHasExtensionNamespace(t, fixtures, "codex"), "Codex review reserves extensions.codex but must not add Codex-specific fixture fields before needed")
+
+	for _, fixture := range fixtures {
+		if fixture.PendingReason != "" || fixture.Payload == nil {
+			continue
+		}
+
+		bytes, err := common.Marshal(fixture.Payload)
+		require.NoError(t, err, fixture.Name)
+
+		var fields map[string]any
+		require.NoError(t, common.Unmarshal(bytes, &fields), fixture.Name)
+		extensions, ok := fields["extensions"].(map[string]any)
+		if !ok {
+			continue
+		}
+		for namespace := range extensions {
+			require.Contains(t, []string{"cherry_studio", "codex"}, namespace, "fixture %s uses an ungoverned extension namespace", fixture.Name)
+		}
+	}
+}
+
 func assertFixtureHasNoSensitiveMaterial(t *testing.T, fixture Fixture) {
 	t.Helper()
 
@@ -243,6 +408,99 @@ func assertFixtureHasNoSensitiveMaterial(t *testing.T, fixture Fixture) {
 	} {
 		require.NotContains(t, text, forbidden, fixture.Name)
 	}
+}
+
+func assertAllowedSignoffStatuses(t *testing.T, document string) {
+	t.Helper()
+
+	allowed := map[string]struct{}{
+		"draft":             {},
+		"ready for signoff": {},
+		"signed off":        {},
+		"blocked":           {},
+	}
+	for _, line := range strings.Split(document, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Status: ") {
+			status := strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "Status: ")), "`")
+			require.Contains(t, allowed, status, "unexpected signoff status %q", status)
+			continue
+		}
+		if !strings.HasPrefix(line, "|") || !strings.Contains(line, "|") {
+			continue
+		}
+		cells := markdownTableCells(line)
+		if len(cells) < 3 || strings.EqualFold(cells[0], "domain") || strings.EqualFold(cells[0], "consumer / domain") || cells[1] == "---" {
+			continue
+		}
+		status := strings.Trim(cells[1], "`")
+		if _, ok := allowed[status]; ok {
+			continue
+		}
+		require.Contains(t, allowed, status, "unexpected signoff status %q", status)
+	}
+}
+
+func markdownTableCells(line string) []string {
+	parts := strings.Split(strings.Trim(line, "|"), "|")
+	cells := make([]string, 0, len(parts))
+	for _, part := range parts {
+		cells = append(cells, strings.TrimSpace(part))
+	}
+	return cells
+}
+
+func markdownSection(document string, heading string) string {
+	start := strings.Index(document, heading)
+	if start == -1 {
+		return document
+	}
+	rest := document[start+len(heading):]
+	if end := strings.Index(rest, "\n## "); end != -1 {
+		return document[start : start+len(heading)+end]
+	}
+	return document[start:]
+}
+
+func fixturesByName(fixtures []Fixture) map[string]Fixture {
+	byName := map[string]Fixture{}
+	for _, fixture := range fixtures {
+		byName[fixture.Name] = fixture
+	}
+	return byName
+}
+
+func fixtureHasExtensionNamespace(t *testing.T, fixtures []Fixture, namespace string) bool {
+	t.Helper()
+
+	for _, fixture := range fixtures {
+		if fixture.PendingReason != "" || fixture.Payload == nil {
+			continue
+		}
+
+		bytes, err := common.Marshal(fixture.Payload)
+		require.NoError(t, err, fixture.Name)
+
+		var fields map[string]any
+		require.NoError(t, common.Unmarshal(bytes, &fields), fixture.Name)
+		extensions, ok := fields["extensions"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := extensions[namespace]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPendingSurface(fixtures []Fixture, surface string) bool {
+	for _, fixture := range fixtures {
+		if fixture.Surface == surface && fixture.PendingReason != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func assertJSONFields(t *testing.T, fixtureName string, fields map[string]any, requiredFields ...string) {

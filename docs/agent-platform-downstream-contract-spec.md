@@ -710,16 +710,35 @@ Safety constraints:
 
 ### 11.8 Consumer Signoff
 
-Status: pending
+Status: blocked
 
 Owner story: `ap-6-8-complete-cherry-studio-first-and-codex-second-signoff`
 
-Must record:
+Signoff artifact:
 
-- Cherry Studio first-consumer signoff result
-- Codex second-consumer review result
-- any extension namespaces used
-- no parallel core protocol created
+- `docs/agent-platform-consumer-signoff.md`
+
+Current coverage matrix:
+
+| Consumer / domain | Status | Evidence | Notes |
+| --- | --- | --- | --- |
+| Cherry Studio OAuth authorize/token/revoke/callback/allowlist | ready for signoff | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | Current wire contract is JSON authorize plus token/revoke APIs. Final browser redirect UX is productization over the same OAuth contract, not a separate core protocol. |
+| Cherry Studio resource discovery/detail/refresh | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers TTL, freshness, ETag, revoked/offline/stale convergence, visibility/callable state, diagnostics, and contract compatibility. |
+| Cherry Studio Skill invoke and Knowledge query | signed off | `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers success, timeout, upstream failure, contract invalid, provider offline, standardized items/citations, and provider-native field non-leakage. |
+| Cherry Studio enterprise model discovery | blocked | `tests/agentplatform/conformance/fixtures.go` pending AP-6.5 fixtures | AP-6.5 is not frozen; this must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`. |
+| Cherry Studio error/client state matrix | blocked | `tests/agentplatform/conformance/fixtures.go` pending AP-6.6 fixture | AP-6.6 is not frozen; pending fixture cannot be treated as completed signoff. |
+| Codex second-consumer review | signed off | `docs/agent-platform-consumer-signoff.md` | Codex can reuse `client`, `contract_version`, `capabilities`, open capability resources, error envelope, OpenAPI, and fixture/conformance assets. |
+
+Extension namespaces:
+
+- `extensions.cherry_studio`
+- `extensions.codex`
+
+Conclusion:
+
+- Cherry Studio overall first-consumer signoff remains `blocked` until AP-6.5 and AP-6.6 are frozen.
+- Codex second-consumer review does not require a parallel resource model, parallel core protocol trunk, or independent open capability endpoint; no parallel core protocol is required.
+- No `docs/openapi/api.json` update is required for this story because it adds only signoff documentation and conformance drift checks, not a new public API or schema.
 
 ## 12. 当前 readiness verdict
 

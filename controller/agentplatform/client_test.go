@@ -87,17 +87,25 @@ func TestClientAPIWorkflow(t *testing.T) {
 	router, _ := setupClientControllerTest(t)
 
 	create := performClientRequest(t, router, http.MethodPost, "/api/agent-platform/clients", dtoagentplatform.CreateClientRequest{
-		Slug:            "cherry-studio",
-		DisplayName:     "Cherry Studio",
-		ClientType:      "desktop",
-		ContractVersion: "2026-06",
-		Capabilities:    json.RawMessage(`{"discovery":true}`),
-		AllowedScopes:   json.RawMessage(`["skills.read"]`),
+		Slug:                   "cherry-studio",
+		DisplayName:            "Cherry Studio",
+		ClientType:             "desktop",
+		ContractVersion:        "2026-06",
+		Capabilities:           json.RawMessage(`{"discovery":true}`),
+		AllowedGrantTypes:      json.RawMessage(`["authorization_code","refresh_token"]`),
+		RedirectURIs:           json.RawMessage(`["cherrystudio://oauth/callback"]`),
+		AllowedScopes:          json.RawMessage(`["skills.read"]`),
+		Extensions:             json.RawMessage(`{"cherry_studio.fixture":true}`),
+		AllowClientCredentials: true,
 	})
 	createResp := decodeClientAPIResponse(t, create)
 	require.True(t, createResp.Success, createResp.Message)
 	client := decodeClientData[dtoagentplatform.ClientItem](t, createResp)
 	require.Equal(t, "active", client.Status)
+	require.True(t, client.AllowClientCredentials)
+	require.JSONEq(t, `["authorization_code","refresh_token"]`, string(client.AllowedGrantTypes))
+	require.JSONEq(t, `["cherrystudio://oauth/callback"]`, string(client.RedirectURIs))
+	require.JSONEq(t, `["skills.read"]`, string(client.AllowedScopes))
 
 	get := performClientRequest(t, router, http.MethodGet, "/api/agent-platform/clients/"+client.ClientId, nil)
 	getResp := decodeClientAPIResponse(t, get)
@@ -118,6 +126,78 @@ func TestClientAPIWorkflow(t *testing.T) {
 	require.Equal(t, 1, listData.Total)
 }
 
+func TestClientAPIOnboardingRegistrationRoundTrip(t *testing.T) {
+	router, _ := setupClientControllerTest(t)
+
+	create := performClientRequest(t, router, http.MethodPost, "/api/agent-platform/clients", map[string]any{
+		"slug":                     "Codex",
+		"display_name":             "Codex CLI",
+		"client_type":              "CLI",
+		"allowed_grant_types":      []string{"authorization_code", "refresh_token"},
+		"redirect_uris":            []string{"http://127.0.0.1:1455/oauth/callback"},
+		"allowed_scopes":           []string{"ap.resources.read", "ap.skills.invoke"},
+		"contract_version":         "2026-06",
+		"capabilities":             map[string]any{"discovery": true, "skills": true},
+		"extensions":               map[string]any{"codex.owner": "platform-ops"},
+		"allow_client_credentials": false,
+	})
+	createResp := decodeClientAPIResponse(t, create)
+	require.True(t, createResp.Success, createResp.Message)
+	client := decodeClientData[dtoagentplatform.ClientItem](t, createResp)
+	require.NotEmpty(t, client.ClientId)
+	require.Equal(t, "codex", client.Slug)
+	require.Equal(t, "cli", client.ClientType)
+	require.Equal(t, "active", client.Status)
+	require.False(t, client.AllowClientCredentials)
+	require.JSONEq(t, `["authorization_code","refresh_token"]`, string(client.AllowedGrantTypes))
+	require.JSONEq(t, `["ap.resources.read","ap.skills.invoke"]`, string(client.AllowedScopes))
+	require.JSONEq(t, `{"codex.owner":"platform-ops"}`, string(client.Extensions))
+
+	list := performClientRequest(t, router, http.MethodGet, "/api/agent-platform/clients?contract_version=2026-06", nil)
+	listResp := decodeClientAPIResponse(t, list)
+	require.True(t, listResp.Success, listResp.Message)
+	listData := decodeClientData[dtoagentplatform.ClientListResponse](t, listResp)
+	require.Equal(t, 1, listData.Total)
+	require.Equal(t, client.ClientId, listData.Items[0].ClientId)
+	require.Equal(t, "2026-06", listData.Items[0].ContractVersion)
+
+	allow := true
+	update := performClientRequest(t, router, http.MethodPut, "/api/agent-platform/clients/"+client.ClientId, dtoagentplatform.UpdateClientRequest{
+		DisplayName:            "Codex CLI managed",
+		Status:                 "disabled",
+		AllowedScopes:          json.RawMessage(`["ap.resources.read"]`),
+		AllowClientCredentials: &allow,
+	})
+	updateResp := decodeClientAPIResponse(t, update)
+	require.True(t, updateResp.Success, updateResp.Message)
+	updated := decodeClientData[dtoagentplatform.ClientItem](t, updateResp)
+	require.Equal(t, "Codex CLI managed", updated.DisplayName)
+	require.Equal(t, "disabled", updated.Status)
+	require.True(t, updated.AllowClientCredentials)
+	require.JSONEq(t, `["ap.resources.read"]`, string(updated.AllowedScopes))
+}
+
+func TestClientAPIExposesInvalidIntegrationForMinimalOnboarding(t *testing.T) {
+	router, _ := setupClientControllerTest(t)
+
+	create := performClientRequest(t, router, http.MethodPost, "/api/agent-platform/clients", dtoagentplatform.CreateClientRequest{
+		Slug:        "draft-client",
+		DisplayName: "Draft Client",
+		ClientType:  "desktop",
+	})
+	createResp := decodeClientAPIResponse(t, create)
+	require.True(t, createResp.Success, createResp.Message)
+	client := decodeClientData[dtoagentplatform.ClientItem](t, createResp)
+	require.Equal(t, "invalid_integration", client.Status)
+
+	list := performClientRequest(t, router, http.MethodGet, "/api/agent-platform/clients?status=invalid_integration", nil)
+	listResp := decodeClientAPIResponse(t, list)
+	require.True(t, listResp.Success, listResp.Message)
+	listData := decodeClientData[dtoagentplatform.ClientListResponse](t, listResp)
+	require.Equal(t, 1, listData.Total)
+	require.Equal(t, client.ClientId, listData.Items[0].ClientId)
+}
+
 func TestClientAPIRejectsInvalidExtensions(t *testing.T) {
 	router, _ := setupClientControllerTest(t)
 
@@ -132,4 +212,72 @@ func TestClientAPIRejectsInvalidExtensions(t *testing.T) {
 	response := decodeClientAPIResponse(t, recorder)
 	require.False(t, response.Success)
 	require.Equal(t, "invalid request params", response.Message)
+}
+
+func TestClientAPIRejectsInvalidRegistrationSchema(t *testing.T) {
+	router, _ := setupClientControllerTest(t)
+
+	cases := []struct {
+		name string
+		body any
+	}{
+		{
+			name: "missing required slug",
+			body: map[string]any{
+				"display_name": "Missing Slug",
+				"client_type":  "desktop",
+			},
+		},
+		{
+			name: "unknown status",
+			body: dtoagentplatform.CreateClientRequest{
+				Slug:        "bad-status",
+				DisplayName: "Bad Status",
+				ClientType:  "desktop",
+				Status:      "pending",
+			},
+		},
+		{
+			name: "grant types must be array",
+			body: dtoagentplatform.CreateClientRequest{
+				Slug:              "bad-grants",
+				DisplayName:       "Bad Grants",
+				ClientType:        "desktop",
+				AllowedGrantTypes: json.RawMessage(`{"grant":"authorization_code"}`),
+			},
+		},
+		{
+			name: "redirect uris cannot contain blank values",
+			body: dtoagentplatform.CreateClientRequest{
+				Slug:         "bad-redirects",
+				DisplayName:  "Bad Redirects",
+				ClientType:   "desktop",
+				RedirectURIs: json.RawMessage(`[" "]`),
+			},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := performClientRequest(t, router, http.MethodPost, "/api/agent-platform/clients", testCase.body)
+			response := decodeClientAPIResponse(t, recorder)
+			require.False(t, response.Success)
+			require.Equal(t, "invalid request params", response.Message)
+		})
+	}
+}
+
+func TestClientAPIReturnsClearNotFoundForUnknownClient(t *testing.T) {
+	router, _ := setupClientControllerTest(t)
+
+	get := performClientRequest(t, router, http.MethodGet, "/api/agent-platform/clients/cli_missing", nil)
+	getResp := decodeClientAPIResponse(t, get)
+	require.False(t, getResp.Success)
+	require.Equal(t, "client not found", getResp.Message)
+
+	update := performClientRequest(t, router, http.MethodPut, "/api/agent-platform/clients/cli_missing", dtoagentplatform.UpdateClientRequest{
+		Status: "disabled",
+	})
+	updateResp := decodeClientAPIResponse(t, update)
+	require.False(t, updateResp.Success)
+	require.Equal(t, "client not found", updateResp.Message)
 }

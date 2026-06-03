@@ -1,5 +1,5 @@
 # generated: 2026-06-03 15:49 +0800
-# last_updated: 2026-06-03 17:59 +0800
+# last_updated: 2026-06-03 18:31 +0800
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-03 15:49 +0800
-last_updated: 2026-06-03 17:59 +0800
+last_updated: 2026-06-03 18:31 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
@@ -144,7 +144,7 @@ development_status:
 
   agent-platform-epic-6: in-progress
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
-  ap-6-2-freeze-client-registration-schema-and-onboarding-flow: backlog
+  ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
   ap-6-3-freeze-discovery-detail-and-refresh-public-fields: backlog
   ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: backlog
   ap-6-5-freeze-enterprise-model-discovery-contract: backlog

@@ -128,7 +128,7 @@ AP-6 公共契约以三件套为准：
 
 ### 4.2 客户端注册
 
-状态：**后端已实现，UI 未完全产品化**
+状态：**AP-6.2 schema frozen，后端已实现，UI 未完全产品化**
 
 当前已实现接口：
 
@@ -137,21 +137,22 @@ AP-6 公共契约以三件套为准：
 - `GET /api/agent-platform/clients/:id`
 - `PUT /api/agent-platform/clients/:id`
 
-当前支持字段：
+当前冻结字段：
 
-| 字段 | 状态 | 说明 |
-| --- | --- | --- |
-| `slug` | 已支持 | 管理面可读标识 |
-| `display_name` | 已支持 | 展示名称 |
-| `client_type` | 已支持 | 客户端类型 |
-| `status` | 已支持 | 当前状态 |
-| `allowed_grant_types` | 已支持 | grant types JSON |
-| `redirect_uris` | 已支持 | redirect URI 列表 |
-| `allowed_scopes` | 已支持 | scope 列表 |
-| `contract_version` | 已支持 | 一等字段 |
-| `capabilities` | 已支持 | capability declarations |
-| `extensions` | 已支持 | namespaced 扩展 |
-| `allow_client_credentials` | 已支持 | 配置位存在 |
+| 字段 | 等级 | 语义 | 默认值 / 派生 | 校验要求 |
+| --- | --- | --- | --- | --- |
+| `client_id` | MUST response | 平台生成的稳定 opaque id，是下游 OAuth 与 open capability 授权时使用的 client id。 | create 时由服务端生成；客户端不得提交或推导。 | 非空；稳定；不得把 `slug`、名称或数据库自增 id 当成公开契约。 |
+| `slug` | MUST request/response | 管理侧可读标识，用于运维检索与人工沟通。 | create 必填；runtime 归一为小写 trim 后保存。 | 非空；全局唯一；不得作为 OAuth `client_id` 使用。 |
+| `display_name` | MUST request/response | 管理端展示名称。 | create 必填。 | 非空。 |
+| `client_type` | MUST request/response | 客户端类型，例如 `desktop`、`cli`、`server`。 | create 必填；runtime 归一为小写 trim 后保存。 | 非空；用于治理解释，不创建平行 client object model。 |
+| `status` | SHOULD request, MUST response | client 集成状态。 | create 未传时：若 `contract_version` 与 `capabilities` 非空则为 `active`，否则为 `invalid_integration`。 | 只允许 `active`、`disabled`、`invalid_integration`；其他值为 invalid input。 |
+| `allowed_grant_types` | SHOULD | OAuth grant allowlist。 | 空值表示未声明；authorize/token 会按 OAuth 子契约拒绝不满足的 grant。 | 必须是字符串数组；建议包含 `authorization_code`，按需包含 `refresh_token`、`client_credentials`。 |
+| `redirect_uris` | SHOULD for OAuth | OAuth callback allowlist。 | 空值表示未配置 callback。 | 必须是字符串数组；authorize 时 exact match，无 wildcard、host suffix 或 scheme fallback。 |
+| `allowed_scopes` | SHOULD | 下游可请求 scope allowlist。 | 空值表示没有授权 scope。 | 必须是字符串数组；authorize/token 请求的每个 scope 都必须存在。 |
+| `contract_version` | SHOULD request, MUST response | 客户端声明遵循的公共契约版本。 | 空值会使默认状态进入 `invalid_integration`。 | AP-6 当前签核版本为 `2026-06`；不得由 extension 改写。 |
+| `capabilities` | SHOULD | 客户端能力声明 JSON，例如 discovery、skill invoke、knowledge query 需求。 | 空值会使默认状态进入 `invalid_integration`。 | 必须是合法 JSON；当前 runtime 不冻结更细子 schema，consumer signoff 按存在性治理。 |
+| `extensions` | EXTENSION | 下游私有治理字段。 | 默认为空。 | 必须是合法 JSON object；顶层 key 必须 namespaced 且包含 `.`，例如 `cherry_studio.owner`、`codex.profile`；不得重写核心字段语义。 |
+| `allow_client_credentials` | SHOULD | 是否允许该 client 使用 client credentials。 | create 默认 `false`；update 使用显式布尔指针以保留 `false`。 | 只有为 `true` 且 `allowed_grant_types` 包含 `client_credentials` 时，token endpoint 才可执行该 grant。 |
 
 当前 identity 模型：
 
@@ -159,12 +160,13 @@ AP-6 公共契约以三件套为准：
 - 支持 namespaced extensions
 - `contract_version` 是正式治理字段
 - `capabilities` 是正式治理字段
+- Codex second-consumer 复用同一套 client registration schema，不新增平行 client object model
 
 当前缺口：
 
 - 当前 Agent Platform 页没有真正的 `Clients` 工作区
 - 运维人员还不能只靠 web/default 完成完整 onboarding
-- 还没有正式的下游示例 payload 文档
+- 当前 AP-6.2 最小闭环由 API / fixture 支撑；完整自助 Clients 工作区拆入后续产品化 epic
 
 判断：
 
@@ -387,7 +389,9 @@ Base path：`/api/open-capabilities`
   "capabilities": {
     "discovery": true
   },
-  "extensions": {},
+  "extensions": {
+    "cherry_studio.owner": "ops"
+  },
   "allow_client_credentials": false
 }
 ```
@@ -395,8 +399,30 @@ Base path：`/api/open-capabilities`
 说明：
 
 - 这是后端当前可接受的 control-plane registration 形态
-- `capabilities`、`extensions` 为 JSON 结构
+- `capabilities`、`extensions` 为 JSON 结构，且 `extensions` 顶层 key 必须 namespaced
 - 当前还没有完整的 UI 管理界面承载它
+
+最小 onboarding checklist：
+
+| 步骤 | 等级 | 当前支撑面 | 完成判定 |
+| --- | --- | --- | --- |
+| registration | MUST | API / OpenAPI / fixture | 已创建 client，`client_id` 稳定返回，`slug`、`display_name`、`client_type` 可读。 |
+| redirect/callback | MUST for OAuth | API / OAuth runtime tests | `redirect_uris` 包含 exact callback，authorize mismatch 明确失败。 |
+| allowed scopes | MUST for scoped access | API / OAuth runtime tests | `allowed_scopes` 覆盖下游请求 scope。 |
+| contract version | MUST for active integration | API / conformance | `contract_version` 非空并与当前签核版本一致。 |
+| capabilities | MUST for active integration | API / conformance | `capabilities` 非空且可由运营解释。 |
+| consent / OAuth prerequisites | SHOULD | OAuth runtime / 后续 UX | 当前 JSON authorize 能记录 consent；完整用户可见 consent 页面属于后续产品化。 |
+| mock fixture | SHOULD | `tests/agentplatform/conformance/` | 使用 synthetic client/resource/token，不含真实凭据或企业数据。 |
+
+状态语义：
+
+| 状态 | 语义 | 进入条件 | 下游解释 |
+| --- | --- | --- | --- |
+| `active` | 集成配置满足当前最小契约，可参与 OAuth / open capability 流程。 | create 时 `contract_version` 与 `capabilities` 非空且未显式传其他状态。 | 可以继续执行授权、发现、详情或调用流程。 |
+| `disabled` | 管理员显式停用 client。 | API update 设置 `status=disabled`。 | 不应重试；需管理员重新启用。 |
+| `invalid_integration` | 注册存在但配置不完整或契约不满足。 | 缺 `contract_version`、缺 `capabilities`，或 OAuth 时缺 grant / callback / scope 等配置。 | 非 generic failure；运营应修复 registration、redirect/callback、scope、contract 或 capability 字段。 |
+
+AP-6.2 不要求完整 Clients 产品化工作区。当前必须在 API / fixture / signoff 文档中完成最小闭环，不得把现有 Agent Platform shell 描述成完整自助 onboarding UI。
 
 ### 6.2 OAuth Authorize Query Contract
 
@@ -696,18 +722,27 @@ Downstream examples:
 
 ### 11.2 Client Registration Contract
 
-Status: pending freeze
+Status: frozen
 
 Owner story: `ap-6-2-freeze-client-registration-schema-and-onboarding-flow`
 
-Must freeze:
+Source of truth:
 
-- client fields
-- capabilities schema
-- extensions schema
-- invalid integration reasons
-- onboarding checklist
-- API-first vs UI-required steps
+- DTO: `dto/agentplatform/client.go`
+- Runtime: `controller/agentplatform/client.go`; `service/agentplatform/client.go`
+- OpenAPI: `docs/openapi/api.json`
+- Runtime tests: `controller/agentplatform/client_test.go`; `service/agentplatform/client_test.go`
+- Consumer signoff: `docs/agent-platform-consumer-signoff.md`
+
+AP-6.2 client registration schema freeze covers:
+
+- field levels and semantics for `client_id`, `slug`, `display_name`, `client_type`, `status`, `allowed_grant_types`, `redirect_uris`, `allowed_scopes`, `contract_version`, `capabilities`, `extensions`, and `allow_client_credentials`
+- `client_id` as stable opaque id and `slug` as management-readable identifier
+- namespaced `extensions` keys that cannot override core contract semantics
+- `invalid_integration`, `active`, and `disabled` status semantics
+- onboarding checklist split between current API / fixture support and future UI productization
+
+Invalid configurations that must resolve to explicit onboarding state instead of generic failure include missing `contract_version`, missing `capabilities`, disabled client, missing `authorization_code` grant support, redirect mismatch, scope mismatch, and non-namespaced extensions. Runtime returns invalid input for malformed schema and exposes persisted incomplete client records as `invalid_integration`.
 
 ### 11.3 Discovery / Detail / Refresh Contract
 

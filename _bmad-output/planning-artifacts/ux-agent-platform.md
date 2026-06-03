@@ -76,7 +76,8 @@ revision_notes:
   - capability declarations
   - namespaced extensions
   - allow client credentials 开关
-- 若完整 Clients 工作区尚未实现，UI 必须清楚标记哪些 onboarding 步骤仍由 API / fixture 完成，避免运营人员误以为可完全自助接入。
+- AP-6.2 当前冻结的是 registration schema 与 API / fixture 支撑的最小 onboarding 闭环，不代表完整 Clients 工作区已完成。
+- 若完整 Clients 工作区尚未实现，UI 必须清楚标记 registration、redirect/callback、allowed scopes、contract version、capabilities、consent/OAuth prerequisites、mock fixture 中哪些步骤仍由 API / fixture 完成，避免运营人员误以为可完全自助接入。
 - `invalid integration` 必须给出字段级原因，而不是只显示通用错误。
 
 ### 3.7 OAuth / consent 可见性
@@ -94,6 +95,7 @@ revision_notes:
 
 - AP-6 至少需要一个契约签核视图或等价页面区块，用于展示：
   - 当前 contract version
+  - client registration / onboarding schema 是否冻结
   - OAuth / token / revoke 是否冻结
   - discovery / detail / refresh 字段集是否冻结
   - Skill invoke / Knowledge query spec 是否冻结
@@ -141,6 +143,7 @@ revision_notes:
 
 - 展示客户端接入状态、授权模式、能力声明完整性。
 - 展示 onboarding checklist：registration、redirect/callback、scopes、contract version、capabilities、consent、mock fixture。
+- 若 AP-6.2 只由 API / fixture 支撑，则必须把该边界显示为后续 UI productization 缺口。
 - 展示 AP-6 signoff 状态，至少覆盖 Cherry Studio first consumer 与 Codex second-consumer review。
 
 ### Skills / Knowledge / Agents

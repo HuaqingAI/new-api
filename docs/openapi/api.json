@@ -8056,6 +8056,254 @@
           }
         }
       }
+    },
+    "/api/agent-platform/clients": {
+      "get": {
+        "summary": "查询 Agent Platform Clients",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "disabled",
+                "invalid_integration"
+              ]
+            }
+          },
+          {
+            "name": "contract_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientListResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "创建 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformClientCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/agent-platform/clients/{id}": {
+      "get": {
+        "summary": "查询 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformClientUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -9867,6 +10115,287 @@
         },
         "required": [
           "success"
+        ]
+      },
+      "AgentPlatformClientCreateRequest": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "cherry-studio"
+          },
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "client_type": {
+            "type": "string",
+            "example": "desktop"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "slug",
+          "display_name",
+          "client_type"
+        ]
+      },
+      "AgentPlatformClientUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentPlatformClientItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "client_id": {
+            "type": "string",
+            "example": "cli_syntheticclientid000000000000000"
+          },
+          "slug": {
+            "type": "string",
+            "example": "cherry-studio"
+          },
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "client_type": {
+            "type": "string",
+            "example": "desktop"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "slug",
+          "display_name",
+          "client_type",
+          "status",
+          "contract_version",
+          "allow_client_credentials",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "AgentPlatformClientListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentPlatformClientItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       }
     },

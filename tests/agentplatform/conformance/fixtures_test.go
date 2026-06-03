@@ -203,6 +203,8 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	require.NoError(t, common.Unmarshal(bytes, &spec))
 
 	expectedPaths := []string{
+		"/api/agent-platform/clients",
+		"/api/agent-platform/clients/{id}",
 		"/api/agent-platform/oauth/authorize",
 		"/api/agent-platform/oauth/token",
 		"/api/agent-platform/oauth/revoke",
@@ -223,11 +225,23 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 		}
 	}
 
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/clients", "id", "client_id", "slug", "display_name", "client_type", "status", "contract_version", "allow_client_credentials", "created_at", "updated_at")
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/agent-platform/clients/{id}", "id", "client_id", "slug", "display_name", "client_type", "status", "contract_version", "allow_client_credentials", "created_at", "updated_at")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/agent-platform/oauth/authorize", "client_id", "contract_version", "scope", "authorization_code", "redirect_uri", "consent_recorded")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/oauth/token", "access_token", "token_type", "expires_in", "scope", "contract_version")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/agent-platform/oauth/revoke", "revoked")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}", "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "status", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag", "contract_compatible", "diagnostics")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh", "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
+	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest")
+	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientUpdateRequest")
+	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientItem")
+	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientListResponse")
+	assertOpenAPIRequiredSchemaFields(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest", "slug", "display_name", "client_type")
+	assertOpenAPIOptionalSchemaFields(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest", "status", "allowed_grant_types", "redirect_uris", "allowed_scopes", "contract_version", "capabilities", "extensions", "allow_client_credentials")
+	assertOpenAPIRequiredSchemaFields(t, spec.Components.Schemas, "AgentPlatformClientItem", "id", "client_id", "slug", "display_name", "client_type", "status", "contract_version", "allow_client_credentials", "created_at", "updated_at")
+	assertClientRegistrationOpenAPISchema(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest")
+	assertClientRegistrationOpenAPISchema(t, spec.Components.Schemas, "AgentPlatformClientUpdateRequest")
+	assertClientRegistrationOpenAPISchema(t, spec.Components.Schemas, "AgentPlatformClientItem")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthAuthorizeResponse")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthTokenResponse")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthRevokeResponse")
@@ -248,6 +262,7 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 
 	for _, required := range []string{
 		"Status: blocked",
+		"Client registration / onboarding",
 		"contract_version: 2026-06",
 		"docs/openapi/api.json",
 		"tests/agentplatform/conformance/",
@@ -257,6 +272,7 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 		"service/agentplatform/oauth_token_test.go",
 		"extensions.cherry_studio",
 		"extensions.codex",
+		"AP-6.2 client registration schema freeze",
 		"AP-6.5",
 		"AP-6.6",
 		"no parallel core protocol",
@@ -272,6 +288,9 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	require.Contains(t, signoff, "OpenAPI change: OAuth schema freeze")
 
 	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
+	require.Contains(t, contract, "Status: frozen")
+	require.Contains(t, contract, "API / fixture 支撑")
+	require.Contains(t, contract, "`invalid_integration`")
 	require.Contains(t, contract, "controller/agentplatform/oauth_test.go")
 	require.Contains(t, contract, "service/agentplatform/oauth_authorize_test.go")
 	require.Contains(t, contract, "service/agentplatform/oauth_token_test.go")
@@ -408,6 +427,75 @@ func assertOpenAPIOptionalSchemaFields(t *testing.T, schemas map[string]any, sch
 	for _, field := range optionalFields {
 		require.NotContains(t, requiredSet, field, "OpenAPI schema %s field %s must remain optional", schemaName, field)
 	}
+}
+
+func assertClientRegistrationOpenAPISchema(t *testing.T, schemas map[string]any, schemaName string) {
+	t.Helper()
+
+	schema, ok := schemas[schemaName].(map[string]any)
+	require.True(t, ok, "OpenAPI schema %s must exist", schemaName)
+	properties, ok := schema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI schema %s must define properties", schemaName)
+
+	status, ok := properties["status"].(map[string]any)
+	require.True(t, ok, "OpenAPI schema %s must define status", schemaName)
+	assertOpenAPIEnum(t, status, "active", "disabled", "invalid_integration")
+
+	for _, field := range []string{"allowed_grant_types", "redirect_uris", "allowed_scopes"} {
+		property, ok := properties[field].(map[string]any)
+		require.True(t, ok, "OpenAPI schema %s must define %s", schemaName, field)
+		require.Equal(t, "array", property["type"], "OpenAPI schema %s field %s must remain an array", schemaName, field)
+		items, ok := property["items"].(map[string]any)
+		require.True(t, ok, "OpenAPI schema %s field %s must define array items", schemaName, field)
+		require.Equal(t, "string", items["type"], "OpenAPI schema %s field %s items must remain strings", schemaName, field)
+	}
+
+	grantTypes := properties["allowed_grant_types"].(map[string]any)
+	assertOpenAPIEnum(t, grantTypes["items"].(map[string]any), "authorization_code", "refresh_token", "client_credentials")
+	assertOpenAPIExampleContains(t, grantTypes, "authorization_code", "refresh_token")
+	assertOpenAPIExampleContains(t, properties["redirect_uris"].(map[string]any), "cherrystudio://oauth/callback")
+	assertOpenAPIExampleContains(t, properties["allowed_scopes"].(map[string]any), "ap.resources.read")
+	assertOpenAPIPropertyExample(t, properties, "contract_version", ContractVersion)
+}
+
+func assertOpenAPIEnum(t *testing.T, schema map[string]any, expectedValues ...string) {
+	t.Helper()
+
+	values, ok := schema["enum"].([]any)
+	require.True(t, ok, "OpenAPI schema must define enum")
+	valueSet := map[string]struct{}{}
+	for _, value := range values {
+		text, ok := value.(string)
+		require.True(t, ok, "OpenAPI enum value must be a string")
+		valueSet[text] = struct{}{}
+	}
+	for _, expected := range expectedValues {
+		require.Contains(t, valueSet, expected, "OpenAPI enum missing %s", expected)
+	}
+}
+
+func assertOpenAPIExampleContains(t *testing.T, schema map[string]any, expectedValues ...string) {
+	t.Helper()
+
+	example, ok := schema["example"].([]any)
+	require.True(t, ok, "OpenAPI schema must define array example")
+	valueSet := map[string]struct{}{}
+	for _, value := range example {
+		text, ok := value.(string)
+		require.True(t, ok, "OpenAPI example value must be a string")
+		valueSet[text] = struct{}{}
+	}
+	for _, expected := range expectedValues {
+		require.Contains(t, valueSet, expected, "OpenAPI example missing %s", expected)
+	}
+}
+
+func assertOpenAPIPropertyExample(t *testing.T, properties map[string]any, propertyName string, expectedValue string) {
+	t.Helper()
+
+	property, ok := properties[propertyName].(map[string]any)
+	require.True(t, ok, "OpenAPI property %s must exist", propertyName)
+	require.Equal(t, expectedValue, property["example"], "OpenAPI property %s example drifted", propertyName)
 }
 
 func TestConsumerSignoffExtensionGovernanceMatchesFixtures(t *testing.T) {

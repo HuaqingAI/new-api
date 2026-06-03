@@ -1638,6 +1638,7 @@ describe('Enterprise organization department tree workflow', () => {
       '450 quota',
       'Approx. $0.0009',
       'Active',
+      'aria-label="Delegation Quota"',
       'Close old delegation and create a new one',
       'Superseded',
       'Historical delegation',
@@ -1681,6 +1682,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Approx. $0.0006',
       '301',
       'Active',
+      'aria-label="Allocation Quota"',
       'Close old allocation and create a new one',
       'Cancel allocation',
       'Reclaim allocation',
@@ -1782,6 +1784,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Submitted',
       'Fulfilled',
       'Unknown status',
+      'aria-label="Approved Quota"',
       'Approve',
       'Reject',
     ]) {

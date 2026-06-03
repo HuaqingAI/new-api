@@ -245,6 +245,8 @@ GPT-5 Codex
 - 2026-06-03: 执行 `cd web/default && bun run typecheck`，通过。
 - 2026-06-03: 执行 `git diff --check`，通过。
 - 2026-06-03: 尝试 `cd web/default && bun run dev -- --host 127.0.0.1 --port 4177` 做浏览器检查，环境禁止监听本地端口，失败为 `listen EPERM 127.0.0.1:4177`。
+- 2026-06-03: 再次执行 story-automator review workflow，复核 AC、任务、File List、i18n、表单输入和表格 action 区域；自动修复表格 `QuotaAmountInput` a11y prop、无效输入同步和窄列布局风险。
+- 2026-06-03: 对当前未提交 follow-up patch 再次执行非交互 review，确认 diff 仅涉及 `quota-amount-controls.tsx`、`index.tsx`、`enterprise-organization.test.tsx` 的后续稳固修正；复验 `enterprise-organization` / `wallet` 测试、`typecheck` 与 `git diff --check`，未发现新增未修复问题。
 
 ### Completion Notes List
 
@@ -266,10 +268,19 @@ GPT-5 Codex
 4. **MEDIUM - 负向治理额度变化被归零。** `formatEnterpriseQuotaAmount` 复用了非负输入 normalization，`GovernanceActivityCard` 的负向 `quota_delta` 会错误显示为 `0 quota`。已拆分显示 normalization，输入仍保持非负约束。
 5. **MEDIUM - Story File List 与 git reality 不一致。** story 仅记录 story/sprint 文件，未记录实际前端实现、测试和 locale 文件。已补齐 File List。
 6. **MEDIUM - 测试仍断言旧 raw-only 文案。** budget option/summary、企业表格和钱包入口测试未覆盖 raw quota + 金额辅助显示。已扩展 helper、企业组织、钱包入口和 zh locale 断言。
+7. **MEDIUM - 表格 action 区域的额度输入没有实际 aria label。** `QuotaAllocationTable`、`BudgetDelegationTable`、`QuotaRequestTable` 使用了 `aria-label` prop，但 `QuotaAmountInput` 只接收 `ariaLabel`，导致内部 input 缺少可访问名称。已改为 `ariaLabel` 并增加 SSR 断言。
+8. **MEDIUM - 金额视角无效输入可能和实际提交 quota 脱节。** 金额模式下输入非数字或负数时组件只更新可见 draft，不同步 form 字段，用户可能看到无效值但提交旧 quota。已让无效输入同步进入 form，由现有 zod 正整数校验阻止提交。
+9. **LOW - 表格内单位切换控件和按钮在窄列中容易挤压。** active allocation/delegation supersede 与 approve draft 的 action 行原本单行排列，金额辅助文案会增加宽度压力。已改为可换行布局并固定输入控件宽度。
 
 #### Review Outcome
 
 Approve after automatic fixes. No CRITICAL issues remain.
+
+#### Verification Rerun
+
+- 2026-06-03: 针对后续未提交修补再次执行 story-automator review；当前剩余 diff 只包含金额模式无效输入同步、表格 action 区 `ariaLabel` 透传修正和窄列换行稳固。
+- 复核 AC1 / AC2 涉及的预算池创建、allocation、delegation、quota request、审批 draft、预算池摘要、wallet/detail/table/timeline 等显示与输入面，未发现新的 CRITICAL / HIGH / MEDIUM 问题。
+- 复验结果：`cd web/default && bun test src/features/enterprise-organization/enterprise-organization.test.tsx` 54 pass，`cd web/default && bun test src/features/wallet/components/employee-quota-request-card.test.tsx` 11 pass，`cd web/default && bun run typecheck` 通过，`git diff --check` 通过。
 
 ### File List
 
@@ -292,3 +303,5 @@ Approve after automatic fixes. No CRITICAL issues remain.
 ## Change Log
 
 - 2026-06-03: Story 7B.5 implemented and reviewed; added quota/amount input toggle, raw quota + amount display, wallet-entry parity, i18n resources, regression coverage, and sprint-status sync.
+- 2026-06-03: Story 7B.5 senior review rerun; fixed quota amount input a11y prop forwarding, invalid amount draft synchronization, and action-cell wrapping stability.
+- 2026-06-03: Story 7B.5 verification rerun confirmed the follow-up patch is review-clean; story remains `done` with no further action items.

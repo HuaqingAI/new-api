@@ -141,7 +141,9 @@ export function QuotaAmountInput({
     const draftQuota = parseEnterpriseQuotaInput(draftValue, mode)
     if (draftQuota === quotaValue) return
     setDraftValue(
-      mode === 'amount' ? formatAmountInputValue(display.amount) : String(value ?? '')
+      draftQuota == null || mode === 'quota'
+        ? String(value ?? '')
+        : formatAmountInputValue(display.amount)
     )
   }, [display.amount, draftValue, mode, quotaValue, value])
 
@@ -199,7 +201,7 @@ export function QuotaAmountInput({
           setDraftValue(nextValue)
           const nextQuota = parseEnterpriseQuotaInput(nextValue, mode)
           if (nextQuota == null) {
-            if (mode === 'quota') onChange(event.target.value)
+            onChange(event.target.value)
             return
           }
           onChange(String(nextQuota))

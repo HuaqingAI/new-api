@@ -3450,14 +3450,15 @@ export function QuotaAllocationTable({
             </TableCell>
             <TableCell>{formatTimestamp(item.created_at)}</TableCell>
             <TableCell>
-              <div className='flex min-w-[320px] items-center gap-2'>
+              <div className='flex min-w-[320px] flex-wrap items-start gap-2'>
                 {item.status === 'active' ? (
                   <QuotaAmountInput
+                    className='w-[220px] flex-none'
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
                     onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
-                    aria-label={t('Allocation Quota')}
+                    ariaLabel={t('Allocation Quota')}
                   />
                 ) : null}
                 <Button
@@ -3931,8 +3932,9 @@ export function QuotaRequestTable({
               </TableCell>
               <TableCell>
                 <div className='flex min-w-[360px] flex-col gap-2'>
-                  <div className='flex items-center gap-2'>
+                  <div className='flex flex-wrap items-start gap-2'>
                     <QuotaAmountInput
+                      className='w-[220px] flex-none'
                       value={draft.approvedQuota}
                       onChange={(value) =>
                         onDecisionDraftChange(item.id, {
@@ -3940,7 +3942,7 @@ export function QuotaRequestTable({
                         })
                       }
                       disabled={!actionable}
-                      aria-label={t('Approved Quota')}
+                      ariaLabel={t('Approved Quota')}
                     />
                     <Button
                       type='button'
@@ -4061,14 +4063,15 @@ export function BudgetDelegationTable({
               </Badge>
             </TableCell>
             <TableCell>
-              <div className='flex min-w-[260px] items-center gap-2'>
+              <div className='flex min-w-[260px] flex-wrap items-start gap-2'>
                 {item.status === 'active' ? (
                   <QuotaAmountInput
+                    className='w-[220px] flex-none'
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
                     onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
-                    aria-label={t('Delegation Quota')}
+                    ariaLabel={t('Delegation Quota')}
                   />
                 ) : null}
                 <Button

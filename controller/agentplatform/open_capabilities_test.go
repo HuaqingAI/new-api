@@ -389,6 +389,18 @@ func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
 	})
 	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
 	require.True(t, apiResponse.Success)
+
+	var data struct {
+		ResourceID      string         `json:"resource_id"`
+		ResourceVersion string         `json:"resource_version"`
+		ContractVersion string         `json:"contract_version"`
+		Output          map[string]any `json:"output"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, resource.ResourceId, data.ResourceID)
+	require.Equal(t, "1.0.0", data.ResourceVersion)
+	require.Equal(t, "2026-06", data.ContractVersion)
+	require.Equal(t, true, data.Output["ok"])
 }
 
 func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
@@ -422,10 +434,19 @@ func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
 	require.True(t, apiResponse.Success)
 
 	var data struct {
-		Items []map[string]any `json:"items"`
+		ResourceID      string           `json:"resource_id"`
+		ResourceVersion string           `json:"resource_version"`
+		ContractVersion string           `json:"contract_version"`
+		Items           []map[string]any `json:"items"`
+		Citations       []map[string]any `json:"citations"`
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, knowledge.ResourceId, data.ResourceID)
+	require.Equal(t, "1.0.0", data.ResourceVersion)
+	require.Equal(t, "2026-06", data.ContractVersion)
 	require.Len(t, data.Items, 1)
+	require.Len(t, data.Citations, 1)
+	require.NotContains(t, string(apiResponse.Data), "provider_config")
 }
 
 func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {

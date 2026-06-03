@@ -201,6 +201,20 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			require.False(t, decoded.Success, fixture.Name)
 			require.NotEmpty(t, decoded.Message, fixture.Name)
 			assertJSONFields(t, fixture.Name, fields, "success", "message", "retryable")
+		case dtoagentplatform.OpenCapabilitySkillInvokeResponse:
+			var decoded dtoagentplatform.OpenCapabilitySkillInvokeResponse
+			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
+			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version", "output")
+			require.NotContains(t, fields, "task_id", fixture.Name)
+			require.NotContains(t, fields, "status", fixture.Name)
+			require.NotContains(t, fields, "provider_config", fixture.Name)
+		case dtoagentplatform.OpenCapabilityKnowledgeQueryResponse:
+			var decoded dtoagentplatform.OpenCapabilityKnowledgeQueryResponse
+			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
+			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version", "items", "citations")
+			require.NotEmpty(t, decoded.Items, fixture.Name)
+			require.NotContains(t, fields, "provider_config", fixture.Name)
+			require.NotContains(t, fields, "provider_native", fixture.Name)
 		case map[string]any:
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
 		default:
@@ -296,8 +310,12 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	assertOpenAPIDiscoveryItemSchema(t, spec.Paths, "/api/open-capabilities/discovery")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}", "resource_id", "resource_type", "display_name", "resource_version", "contract_version", "status", "visibility_state", "callable_state", "freshness_ttl_seconds", "freshness", "etag", "contract_compatible", "diagnostics")
 	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh", "resource_id", "resource_version", "contract_version", "freshness_ttl_seconds", "freshness", "etag", "visibility_state", "callable_state", "contract_compatible", "diagnostics")
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/skills/{id}/invoke", "resource_id", "resource_version", "contract_version", "output")
+	assertOpenAPIRequiredFields(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/knowledge-bases/{id}/query", "resource_id", "resource_version", "contract_version", "items", "citations")
 	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "get", "/api/open-capabilities/resources/{id}")
 	assertOpenAPIResourceContractSchema(t, spec.Paths, spec.Components.Schemas, "post", "/api/open-capabilities/refresh")
+	assertOpenAPISkillInvokeSchema(t, spec.Paths)
+	assertOpenAPIKnowledgeQuerySchema(t, spec.Paths)
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientCreateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientUpdateRequest")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformClientItem")
@@ -357,6 +375,9 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
 	require.Contains(t, contract, "Status: frozen")
 	require.Contains(t, contract, "AP-6.3 resource discovery/detail/refresh contract freeze")
+	require.Contains(t, contract, "Status: frozen")
+	require.Contains(t, contract, "sync-only")
+	require.Contains(t, contract, "provider-native")
 	require.Contains(t, contract, "`source`、`accountId`、`tenantId`、`disabledReason`、`fetchedAt`、`expiresAt` 不进入 AP-6.3 P0")
 	require.Contains(t, contract, "下一次 refresh 或 300 秒 TTL 上限内收敛")
 	require.Contains(t, contract, "API / fixture 支撑")
@@ -681,6 +702,51 @@ func assertOpenAPIFreshnessAndTTL(t *testing.T, properties map[string]any) {
 	ttl, ok := properties["freshness_ttl_seconds"].(map[string]any)
 	require.True(t, ok, "OpenAPI freshness_ttl_seconds property must exist")
 	require.Equal(t, float64(300), ttl["maximum"], "OpenAPI TTL maximum must remain 300 seconds")
+}
+
+func assertOpenAPISkillInvokeSchema(t *testing.T, paths map[string]any) {
+	t.Helper()
+
+	dataSchema := openAPIResponseDataSchema(t, paths, nil, "post", "/api/open-capabilities/skills/{id}/invoke")
+	properties, ok := dataSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI skill invoke response must define properties")
+	for _, field := range []string{"resource_id", "resource_version", "contract_version", "output"} {
+		require.Contains(t, properties, field, "OpenAPI skill invoke response missing %s", field)
+	}
+	require.NotContains(t, properties, "task_id", "AP-6.4 P0 must not imply async task protocol")
+	require.NotContains(t, properties, "status", "AP-6.4 P0 must not imply async task status")
+
+	pathNode := paths["/api/open-capabilities/skills/{id}/invoke"].(map[string]any)
+	methodNode := pathNode["post"].(map[string]any)
+	requestBody := methodNode["requestBody"].(map[string]any)
+	content := requestBody["content"].(map[string]any)
+	applicationJSON := content["application/json"].(map[string]any)
+	requestSchema := applicationJSON["schema"].(map[string]any)
+	requestProperties := requestSchema["properties"].(map[string]any)
+	require.Contains(t, requestProperties, "input")
+}
+
+func assertOpenAPIKnowledgeQuerySchema(t *testing.T, paths map[string]any) {
+	t.Helper()
+
+	dataSchema := openAPIResponseDataSchema(t, paths, nil, "post", "/api/open-capabilities/knowledge-bases/{id}/query")
+	properties, ok := dataSchema["properties"].(map[string]any)
+	require.True(t, ok, "OpenAPI knowledge query response must define properties")
+	for _, field := range []string{"resource_id", "resource_version", "contract_version", "items", "citations"} {
+		require.Contains(t, properties, field, "OpenAPI knowledge query response missing %s", field)
+	}
+	require.NotContains(t, properties, "provider_config", "public response must not expose provider config")
+
+	pathNode := paths["/api/open-capabilities/knowledge-bases/{id}/query"].(map[string]any)
+	methodNode := pathNode["post"].(map[string]any)
+	requestBody := methodNode["requestBody"].(map[string]any)
+	content := requestBody["content"].(map[string]any)
+	applicationJSON := content["application/json"].(map[string]any)
+	requestSchema := applicationJSON["schema"].(map[string]any)
+	requestProperties := requestSchema["properties"].(map[string]any)
+	require.Contains(t, requestProperties, "query")
+	requiredSet := stringSetFromAny(requestSchema["required"].([]any))
+	require.Contains(t, requiredSet, "query")
 }
 
 func assertOpenAPIRequiredSchemaNodeFields(t *testing.T, schema map[string]any, requiredFields ...string) {

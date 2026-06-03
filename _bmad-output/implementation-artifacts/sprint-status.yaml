@@ -146,7 +146,7 @@ development_status:
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
   ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
   ap-6-3-freeze-discovery-detail-and-refresh-public-fields: done
-  ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: backlog
+  ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: done
   ap-6-5-freeze-enterprise-model-discovery-contract: backlog
   ap-6-6-freeze-error-code-and-client-state-matrices: backlog
   ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done

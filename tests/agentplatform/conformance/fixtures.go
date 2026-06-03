@@ -146,11 +146,11 @@ func FixtureCatalog() []Fixture {
 			Method:      "POST",
 			Path:        "/api/open-capabilities/skills/" + SkillResourceID + "/invoke",
 			Description: "Synchronous skill invocation returns provider output under output.",
-			Payload: map[string]any{
-				"resource_id":      SkillResourceID,
-				"resource_version": "1.0.0",
-				"contract_version": ContractVersion,
-				"output":           map[string]any{"ok": true},
+			Payload: dtoagentplatform.OpenCapabilitySkillInvokeResponse{
+				ResourceId:      SkillResourceID,
+				ResourceVersion: "1.0.0",
+				ContractVersion: ContractVersion,
+				Output:          map[string]any{"ok": true},
 			},
 		},
 		errorFixture("skill_invoke_contract_invalid", "open-capabilities", "POST", "/api/open-capabilities/skills/"+SkillResourceID+"/invoke", apservice.OpenCapabilityCodeContractInvalid, "invalid skill invocation contract is rejected", false),
@@ -163,14 +163,14 @@ func FixtureCatalog() []Fixture {
 			Method:      "POST",
 			Path:        "/api/open-capabilities/knowledge-bases/" + KnowledgeResourceID + "/query",
 			Description: "Knowledge query returns standardized items and citations without provider-native leakage.",
-			Payload: map[string]any{
-				"resource_id":      KnowledgeResourceID,
-				"resource_version": "1.0.0",
-				"contract_version": ContractVersion,
-				"items": []apservice.KnowledgeResultItem{
+			Payload: dtoagentplatform.OpenCapabilityKnowledgeQueryResponse{
+				ResourceId:      KnowledgeResourceID,
+				ResourceVersion: "1.0.0",
+				ContractVersion: ContractVersion,
+				Items: []dtoagentplatform.OpenCapabilityKnowledgeResultItem{
 					{ID: "doc_demo", Score: 0.91, Snippet: "Synthetic retrieval result", Metadata: map[string]any{"source_type": "fixture"}},
 				},
-				"citations": []apservice.KnowledgeCitation{
+				Citations: []dtoagentplatform.OpenCapabilityKnowledgeCitation{
 					{SourceID: "doc_demo", Title: "Synthetic Doc"},
 				},
 			},

@@ -7502,7 +7502,10 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "input": {}
+                }
               }
             }
           }
@@ -7523,7 +7526,25 @@
                       "type": "string"
                     },
                     "data": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "output": {}
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_version",
+                        "contract_version",
+                        "output"
+                      ]
                     }
                   },
                   "required": [
@@ -7616,7 +7637,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
               }
             }
           }
@@ -7637,7 +7666,73 @@
                       "type": "string"
                     },
                     "data": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "score": {
+                                "type": "number"
+                              },
+                              "snippet": {
+                                "type": "string"
+                              },
+                              "metadata": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "score",
+                              "snippet"
+                            ]
+                          }
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "source_id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "metadata": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "source_id"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_version",
+                        "contract_version",
+                        "items",
+                        "citations"
+                      ]
                     }
                   },
                   "required": [

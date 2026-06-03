@@ -65,9 +65,41 @@ type OpenCapabilityRefreshResponse struct {
 	Diagnostics         OpenCapabilityDiagnostics `json:"diagnostics"`
 }
 
-type OpenCapabilityInvokePlaceholderResponse struct {
-	ResourceId string `json:"resource_id"`
-	Status     string `json:"status"`
+type OpenCapabilitySkillInvokeRequest struct {
+	Input any `json:"input,omitempty"`
+}
+
+type OpenCapabilitySkillInvokeResponse struct {
+	ResourceId      string `json:"resource_id"`
+	ResourceVersion string `json:"resource_version"`
+	ContractVersion string `json:"contract_version"`
+	Output          any    `json:"output"`
+}
+
+type OpenCapabilityKnowledgeQueryRequest struct {
+	Query string `json:"query"`
+}
+
+type OpenCapabilityKnowledgeResultItem struct {
+	ID       string         `json:"id"`
+	Score    float64        `json:"score"`
+	Snippet  string         `json:"snippet"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type OpenCapabilityKnowledgeCitation struct {
+	SourceID string         `json:"source_id"`
+	Title    string         `json:"title,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type OpenCapabilityKnowledgeQueryResponse struct {
+	ResourceId      string                           `json:"resource_id"`
+	ResourceVersion string                           `json:"resource_version"`
+	ContractVersion string                           `json:"contract_version"`
+	Items           []OpenCapabilityKnowledgeResultItem `json:"items"`
+	Citations       []OpenCapabilityKnowledgeCitation   `json:"citations"`
 }
 
 type OpenCapabilityDiagnostics struct {

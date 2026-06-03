@@ -877,18 +877,125 @@ Frozen implementation evidence:
 
 ### 11.4 Skill Invoke and Knowledge Query Contracts
 
-Status: pending freeze
+Status: frozen
 
 Owner story: `ap-6-4-freeze-skill-invoke-and-knowledge-query-specs`
 
-Must freeze:
+AP-6.4 freezes the public request/response contract for the existing open capability invoke/query endpoints only:
 
-- Skill metadata and schema fields
-- sync invoke request / response
-- Knowledge retrieval query request / response
-- citations / items shape
-- provider failure mapping
-- P0 exclusion for async / cancel / task status if not supported
+- `POST /api/open-capabilities/skills/{id}/invoke`
+- `POST /api/open-capabilities/knowledge-bases/{id}/query`
+
+This story does not add async task orchestration, cancel endpoints, task-status polling, or provider-specific response trunks. Skill / Knowledge metadata source of truth remains the existing resource-version detail artifacts and runtime definitions.
+
+#### 11.4.1 Skill Invoke P0 Contract
+
+P0 scope:
+
+- public invoke protocol is sync-only
+- `async` / cancel / task-status do not enter AP-6.4 P0
+- if a resource version internally records `invoke_mode=async`, that is not enough to imply a frozen downstream async protocol
+
+Skill metadata source of truth:
+
+- `invoke_schema`
+- `output_schema`
+- `invoke_mode`
+- `timeout_seconds`
+
+These fields come from the existing resource version / skill definition surfaces; AP-6.4 freezes how downstream consumers interpret them, not a new metadata endpoint.
+
+`POST /api/open-capabilities/skills/{id}/invoke` request:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| JSON request body | MUST | Payload must be JSON. |
+| `input` | SHOULD | Conventional wrapper field used by current fixtures/examples; payload may carry additional schema-defined keys. |
+
+`POST /api/open-capabilities/skills/{id}/invoke` success response:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `resource_id` | MUST | Stable opaque resource identifier. |
+| `resource_version` | MUST | Published skill version actually invoked. |
+| `contract_version` | MUST | Shared AP contract version. |
+| `output` | MUST | Provider output normalized as JSON-compatible object/value. |
+
+Frozen runtime/error semantics:
+
+- timeout maps to stable error code `timeout`
+- upstream execution failure maps to stable error code `upstreamFailed`
+- invalid contract / invalid request maps to stable error code `contractInvalid`
+- not callable / missing scope remains under the stable error envelope, not a provider-native payload
+
+#### 11.4.2 Knowledge Query P0 Contract
+
+P0 scope:
+
+- public knowledge protocol is retrieval-only
+- current request shape is a query-driven JSON body
+- provider-native retrieval response trunks are explicitly excluded from the public contract
+
+`POST /api/open-capabilities/knowledge-bases/{id}/query` request:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `query` | MUST | User-visible retrieval query string. |
+
+`POST /api/open-capabilities/knowledge-bases/{id}/query` success response:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `resource_id` | MUST | Stable opaque resource identifier. |
+| `resource_version` | MUST | Published knowledge version actually queried. |
+| `contract_version` | MUST | Shared AP contract version. |
+| `items` | MUST | Standardized retrieval items array. |
+| `citations` | MUST | Standardized citation array. |
+
+Retrieval item contract:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `id` | MUST | Stable item identifier within the query result. |
+| `score` | MUST | Numeric ranking score. |
+| `snippet` | MUST | Human-readable retrieval excerpt. |
+| `metadata` | MAY | Backward-compatible extension container; must remain provider-safe. |
+
+Citation contract:
+
+| Field | Level | Notes |
+| --- | --- | --- |
+| `source_id` | MUST | Citation source identifier. |
+| `title` | MAY | Human-readable citation title. |
+| `url` | MAY | Public-safe URL when available. |
+| `metadata` | MAY | Backward-compatible extension container; must remain provider-safe. |
+
+Provider-safe exclusion rules:
+
+- public responses MUST NOT expose `provider_config`
+- public responses MUST NOT expose provider endpoint URLs or provider adapter internals
+- public responses MUST NOT leak LightRAG / FastGPT / RAGFlow or other provider-native top-level fields
+- provider-specific details, if ever needed, must stay behind namespaced optional metadata and a future contract-version bump
+
+#### 11.4.3 Frozen Examples and Evidence
+
+Frozen example/evidence sources:
+
+- `tests/agentplatform/conformance/fixtures.go`
+- `tests/agentplatform/conformance/fixtures_test.go`
+- `controller/agentplatform/open_capabilities_test.go`
+- `service/agentplatform/skill_invoke_test.go`
+- `service/agentplatform/knowledge_query_test.go`
+
+Frozen P0 examples must cover:
+
+- sync skill invoke success
+- skill invoke timeout
+- skill invoke upstream failure
+- skill invoke contract invalid
+- retrieval query success with `items` and `citations`
+- provider failure and offline behavior
+- provider-native field non-leakage
 
 ### 11.5 Enterprise Model Discovery Contract
 

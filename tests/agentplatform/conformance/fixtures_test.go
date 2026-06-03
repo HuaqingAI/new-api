@@ -18,10 +18,15 @@ func TestFixtureCatalogCoversRequiredCasesWithSyntheticData(t *testing.T) {
 	required := []string{
 		"oauth_authorize_success",
 		"oauth_token_success",
+		"oauth_refresh_rotation_success",
 		"oauth_revoke_success",
 		"oauth_expired_token",
 		"oauth_revoked_grant_token",
 		"oauth_missing_scope_permission_denied",
+		"oauth_redirect_mismatch",
+		"oauth_invalid_pkce",
+		"oauth_invalid_client",
+		"oauth_invalid_integration",
 		"discovery_empty",
 		"discovery_success_multi_resource",
 		"discovery_contract_mismatch_filtered_or_rejected",
@@ -171,6 +176,12 @@ func TestFixturePayloadsRoundTripWithRequiredContractFields(t *testing.T) {
 			errorFields, ok := fields["error"].(map[string]any)
 			require.True(t, ok, "fixture %s error must be an object", fixture.Name)
 			assertJSONFields(t, fixture.Name, errorFields, "code", "message", "retryable", "request_id", "resource_id", "resource_version")
+		case OAuthContractErrorResponse:
+			var decoded OAuthContractErrorResponse
+			require.NoError(t, common.Unmarshal(bytes, &decoded), fixture.Name)
+			require.False(t, decoded.Success, fixture.Name)
+			require.NotEmpty(t, decoded.Message, fixture.Name)
+			assertJSONFields(t, fixture.Name, fields, "success", "message", "retryable")
 		case map[string]any:
 			assertJSONFields(t, fixture.Name, fields, "resource_id", "resource_version", "contract_version")
 		default:
@@ -220,6 +231,10 @@ func TestCoveredOpenAPIPathsExist(t *testing.T) {
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthAuthorizeResponse")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthTokenResponse")
 	require.Contains(t, spec.Components.Schemas, "AgentPlatformOAuthRevokeResponse")
+	assertOpenAPIRequiredSchemaFields(t, spec.Components.Schemas, "AgentPlatformOAuthAuthorizeResponse", "client_id", "contract_version", "scope", "state", "authorization_code", "redirect_uri", "consent_recorded")
+	assertOpenAPIRequiredSchemaFields(t, spec.Components.Schemas, "AgentPlatformOAuthTokenRequest", "client_id")
+	assertOpenAPIOptionalSchemaFields(t, spec.Components.Schemas, "AgentPlatformOAuthTokenRequest", "grant_type")
+	assertOpenAPIRequiredSchemaFields(t, spec.Components.Schemas, "AgentPlatformOAuthTokenResponse", "access_token", "token_type", "expires_in", "refresh_token", "refresh_expires_in", "scope", "contract_version", "grant_id")
 }
 
 func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
@@ -251,10 +266,10 @@ func TestConsumerSignoffArtifactAlignsWithContractSources(t *testing.T) {
 	assertAllowedSignoffStatuses(t, signoff)
 	assertAllowedSignoffStatuses(t, markdownSection(contract, "### 11.8 Consumer Signoff"))
 
+	require.Contains(t, signoff, "Cherry Studio OAuth subdomain signoff: `signed off`")
 	require.Contains(t, signoff, "Cherry Studio first-consumer signoff: `blocked`")
-	require.NotContains(t, signoff, "Cherry Studio first-consumer signoff: `signed off`")
 	require.Contains(t, signoff, "Codex second-consumer review: `signed off`")
-	require.Contains(t, signoff, "OpenAPI change: not required")
+	require.Contains(t, signoff, "OpenAPI change: OAuth schema freeze")
 
 	require.Contains(t, contract, "docs/agent-platform-consumer-signoff.md")
 	require.Contains(t, contract, "controller/agentplatform/oauth_test.go")
@@ -284,14 +299,19 @@ func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
 	}{
 		{
 			domain: "OAuth authorize/token/revoke/callback/allowlist",
-			status: "ready for signoff",
+			status: "signed off",
 			evidence: []string{
 				"oauth_authorize_success",
 				"oauth_token_success",
+				"oauth_refresh_rotation_success",
 				"oauth_revoke_success",
 				"oauth_expired_token",
 				"oauth_revoked_grant_token",
 				"oauth_missing_scope_permission_denied",
+				"oauth_redirect_mismatch",
+				"oauth_invalid_pkce",
+				"oauth_invalid_client",
+				"oauth_invalid_integration",
 			},
 		},
 		{
@@ -352,6 +372,41 @@ func TestConsumerSignoffCoverageMatrixMatchesFixtures(t *testing.T) {
 		for _, fixtureName := range row.evidence {
 			require.Contains(t, byName, fixtureName)
 		}
+	}
+}
+
+func assertOpenAPIRequiredSchemaFields(t *testing.T, schemas map[string]any, schemaName string, requiredFields ...string) {
+	t.Helper()
+
+	schema, ok := schemas[schemaName].(map[string]any)
+	require.True(t, ok, "OpenAPI schema %s must exist", schemaName)
+	required, ok := schema["required"].([]any)
+	require.True(t, ok, "OpenAPI schema %s must define required fields", schemaName)
+	requiredSet := map[string]struct{}{}
+	for _, value := range required {
+		if text, ok := value.(string); ok {
+			requiredSet[text] = struct{}{}
+		}
+	}
+	for _, field := range requiredFields {
+		require.Contains(t, requiredSet, field, "OpenAPI schema %s missing required field %s", schemaName, field)
+	}
+}
+
+func assertOpenAPIOptionalSchemaFields(t *testing.T, schemas map[string]any, schemaName string, optionalFields ...string) {
+	t.Helper()
+
+	schema, ok := schemas[schemaName].(map[string]any)
+	require.True(t, ok, "OpenAPI schema %s must exist", schemaName)
+	required, _ := schema["required"].([]any)
+	requiredSet := map[string]struct{}{}
+	for _, value := range required {
+		if text, ok := value.(string); ok {
+			requiredSet[text] = struct{}{}
+		}
+	}
+	for _, field := range optionalFields {
+		require.NotContains(t, requiredSet, field, "OpenAPI schema %s field %s must remain optional", schemaName, field)
 	}
 }
 

@@ -577,20 +577,122 @@ Base path：`/api/open-capabilities`
 
 ### 11.1 OAuth / Token / Revoke Wire Contract
 
-Status: pending freeze
+Status: frozen for signoff
 
 Owner story: `ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract`
 
-Must freeze:
+Source of truth:
 
-- authorize request / response
-- browser redirect vs JSON authorize 行为
-- token exchange
-- refresh
-- revoke
-- callback / redirect URI allowlist
-- consent visibility
-- auth-related error codes
+- DTO: `dto/agentplatform/oauth.go`
+- Runtime: `controller/agentplatform/oauth.go`; `service/agentplatform/oauth_authorize.go`; `service/agentplatform/oauth_token.go`
+- OpenAPI: `docs/openapi/api.json`
+- Conformance fixtures: `tests/agentplatform/conformance/fixtures.go`
+- Runtime tests: `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go`
+
+Current AP-6.1 freezes the wire capability that exists today. `GET /api/agent-platform/oauth/authorize` currently returns a JSON authorization result in the standard API envelope. It does not yet provide the final operator-friendly consent page or browser `302` redirect callback product flow. A future browser UX MAY wrap this same core contract, but MUST NOT change the authorize/token/revoke field semantics without a versioned contract update.
+
+Auth plane boundary:
+
+- Downstream clients MUST NOT read dashboard session cookies, relay tokens, upstream provider OAuth tokens, refresh token hashes, platform internal grant rows, or provider secrets.
+- Downstream clients MUST rely only on the AP auth plane authorization result, AP bearer token, refresh token when issued, and the public fields documented here.
+- Dashboard session is only the current platform user identity source for authorize; it is not a downstream credential.
+
+Authorize request: `GET /api/agent-platform/oauth/authorize`
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `client_id` | MUST | Registered Agent Platform integration client id. Client must exist, be `active`, have non-empty `contract_version`, non-empty `capabilities_json`, include `authorization_code` in `allowed_grant_types_json`, and allow every requested scope. |
+| `redirect_uri` | MUST | Callback URI. It MUST exactly match one entry in `agent_platform_clients.redirect_uris_json`. No wildcard, host suffix, scheme fallback, or fuzzy normalization is supported in AP-6.1. |
+| `scope` | MUST | Space-delimited scopes. Every scope MUST exist in `allowed_scopes_json`; missing or extra scopes are rejected as non-retryable configuration/request errors. |
+| `state` | SHOULD | Client correlation value returned unchanged in the JSON authorize response. |
+| `code_challenge` | MUST | PKCE S256 challenge for authorization-code exchange. |
+| `code_challenge_method` | MUST | Only `S256` is supported. `plain` PKCE is not in AP-6.1 P0. |
+
+Authorize success response data:
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `client_id` | MUST | Echoes the authorized client id. |
+| `contract_version` | MUST | Client contract version used for this grant. |
+| `scope` | MUST | Authorized scope string. |
+| `state` | SHOULD | Echoes request `state`; empty string when absent. |
+| `authorization_code` | MUST | Short-lived code used only with `grant_type=authorization_code`. |
+| `redirect_uri` | MUST | Echoes the exact accepted redirect URI. |
+| `consent_recorded` | MUST | `true` when `agent_platform_authorization_grants.consented_at` was set for this grant. |
+
+Token request: `POST /api/agent-platform/oauth/token`
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `client_id` | MUST | Registered integration client id. Client must be active and contract-valid. |
+| `grant_type` | SHOULD | One of `authorization_code`, `refresh_token`, `client_credentials`. Empty value is normalized to `authorization_code` by current runtime. |
+| `code` | MUST for `authorization_code` | Authorization code returned by authorize. |
+| `code_verifier` | MUST for `authorization_code` | PKCE verifier; S256 hash MUST match the stored `code_challenge`. |
+| `redirect_uri` | MUST for `authorization_code` | MUST still exactly match the registered redirect allowlist. |
+| `refresh_token` | MUST for `refresh_token` | Opaque `rt_` token. Runtime stores only HMAC hash and rotates on use. |
+| `scope` | SHOULD for `client_credentials` | Requested client-credentials scopes; when absent, runtime uses allowed scopes. |
+
+Token success response data:
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `access_token` | MUST | First-party HS256 AP bearer token. It is not a relay token and not an upstream provider token. |
+| `token_type` | MUST | `Bearer`. |
+| `expires_in` | MUST | Access-token TTL in seconds. Current runtime: `300`. |
+| `refresh_token` | MUST | Opaque refresh token returned for successful exchanges; synthetic examples only in fixtures. |
+| `refresh_expires_in` | MUST | Refresh-token TTL in seconds. Current runtime target: 30 days (`2592000`). |
+| `scope` | MUST | Granted scope string. |
+| `contract_version` | MUST | Contract version embedded into access token claims. |
+| `grant_id` | MUST | Public grant identifier used for diagnostics and audit correlation; not a database row id contract. |
+
+Grant types:
+
+- `authorization_code` MUST validate code, verifier, redirect URI, grant status `authorized`, non-expired code, and non-revoked grant. Success changes grant status to `issued`.
+- `refresh_token` MUST rotate the refresh token: create a new token, revoke the old token, set old `last_used_at`, and preserve grant continuity.
+- `client_credentials` MAY be used only when `agent_platform_clients.allow_client_credentials = true` and `allowed_grant_types_json` includes `client_credentials`. It creates no end-user consent semantics.
+
+Revoke request: `POST /api/agent-platform/oauth/revoke`
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `client_id` | MUST | Client owning the token/grant. |
+| `token` | MUST | Access token or refresh token to revoke. |
+| `token_type_hint` | SHOULD | `access_token` or `refresh_token`; runtime also treats `rt_` prefix as refresh-token evidence. |
+
+Revoke success response data:
+
+| Field | Level | Semantics |
+| --- | --- | --- |
+| `revoked` | MUST | `true` on successful revoke. Refresh-token revoke revokes refresh token and grant; access-token revoke revokes grant and increments `grant.token_version`. |
+
+Consent, grant, client state, and audit:
+
+- Consent fact source is `agent_platform_authorization_grants.consented_at` and the grant record. AP-6.1 does not claim a complete user-visible consent page.
+- Grant state MUST at least distinguish `authorized`, `issued`, and `revoked`.
+- Access token validity converges through `grant.token_version` and `revoked_at`; refresh token validity converges through token hash, expiry, rotation, and revocation.
+- Successful revoke with an actor SHOULD write `agentplatform.oauth.revoke` admin action.
+- Audit payload MUST NOT include bearer tokens, refresh token plaintext, refresh token hash, provider secret, tenant secret, or upstream OAuth token.
+
+Error and retryability semantics:
+
+| Scenario | Client interpretation | Retryable |
+| --- | --- | --- |
+| malformed request, missing required field, bad grant type | request/config error | no |
+| redirect mismatch | integration configuration error | no |
+| scope mismatch or missing scope | integration configuration / permission error | no |
+| unsupported PKCE method or bad verifier | request/auth error | no |
+| inactive client, missing contract version, missing capabilities, invalid integration | integration configuration error | no |
+| expired access token | refresh-token exchange may be attempted when a valid refresh token is available | yes, via refresh only |
+| expired/revoked/reused refresh token | login/authorization must restart | no |
+| revoked grant | same token cannot recover; authorization must restart | no |
+| platform/internal failure | apply common platform retry policy | yes |
+
+Downstream examples:
+
+- Legal callback: `redirect_uri=cherrystudio://oauth/callback` exactly matches one registered allowlist entry and returns JSON `authorization_code`.
+- Callback mismatch: `redirect_uri=https://evil.example/callback` does not exactly match and returns a non-retryable authorization failure.
+- Scope mismatch: requesting `ap.admin.write` when only `ap.resources.read` is allowed returns a non-retryable authorization failure.
+- Inactive or invalid integration client: inactive status, empty `contract_version`, empty `capabilities_json`, or missing `authorization_code` grant support returns a non-retryable client authorization failure.
 
 ### 11.2 Client Registration Contract
 
@@ -691,8 +793,8 @@ Local / CI commands:
 
 Synthetic fixture coverage:
 
-- OAuth success / expired / revoked
-- OAuth missing scope / permission denied
+- OAuth authorize success / token success / refresh rotation success / revoke success
+- OAuth expired token / revoked grant / missing scope / redirect mismatch / invalid PKCE / invalid client / invalid integration
 - discovery empty / success / multi-resource / contract mismatch filtered or rejected
 - detail visible + callable / visible but not callable / contract invalid / resource revoked / resource offline
 - refresh fresh / stale / revoked / offline / observed ETag-version mismatch / TTL over 300 seconds non-compliance diagnostics
@@ -722,7 +824,7 @@ Current coverage matrix:
 
 | Consumer / domain | Status | Evidence | Notes |
 | --- | --- | --- | --- |
-| Cherry Studio OAuth authorize/token/revoke/callback/allowlist | ready for signoff | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | Current wire contract is JSON authorize plus token/revoke APIs. Final browser redirect UX is productization over the same OAuth contract, not a separate core protocol. |
+| Cherry Studio OAuth authorize/token/revoke/callback/allowlist | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | Current wire contract is JSON authorize plus token/revoke APIs. Final browser redirect UX is productization over the same OAuth contract, not a separate core protocol. |
 | Cherry Studio resource discovery/detail/refresh | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers TTL, freshness, ETag, revoked/offline/stale convergence, visibility/callable state, diagnostics, and contract compatibility. |
 | Cherry Studio Skill invoke and Knowledge query | signed off | `tests/agentplatform/conformance/`; `controller/agentplatform/open_capabilities_test.go` | Covers success, timeout, upstream failure, contract invalid, provider offline, standardized items/citations, and provider-native field non-leakage. |
 | Cherry Studio enterprise model discovery | blocked | `tests/agentplatform/conformance/fixtures.go` pending AP-6.5 fixtures | AP-6.5 is not frozen; this must not be satisfied by `/api/models`, `/api/user/models`, or `/v1/models`. |

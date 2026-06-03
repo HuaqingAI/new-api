@@ -79,3 +79,52 @@ func TestOAuthAuthorizeServiceRejectsInvalidScopeOrRedirect(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrUnauthorizedClient)
 }
+
+func TestOAuthAuthorizeServiceRejectsPlainPKCEAndInactiveOrInvalidClient(t *testing.T) {
+	svc, db, client := newOAuthAuthorizeServiceForTest(t)
+
+	_, err := svc.Authorize(AuthorizeInput{
+		ClientId:            client.ClientId,
+		RedirectURI:         "https://example.com/callback",
+		Scope:               "skills.read",
+		State:               "state-4",
+		CodeChallenge:       pkceChallenge("verifier-4"),
+		CodeChallengeMethod: "plain",
+		UserId:              100,
+	})
+	require.ErrorIs(t, err, ErrInvalidAuthorizeInput)
+
+	inactive := client
+	inactive.Id = 0
+	inactive.ClientId = ""
+	inactive.Slug = "inactive-client"
+	inactive.Status = "inactive"
+	require.NoError(t, db.Create(&inactive).Error)
+	_, err = svc.Authorize(AuthorizeInput{
+		ClientId:            inactive.ClientId,
+		RedirectURI:         "https://example.com/callback",
+		Scope:               "skills.read",
+		State:               "state-5",
+		CodeChallenge:       pkceChallenge("verifier-5"),
+		CodeChallengeMethod: "S256",
+		UserId:              100,
+	})
+	require.ErrorIs(t, err, ErrUnauthorizedClient)
+
+	invalid := client
+	invalid.Id = 0
+	invalid.ClientId = ""
+	invalid.Slug = "invalid-integration-client"
+	invalid.CapabilitiesJSON = ""
+	require.NoError(t, db.Create(&invalid).Error)
+	_, err = svc.Authorize(AuthorizeInput{
+		ClientId:            invalid.ClientId,
+		RedirectURI:         "https://example.com/callback",
+		Scope:               "skills.read",
+		State:               "state-6",
+		CodeChallenge:       pkceChallenge("verifier-6"),
+		CodeChallengeMethod: "S256",
+		UserId:              100,
+	})
+	require.ErrorIs(t, err, ErrUnauthorizedClient)
+}

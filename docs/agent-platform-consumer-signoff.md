@@ -16,7 +16,7 @@ updated_at: 2026-06-03
 - `tests/agentplatform/conformance/`，并包含 runtime handler 证据 `controller/agentplatform/open_capabilities_test.go`
 - OAuth runtime handler 与 allowlist 证据：`controller/agentplatform/oauth_test.go`、`service/agentplatform/oauth_authorize_test.go`、`service/agentplatform/oauth_token_test.go`
 
-本签核 artifact 不新增公开 API、DTO、controller、service、router 或数据库对象，因此 `docs/openapi/api.json` 无需变更。OpenAPI 的职责仍是描述已冻结的 OAuth 与 open capability wire surface；AP-6.5 model discovery 与 AP-6.6 error/client state matrix 尚未冻结，不能通过提前写入 OpenAPI 伪造签核完成。
+本签核 artifact 不新增公开 API、DTO、controller、service、router 或数据库对象。AP-6.1 对 `docs/openapi/api.json` 仅做 OAuth schema freeze：对齐 DTO 与当前 runtime 的 required/optional 字段，不新增路径。AP-6.5 model discovery 与 AP-6.6 error/client state matrix 尚未冻结，不能通过提前写入 OpenAPI 伪造签核完成。
 
 ## 2. Signoff Status Rules
 
@@ -35,7 +35,7 @@ updated_at: 2026-06-03
 
 Status: blocked
 
-Cherry Studio 可以基于当前 AP-6 公共契约接入 OAuth、resource discovery/detail/refresh、Skill invoke 与 Knowledge query 的基础闭环。Cherry Studio 的完整 first-consumer signoff 被 AP-6.5 与 AP-6.6 阻塞，因此不得标记为 `signed off`。
+Cherry Studio 可以基于当前 AP-6 公共契约接入 OAuth、resource discovery/detail/refresh、Skill invoke 与 Knowledge query 的基础闭环。OAuth 子域已完成 AP-6.1 wire contract freeze，可以标记为 `signed off`。Cherry Studio 的完整 first-consumer signoff 仍被 AP-6.5 与 AP-6.6 阻塞，因此总体不得标记为 `signed off`。
 
 Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio`。当前 fixture 已使用 `extensions.cherry_studio` 验证 namespaced extension 路径，且没有新增 Cherry Studio 专属核心字段、特殊 endpoint 或特殊资源模型。
 
@@ -43,7 +43,7 @@ Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio`。当前
 
 | Domain | Status | Evidence | Signoff notes |
 | --- | --- | --- | --- |
-| OAuth authorize/token/revoke/callback/allowlist | ready for signoff | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | JSON authorize response 是当前 wire contract；最终浏览器 redirect UX 属于后续产品化层，不能改变 authorize/token/revoke 的核心 JSON contract。Callback 与 redirect URI 校验沿用 registered client allowlist。 |
+| OAuth authorize/token/revoke/callback/allowlist | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/oauth_test.go`; `service/agentplatform/oauth_authorize_test.go`; `service/agentplatform/oauth_token_test.go` | JSON authorize response 是当前 wire contract；最终浏览器 redirect UX 属于后续产品化层，不能改变 authorize/token/revoke 的核心 JSON contract。Callback 与 redirect URI 严格匹配 registered client allowlist；fixture 覆盖 authorize success、token success、refresh rotation、revoke success、expired/revoked grant、missing scope、redirect mismatch、invalid PKCE、invalid client / invalid integration。 |
 | Resource discovery/detail/refresh | signed off | `docs/openapi/api.json`; `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go` | 覆盖 `resource_id`、`resource_type`、`display_name`、`resource_version`、`contract_version`、TTL、freshness、ETag、visibility/callable、diagnostics、revoked/offline/stale 收敛规则。 |
 | Skill invoke | signed off | `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go` | 覆盖 sync invoke success、timeout、upstream failure、contract invalid；provider-native 字段不得外泄。 |
 | Knowledge query | signed off | `tests/agentplatform/conformance/fixtures.go`; `controller/agentplatform/open_capabilities_test.go` | 覆盖 standardized items/citations、provider offline、upstream failure；provider-native 字段不得外泄。 |
@@ -59,7 +59,7 @@ Cherry Studio 私有展示字段只能进入 `extensions.cherry_studio`。当前
 GOCACHE=/private/tmp/go-build-cache go test ./tests/agentplatform/conformance ./service/agentplatform ./controller/agentplatform
 ```
 
-本故事新增 `TestConsumerSignoffArtifactAlignsWithContractSources`，用于发现 consumer signoff artifact、contract spec、OpenAPI 路径和 fixture/conformance 状态的明显漂移。只要 AP-6.5 / AP-6.6 仍是 pending fixture，Cherry Studio 整体状态就必须保持 `blocked`。
+`TestConsumerSignoffArtifactAlignsWithContractSources` 与 `TestConsumerSignoffCoverageMatrixMatchesFixtures` 用于发现 consumer signoff artifact、contract spec、OpenAPI 路径和 fixture/conformance 状态的明显漂移。只要 AP-6.5 / AP-6.6 仍是 pending fixture，Cherry Studio 整体状态就必须保持 `blocked`。
 
 `./service/agentplatform` 与 `./controller/agentplatform` 包测试覆盖 OAuth authorize/token/revoke、PKCE、redirect URI allowlist、scope allowlist、refresh rotation、grant revoke 与 bearer error convergence。`./tests/agentplatform/conformance` 负责把这些 runtime 证据索引到签核 artifact 与公共契约三件套。
 
@@ -100,7 +100,8 @@ Codex 私有字段不得改写核心字段语义，不得新增平行核心协�
 ## 6. Final Conclusion
 
 - Cherry Studio first-consumer signoff: `blocked`
+- Cherry Studio OAuth subdomain signoff: `signed off`
 - Codex second-consumer review: `signed off`
 - Extension namespaces used or reserved: `extensions.cherry_studio`, `extensions.codex`
-- OpenAPI change: not required, because no public API/schema changed in this story
+- OpenAPI change: OAuth schema freeze, no new public path
 - Protocol conclusion: no parallel core protocol, no parallel resource model, and no independent open capability endpoint are required

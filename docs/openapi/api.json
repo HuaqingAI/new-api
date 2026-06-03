@@ -9737,6 +9737,7 @@
           "client_id",
           "contract_version",
           "scope",
+          "state",
           "authorization_code",
           "redirect_uri",
           "consent_recorded"
@@ -9773,8 +9774,7 @@
           }
         },
         "required": [
-          "client_id",
-          "grant_type"
+          "client_id"
         ]
       },
       "AgentPlatformOAuthTokenResponse": {
@@ -9812,8 +9812,11 @@
           "access_token",
           "token_type",
           "expires_in",
+          "refresh_token",
+          "refresh_expires_in",
           "scope",
-          "contract_version"
+          "contract_version",
+          "grant_id"
         ]
       },
       "AgentPlatformOAuthRevokeRequest": {

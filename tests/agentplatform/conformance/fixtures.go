@@ -29,6 +29,12 @@ type Fixture struct {
 	PendingReason string
 }
 
+type OAuthContractErrorResponse struct {
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable"`
+}
+
 func FixtureCatalog() []Fixture {
 	return []Fixture{
 		{
@@ -65,6 +71,23 @@ func FixtureCatalog() []Fixture {
 			},
 		},
 		{
+			Name:        "oauth_refresh_rotation_success",
+			Surface:     "oauth",
+			Method:      "POST",
+			Path:        "/api/agent-platform/oauth/token",
+			Description: "Refresh token exchange rotates the refresh token and revokes the prior token.",
+			Payload: dtoagentplatform.OAuthTokenResponse{
+				AccessToken:      "access_token_synthetic_fixture_rotated",
+				TokenType:        "Bearer",
+				ExpiresIn:        300,
+				RefreshToken:     "refresh_token_synthetic_fixture_rotated",
+				RefreshExpiresIn: 2592000,
+				Scope:            "ap.resources.read ap.skills.invoke",
+				ContractVersion:  ContractVersion,
+				GrantId:          "grant_demo",
+			},
+		},
+		{
 			Name:        "oauth_revoke_success",
 			Surface:     "oauth",
 			Method:      "POST",
@@ -75,6 +98,10 @@ func FixtureCatalog() []Fixture {
 		errorFixture("oauth_expired_token", "oauth", "GET", "/api/open-capabilities/discovery", apservice.OpenCapabilityCodePermissionDenied, "expired token is rejected", false),
 		errorFixture("oauth_revoked_grant_token", "oauth", "GET", "/api/open-capabilities/discovery", apservice.OpenCapabilityCodePermissionDenied, "revoked grant/token is rejected", false),
 		errorFixture("oauth_missing_scope_permission_denied", "oauth", "GET", "/api/open-capabilities/agents/res_skill_demo", apservice.OpenCapabilityCodePermissionDenied, "missing scope is permission denied", false),
+		oauthErrorFixture("oauth_redirect_mismatch", "GET", "/api/agent-platform/oauth/authorize", "redirect URI is not registered for the integration client", false),
+		oauthErrorFixture("oauth_invalid_pkce", "POST", "/api/agent-platform/oauth/token", "PKCE verifier or challenge is invalid", false),
+		oauthErrorFixture("oauth_invalid_client", "GET", "/api/agent-platform/oauth/authorize", "client is not found or unauthorized", false),
+		oauthErrorFixture("oauth_invalid_integration", "GET", "/api/agent-platform/oauth/authorize", "integration client is inactive or missing contract/capabilities", false),
 		{
 			Name:        "discovery_empty",
 			Surface:     "open-capabilities",
@@ -158,6 +185,21 @@ func FixtureCatalog() []Fixture {
 		pendingFixture("model_discovery_model_unavailable", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; availability semantics are pending."),
 		pendingFixture("model_discovery_account_tenant_mismatch", "model-discovery", "AP-6.5 enterprise model discovery contract is not frozen; accountId/tenantId source semantics are pending."),
 		pendingFixture("error_client_state_matrix", "error-matrix", "AP-6.6 error code and client state matrix artifact is missing; state mapping assertions are pending."),
+	}
+}
+
+func oauthErrorFixture(name string, method string, path string, message string, retryable bool) Fixture {
+	return Fixture{
+		Name:        name,
+		Surface:     "oauth",
+		Method:      method,
+		Path:        path,
+		Description: message,
+		Payload: OAuthContractErrorResponse{
+			Success:   false,
+			Message:   message,
+			Retryable: retryable,
+		},
 	}
 }
 

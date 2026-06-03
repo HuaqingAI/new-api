@@ -1217,3 +1217,102 @@ So that 我可以同时维护一次性专项池和周期性运营池，而不互
 **When** 核心治理事务已经提交
 **Then** 事务结果保持成功
 **And** 系统记录投递失败状态与错误原因以供重试。
+
+## Epic 7B: 企业治理通知解耦、钱包语义与额度显示修正
+
+团队在 Epic 7 与 Epic 7A 完成后，继续修正企业治理额度申请闭环中的通知语义耦合、预算池可辨识性、i18n 残留、一次性 wallet 展示语义，以及预算治理中的金额显示直观性，确保审批成功不会再被通知状态误导，且预算池/钱包展示更贴近用户心智。
+
+### Story 7B.1: 解耦治理动作结果与通知投递结果
+
+**Requirements:** follow-up to FR26
+
+As a 管理员或负责人,
+I want 审批/分配结果与治理通知投递状态在后端语义和前端展示上独立存在,
+So that 我不会把“未配置通知通道”或“投递失败”误判为“审批失败”。
+
+**Acceptance Criteria:**
+
+**Given** quota request 审批已成功并已创建 allocation
+**When** 系统没有可用治理通知通道或相关 alert rule
+**Then** 请求与 allocation 结果仍显示成功
+**And** 通知区域显示“未配置/未投递/待配置”一类独立状态，而不是 `final_failed` 误导业务结论。
+
+**Given** 通知投递真实失败
+**When** 前端展示治理时间线
+**Then** 审批动作结果与投递结果分别可见
+**And** 错误原因仅归属通知投递记录，不覆盖治理动作结论。
+
+### Story 7B.2: 重构额度申请预算池选择与已选摘要
+
+**Requirements:** follow-up to FR25
+
+As a 普通员工或负责人,
+I want 在 quota request 表单里清楚区分各个可选预算池，并在提交前再次确认已选目标,
+So that 我不会因为预算池名称过弱或信息缺失而误选。
+
+**Acceptance Criteria:**
+
+**Given** 用户打开钱包 quota request 表单或企业组织工作台 quota request 表单
+**When** 系统展示预算池选项
+**Then** 每个选项至少显示部门名、预算池标识或名称、预算类型、剩余额度与状态
+**And** 不再只有近似的单行短标签。
+
+**Given** 用户已选择预算池
+**When** 表单进入提交前状态
+**Then** 页面显示“已选请求范围/已选预算池摘要”
+**And** 摘要中包含部门和具体预算池身份，而不是只显示部门。
+
+### Story 7B.3: 完成额度申请与治理通知相关 i18n 收尾
+
+**Requirements:** follow-up to FR25, FR26, NFR8
+
+As a 非英文语言环境下的管理员或员工,
+I want quota request、allocation、delivery 状态、动作标签和表头完整本地化,
+So that 我不会看到英文残留或回退到内部 key。
+
+**Acceptance Criteria:**
+
+**Given** 用户查看 quota request、allocation、timeline、delivery 和 wallet 相关界面
+**When** 当前语言不是英文
+**Then** 截图可见字段全部存在 locale 资源
+**And** action/status/delivery 文案都通过稳定映射层输出，不依赖遗漏的英文 source key。
+
+### Story 7B.4: 统一一次性企业 wallet 与非正过期时间展示语义
+
+**Requirements:** follow-up to FR12, FR25
+
+As a 管理员或员工,
+I want 一次性企业 wallet 和无过期时间场景用业务语义展示,
+So that 我不会看到 1970 时间、错误的“已过期”判断或过于技术化的文案。
+
+**Acceptance Criteria:**
+
+**Given** 企业派生 wallet 的 `cycle_type = never`
+**When** 页面展示周期信息
+**Then** 使用“一次性额度”或等价业务文案
+**And** 不再仅显示 `No Reset`。
+
+**Given** `end_time <= 0` 或 `expires_at <= 0`
+**When** 页面展示过期信息
+**Then** 不得格式化为 epoch 时间
+**And** 必须展示“永不过期”或“未设置过期时间”等业务语义，并避免误判为已过期。
+
+### Story 7B.5: 为预算池与分配记录补充金额视角和单位切换
+
+**Requirements:** follow-up to FR9, FR12, FR25
+
+As a 管理员或员工,
+I want 在额度表单里切换“额度 / 金额”视角，并在预算池与分配记录中同时看到 quota 和金额,
+So that 我能用更直观的金额视角理解预算和钱包额度，同时保留原 quota 语义。
+
+**Acceptance Criteria:**
+
+**Given** 管理员在创建预算池、创建 allocation、创建 delegation，或员工提交 quota request
+**When** 填写额度字段
+**Then** 表单支持在 quota 与金额（$）视角之间切换
+**And** 该切换不改变后端底层 quota 存储模型。
+
+**Given** 用户查看预算池列表、预算池详情、allocation 记录或 quota request 记录
+**When** 页面展示额度相关列
+**Then** 在保留 quota 原值的同时补充金额（$）显示
+**And** 显示方式尽量与钱包额度语义保持一致。

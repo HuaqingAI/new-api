@@ -105,6 +105,14 @@ development_status:
   7a-3-relax-budget-pool-type-locking-to-per-budget-invariance: done
   epic-7a-retrospective: done
 
+  epic-7b: backlog
+  7b-1-decouple-governance-action-result-from-notification-delivery: backlog
+  7b-2-redesign-budget-pool-selection-and-selected-summary: backlog
+  7b-3-complete-quota-request-governance-wallet-i18n-coverage: backlog
+  7b-4-normalize-one-time-wallet-and-non-positive-expiry-display: backlog
+  7b-5-add-quota-amount-toggle-and-dollar-display-for-budget-governance: backlog
+  epic-7b-retrospective: optional
+
   agent-platform-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done

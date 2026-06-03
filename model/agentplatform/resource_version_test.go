@@ -3,11 +3,13 @@ package agentplatform
 import (
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 func TestResourceVersionAndTypedDetailTextFieldsDoNotDeclareDatabaseDefaults(t *testing.T) {
@@ -39,6 +41,21 @@ func TestMigrateCreatesResourceVersionAndTypedDetailTables(t *testing.T) {
 	require.True(t, db.Migrator().HasTable(&SkillDef{}))
 	require.True(t, db.Migrator().HasTable(&KnowledgeDef{}))
 	require.True(t, db.Migrator().HasTable(&AgentDef{}))
+}
+
+func TestResourceVersionResourceRelationUsesBelongsToDirection(t *testing.T) {
+	parsed, err := schema.Parse(&ResourceVersion{}, &sync.Map{}, schema.NamingStrategy{})
+	require.NoError(t, err)
+
+	relation, ok := parsed.Relationships.Relations["Resource"]
+	require.True(t, ok)
+	require.Equal(t, schema.BelongsTo, relation.Type)
+	require.Len(t, relation.References, 1)
+	require.Equal(t, "agent_platform_resources", relation.References[0].PrimaryKey.Schema.Table)
+	require.Equal(t, "resource_id", relation.References[0].PrimaryKey.DBName)
+	require.Equal(t, "agent_platform_resource_versions", relation.References[0].ForeignKey.Schema.Table)
+	require.Equal(t, "resource_id", relation.References[0].ForeignKey.DBName)
+	require.False(t, relation.References[0].OwnPrimaryKey)
 }
 
 func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) {

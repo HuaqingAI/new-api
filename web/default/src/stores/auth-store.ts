@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { create } from 'zustand'
 
 export type UserPermissions = {
+  enterprise_organization?: boolean
   sidebar_settings?: boolean
   sidebar_modules?: Record<string, unknown>
 }

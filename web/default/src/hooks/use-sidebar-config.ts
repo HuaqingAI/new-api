@@ -57,6 +57,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   admin: {
     enabled: true,
     channel: true,
+    enterprise_organization: true,
     enterprise_usage: true,
     models: true,
     redemption: true,
@@ -112,6 +113,10 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
   '/users': { section: 'admin', module: 'user' },
+  '/enterprise-organization': {
+    section: 'admin',
+    module: 'enterprise_organization',
+  },
   '/enterprise-usage': { section: 'admin', module: 'enterprise_usage' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },

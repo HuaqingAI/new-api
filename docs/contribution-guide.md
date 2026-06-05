@@ -11,7 +11,7 @@
 - 仓库：https://github.com/QuantumNous/new-api
 - 主分支：`main`（受保护，仅通过 PR 合入）
 - 开发分支：`dev`（日常开发，PR 一般打到 `dev`）
-- Tag：版本发布触发 `release.yml` / `docker-build.yml`
+- Tag：版本发布触发 `release.yml`；GitHub Release 发布后触发 `docker-build.yml`
 
 请基于 `dev` 分支创建你的 feature 分支：
 
@@ -19,6 +19,50 @@
 git fetch origin
 git checkout -b feature/your-thing origin/dev
 ```
+
+### 1.1 发布流水线
+
+- `release.yml`：tag push 时构建 Linux / macOS / Windows 二进制并上传到 GitHub Release。
+- `docker-build.yml`：GitHub Release `published` 事件或手动触发时构建 Docker Hub 多架构镜像，并在 manifest 推送成功后更新 Kubernetes Deployment 镜像。
+- 双版本号规则：Docker 发布同时记录“我们的 Release tag”和“对应上游 new-api 官方版本号”。每次从上游官方分支合并版本代码时，同步更新根目录 `UPSTREAM_VERSION`：
+
+```text
+v1.0.0-rc.10
+```
+
+发布 workflow 会从 release tag 对应代码中的 `UPSTREAM_VERSION` 读取官方版本。生成的应用版本形如 `v2.0.0+new-api.v1.0.0-rc.10`，Docker/k8s 使用的组合镜像 tag 形如 `v2.0.0-newapi-v1.0.0-rc.10`。
+
+Kubernetes 部署更新需要配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `KUBE_CONFIG` | Secret | kubeconfig YAML 或 base64 编码内容 |
+| `KUBE_DEPLOY_STRATEGY` | Variable / Secret，可选 | `helm` 或 `kubectl`；配置 `HELM_RELEASE` / `HELM_CHART` 时默认 `helm`，否则默认 `kubectl` |
+| `KUBE_NAMESPACE` | Variable / Secret | `kubectl` 策略目标命名空间；Helm 策略未配置 `HELM_NAMESPACE` 时也会复用 |
+| `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 镜像仓库，默认 `calciumion/new-api` |
+| `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | `kubectl rollout status` 超时时间，默认 `5m` |
+
+Helm 部署推荐配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `HELM_RELEASE` | Variable / Secret | Helm release 名称 |
+| `HELM_CHART` | Variable / Secret | Chart 路径或 chart 引用 |
+| `HELM_NAMESPACE` | Variable / Secret，可选 | Helm release 所在命名空间，未配置时使用 `KUBE_NAMESPACE` |
+| `HELM_CREATE_NAMESPACE` | Variable / Secret，可选 | 设为 `true` 时给 `helm upgrade` 添加 `--create-namespace` |
+| `HELM_IMAGE_REPOSITORY_KEYS` | Variable / Secret，可选 | 镜像仓库 values key，默认 `image.repository`；多个 key 用逗号分隔 |
+| `HELM_IMAGE_TAG_KEYS` | Variable / Secret，可选 | 镜像 tag values key，默认 `image.tag`；master/slave 分开配置时可用逗号分隔 |
+| `HELM_VALUES` | Secret，可选 | 追加的 values YAML 内容 |
+| `HELM_EXTRA_SET` | Variable / Secret，可选 | 额外 `--set-string` 项，每行一个 `key=value` |
+| `HELM_REPO_NAME` / `HELM_REPO_URL` | Variable / Secret，可选 | 需要添加 Helm repo 时配置 |
+| `HELM_REPO_USERNAME` / `HELM_REPO_PASSWORD` | Secret，可选 | 私有 Helm repo 凭据 |
+
+裸 Deployment 部署可配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `KUBE_DEPLOYMENTS` | Variable / Secret | 目标 Deployment 名称；多个用逗号分隔，例如 `new-api-master,new-api-slave` |
+| `KUBE_CONTAINER` | Variable / Secret | Deployment 内需要更新的容器名 |
 
 ---
 

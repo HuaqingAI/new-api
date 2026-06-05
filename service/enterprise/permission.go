@@ -15,6 +15,8 @@ type PermissionService struct {
 	db *gorm.DB
 }
 
+const readableUserDepartmentBatchSize = 500
+
 type DepartmentAdminRoleInput struct {
 	TenantId     int
 	UserId       int
@@ -362,6 +364,49 @@ func (s *PermissionService) ListManageableDepartmentIds(userId int, tenantId int
 	}
 	sort.Ints(ids)
 	return ids, nil
+}
+
+func (s *PermissionService) ReadableUserDepartmentIds(actorUserId int, targetUserId int, tenantId int) ([]int, error) {
+	if actorUserId <= 0 || targetUserId <= 0 {
+		return []int{}, nil
+	}
+	if actorUserId == targetUserId {
+		return []int{}, nil
+	}
+
+	manageableIds, err := s.ListManageableDepartmentIds(actorUserId, tenantId)
+	if err != nil {
+		return nil, err
+	}
+	if len(manageableIds) == 0 {
+		return []int{}, nil
+	}
+
+	memberships := []entmodel.UserDepartment{}
+	for start := 0; start < len(manageableIds); start += readableUserDepartmentBatchSize {
+		end := start + readableUserDepartmentBatchSize
+		if end > len(manageableIds) {
+			end = len(manageableIds)
+		}
+		var batch []entmodel.UserDepartment
+		if err := s.db.Select("department_id").
+			Where("tenant_id = ? AND user_id = ? AND status = ? AND department_id IN ?", tenantId, targetUserId, constant.EnterpriseMembershipStatusActive, manageableIds[start:end]).
+			Find(&batch).Error; err != nil {
+			return nil, err
+		}
+		memberships = append(memberships, batch...)
+	}
+	departmentIds := make([]int, 0, len(memberships))
+	seen := make(map[int]struct{}, len(memberships))
+	for _, membership := range memberships {
+		if _, ok := seen[membership.DepartmentId]; ok {
+			continue
+		}
+		seen[membership.DepartmentId] = struct{}{}
+		departmentIds = append(departmentIds, membership.DepartmentId)
+	}
+	sort.Ints(departmentIds)
+	return departmentIds, nil
 }
 
 func (s *PermissionService) departmentLineage(tenantId int, departmentId int) ([]int, map[int]int, error) {

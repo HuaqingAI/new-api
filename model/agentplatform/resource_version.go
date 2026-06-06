@@ -23,6 +23,7 @@ type ResourceVersion struct {
 	PublishedAt     *time.Time `json:"published_at"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+	Resource        Resource   `json:"-" gorm:"references:ResourceId;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 func (ResourceVersion) TableName() string {

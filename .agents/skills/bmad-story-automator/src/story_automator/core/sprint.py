@@ -48,7 +48,7 @@ def sprint_status_epic(project_root: str, epic: str, state_file: str | None = No
             continue
         key = parts[0].strip()
         norm = normalize_story_key_for_epic(project_root, epic, key, state_file=state_file)
-        if norm is None or norm.id.rsplit(".", 1)[0] != epic:
+        if norm is None or norm.id.rsplit(".", 1)[0].casefold() != epic.casefold():
             continue
         status = parts[1].strip().split()
         rank = _status_key_rank(key, norm)
@@ -63,7 +63,7 @@ def sprint_status_epic(project_root: str, epic: str, state_file: str | None = No
 
 
 def _status_key_rank(key: str, norm: StoryKey) -> int:
-    if key == norm.key and key not in {norm.id, norm.prefix}:
+    if key.casefold() == norm.key.casefold() and key.casefold() not in {norm.id.casefold(), norm.prefix.casefold()}:
         return 2
     return 1
 
@@ -77,16 +77,21 @@ def _best_status_match(
     state_file: str | None = None,
 ) -> SprintStatus | None:
     candidates: list[tuple[int, int, str, str]] = []
-    explicit_full_key = story_key == norm.key and story_key not in {norm.id, norm.prefix}
+    explicit_full_key = story_key.casefold() == norm.key.casefold() and story_key.casefold() not in {norm.id.casefold(), norm.prefix.casefold()}
     requested_rank = 5 if explicit_full_key else 3
     for rank, key in ((requested_rank, story_key), (2, norm.id), (2, norm.prefix)):
         match = _exact_status_match(content, key)
         if match:
             candidates.append((rank, len(candidates), key, match.group(1).strip()))
     for key, status in _status_rows(content):
-        if explicit_full_key and key != story_key:
+        if explicit_full_key and key.casefold() != story_key.casefold():
             continue
-        if key.startswith(f"{norm.prefix}-") and _status_key_matches_story(project_root, key, norm.id, state_file=state_file):
+        if key.casefold().startswith(f"{norm.prefix.casefold()}-") and _status_key_matches_story(
+            project_root,
+            key,
+            norm.id,
+            state_file=state_file,
+        ):
             candidates.append((4, len(candidates), key, status))
     if not candidates:
         return None
@@ -95,7 +100,7 @@ def _best_status_match(
 
 
 def _exact_status_match(content: str, key: str) -> re.Match[str] | None:
-    return re.search(rf"(?m)^\s*{re.escape(key)}:\s*(\S+)", content)
+    return re.search(rf"(?mi)^\s*{re.escape(key)}:\s*(\S+)", content)
 
 
 def _status_rows(content: str) -> list[tuple[str, str]]:
@@ -114,9 +119,9 @@ def _status_rows(content: str) -> list[tuple[str, str]]:
 def _status_key_matches_story(project_root: str, key: str, story_id: str, *, state_file: str | None = None) -> bool:
     norm = normalize_story_key(project_root, key, state_file=state_file)
     if norm is not None:
-        return norm.id == story_id
+        return norm.id.casefold() == story_id.casefold()
     prefix = story_id.replace(".", "-")
-    if not key.startswith(f"{prefix}-"):
+    if not key.casefold().startswith(f"{prefix.casefold()}-"):
         return False
     story_num = story_id.rsplit(".", 1)[-1]
     remainder = key[len(prefix) + 1 :]
@@ -131,7 +136,7 @@ def _has_ambiguous_later_boundary(key: str, story_id: str) -> bool:
     if len(story_num) < 4:
         return False
     prefix = story_id.replace(".", "-")
-    if not key.startswith(f"{prefix}-"):
+    if not key.casefold().startswith(f"{prefix.casefold()}-"):
         return False
     remainder = key[len(prefix) + 1 :]
     return re.search(r"^[^-]+-\d+-\d+-", remainder) is not None

@@ -474,7 +474,10 @@ export async function decideQuotaRequest(
 ): Promise<ApiResponse<QuotaRequestResponse>> {
   const res = await api.post(
     `/api/enterprise/quota-requests/${requestId}/decision`,
-    payload
+    payload,
+    {
+      skipBusinessError: true,
+    }
   )
   return res.data
 }

@@ -77,12 +77,12 @@ type DepartmentBudgetItem struct {
 }
 
 type DepartmentBudgetListResult struct {
-	Items              []DepartmentBudgetItem     `json:"items"`
-	Thresholds         DepartmentBudgetThresholds `json:"thresholds"`
-	ScopeDepartmentId  *int                       `json:"scope_department_id,omitempty"`
-	ScopeDepartmentName string                    `json:"scope_department_name"`
-	IncludeDescendants bool                       `json:"include_descendants"`
-	ScopeDepartmentIds []int                      `json:"scope_department_ids"`
+	Items               []DepartmentBudgetItem     `json:"items"`
+	Thresholds          DepartmentBudgetThresholds `json:"thresholds"`
+	ScopeDepartmentId   *int                       `json:"scope_department_id,omitempty"`
+	ScopeDepartmentName string                     `json:"scope_department_name"`
+	IncludeDescendants  bool                       `json:"include_descendants"`
+	ScopeDepartmentIds  []int                      `json:"scope_department_ids"`
 }
 
 type DepartmentBudgetWalletDetail struct {
@@ -141,13 +141,6 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 	}
 
 	budgetType := strings.TrimSpace(input.Type)
-	existing, err := s.latestBudget(departmentId, input.TenantId)
-	if err != nil {
-		return DepartmentBudgetItem{}, err
-	}
-	if existing != nil && existing.Type != "" && existing.Type != budgetType {
-		return DepartmentBudgetItem{}, ErrDepartmentBudgetTypeImmutable
-	}
 
 	switch budgetType {
 	case entmodel.DepartmentBudgetTypeBalance:

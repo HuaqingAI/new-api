@@ -19,11 +19,12 @@ const (
 
 	GovernanceNotificationChannelDingTalkRobot = AlertRuleChannelDingTalkRobot
 
-	GovernanceNotificationStatusPending     = AlertDeliveryStatusPending
-	GovernanceNotificationStatusSent        = AlertDeliveryStatusSent
-	GovernanceNotificationStatusFailed      = AlertDeliveryStatusFailed
-	GovernanceNotificationStatusFinalFailed = AlertDeliveryStatusFinalFailed
-	GovernanceNotificationStatusResent      = AlertDeliveryStatusResent
+	GovernanceNotificationStatusPending      = AlertDeliveryStatusPending
+	GovernanceNotificationStatusSent         = AlertDeliveryStatusSent
+	GovernanceNotificationStatusFailed       = AlertDeliveryStatusFailed
+	GovernanceNotificationStatusFinalFailed  = AlertDeliveryStatusFinalFailed
+	GovernanceNotificationStatusResent       = AlertDeliveryStatusResent
+	GovernanceNotificationStatusUnconfigured = "unconfigured"
 
 	GovernanceNotificationTriggerGovernanceAction = "governance_action"
 	GovernanceNotificationTriggerManual           = AlertDeliveryTriggerManual

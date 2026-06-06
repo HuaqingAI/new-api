@@ -6,7 +6,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import i18n from '@/i18n/config'
+import i18n, { resources } from '@/i18n/config'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -43,6 +43,7 @@ import {
   DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
   GovernanceActivityCard,
+  QuotaRequestTable,
   QuotaAllocationTable,
   createBudgetSchema,
   createAllocationSchema,
@@ -53,6 +54,21 @@ import {
   resolveBudgetSelection,
   syncAllocationFormDraft,
 } from './index'
+import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+  getQuotaRequestBudgetDisplayText,
+} from './quota-request-budget-display'
+import {
+  convertEnterpriseQuotaInputMode,
+  formatEnterpriseQuotaAmount,
+  parseEnterpriseQuotaInput,
+  QuotaAmountDisplay,
+} from './quota-amount-controls'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from './quota-request-budget-display-components'
 import {
   getAncestorDepartmentIds,
   getDefaultExpandedDepartmentIds,
@@ -478,6 +494,105 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(resolveBudgetSelection([], 99, 98), null)
   })
 
+  test('resolves and renders same-department mixed budget pools without type filtering', () => {
+    const mixedBudgets = [
+      departmentBudget({
+        id: 21,
+        type: 'balance',
+        department_id: 2,
+        department_name: 'Engineering',
+        total_quota: 1000,
+        remaining: 800,
+        cycle_quota: 0,
+        usage_ratio: 20,
+      }),
+      departmentBudget({
+        id: 22,
+        type: 'subscription',
+        department_id: 2,
+        department_name: 'Engineering',
+        cycle_quota: 500,
+        remaining: 300,
+        allocated_total: 200,
+        usage_ratio: 40,
+      }),
+    ]
+
+    assert.equal(
+      resolveBudgetSelection(
+        mixedBudgets.map((budget) => budget.id),
+        22,
+        21
+      ),
+      22
+    )
+
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          loading={false}
+          selectedBudgetId={22}
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onSelectBudget={() => undefined}
+          onSortByChange={() => undefined}
+          onSortOrderChange={() => undefined}
+          items={mixedBudgets}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, />#21</)
+    assert.match(html, />#22</)
+    assert.match(html, /Balance Budget/)
+    assert.match(html, /Subscription Budget/)
+    assert.match(html, /Engineering/)
+  })
+
+  test('formats organization quota request budget options with department, identity, type, remaining, and status', () => {
+    const budget = departmentBudget({
+      id: 31,
+      department_name: 'Engineering',
+      type: 'subscription',
+      remaining: 300,
+      status: 'paused',
+    })
+    const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+
+    assert.deepEqual(display, {
+      departmentName: 'Engineering',
+      identity: 'Budget #31',
+      typeLabel: 'Subscription Budget',
+      remainingLabel: 'Remaining 300 quota',
+      remainingAmountLabel: 'Approx. $0.0006',
+      statusLabel: 'Paused',
+    })
+
+    const optionHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetOption item={budget} />
+      </I18nextProvider>
+    )
+    const summaryHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaRequestBudgetSummary item={budget} />
+      </I18nextProvider>
+    )
+
+    for (const html of [optionHtml, summaryHtml]) {
+      for (const expected of [
+        'Engineering',
+        'Budget #31',
+        'Subscription Budget',
+        'Remaining 300 quota',
+        'Approx. $0.0006',
+        'Paused',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+    }
+  })
+
   test('clears stale selected members when the current department member list changes', () => {
     const engineeringMembers = [
       departmentMember({
@@ -851,23 +966,78 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders governance timeline trace, delivery failure reason, and resend action', () => {
+    const knownActions = [
+      ['enterprise.organization.membership.replace', 'Membership replaced'],
+      ['enterprise.organization.membership.add', 'Membership added'],
+      ['enterprise.organization.membership.disable', 'Membership disabled'],
+      ['enterprise.organization.membership.restore', 'Membership restored'],
+      ['enterprise.organization.membership.rename', 'Membership renamed'],
+      ['enterprise.organization.department_admin.grant', 'Department admin granted'],
+      ['enterprise.organization.department_admin.revoke', 'Department admin revoked'],
+      ['enterprise.organization.department_owner.manual_grant', 'Department owner granted'],
+      [
+        'enterprise.organization.department_owner.manual_grant.revoke',
+        'Department owner grant revoked',
+      ],
+      ['enterprise.organization.department_owner.manual_deny', 'Department owner denied'],
+      [
+        'enterprise.organization.department_owner.manual_deny.revoke',
+        'Department owner denial revoked',
+      ],
+      [
+        'enterprise.organization.department_owner.dingtalk_sync.update',
+        'DingTalk owner sync updated',
+      ],
+      [
+        'enterprise.organization.department_owner.resolution.denied',
+        'Department owner resolution denied',
+      ],
+      ['enterprise.dingtalk.config.set', 'DingTalk configuration updated'],
+      ['enterprise.dingtalk.connectivity.test', 'DingTalk connectivity tested'],
+      ['enterprise.dingtalk.sync.start', 'DingTalk sync started'],
+      [
+        'enterprise.dingtalk.sync_conflict.bind_candidate',
+        'DingTalk sync conflict candidate bound',
+      ],
+      ['enterprise.usage.report.set', 'Usage report configured'],
+      ['enterprise.organization.department_budget.create', 'Department budget created'],
+      ['enterprise.organization.department_budget.reject', 'Department budget rejected'],
+      ['enterprise.organization.budget_delegation.create', 'Budget delegation created'],
+      [
+        'enterprise.organization.budget_delegation.supersede',
+        'Budget delegation adjusted',
+      ],
+      ['enterprise.organization.budget_delegation.revoke', 'Budget delegation revoked'],
+      ['enterprise.organization.budget_delegation.reject', 'Budget delegation rejected'],
+      ['enterprise.organization.quota_request.submit', 'Quota request submitted'],
+      ['enterprise.organization.quota_request.approve', 'Quota request approved'],
+      ['enterprise.organization.quota_request.reject', 'Quota request rejected'],
+      ['enterprise.organization.quota_allocation.create', 'Allocation created'],
+      ['enterprise.organization.quota_allocation.reclaim', 'Allocation reclaimed'],
+      ['enterprise.organization.quota_allocation.cancel', 'Allocation cancelled'],
+      ['enterprise.organization.quota_allocation.revoke', 'Allocation revoked'],
+      ['enterprise.alert.rule.save', 'Alert rule saved'],
+      ['enterprise.alert.rule.delete', 'Alert rule deleted'],
+      ['enterprise.alert.delivery.resend', 'Alert delivery resent'],
+    ] as const
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <GovernanceActivityCard
           loading={false}
-          timelineItems={[
+          timelineItems={knownActions.map(([actionType], index) =>
             governanceTimelineItem({
-              trace_id: 'quota_request:42',
-              action_type: 'enterprise.organization.quota_request.approve',
-              actor_name: 'Owner Alice',
+              source_id: index + 1,
+              trace_id: `governance:${index + 1}`,
+              action_type: actionType,
+              actor_name: index === 1 ? 'Owner Alice' : `Actor ${index + 1}`,
               quota_delta: 80,
               status: 'fulfilled',
-            }),
-          ]}
+            })
+          )}
           notificationItems={[
             governanceNotificationItem({
               id: 7,
-              trace_id: 'quota_request:42',
+              trace_id: 'governance:2',
               status: 'final_failed',
               error_reason: 'webhook request failed',
             }),
@@ -880,15 +1050,310 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Governance Timeline and Notification Delivery',
-      'quota_request:42',
-      'Quota request approved',
+      'governance:2',
       'Owner Alice',
       'Final failed',
       'webhook request failed',
       'Resend',
+      '80 quota',
+      'Approx. $0.0002',
+      ...knownActions.map(([, label]) => label),
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+    assert.doesNotMatch(html, /enterprise\.organization\./)
+  })
+
+  test('renders governance notification action summary for delivery-only rows', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 9,
+              trace_id: 'alert_delivery:9',
+              action_type: 'enterprise.alert.delivery.resend',
+              status: 'sent',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Alert delivery resent/)
+    assert.match(html, /Sent/)
+    assert.doesNotMatch(html, /enterprise\.alert\.delivery\.resend/)
+  })
+
+  test('renders fulfilled governance action separately from unconfigured delivery', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <GovernanceActivityCard
+          loading={false}
+          timelineItems={[
+            governanceTimelineItem({
+              source_id: 42,
+              trace_id: 'quota_request:42',
+              action_type: 'enterprise.organization.quota_request.approve',
+              actor_name: 'Owner Alice',
+              quota_delta: 150,
+              status: 'fulfilled',
+            }),
+          ]}
+          notificationItems={[
+            governanceNotificationItem({
+              id: 7,
+              trace_id: 'quota_request:42',
+              status: 'unconfigured',
+              attempt_count: 0,
+              error_reason: 'governance notification channel is not configured',
+            }),
+          ]}
+          resendPendingId={null}
+          onResend={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Quota request approved/)
+    assert.match(html, /Fulfilled/)
+    assert.match(html, /Not configured/)
+    assert.match(html, /governance notification channel is not configured/)
+    assert.match(html, /Attempt 0\/4/)
+    assert.doesNotMatch(html, /Final failed/)
+    assert.doesNotMatch(html, /Resend/)
+  })
+
+  test('renders governance activity with zh locale translations and safe fallbacks', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const html = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <GovernanceActivityCard
+            loading={false}
+            timelineItems={[
+              governanceTimelineItem({
+                source_id: 1,
+                trace_id: 'quota_request:42',
+                action_type: 'enterprise.organization.quota_request.approve',
+                actor_name: 'Owner Alice',
+                quota_delta: 80,
+                status: 'fulfilled',
+              }),
+              governanceTimelineItem({
+                source_id: 2,
+                trace_id: 'unknown:99',
+                action_type: 'enterprise.organization.future_action.full.internal.key',
+                status: 'mystery_status',
+              }),
+            ]}
+            notificationItems={[
+              governanceNotificationItem({
+                id: 7,
+                trace_id: 'quota_request:42',
+                status: 'final_failed',
+                error_reason: 'webhook request failed',
+              }),
+              governanceNotificationItem({
+                id: 8,
+                trace_id: 'unknown:99',
+                status: 'future_status',
+              }),
+            ]}
+            resendPendingId={null}
+            onResend={() => undefined}
+          />
+        </I18nextProvider>
+      )
+
+      for (const expected of [
+        '治理时间线与通知投递',
+        '动作',
+        '通知状态',
+        '额度申请已批准',
+        '最终失败',
+        '重新发送',
+        '未知治理动作',
+        '未知投递状态',
+        'quota_request:42',
+        'unknown:99',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+      assert.doesNotMatch(
+        html,
+        /enterprise\.organization\.future_action\.full\.internal\.key/
+      )
+      assert.doesNotMatch(html, />future_status</)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
+  })
+
+  test('governance locale keys exist for every supported language', () => {
+    const requiredKeys = [
+      'Governance Timeline and Notification Delivery',
+      'Action',
+      'Notification Status',
+      'Final failed',
+      'Not configured',
+      'Resend',
+      'Attempt {{count}}/{{max}}',
+      'Membership replaced',
+      'Membership added',
+      'Membership disabled',
+      'Membership restored',
+      'Membership renamed',
+      'Department admin granted',
+      'Department admin revoked',
+      'Department owner granted',
+      'Department owner grant revoked',
+      'Department owner denied',
+      'Department owner denial revoked',
+      'DingTalk owner sync updated',
+      'Department owner resolution denied',
+      'DingTalk configuration updated',
+      'DingTalk connectivity tested',
+      'DingTalk sync started',
+      'DingTalk sync conflict candidate bound',
+      'Usage report configured',
+      'Alert rule saved',
+      'Alert rule deleted',
+      'Alert delivery resent',
+      'Quota request submitted',
+      'Quota request approved',
+      'Quota request rejected',
+      'Submitted',
+      'Approved',
+      'Rejected',
+      'Fulfilled',
+      'Unknown status',
+      'Unknown budget type',
+      'Allocation created',
+      'Allocation reclaimed',
+      'Allocation cancelled',
+      'Allocation revoked',
+      'Budget delegation created',
+      'Budget delegation adjusted',
+      'Budget delegation revoked',
+      'Budget delegation rejected',
+      'Department budget created',
+      'Department budget rejected',
+      'Unknown governance action',
+      'Unknown delivery status',
+      'Employee Quota Requests',
+      'Target Budget Pool',
+      'Allocation #{{id}}',
+      'Selected request scope',
+      'No budget pool selected',
+      'Budget #{{budgetId}}',
+      '{{department}} · {{budget}}',
+      'Remaining {{remaining}}',
+      'Trace ID',
+    ] as const
+
+    for (const [language, resource] of Object.entries(resources)) {
+      for (const key of requiredKeys) {
+        assert.notEqual(
+          resource.translation[key],
+          undefined,
+          `${language} missing ${key}`
+        )
+      }
+    }
+  })
+
+  test('enterprise wallet expiry locale keys exist for every supported language', () => {
+    const requiredKeys = [
+      'One-time quota',
+      'Never expires',
+      'No expiry set',
+      'Unknown cycle type',
+    ] as const
+
+    for (const [language, resource] of Object.entries(resources)) {
+      for (const key of requiredKeys) {
+        assert.notEqual(
+          resource.translation[key],
+          undefined,
+          `${language} missing ${key}`
+        )
+      }
+    }
+  })
+
+  test('maps quota request, allocation, wallet status, and budget type without raw fallback', () => {
+    for (const [status, expected] of [
+      ['submitted', 'Submitted'],
+      ['approved', 'Approved'],
+      ['rejected', 'Rejected'],
+      ['fulfilled', 'Fulfilled'],
+      ['active', 'Active'],
+      ['paused', 'Paused'],
+      ['revoked', 'Revoked'],
+      ['expired', 'Expired'],
+      ['superseded', 'Superseded'],
+      ['closed', 'Closed'],
+      ['cancelled', 'Cancelled'],
+      ['future_status', 'Unknown status'],
+      ['', 'Unknown status'],
+    ] as const) {
+      assert.equal(enterpriseBudgetStatusLabel(status, i18n.t), expected)
+    }
+
+    assert.equal(formatBudgetType('balance', i18n.t), 'Balance Budget')
+    assert.equal(formatBudgetType('subscription', i18n.t), 'Subscription Budget')
+    assert.equal(formatBudgetType('future_budget', i18n.t), 'Unknown budget type')
+  })
+
+  test('formats enterprise quota amounts and parses amount view through wallet helpers', () => {
+    const display = formatEnterpriseQuotaAmount(1_000_000, i18n.t)
+
+    assert.equal(display.rawQuota, 1_000_000)
+    assert.equal(display.quotaLabel, '1,000,000 quota')
+    assert.equal(display.amount, 2)
+    assert.equal(display.amountLabel, '$2')
+    assert.equal(display.auxiliaryLabel, 'Approx. $2')
+
+    assert.equal(parseEnterpriseQuotaInput('2', 'amount'), 1_000_000)
+    assert.equal(parseEnterpriseQuotaInput('0.5', 'amount'), 250_000)
+    assert.equal(parseEnterpriseQuotaInput('250000', 'quota'), 250_000)
+    assert.equal(parseEnterpriseQuotaInput('1.5', 'quota'), null)
+    assert.equal(parseEnterpriseQuotaInput('abc', 'amount'), null)
+
+    assert.deepEqual(
+      convertEnterpriseQuotaInputMode({
+        value: '1000000',
+        from: 'quota',
+        to: 'amount',
+      }),
+      { value: '2', quota: 1_000_000 }
+    )
+    assert.deepEqual(
+      convertEnterpriseQuotaInputMode({
+        value: '2',
+        from: 'amount',
+        to: 'quota',
+      }),
+      { value: '1000000', quota: 1_000_000 }
+    )
+  })
+
+  test('quota amount display preserves negative governance deltas', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <QuotaAmountDisplay quota={-500_000} />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /-500,000 quota/)
+    assert.match(html, /Approx\. -\$1/)
+    assert.doesNotMatch(html, />0 quota</)
   })
 
   test('renders department budget empty state and latest budget details', () => {
@@ -910,6 +1375,8 @@ describe('Enterprise organization department tree workflow', () => {
     for (const expected of [
       'Subscription Budget',
       'Remaining Quota',
+      '300 quota',
+      'Approx. $0.0006',
       'Cycle Quota',
       'Weekly',
       'Custom Cycle Seconds',
@@ -1182,16 +1649,46 @@ describe('Enterprise organization department tree workflow', () => {
     for (const expected of [
       'Balance Budget',
       'Remaining Quota',
-      '640',
+      '640 quota',
+      'Approx. $0.0013',
       'Total Quota',
-      '800',
-      'No Reset',
+      '800 quota',
+      'One-time quota',
+      'Never expires',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
 
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
     assert.doesNotMatch(html, />Weekly</)
     assert.doesNotMatch(html, />Custom \\(seconds\\)</)
+  })
+
+  test('renders non-positive budget expiry and unknown cycles with semantic fallback', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({
+            type: 'balance',
+            cycle_type: 'future_cycle',
+            expires_at: -1,
+          })}
+          selectedBudget={departmentBudget({
+            type: 'balance',
+            cycle_type: 'future_cycle',
+            expires_at: -1,
+          })}
+          thresholds={{ warning: 80, critical: 95 }}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Unknown cycle type/)
+    assert.match(html, /Never expires/)
+    assert.doesNotMatch(html, />future_cycle</)
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
   })
 
   test('renders budget pool list with selectable threshold states and usage metrics', () => {
@@ -1338,8 +1835,10 @@ describe('Enterprise organization department tree workflow', () => {
       'Alice',
       'alice · User ID #2001',
       '#41',
-      '300',
-      '180',
+      '300 quota',
+      '180 quota',
+      'Approx. $0.0006',
+      'Approx. $0.0004',
       'Monthly',
       'Next Reset',
       'Expired',
@@ -1350,6 +1849,45 @@ describe('Enterprise organization department tree workflow', () => {
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('renders one-time derived wallet expiry without raw cycle codes or epoch dates', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetDetailTable
+          loading={false}
+          budget={departmentBudget({
+            id: 17,
+            type: 'balance',
+            status: 'active',
+            cycle_type: 'never',
+            expires_at: 0,
+          })}
+          wallets={[
+            walletDetail({
+              allocation_id: 32,
+              wallet_id: 42,
+              wallet_status: 'active',
+              target_user_id: 2002,
+              target_username: 'bob',
+              target_display_name: 'Bob',
+              cycle_type: 'never',
+              next_reset_time: 0,
+              expires_at: -1,
+              source_parent_budget_id: 17,
+              source_parent_budget_type: 'balance',
+              processed_at: 1700000600,
+            }),
+          ]}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /One-time quota/)
+    assert.match(html, /Never expires/)
+    assert.doesNotMatch(html, /No Reset/)
+    assert.doesNotMatch(html, />never</)
+    assert.doesNotMatch(html, /1970|1969|Invalid Date/)
   })
 
   test('renders budget detail empty states for unselected and wallet-free pools', () => {
@@ -1443,8 +1981,10 @@ describe('Enterprise organization department tree workflow', () => {
       'Delegation Route',
       'Delegation Quota',
       'Engineering -&gt; Platform -&gt; Budget #23',
-      '450',
+      '450 quota',
+      'Approx. $0.0009',
       'Active',
+      'aria-label="Delegation Quota"',
       'Close old delegation and create a new one',
       'Superseded',
       'Historical delegation',
@@ -1484,9 +2024,11 @@ describe('Enterprise organization department tree workflow', () => {
       'Actions',
       'Alice',
       'alice · User ID #2001',
-      '300',
+      '300 quota',
+      'Approx. $0.0006',
       '301',
       'Active',
+      'aria-label="Allocation Quota"',
       'Close old allocation and create a new one',
       'Cancel allocation',
       'Reclaim allocation',
@@ -1530,7 +2072,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Supersedes Allocation #7',
       'Superseded By Allocation #10',
       'Reclaimed Quota',
-      '175',
+      '175 quota',
+      'Approx. $0.0004',
       'Close old allocation and create a new one',
       'Historical allocation',
       'Reclaim allocation',
@@ -1539,25 +2082,122 @@ describe('Enterprise organization department tree workflow', () => {
     }
   })
 
-  test('renders quota request rows with explicit target department, approved quota, and fulfillment result', () => {
+  test('renders quota request rows with localized budget identity and request statuses', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
-        <table>
-          <tbody>
-            <tr>
-              <td>{quotaRequest().department_name}</td>
-              <td>{quotaRequest().requested_quota}</td>
-              <td>{quotaRequest({ approved_quota: 80 }).approved_quota}</td>
-              <td>{quotaRequest({ allocation_id: 21 }).allocation_id}</td>
-              <td>{quotaRequest({ status: 'fulfilled' }).status}</td>
-            </tr>
-          </tbody>
-        </table>
+        <QuotaRequestTable
+          loading={false}
+          items={[
+            quotaRequest({
+              id: 1,
+              status: 'submitted',
+              department_budget_id: 11,
+            }),
+            quotaRequest({
+              id: 2,
+              approved_quota: 80,
+              allocation_id: 21,
+              status: 'fulfilled',
+              department_budget_id: 12,
+            }),
+            quotaRequest({
+              id: 3,
+              status: 'mystery_status',
+              department_budget_id: 13,
+            }),
+          ]}
+          decisionDrafts={{}}
+          onDecisionDraftChange={() => undefined}
+          onApprove={() => undefined}
+          onReject={() => undefined}
+          pendingRequestId={null}
+          canGovern={true}
+        />
       </I18nextProvider>
     )
 
-    for (const expected of ['Engineering', '120', '80', '21', 'fulfilled']) {
+    for (const expected of [
+      'Requester',
+      'Target Budget Pool',
+      'Engineering',
+      'Budget #11',
+      'Budget #12',
+      'Budget #13',
+      '120 quota',
+      '80 quota',
+      'Approx. $0.0002',
+      'Allocation #21',
+      'Submitted',
+      'Fulfilled',
+      'Unknown status',
+      'aria-label="Approved Quota"',
+      'Approve',
+      'Reject',
+    ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+    assert.doesNotMatch(html, />submitted</)
+    assert.doesNotMatch(html, />fulfilled</)
+    assert.doesNotMatch(html, />mystery_status</)
+    assert.doesNotMatch(html, />#11</)
+  })
+
+  test('renders quota request governance surfaces with zh locale without internal status fallback', async () => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage('zh')
+    try {
+      const html = renderToStaticMarkup(
+        <I18nextProvider i18n={i18n}>
+          <QuotaRequestTable
+            loading={false}
+            items={[
+              quotaRequest({
+                id: 1,
+                status: 'submitted',
+                department_budget_id: 11,
+              }),
+              quotaRequest({
+                id: 2,
+                status: 'fulfilled',
+                allocation_id: 21,
+                department_budget_id: 12,
+              }),
+              quotaRequest({
+                id: 3,
+                status: 'mystery_status',
+                department_budget_id: 13,
+              }),
+            ]}
+            decisionDrafts={{}}
+            onDecisionDraftChange={() => undefined}
+            onApprove={() => undefined}
+            onReject={() => undefined}
+            pendingRequestId={null}
+            canGovern={true}
+          />
+        </I18nextProvider>
+      )
+
+      for (const expected of [
+        '申请人',
+        '目标预算池',
+        '预算池 #11',
+        '预算池 #12',
+        '已提交',
+        '已完成',
+        '未知状态',
+        '分配 #21',
+        '批准',
+        '拒绝',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
+      assert.doesNotMatch(html, />submitted</)
+      assert.doesNotMatch(html, />fulfilled</)
+      assert.doesNotMatch(html, />mystery_status</)
+      assert.doesNotMatch(html, />#11</)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
     }
   })
 

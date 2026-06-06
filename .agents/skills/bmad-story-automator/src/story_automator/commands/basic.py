@@ -10,6 +10,8 @@ from pathlib import Path
 from ..core.runtime_layout import active_marker_path, runtime_provider
 from ..core.stop_hooks import HookConfigError, ensure_stop_hook
 from ..core.utils import (
+    file_exists,
+    read_text,
     get_project_slug,
     run_cmd,
     write_json,
@@ -190,7 +192,12 @@ def cmd_commit_story(args: list[str]) -> int:
     if not lines:
         write_json({"ok": False, "error": "no_changes"})
         return 0
-    if run_cmd("git", "-C", repo, "add", "-A").exit_code != 0:
+    tracked = _story_commit_paths(repo, story)
+    if not tracked:
+        write_json({"ok": False, "error": "story_file_list_empty"})
+        return 1
+    add = run_cmd("git", "-C", repo, "add", "--", *tracked)
+    if add.exit_code != 0:
         write_json({"ok": False, "error": "git_add_failed"})
         return 1
     message = f"feat(story-{story}): {title}"
@@ -201,6 +208,67 @@ def cmd_commit_story(args: list[str]) -> int:
     sha = run_cmd("git", "-C", repo, "rev-parse", "HEAD").output.strip()
     write_json({"ok": True, "commit": sha})
     return 0
+
+
+def _story_commit_paths(repo: str, story: str) -> list[str]:
+    story_path = _resolve_story_file(repo, story)
+    if story_path is None:
+        return []
+    tracked = [story_path]
+    tracked.extend(_paths_from_story_file(repo, story_path))
+    unique: list[str] = []
+    seen: set[str] = set()
+    for path in tracked:
+        normalized = path.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique
+
+
+def _resolve_story_file(repo: str, story: str) -> str | None:
+    root = Path(repo)
+    story_file = root / "_bmad-output" / "implementation-artifacts" / f"{story}.md"
+    if story_file.is_file():
+        return story_file.relative_to(root).as_posix()
+    prefix = story.replace(".", "-")
+    needle = f"{prefix.casefold()}-"
+    matches = sorted(
+        (
+            path
+            for path in (root / "_bmad-output" / "implementation-artifacts").glob("*.md")
+            if path.stem.casefold().startswith(needle)
+        ),
+        key=lambda path: path.name.casefold(),
+    )
+    if matches:
+        return matches[0].relative_to(root).as_posix()
+    return None
+
+
+def _paths_from_story_file(repo: str, story_path: str) -> list[str]:
+    full_path = Path(repo) / story_path
+    if not file_exists(full_path):
+        return []
+    lines = read_text(full_path).splitlines()
+    in_file_list = False
+    paths: list[str] = []
+    for line in lines:
+        if line.strip() == "### File List":
+            in_file_list = True
+            continue
+        if in_file_list and line.startswith("## "):
+            break
+        if not in_file_list:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        rel = stripped[2:].strip().strip("`")
+        if rel:
+            paths.append(rel)
+    return paths
 
 
 def cmd_list_sessions(args: list[str]) -> int:

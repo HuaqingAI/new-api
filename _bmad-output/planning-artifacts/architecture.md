@@ -24,6 +24,15 @@ revisionNotes: |
     enterprise_quota_allocations 承接，relay/billing 主链路保持不变。
   - 新增 quota request workflow：员工申请 -> 部门负责人单步审批 -> 复用现有 allocation service 自动分配。
   - 新增治理通知约束：通知失败不得阻塞核心治理事务提交，必须记录投递状态与错误原因。
+  V1.3A 修订（基于 Epic 7 验证与企业治理体验纠偏，2026-06-02）：
+  - 员工额度申请入口应贴近余额 / 钱包用户场景，而不是仅依赖企业组织管理工作台。
+  - 预算池类型不可变约束作用于单个预算池实例；同一部门可并存 balance 与 subscription 预算池。
+  - delegation、quota request、allocation 继续以显式 budget id 作为操作边界，不回退到 latest/default budget 推断。
+  V1.3B 修订（基于额度申请后续排障与 Epic 7B 实施，2026-06-03）：
+  - 治理动作结果与通知投递结果独立；通知未配置记录为非阻塞状态，真实投递失败才进入失败/重试语义。
+  - quota request 预算池选项必须可辨识，并在选中后展示已选请求范围 / 预算池摘要。
+  - 企业派生 wallet 的一次性周期与非正过期时间先按业务语义展示，避免 epoch 时间和错误过期判断。
+  - 企业预算治理前端支持 quota / 金额双视角；后端存储、约束和 API contract 仍保持 quota 单位。
 inputDocuments:
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md"
   - "_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/addendum.md"
@@ -1185,9 +1194,15 @@ new-api/
 6. **用量聚合流（V1.1）**：scheduler ticker → `usage_aggregation_task` → 按时间窗扫 `logs` → 对每条 log `INNER JOIN enterprise_user_departments` 展开为 `(log_row, dept_id)` 多行（同一用户多部门 → 多行重复计入）→ 归并写入 `enterprise_usage_snapshots`；未归属用户单独归入 `dept_id IS NULL` 桶。前端看板 `GET /api/enterprise/usage/department-summary` 命中聚合表，不直接查 `logs`。
 5. **告警流**：现有敏感词/过滤产生事件 → 写 `enterprise_alert_events`（旁路写入，不阻塞 relay）→ scheduler ticker `alert_dispatch_task` → 匹配 `enterprise_alert_rules` → 解析部门收件人 → 调 `notify_*` 投递 → 写 `enterprise_alert_deliveries`。
 6. **管理动作审计流**：`controller/enterprise/*.go` 在所有低频管理 mutation 成功后调 `service.WriteAdminAction(ctx, action)` → 写 `enterprise_admin_actions`。配额分配**不**走此路径（自身在 `enterprise_quota_allocations` 已是审计源）。
-7. **额度申请审批流（V1.3）**：员工从余额 / 钱包相关 UI 发起额度申请 → `POST /api/enterprise/quota-requests` → 记录目标部门、目标预算池模式/池子、申请额度、申请原因与幂等键 → 系统按目标部门的有效负责人集合路由单步审批 → 审批通过后调用既有 `quota_allocation.go` 完成自动分配 → 写 request / approval / fulfillment 审计与通知状态。重复审批或重复回调不得产生重复分配。企业组织工作台负责审批、治理时间线与通知状态展示。
+7. **额度申请审批流（V1.3）**：员工从余额 / 钱包相关 UI 发起额度申请 → quota request 表单加载“可辨识预算池选项”（部门名、预算池标识或名称、预算类型、剩余额度、状态）并在选中后显示已选预算池摘要；额度输入表单支持 quota / 金额（$）双视角切换，但底层仍以 quota 作为存储和约束单位 → `POST /api/enterprise/quota-requests` → 记录目标部门、目标预算池、申请额度、申请原因与幂等键 → 系统按目标部门的有效负责人集合路由单步审批 → 审批通过后调用既有 `quota_allocation.go` 完成自动分配 → 写 request / approval / fulfillment 审计与通知状态。重复审批或重复回调不得产生重复分配。企业组织工作台负责审批；治理动作结果与通知投递状态必须独立展示。
 
 8. **预算池类型约束边界（V1.3A）**：`DepartmentBudget.Type` 继续保持单值，因此单个预算池实例仍然只能是 `balance` 或 `subscription` 之一；但同一部门下允许并存多个不同类型预算池。类型兼容性校验应作用于当前操作选中的预算池，不应扩展成“部门级单类型”限制。
+
+9. **治理通知投递语义（V1.3B）**：治理通知投递是核心治理事务之后的旁路动作。审批成功、allocation 创建成功等治理结果必须保持独立事实；当系统没有可用治理通知通道或缺少所需配置时，应记录为“未配置/跳过/待配置”一类非阻塞状态，而不是把治理动作标记成失败。真实投递失败仍需可重试、可追踪，并与治理动作结果分层展示。
+
+10. **企业 wallet 显示语义（V1.3B）**：企业派生 wallet 的显示层必须先解释业务语义再格式化时间。`cycle_type = never` 表示一次性/无周期重置；`end_time <= 0`、`expires_at <= 0` 代表永不过期或未设置过期时间的业务状态，不得直接传入日期格式化逻辑，也不得默认标记为已过期。
+
+11. **额度单位与金额视角（V1.3B）**：企业预算治理继续以 quota 作为底层存储和约束单位，但前端显示层应支持 quota / 金额（$）双视角。预算池创建、分配、委派、额度申请表单允许用户切换输入/理解视角；预算池列表、allocation 记录、quota request 记录和相关详情在保留 quota 原值的同时补充金额显示。该能力优先作为显示层增强，不引入新的后端计费单位。
 
 ### File Organization Patterns
 

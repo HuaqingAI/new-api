@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { z } from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -41,6 +41,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -150,6 +151,18 @@ import {
   formatEnterpriseUserPrimary,
   formatEnterpriseUserSecondary,
 } from './lib/user-display'
+import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+} from './quota-request-budget-display'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from './quota-request-budget-display-components'
+import {
+  QuotaAmountDisplay,
+  QuotaAmountInput,
+} from './quota-amount-controls'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -497,20 +510,6 @@ function statusLabel(status: MembershipStatus, t: (key: string) => string) {
   return t('Pending')
 }
 
-function enterpriseBudgetStatusLabel(
-  status: string,
-  t: (key: string) => string
-) {
-  if (status === 'active') return t('Active')
-  if (status === 'paused') return t('Paused')
-  if (status === 'revoked') return t('Revoked')
-  if (status === 'expired') return t('Expired')
-  if (status === 'superseded') return t('Superseded')
-  if (status === 'closed') return t('Closed')
-  if (status === 'cancelled') return t('Cancelled')
-  return status || '-'
-}
-
 function enterpriseBudgetStatusVariant(status: string) {
   if (status === 'active') return 'success' as const
   if (status === 'paused') return 'warning' as const
@@ -529,10 +528,6 @@ function thresholdStateVariant(status: string) {
   if (status === 'critical') return 'danger' as const
   if (status === 'warning') return 'warning' as const
   return 'success' as const
-}
-
-function formatBudgetType(type: string, t: (key: string) => string) {
-  return type === 'balance' ? t('Balance Budget') : t('Subscription Budget')
 }
 
 function MembershipStatusBadge({ status }: { status: MembershipStatus }) {
@@ -2101,6 +2096,9 @@ export function DepartmentBudgetPanel({
   const formTenantId = form.watch('tenant_id')
   const budgetType = form.watch('type')
   const cycleType = form.watch('cycle_type')
+  const selectedQuotaRequestBudgetId = quotaRequestForm.watch(
+    'department_budget_id'
+  )
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
@@ -2338,6 +2336,12 @@ export function DepartmentBudgetPanel({
   const descendantBudgetOptions = (
     descendantBudgetListQuery.data?.items ?? []
   ).filter((item) => item.department_id !== departmentId)
+  const quotaRequestBudgetOptions =
+    quotaRequestCapabilityQuery.data?.budgets ?? budgetListQuery.data?.items ?? []
+  const selectedQuotaRequestBudget =
+    quotaRequestBudgetOptions.find(
+      (item) => item.id === selectedQuotaRequestBudgetId
+    ) ?? null
 
   const createMutation = useMutation({
     mutationFn: async (values: BudgetFormValues) => {
@@ -2896,7 +2900,11 @@ export function DepartmentBudgetPanel({
                       <FormItem>
                         <FormLabel>{t('Total Quota')}</FormLabel>
                         <FormControl>
-                          <Input inputMode='numeric' {...field} />
+                          <QuotaAmountInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            ariaLabel={t('Total Quota')}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -2911,7 +2919,11 @@ export function DepartmentBudgetPanel({
                         <FormItem>
                           <FormLabel>{t('Cycle Quota')}</FormLabel>
                           <FormControl>
-                            <Input inputMode='numeric' {...field} />
+                            <QuotaAmountInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              ariaLabel={t('Cycle Quota')}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -3116,7 +3128,11 @@ export function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Delegation Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Delegation Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3213,6 +3229,23 @@ export function DepartmentBudgetPanel({
                 <div className='text-muted-foreground mt-1 text-xs'>
                   {t('Target Department')} {departmentName}
                 </div>
+                <div className='mt-3 border-t pt-3'>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Selected request scope')}
+                  </div>
+                  {selectedQuotaRequestBudget ? (
+                    <QuotaRequestBudgetSummary item={selectedQuotaRequestBudget} />
+                  ) : (
+                    <>
+                      <div className='mt-1 text-sm font-medium'>
+                        {departmentName}
+                      </div>
+                      <div className='text-muted-foreground mt-1 text-xs'>
+                        {t('No budget pool selected')}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <FormField
                 control={quotaRequestForm.control}
@@ -3232,16 +3265,13 @@ export function DepartmentBudgetPanel({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(
-                          quotaRequestCapabilityQuery.data?.budgets ??
-                          budgetListQuery.data?.items ??
-                          []
-                        ).map((item) => (
-                          <SelectItem key={item.id} value={String(item.id)}>
-                            {t('{{department}} · Budget #{{budgetId}}', {
-                              department: item.department_name,
-                              budgetId: item.id,
-                            })}
+                        {quotaRequestBudgetOptions.map((item) => (
+                          <SelectItem
+                            key={item.id}
+                            value={String(item.id)}
+                            className='items-start py-2'
+                          >
+                            <QuotaRequestBudgetOption item={item} />
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -3257,7 +3287,11 @@ export function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Requested Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Requested Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3421,7 +3455,11 @@ export function DepartmentBudgetPanel({
                   <FormItem>
                     <FormLabel>{t('Allocation Quota')}</FormLabel>
                     <FormControl>
-                      <Input inputMode='numeric' {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Allocation Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -3607,7 +3645,9 @@ export function QuotaAllocationTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.committed_quota} />
+            </TableCell>
             <TableCell>{item.wallet_id}</TableCell>
             <TableCell>
               <Badge variant='secondary'>
@@ -3632,23 +3672,23 @@ export function QuotaAllocationTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{item.reclaimed_quota || 0}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.reclaimed_quota || 0} />
+            </TableCell>
             <TableCell>
               {item.processed_at ? formatTimestamp(item.processed_at) : '-'}
             </TableCell>
             <TableCell>{formatTimestamp(item.created_at)}</TableCell>
             <TableCell>
-              <div className='flex min-w-[320px] items-center gap-2'>
+              <div className='flex min-w-[320px] flex-wrap items-start gap-2'>
                 {item.status === 'active' ? (
-                  <Input
-                    inputMode='numeric'
+                  <QuotaAmountInput
+                    className='w-[220px] flex-none'
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(event) =>
-                      onSupersedeDraftChange?.(item.id, event.target.value)
-                    }
-                    aria-label={t('Allocation Quota')}
+                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
+                    ariaLabel={t('Allocation Quota')}
                   />
                 ) : null}
                 <Button
@@ -3744,6 +3784,10 @@ export function GovernanceActivityCard({
     }
     return map
   }, [notificationItems])
+  const timelineTraceIds = useMemo(
+    () => new Set(timelineItems.map((item) => item.trace_id)),
+    [timelineItems]
+  )
 
   if (loading) {
     return <Skeleton className='h-48 w-full' />
@@ -3812,7 +3856,9 @@ export function GovernanceActivityCard({
                         (item.actor_id ? `#${item.actor_id}` : '-')}
                     </TableCell>
                     <TableCell>{formatGovernanceTarget(item, t)}</TableCell>
-                    <TableCell>{formatNumber(item.quota_delta)}</TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.quota_delta} />
+                    </TableCell>
                     <TableCell>
                       <Badge variant='secondary'>
                         {enterpriseBudgetStatusLabel(item.status, t)}
@@ -3831,13 +3877,10 @@ export function GovernanceActivityCard({
             </TableBody>
           </Table>
         )}
-        {notificationItems.some(
-          (item) => !notificationsByTrace.has(item.trace_id)
-        ) ? (
+        {notificationItems.some((item) => !timelineTraceIds.has(item.trace_id)) ? (
           <GovernanceNotificationDeliveryList
             items={notificationItems.filter(
-              (item) =>
-                !timelineItems.some((trace) => trace.trace_id === item.trace_id)
+              (item) => !timelineTraceIds.has(item.trace_id)
             )}
             resendPendingId={resendPendingId}
             onResend={onResend}
@@ -3867,6 +3910,9 @@ function GovernanceNotificationDeliveryList({
     <div className='flex min-w-[220px] flex-col gap-2'>
       {items.map((item) => (
         <div key={item.id} className='rounded-md border p-2'>
+          <div className='mb-2 text-xs font-medium'>
+            {governanceActionLabel(item.action_type, t)}
+          </div>
           <div className='flex items-center justify-between gap-2'>
             <StatusBadge
               label={governanceDeliveryStatusLabel(item.status, t)}
@@ -3893,7 +3939,14 @@ function GovernanceNotificationDeliveryList({
             })}
           </div>
           {item.error_reason ? (
-            <div className='text-destructive mt-1 text-xs break-words'>
+            <div
+              className={cn(
+                'mt-1 break-words text-xs',
+                item.status === 'failed' || item.status === 'final_failed'
+                  ? 'text-destructive'
+                  : 'text-muted-foreground'
+              )}
+            >
               {item.error_reason}
             </div>
           ) : null}
@@ -3924,6 +3977,30 @@ function formatGovernanceTarget(
 
 function governanceActionLabel(actionType: string, t: (key: string) => string) {
   const labels: Record<string, string> = {
+    'enterprise.organization.membership.replace': 'Membership replaced',
+    'enterprise.organization.membership.add': 'Membership added',
+    'enterprise.organization.membership.disable': 'Membership disabled',
+    'enterprise.organization.membership.restore': 'Membership restored',
+    'enterprise.organization.membership.rename': 'Membership renamed',
+    'enterprise.organization.department_admin.grant': 'Department admin granted',
+    'enterprise.organization.department_admin.revoke': 'Department admin revoked',
+    'enterprise.organization.department_owner.manual_grant': 'Department owner granted',
+    'enterprise.organization.department_owner.manual_grant.revoke': 'Department owner grant revoked',
+    'enterprise.organization.department_owner.manual_deny': 'Department owner denied',
+    'enterprise.organization.department_owner.manual_deny.revoke': 'Department owner denial revoked',
+    'enterprise.organization.department_owner.dingtalk_sync.update': 'DingTalk owner sync updated',
+    'enterprise.organization.department_owner.resolution.denied': 'Department owner resolution denied',
+    'enterprise.dingtalk.config.set': 'DingTalk configuration updated',
+    'enterprise.dingtalk.connectivity.test': 'DingTalk connectivity tested',
+    'enterprise.dingtalk.sync.start': 'DingTalk sync started',
+    'enterprise.dingtalk.sync_conflict.bind_candidate': 'DingTalk sync conflict candidate bound',
+    'enterprise.usage.report.set': 'Usage report configured',
+    'enterprise.organization.department_budget.create': 'Department budget created',
+    'enterprise.organization.department_budget.reject': 'Department budget rejected',
+    'enterprise.organization.budget_delegation.create': 'Budget delegation created',
+    'enterprise.organization.budget_delegation.supersede': 'Budget delegation adjusted',
+    'enterprise.organization.budget_delegation.revoke': 'Budget delegation revoked',
+    'enterprise.organization.budget_delegation.reject': 'Budget delegation rejected',
     'enterprise.organization.quota_request.submit': 'Quota request submitted',
     'enterprise.organization.quota_request.approve': 'Quota request approved',
     'enterprise.organization.quota_request.reject': 'Quota request rejected',
@@ -3931,12 +4008,11 @@ function governanceActionLabel(actionType: string, t: (key: string) => string) {
     'enterprise.organization.quota_allocation.reclaim': 'Allocation reclaimed',
     'enterprise.organization.quota_allocation.cancel': 'Allocation cancelled',
     'enterprise.organization.quota_allocation.revoke': 'Allocation revoked',
-    'enterprise.organization.budget_delegation.create':
-      'Budget delegation created',
-    'enterprise.organization.budget_delegation.supersede':
-      'Budget delegation adjusted',
+    'enterprise.alert.rule.save': 'Alert rule saved',
+    'enterprise.alert.rule.delete': 'Alert rule deleted',
+    'enterprise.alert.delivery.resend': 'Alert delivery resent',
   }
-  return t(labels[actionType] ?? actionType)
+  return t(labels[actionType] ?? 'Unknown governance action')
 }
 
 function governanceDeliveryStatusLabel(
@@ -3954,8 +4030,10 @@ function governanceDeliveryStatusLabel(
       return t('Failed')
     case 'final_failed':
       return t('Final failed')
+    case 'unconfigured':
+      return t('Not configured')
     default:
-      return status
+      return t('Unknown delivery status')
   }
 }
 
@@ -3966,6 +4044,8 @@ function governanceDeliveryStatusVariant(status: string) {
       return 'success' as const
     case 'failed':
       return 'warning' as const
+    case 'unconfigured':
+      return 'grey' as const
     case 'final_failed':
       return 'red' as const
     default:
@@ -3973,7 +4053,7 @@ function governanceDeliveryStatusVariant(status: string) {
   }
 }
 
-function QuotaRequestTable({
+export function QuotaRequestTable({
   items,
   loading,
   decisionDrafts,
@@ -4060,12 +4140,22 @@ function QuotaRequestTable({
                   userId: item.requester_user_id,
                 })}
               </TableCell>
+              <TableCell>{item.department_name || `#${item.department_id}`}</TableCell>
               <TableCell>
-                {item.department_name || `#${item.department_id}`}
+                {t('Budget #{{budgetId}}', {
+                  budgetId: item.department_budget_id,
+                })}
               </TableCell>
-              <TableCell>#{item.department_budget_id}</TableCell>
-              <TableCell>{item.requested_quota}</TableCell>
-              <TableCell>{item.approved_quota || '-'}</TableCell>
+              <TableCell>
+                <QuotaAmountDisplay quota={item.requested_quota} />
+              </TableCell>
+              <TableCell>
+                {item.approved_quota ? (
+                  <QuotaAmountDisplay quota={item.approved_quota} />
+                ) : (
+                  '-'
+                )}
+              </TableCell>
               <TableCell>
                 {item.allocation_id
                   ? t('Allocation #{{id}}', { id: item.allocation_id })
@@ -4078,17 +4168,17 @@ function QuotaRequestTable({
               </TableCell>
               <TableCell>
                 <div className='flex min-w-[360px] flex-col gap-2'>
-                  <div className='flex items-center gap-2'>
-                    <Input
-                      inputMode='numeric'
+                  <div className='flex flex-wrap items-start gap-2'>
+                    <QuotaAmountInput
+                      className='w-[220px] flex-none'
                       value={draft.approvedQuota}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         onDecisionDraftChange(item.id, {
-                          approvedQuota: event.target.value,
+                          approvedQuota: value,
                         })
                       }
                       disabled={!actionable}
-                      aria-label={t('Approved Quota')}
+                      ariaLabel={t('Approved Quota')}
                     />
                     <Button
                       type='button'
@@ -4208,24 +4298,24 @@ export function BudgetDelegationTable({
                 budgetId: item.target_budget_id,
               })}
             </TableCell>
-            <TableCell>{item.committed_quota}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={item.committed_quota} />
+            </TableCell>
             <TableCell>
               <Badge variant='secondary'>
                 {enterpriseBudgetStatusLabel(item.status, t)}
               </Badge>
             </TableCell>
             <TableCell>
-              <div className='flex min-w-[260px] items-center gap-2'>
+              <div className='flex min-w-[260px] flex-wrap items-start gap-2'>
                 {item.status === 'active' ? (
-                  <Input
-                    inputMode='numeric'
+                  <QuotaAmountInput
+                    className='w-[220px] flex-none'
                     value={
                       supersedeDrafts?.[item.id] ?? String(item.committed_quota)
                     }
-                    onChange={(event) =>
-                      onSupersedeDraftChange?.(item.id, event.target.value)
-                    }
-                    aria-label={t('Delegation Quota')}
+                    onChange={(value) => onSupersedeDraftChange?.(item.id, value)}
+                    ariaLabel={t('Delegation Quota')}
                   />
                 ) : null}
                 <Button
@@ -4407,8 +4497,12 @@ export function DepartmentBudgetListCard({
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>{formatNumber(item.remaining)}</TableCell>
-                    <TableCell>{formatNumber(item.allocated_total)}</TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.remaining} />
+                    </TableCell>
+                    <TableCell>
+                      <QuotaAmountDisplay quota={item.allocated_total} />
+                    </TableCell>
                     <TableCell>{formatPercent(item.usage_ratio)}</TableCell>
                     <TableCell>
                       <StatusBadge
@@ -4533,17 +4627,19 @@ export function DepartmentBudgetDetailTable({
                 </span>
               </div>
             </TableCell>
-            <TableCell>{formatNumber(wallet.quota)}</TableCell>
-            <TableCell>{formatNumber(wallet.remain_quota)}</TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={wallet.quota} />
+            </TableCell>
+            <TableCell>
+              <QuotaAmountDisplay quota={wallet.remain_quota} />
+            </TableCell>
             <TableCell>
               <div className='flex min-w-[180px] flex-col gap-1 text-sm'>
                 <span>{formatBudgetCycleType(wallet.cycle_type, t)}</span>
                 <span className='text-muted-foreground text-xs'>
-                  {wallet.next_reset_time
+                  {hasPositiveTimestamp(wallet.next_reset_time)
                     ? `${t('Next Reset')}: ${formatTimestamp(wallet.next_reset_time)}`
-                    : wallet.expires_at
-                      ? `${t('Expires At (optional)')}: ${formatTimestamp(wallet.expires_at)}`
-                      : '-'}
+                    : `${t('Expires At (optional)')}: ${formatBudgetExpiry(wallet.expires_at, t)}`}
                 </span>
               </div>
             </TableCell>
@@ -4653,19 +4749,19 @@ export function DepartmentBudgetOverviewCard({
         />
         <BudgetStat
           label={t('Remaining Quota')}
-          value={formatNumber(budget.remaining)}
+          value={<QuotaAmountDisplay quota={budget.remaining} />}
         />
         <BudgetStat
           label={t('Allocated Total')}
-          value={formatNumber(budget.allocated_total)}
+          value={<QuotaAmountDisplay quota={budget.allocated_total} />}
         />
         <BudgetStat
           label={t('Total Quota')}
-          value={formatNumber(budget.total_quota)}
+          value={<QuotaAmountDisplay quota={budget.total_quota} />}
         />
         <BudgetStat
           label={t('Cycle Quota')}
-          value={formatNumber(budget.cycle_quota)}
+          value={<QuotaAmountDisplay quota={budget.cycle_quota} />}
         />
         <BudgetStat
           label={t('Cycle Type')}
@@ -4687,7 +4783,7 @@ export function DepartmentBudgetOverviewCard({
         />
         <BudgetStat
           label={t('Expires At (optional)')}
-          value={budget.expires_at ? formatTimestamp(budget.expires_at) : '-'}
+          value={formatBudgetExpiry(budget.expires_at, t)}
         />
         <BudgetStat
           label={t('Threshold Window')}
@@ -4722,7 +4818,7 @@ function BudgetStat({
   badgeVariant,
 }: {
   label: string
-  value: string
+  value: ReactNode
   badgeVariant?: 'success' | 'warning' | 'danger' | 'neutral'
 }) {
   return (
@@ -4731,7 +4827,7 @@ function BudgetStat({
       <div className='mt-1 flex items-center gap-2 font-medium'>
         <CalendarClock className='text-muted-foreground size-4' />
         {badgeVariant ? (
-          <StatusBadge label={value} variant={badgeVariant} copyable={false} />
+          <StatusBadge label={String(value)} variant={badgeVariant} copyable={false} />
         ) : (
           <span>{value}</span>
         )}
@@ -4752,11 +4848,25 @@ function parseRequiredDateTimeToUnix(value: string) {
   return ts ?? 0
 }
 
+function hasPositiveTimestamp(value: number | undefined | null): value is number {
+  return typeof value === 'number' && value > 0
+}
+
 function formatBudgetCycleType(cycleType: string, t: (key: string) => string) {
   if (cycleType === 'daily') return t('Daily')
   if (cycleType === 'weekly') return t('Weekly')
   if (cycleType === 'monthly') return t('Monthly')
   if (cycleType === 'custom') return t('Custom (seconds)')
-  if (cycleType === 'never') return t('No Reset')
-  return cycleType || '-'
+  if (cycleType === 'never') return t('One-time quota')
+  return cycleType ? t('Unknown cycle type') : '-'
+}
+
+function formatBudgetExpiry(
+  expiresAt: number | undefined | null,
+  t: (key: string) => string
+) {
+  if (hasPositiveTimestamp(expiresAt)) {
+    return formatTimestamp(expiresAt)
+  }
+  return t('Never expires')
 }

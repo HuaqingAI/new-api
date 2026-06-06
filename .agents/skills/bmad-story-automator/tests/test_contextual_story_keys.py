@@ -36,6 +36,10 @@ SPRINT_STATUS = """development_status:
 
   ap-epic-6: in-progress
   ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
+
+  epic-7b: in-progress
+  7b-1-decouple-governance-action-result-from-notification-delivery: done
+  7b-2-redesign-budget-pool-selection-and-selected-summary: backlog
 """
 
 
@@ -137,6 +141,14 @@ class ContextualStoryKeyTests(unittest.TestCase):
         self.assertTrue(status.found)
         self.assertEqual(status.story, "ap-5-4-stabilize-agent-platform-web-default-integration")
         self.assertEqual(status.status, "in-progress")
+
+    def test_normalize_story_key_supports_alpha_numeric_epic_ids(self) -> None:
+        result = normalize_story_key(str(self.root), "7B.1")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.id, "7B.1")
+        self.assertEqual(result.prefix, "7b-1")
+        self.assertEqual(result.key, "7b-1-decouple-governance-action-result-from-notification-delivery")
 
 
 if __name__ == "__main__":

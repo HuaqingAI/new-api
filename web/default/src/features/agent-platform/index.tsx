@@ -1551,166 +1551,168 @@ export function AgentPlatformShell() {
   ]
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Title>{t('Agent Platform')}</SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => {
-              void skillsQuery.refetch()
-              void knowledgeQuery.refetch()
-              void agentsQuery.refetch()
-            }}
-            disabled={
-              skillsQuery.isFetching ||
-              knowledgeQuery.isFetching ||
-              agentsQuery.isFetching
-            }
-          >
-            <RefreshCw className='size-4' />
-            {t('Refresh')}
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            render={
-              <Link to='/system-settings/site'>{t('System Settings')}</Link>
-            }
-          />
-        </div>
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='space-y-6'>
-          <Card>
-            <CardHeader className='gap-3 border-b'>
-              <div className='flex items-start gap-3'>
-                <span className='bg-primary/10 text-primary inline-flex size-10 items-center justify-center rounded-xl'>
-                  <Boxes className='size-5' />
-                </span>
-                <div className='space-y-1'>
-                  <CardTitle>{t('Resource control plane')}</CardTitle>
-                  <CardDescription>
-                    {t(
-                      'Manage Skill, Knowledge, and Agent resources from the live Agent Platform control-plane endpoints.'
-                    )}
-                  </CardDescription>
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t('Agent Platform')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                void skillsQuery.refetch()
+                void knowledgeQuery.refetch()
+                void agentsQuery.refetch()
+              }}
+              disabled={
+                skillsQuery.isFetching ||
+                knowledgeQuery.isFetching ||
+                agentsQuery.isFetching
+              }
+            >
+              <RefreshCw className='size-4' />
+              {t('Refresh')}
+            </Button>
+            <Button
+              variant='outline'
+              size='sm'
+              render={
+                <Link to='/system-settings/site'>{t('System Settings')}</Link>
+              }
+            />
+          </div>
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='space-y-6'>
+            <Card>
+              <CardHeader className='gap-3 border-b'>
+                <div className='flex items-start gap-3'>
+                  <span className='bg-primary/10 text-primary inline-flex size-10 items-center justify-center rounded-xl'>
+                    <Boxes className='size-5' />
+                  </span>
+                  <div className='space-y-1'>
+                    <CardTitle>{t('Resource control plane')}</CardTitle>
+                    <CardDescription>
+                      {t(
+                        'Manage Skill, Knowledge, and Agent resources from the live Agent Platform control-plane endpoints.'
+                      )}
+                    </CardDescription>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className='pt-4'>
-              <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
-                {metrics.map((metric) => {
-                  const Icon = metric.icon
-                  return (
-                    <div
-                      key={metric.key}
-                      className='bg-muted/20 rounded-xl border px-4 py-3'
-                    >
-                      <div className='flex items-center justify-between gap-3'>
-                        <span className='text-muted-foreground text-sm font-medium'>
-                          {metric.label}
-                        </span>
-                        <Icon className='text-muted-foreground size-4' />
+              </CardHeader>
+              <CardContent className='pt-4'>
+                <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+                  {metrics.map((metric) => {
+                    const Icon = metric.icon
+                    return (
+                      <div
+                        key={metric.key}
+                        className='bg-muted/20 rounded-xl border px-4 py-3'
+                      >
+                        <div className='flex items-center justify-between gap-3'>
+                          <span className='text-muted-foreground text-sm font-medium'>
+                            {metric.label}
+                          </span>
+                          <Icon className='text-muted-foreground size-4' />
+                        </div>
+                        <div className='mt-2 text-2xl font-semibold'>
+                          {metric.value}
+                        </div>
+                        <p className='text-muted-foreground mt-1 text-xs'>
+                          {metric.helper}
+                        </p>
                       </div>
-                      <div className='mt-2 text-2xl font-semibold'>
-                        {metric.value}
-                      </div>
-                      <p className='text-muted-foreground mt-1 text-xs'>
-                        {metric.helper}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
 
-          <Tabs defaultValue='skills' className='space-y-6'>
-            <TabsList className='grid w-full grid-cols-3 md:w-[420px]'>
-              <TabsTrigger value='skills'>{t('Skills')}</TabsTrigger>
-              <TabsTrigger value='knowledge'>{t('Knowledge')}</TabsTrigger>
-              <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
-            </TabsList>
+            <Tabs defaultValue='skills' className='space-y-6'>
+              <TabsList className='grid w-full grid-cols-3 md:w-[420px]'>
+                <TabsTrigger value='skills'>{t('Skills')}</TabsTrigger>
+                <TabsTrigger value='knowledge'>{t('Knowledge')}</TabsTrigger>
+                <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value='skills'>
-              <ResourceListCard
-                title={t('Skill management')}
-                description={t(
-                  'Skill definitions exposed by the Agent Platform control plane.'
-                )}
-                badgeLabel={t('Epic 3 active')}
-                createLabel={t('New Skill')}
-                icon={Puzzle}
-                typeLabel={resourceTypeLabel('skill', t)}
-                response={skillsQuery.data}
-                isError={skillsQuery.isError}
-                error={skillsQuery.error}
-                isLoading={skillsQuery.isLoading}
-                onCreate={() => openCreateEditor('skill')}
-                onOpenDetails={setSelectedResource}
-                onOpenEdit={openEditEditor}
-                onRetry={() => void skillsQuery.refetch()}
-                errorPrefix={t('Skill API request failed')}
-                emptyDescription={t(
-                  'No Skill resources are currently available in the control plane.'
-                )}
-              />
-            </TabsContent>
+              <TabsContent value='skills'>
+                <ResourceListCard
+                  title={t('Skill management')}
+                  description={t(
+                    'Skill definitions exposed by the Agent Platform control plane.'
+                  )}
+                  badgeLabel={t('Epic 3 active')}
+                  createLabel={t('New Skill')}
+                  icon={Puzzle}
+                  typeLabel={resourceTypeLabel('skill', t)}
+                  response={skillsQuery.data}
+                  isError={skillsQuery.isError}
+                  error={skillsQuery.error}
+                  isLoading={skillsQuery.isLoading}
+                  onCreate={() => openCreateEditor('skill')}
+                  onOpenDetails={setSelectedResource}
+                  onOpenEdit={openEditEditor}
+                  onRetry={() => void skillsQuery.refetch()}
+                  errorPrefix={t('Skill API request failed')}
+                  emptyDescription={t(
+                    'No Skill resources are currently available in the control plane.'
+                  )}
+                />
+              </TabsContent>
 
-            <TabsContent value='knowledge'>
-              <ResourceListCard
-                title={t('Knowledge management')}
-                description={t(
-                  'Provider-backed retrieval resources managed by the Agent Platform control plane.'
-                )}
-                badgeLabel={t('Epic 4 active')}
-                createLabel={t('New Knowledge')}
-                icon={BookOpen}
-                typeLabel={resourceTypeLabel('knowledge', t)}
-                response={knowledgeQuery.data}
-                isError={knowledgeQuery.isError}
-                error={knowledgeQuery.error}
-                isLoading={knowledgeQuery.isLoading}
-                onCreate={() => openCreateEditor('knowledge')}
-                onOpenDetails={setSelectedResource}
-                onOpenEdit={openEditEditor}
-                onRetry={() => void knowledgeQuery.refetch()}
-                errorPrefix={t('Knowledge API request failed')}
-                emptyDescription={t(
-                  'No Knowledge resources are currently available in the control plane.'
-                )}
-              />
-            </TabsContent>
+              <TabsContent value='knowledge'>
+                <ResourceListCard
+                  title={t('Knowledge management')}
+                  description={t(
+                    'Provider-backed retrieval resources managed by the Agent Platform control plane.'
+                  )}
+                  badgeLabel={t('Epic 4 active')}
+                  createLabel={t('New Knowledge')}
+                  icon={BookOpen}
+                  typeLabel={resourceTypeLabel('knowledge', t)}
+                  response={knowledgeQuery.data}
+                  isError={knowledgeQuery.isError}
+                  error={knowledgeQuery.error}
+                  isLoading={knowledgeQuery.isLoading}
+                  onCreate={() => openCreateEditor('knowledge')}
+                  onOpenDetails={setSelectedResource}
+                  onOpenEdit={openEditEditor}
+                  onRetry={() => void knowledgeQuery.refetch()}
+                  errorPrefix={t('Knowledge API request failed')}
+                  emptyDescription={t(
+                    'No Knowledge resources are currently available in the control plane.'
+                  )}
+                />
+              </TabsContent>
 
-            <TabsContent value='agents'>
-              <ResourceListCard
-                title={t('Agent definitions')}
-                description={t(
-                  'Agent definition templates managed by the control plane without implying server-side runtime ownership.'
-                )}
-                badgeLabel={t('Epic 5 active')}
-                createLabel={t('New Agent')}
-                icon={Bot}
-                typeLabel={resourceTypeLabel('agent', t)}
-                response={agentsQuery.data}
-                isError={agentsQuery.isError}
-                error={agentsQuery.error}
-                isLoading={agentsQuery.isLoading}
-                onCreate={() => openCreateEditor('agent')}
-                onOpenDetails={setSelectedResource}
-                onOpenEdit={openEditEditor}
-                onRetry={() => void agentsQuery.refetch()}
-                errorPrefix={t('Agent API request failed')}
-                emptyDescription={t(
-                  'No Agent definition resources are currently available in the control plane.'
-                )}
-              />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </SectionPageLayout.Content>
+              <TabsContent value='agents'>
+                <ResourceListCard
+                  title={t('Agent definitions')}
+                  description={t(
+                    'Agent definition templates managed by the control plane without implying server-side runtime ownership.'
+                  )}
+                  badgeLabel={t('Epic 5 active')}
+                  createLabel={t('New Agent')}
+                  icon={Bot}
+                  typeLabel={resourceTypeLabel('agent', t)}
+                  response={agentsQuery.data}
+                  isError={agentsQuery.isError}
+                  error={agentsQuery.error}
+                  isLoading={agentsQuery.isLoading}
+                  onCreate={() => openCreateEditor('agent')}
+                  onOpenDetails={setSelectedResource}
+                  onOpenEdit={openEditEditor}
+                  onRetry={() => void agentsQuery.refetch()}
+                  errorPrefix={t('Agent API request failed')}
+                  emptyDescription={t(
+                    'No Agent definition resources are currently available in the control plane.'
+                  )}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
       <ResourceEditorDialog
         form={resourceForm}
         mode={editor?.mode ?? 'create'}
@@ -1744,6 +1746,6 @@ export function AgentPlatformShell() {
         pending={versionMutation.isPending}
         resource={selectedResource}
       />
-    </SectionPageLayout>
+    </>
   )
 }

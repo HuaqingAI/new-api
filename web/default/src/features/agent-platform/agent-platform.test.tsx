@@ -151,6 +151,18 @@ describe('Agent Platform shell', () => {
     assert.match(source, /Publish/)
   })
 
+  test('overlay surfaces stay outside the slot-only page layout', async () => {
+    const source = await readFile(
+      'src/features/agent-platform/index.tsx',
+      'utf8'
+    )
+
+    assert.match(
+      source,
+      /<\/SectionPageLayout>\s*<ResourceEditorDialog[\s\S]*<ResourceDetailSheet[\s\S]*<VersionFormDialog/
+    )
+  })
+
   test('sidebar module configuration controls the Agent Platform admin entry', () => {
     const navGroups: NavGroup[] = [
       {

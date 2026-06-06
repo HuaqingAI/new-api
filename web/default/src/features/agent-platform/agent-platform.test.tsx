@@ -15,7 +15,14 @@ import { I18nextProvider } from 'react-i18next'
 import { api } from '@/lib/api'
 import { filterSidebarNavGroupsForConfig } from '@/hooks/use-sidebar-config'
 import type { NavGroup } from '@/components/layout/types'
-import { getAgentPlatformAgents, getAgentPlatformSkills } from './api'
+import {
+  createAgentPlatformResource,
+  createAgentPlatformResourceVersion,
+  getAgentPlatformAgents,
+  getAgentPlatformSkills,
+  runAgentPlatformLifecycleAction,
+  updateAgentPlatformResource,
+} from './api'
 import { AgentPlatformShell } from './index'
 
 i18n.changeLanguage('en')
@@ -84,6 +91,8 @@ describe('Agent Platform shell', () => {
     assert.match(html, /skill_translate/)
     assert.match(html, /Latest version/)
     assert.match(html, /Details/)
+    assert.match(html, /Edit/)
+    assert.match(html, /New Skill/)
   })
 
   test('renders control-plane failure responses as error state', () => {
@@ -127,6 +136,19 @@ describe('Agent Platform shell', () => {
       source,
       /'\/agent-platform': typeof AuthenticatedAgentPlatformIndexRoute/
     )
+  })
+
+  test('source exposes create entry points for every resource tab', async () => {
+    const source = await readFile(
+      'src/features/agent-platform/index.tsx',
+      'utf8'
+    )
+
+    assert.match(source, /New Skill/)
+    assert.match(source, /New Knowledge/)
+    assert.match(source, /New Agent/)
+    assert.match(source, /Create version/)
+    assert.match(source, /Publish/)
   })
 
   test('sidebar module configuration controls the Agent Platform admin entry', () => {
@@ -309,6 +331,150 @@ describe('Agent Platform shell', () => {
       ])
     } finally {
       api.get = originalGet
+    }
+  })
+
+  test('resource mutation helpers target dedicated management endpoints', async () => {
+    const originalPost = api.post
+    const originalPut = api.put
+    const calls: Array<{
+      method: string
+      url: string
+      payload?: unknown
+    }> = []
+
+    api.post = (async (url: string, payload?: unknown) => {
+      calls.push({ method: 'post', url, payload })
+      return {
+        data: {
+          success: true,
+          data: {
+            id: 1,
+            resource_id: 'res_skill',
+            resource_type: 'skill',
+            display_name: 'Translate Skill',
+            owner_user_id: 7,
+            status: 'draft',
+            latest_version: '',
+            tenant_id: 0,
+            created_at: 1717113600,
+            updated_at: 1717117200,
+          },
+        },
+      }
+    }) as typeof api.post
+    api.put = (async (url: string, payload?: unknown) => {
+      calls.push({ method: 'put', url, payload })
+      return {
+        data: {
+          success: true,
+          data: {
+            id: 1,
+            resource_id: 'res_skill',
+            resource_type: 'skill',
+            display_name: 'Renamed Skill',
+            owner_user_id: 7,
+            status: 'draft',
+            latest_version: '',
+            tenant_id: 0,
+            created_at: 1717113600,
+            updated_at: 1717117200,
+          },
+        },
+      }
+    }) as typeof api.put
+
+    try {
+      await createAgentPlatformResource('skill', {
+        display_name: 'Translate Skill',
+        owner_user_id: 7,
+      })
+      await updateAgentPlatformResource('skill', 'res_skill', {
+        display_name: 'Renamed Skill',
+      })
+
+      assert.deepEqual(calls, [
+        {
+          method: 'post',
+          url: '/api/agent-platform/skills',
+          payload: {
+            display_name: 'Translate Skill',
+            owner_user_id: 7,
+          },
+        },
+        {
+          method: 'put',
+          url: '/api/agent-platform/skills/res_skill',
+          payload: {
+            display_name: 'Renamed Skill',
+          },
+        },
+      ])
+    } finally {
+      api.post = originalPost
+      api.put = originalPut
+    }
+  })
+
+  test('version and lifecycle helpers target shared resource operation endpoints', async () => {
+    const originalPost = api.post
+    const calls: Array<{
+      url: string
+      payload?: unknown
+    }> = []
+
+    api.post = (async (url: string, payload?: unknown) => {
+      calls.push({ url, payload })
+      return {
+        data: {
+          success: true,
+          data: {},
+        },
+      }
+    }) as typeof api.post
+
+    try {
+      await createAgentPlatformResourceVersion('res_skill', {
+        version: '1.0.0',
+        contract_version: '2026-06',
+        skill: {
+          invoke_mode: 'sync',
+          timeout_seconds: 30,
+          invoke_schema: {},
+          output_schema: {},
+          binding_config: {},
+        },
+      })
+      await runAgentPlatformLifecycleAction('res_skill', 'publish', {
+        version: '1.0.0',
+        request_id: 'web-test',
+      })
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/agent-platform/resources/res_skill/versions',
+          payload: {
+            version: '1.0.0',
+            contract_version: '2026-06',
+            skill: {
+              invoke_mode: 'sync',
+              timeout_seconds: 30,
+              invoke_schema: {},
+              output_schema: {},
+              binding_config: {},
+            },
+          },
+        },
+        {
+          url: '/api/agent-platform/resources/res_skill/publish',
+          payload: {
+            version: '1.0.0',
+            request_id: 'web-test',
+          },
+        },
+      ])
+    } finally {
+      api.post = originalPost
     }
   })
 })

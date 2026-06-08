@@ -2,10 +2,9 @@ package enterprise_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
+	"time"
 
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
@@ -14,19 +13,19 @@ import (
 )
 
 func TestDingTalkConnectivitySuccess(t *testing.T) {
-	svc, _ := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+	svc := newDingTalkConnectivityTestService(t, dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
 		case "/gettoken":
-			require.Equal(t, "app-key", r.URL.Query().Get("appkey"))
-			require.Equal(t, "plain-secret", r.URL.Query().Get("appsecret"))
-			_, _ = w.Write([]byte(`{"errcode":0,"access_token":"token-secret"}`))
+			require.Equal(t, "app-key", req.URL.Query().Get("appkey"))
+			require.Equal(t, "plain-secret", req.URL.Query().Get("appsecret"))
+			return dingTalkJSONResponse(`{"errcode":0,"access_token":"token-secret"}`), nil
 		case "/topapi/v2/department/listsub":
-			require.Equal(t, "token-secret", r.URL.Query().Get("access_token"))
-			_, _ = w.Write([]byte(`{"errcode":0,"result":[{"dept_id":1}]}`))
+			require.Equal(t, "token-secret", req.URL.Query().Get("access_token"))
+			return dingTalkJSONResponse(`{"errcode":0,"result":[{"dept_id":1}]}`), nil
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
 		}
-	})
+	}))
 
 	result, err := svc.Test(context.Background(), 0)
 	require.NoError(t, err)
@@ -36,10 +35,10 @@ func TestDingTalkConnectivitySuccess(t *testing.T) {
 }
 
 func TestDingTalkConnectivityMapsInvalidCredentials(t *testing.T) {
-	svc, _ := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/gettoken", r.URL.Path)
-		_, _ = w.Write([]byte(`{"errcode":40014,"errmsg":"invalid app secret: plain-secret"}`))
-	})
+	svc := newDingTalkConnectivityTestService(t, dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "/gettoken", req.URL.Path)
+		return dingTalkJSONResponse(`{"errcode":40014,"errmsg":"invalid app secret: plain-secret"}`), nil
+	}))
 
 	result, err := svc.Test(context.Background(), 0)
 	require.NoError(t, err)
@@ -49,16 +48,16 @@ func TestDingTalkConnectivityMapsInvalidCredentials(t *testing.T) {
 }
 
 func TestDingTalkConnectivityMapsPermissionInsufficient(t *testing.T) {
-	svc, _ := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+	svc := newDingTalkConnectivityTestService(t, dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
 		case "/gettoken":
-			_, _ = w.Write([]byte(`{"errcode":0,"access_token":"token-secret"}`))
+			return dingTalkJSONResponse(`{"errcode":0,"access_token":"token-secret"}`), nil
 		case "/topapi/v2/department/listsub":
-			_, _ = w.Write([]byte(`{"errcode":60020,"errmsg":"access denied token-secret"}`))
+			return dingTalkJSONResponse(`{"errcode":60020,"errmsg":"access denied token-secret"}`), nil
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
 		}
-	})
+	}))
 
 	result, err := svc.Test(context.Background(), 0)
 	require.NoError(t, err)
@@ -68,9 +67,7 @@ func TestDingTalkConnectivityMapsPermissionInsufficient(t *testing.T) {
 }
 
 func TestDingTalkConnectivityMapsNetworkFailure(t *testing.T) {
-	svc, _ := newDingTalkConnectivityTestService(t, func(w http.ResponseWriter, r *http.Request) {
-		panic("network failure")
-	})
+	svc := newDingTalkConnectivityTestService(t, dingTalkNetworkFailureRoundTripper())
 
 	result, err := svc.Test(context.Background(), 0)
 	require.NoError(t, err)
@@ -96,7 +93,7 @@ func TestDingTalkConnectivityMapsCallbackMisconfigured(t *testing.T) {
 	require.Equal(t, "callback_url_invalid", result.Summary)
 }
 
-func newDingTalkConnectivityTestService(t *testing.T, handler http.HandlerFunc) (*entservice.DingTalkConnectivityService, *httptest.Server) {
+func newDingTalkConnectivityTestService(t *testing.T, transport http.RoundTripper) *entservice.DingTalkConnectivityService {
 	t.Helper()
 
 	_, db := newDingTalkConfigTestService(t)
@@ -111,19 +108,12 @@ func newDingTalkConnectivityTestService(t *testing.T, handler http.HandlerFunc) 
 		SyncEnabled:  true,
 	}).Error)
 
-	httpClient := dingTalkHTTPClientFunc(func(r *http.Request) (resp *http.Response, err error) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				err = errors.New("network down")
-			}
-		}()
-		recorder := httptest.NewRecorder()
-		handler(recorder, r)
-		return recorder.Result(), nil
-	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL("https://open.local"),
-		entservice.WithDingTalkHTTPClient(httpClient),
+		entservice.WithDingTalkOpenAPIBaseURL("https://openapi.example.test"),
+		entservice.WithDingTalkHTTPClient(&http.Client{
+			Timeout:   time.Second,
+			Transport: transport,
+		}),
 	)
-	return entservice.NewDingTalkConnectivityService(db, client), nil
+	return entservice.NewDingTalkConnectivityService(db, client)
 }

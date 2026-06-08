@@ -42,6 +42,8 @@ enterprise.organization.department_budget_invalid_custom_seconds: "自定义周�
 enterprise.organization.department_budget_invalid_cycle_started_at: "周期预算起始时间必填"
 enterprise.organization.department_budget_type_immutable: "预算池创建后不可切换类型"
 enterprise.organization.department_budget_threshold_invalid: "企业预算阈值必须满足 0 < 预警 < 紧急 <= 100"
+enterprise.organization.department_budget_status_transition_invalid: "预算池状态不允许执行该流转"
+enterprise.organization.department_budget_resize_below_committed: "预算池容量不能缩减到低于已承诺或已使用额度"
 enterprise.organization.enterprise_budget_insufficient: "部门预算不足"
 enterprise.organization.balance_remaining_insufficient: "分配额度超过一次性预算池剩余额度"
 enterprise.organization.subscription_cycle_allocated_exceeded: "分配额度超过周期预算池本周期可承诺额度"

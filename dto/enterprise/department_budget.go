@@ -11,6 +11,16 @@ type CreateDepartmentBudgetRequest struct {
 	ExpiresAt      *int64 `json:"expires_at,omitempty"`
 }
 
+type DepartmentBudgetLifecycleRequest struct {
+	TenantId *int `json:"tenant_id,omitempty"`
+}
+
+type ResizeDepartmentBudgetRequest struct {
+	TenantId   *int   `json:"tenant_id,omitempty"`
+	TotalQuota *int64 `json:"total_quota,omitempty"`
+	CycleQuota *int64 `json:"cycle_quota,omitempty"`
+}
+
 type DepartmentBudgetListQuery struct {
 	TenantId           *int   `form:"tenant_id"`
 	SortBy             string `form:"sort_by"`

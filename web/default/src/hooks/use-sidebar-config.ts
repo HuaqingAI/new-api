@@ -58,6 +58,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     enabled: true,
     agent_platform: true,
     channel: true,
+    enterprise_organization: true,
     enterprise_usage: true,
     models: true,
     redemption: true,
@@ -114,6 +115,10 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/models/deployments': { section: 'admin', module: 'models' },
   '/users': { section: 'admin', module: 'user' },
   '/agent-platform': { section: 'admin', module: 'agent_platform' },
+  '/enterprise-organization': {
+    section: 'admin',
+    module: 'enterprise_organization',
+  },
   '/enterprise-usage': { section: 'admin', module: 'enterprise_usage' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },

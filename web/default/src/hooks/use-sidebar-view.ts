@@ -28,6 +28,42 @@ import { useSidebarData } from './use-sidebar-data'
 
 /** Sentinel key used for the root navigation in animation `key=` props */
 const ROOT_VIEW_KEY = '__root'
+const DEPARTMENT_GOVERNANCE_URLS = new Set(['/enterprise-organization'])
+
+function userCanSeeRootNavItem(
+  item: NavGroup['items'][number],
+  params: {
+    isAdmin: boolean
+    canAccessEnterpriseOrganization: boolean
+  }
+): boolean {
+  if (params.isAdmin) return true
+  if (!('url' in item) || !item.url) return false
+  return (
+    params.canAccessEnterpriseOrganization &&
+    DEPARTMENT_GOVERNANCE_URLS.has(item.url as string)
+  )
+}
+
+export function filterRootNavGroupsByRole(
+  navGroups: NavGroup[],
+  params: {
+    isAdmin: boolean
+    canAccessEnterpriseOrganization: boolean
+  }
+): NavGroup[] {
+  return navGroups
+    .map((group) => {
+      if (group.id !== 'admin') return group
+      return {
+        ...group,
+        items: group.items.filter((item) =>
+          userCanSeeRootNavItem(item, params)
+        ),
+      }
+    })
+    .filter((group) => group.items.length > 0)
+}
 
 /**
  * Resolve the active sidebar view for the current location.
@@ -45,16 +81,23 @@ const ROOT_VIEW_KEY = '__root'
 export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
-  const userRole = useAuthStore((s) => s.auth.user?.role)
+  const user = useAuthStore((s) => s.auth.user)
   const rootSidebarData = useSidebarData()
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    return configFilteredRoot.filter((group) =>
-      group.id === 'admin' ? isAdmin : true
-    )
-  }, [configFilteredRoot, userRole])
+    const isAdmin = user?.role !== undefined && user.role >= ROLE.ADMIN
+    return filterRootNavGroupsByRole(configFilteredRoot, {
+      isAdmin,
+      canAccessEnterpriseOrganization: Boolean(
+        user?.permissions?.enterprise_organization
+      ),
+    })
+  }, [
+    configFilteredRoot,
+    user?.permissions?.enterprise_organization,
+    user?.role,
+  ])
 
   const view = resolveSidebarView(pathname)
 

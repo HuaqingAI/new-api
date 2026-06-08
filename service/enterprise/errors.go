@@ -28,6 +28,8 @@ var (
 	ErrDepartmentBudgetInvalidCycleStartedAt             = errors.New("enterprise department budget cycle started at invalid")
 	ErrDepartmentBudgetTypeImmutable                     = errors.New("enterprise department budget type immutable")
 	ErrDepartmentBudgetThresholdInvalid                  = errors.New("enterprise department budget threshold invalid")
+	ErrDepartmentBudgetStatusTransitionInvalid           = errors.New("enterprise department budget status transition invalid")
+	ErrDepartmentBudgetResizeBelowCommitted              = errors.New("enterprise department budget resize below committed")
 	ErrQuotaAllocationInvalidInput                       = errors.New("enterprise quota allocation input invalid")
 	ErrQuotaAllocationBudgetNotFound                     = errors.New("enterprise quota allocation budget not found")
 	ErrQuotaAllocationBudgetInactive                     = errors.New("enterprise quota allocation budget inactive")

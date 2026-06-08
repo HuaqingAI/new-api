@@ -1,3 +1,5 @@
+import { useForm, type Resolver } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   RouterContextProvider,
@@ -11,7 +13,9 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
 import {
   createQuotaAllocation,
   departmentMembersQueryKey,
@@ -45,6 +49,8 @@ import {
   GovernanceActivityCard,
   QuotaRequestTable,
   QuotaAllocationTable,
+  canManageBudgetLifecycle,
+  createBudgetResizeSchema,
   createBudgetSchema,
   createAllocationSchema,
   createDelegationSchema,
@@ -54,21 +60,6 @@ import {
   resolveBudgetSelection,
   syncAllocationFormDraft,
 } from './index'
-import {
-  enterpriseBudgetStatusLabel,
-  formatBudgetType,
-  getQuotaRequestBudgetDisplayText,
-} from './quota-request-budget-display'
-import {
-  convertEnterpriseQuotaInputMode,
-  formatEnterpriseQuotaAmount,
-  parseEnterpriseQuotaInput,
-  QuotaAmountDisplay,
-} from './quota-amount-controls'
-import {
-  QuotaRequestBudgetOption,
-  QuotaRequestBudgetSummary,
-} from './quota-request-budget-display-components'
 import {
   getAncestorDepartmentIds,
   getDefaultExpandedDepartmentIds,
@@ -80,6 +71,21 @@ import {
   formatEnterpriseUserPrimary,
   formatEnterpriseUserSecondary,
 } from './lib/user-display'
+import {
+  convertEnterpriseQuotaInputMode,
+  formatEnterpriseQuotaAmount,
+  parseEnterpriseQuotaInput,
+  QuotaAmountDisplay,
+} from './quota-amount-controls'
+import {
+  enterpriseBudgetStatusLabel,
+  formatBudgetType,
+  getQuotaRequestBudgetDisplayText,
+} from './quota-request-budget-display'
+import {
+  QuotaRequestBudgetOption,
+  QuotaRequestBudgetSummary,
+} from './quota-request-budget-display-components'
 import type {
   ApiResponse,
   BudgetDelegationItem,
@@ -360,6 +366,100 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /Include descendants/)
     assert.match(html, /Engineering and all descendant departments/)
     assert.match(html, /Platform/)
+  })
+
+  test('budget overview exposes lifecycle controls and immutable type guidance', () => {
+    function LifecycleOverview() {
+      const resizeSchema = createBudgetResizeSchema((key) => key)
+      const resizeForm = useForm<{ quota: number }>({
+        resolver: zodResolver(resizeSchema) as unknown as Resolver<{
+          quota: number
+        }>,
+        defaultValues: { quota: 1000 },
+      })
+      return (
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({
+            type: 'balance',
+            status: 'active',
+            total_quota: 1000,
+            remaining: 700,
+          })}
+          selectedBudget={null}
+          thresholds={{ warning: 80, critical: 95 }}
+          resizeForm={resizeForm}
+          onPause={() => {}}
+          onResume={() => {}}
+          onResize={() => {}}
+        />
+      )
+    }
+
+    const activeHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <LifecycleOverview />
+      </I18nextProvider>
+    )
+
+    assert.match(activeHtml, /Budget pool governance/)
+    assert.match(activeHtml, /Pause budget pool/)
+    assert.match(activeHtml, /Resize budget pool/)
+    assert.match(
+      activeHtml,
+      /Budget type cannot be changed\. Pause this pool and create a new pool for a different type\./
+    )
+    assert.doesNotMatch(activeHtml, /Subscription Budget/)
+
+    const pausedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetOverviewCard
+          item={departmentBudget({ status: 'paused' })}
+          selectedBudget={null}
+          thresholds={{ warning: 80, critical: 95 }}
+          onPause={() => {}}
+          onResume={() => {}}
+          onResize={() => {}}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(pausedHtml, /Resume budget pool/)
+    assert.doesNotMatch(pausedHtml, /Pause budget pool/)
+  })
+
+  test('budget lifecycle governance is limited to enterprise administrators', () => {
+    assert.equal(canManageBudgetLifecycle(undefined), false)
+    assert.equal(canManageBudgetLifecycle(1), false)
+    assert.equal(canManageBudgetLifecycle(10), true)
+    assert.equal(canManageBudgetLifecycle(100), true)
+  })
+
+  test('budget pool creation entry is limited to enterprise administrators', () => {
+    const { auth } = useAuthStore.getState()
+    const previousUser = auth.user
+    const department = departmentNode({ id: 1, name: 'Engineering' })
+
+    try {
+      auth.setUser({
+        id: 1001,
+        username: 'dept-admin',
+        role: ROLE.USER,
+      })
+      const departmentAdminHtml = renderWorkspace(department, null)
+      assert.doesNotMatch(departmentAdminHtml, /Create Budget Pool/)
+      assert.match(departmentAdminHtml, /Budget Pool Overview/)
+
+      auth.setUser({
+        id: 1002,
+        username: 'enterprise-admin',
+        role: ROLE.ADMIN,
+      })
+      const enterpriseAdminHtml = renderWorkspace(department, null)
+      assert.match(enterpriseAdminHtml, /Create Budget Pool/)
+      assert.match(enterpriseAdminHtml, /Budget Pool Overview/)
+    } finally {
+      auth.setUser(previousUser)
+    }
   })
 
   test('normalizes stale search state for empty trees and invalid department ids', () => {
@@ -738,13 +838,14 @@ describe('Enterprise organization department tree workflow', () => {
       'Department Owners',
       'No effective owner',
       'Admin fallback',
-      'Department Budget',
+      'Budget Pool Overview',
       'Current Member Governance',
       'Current Member Wallet Allocation',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
 
+    assert.doesNotMatch(html, /Create Budget Pool/)
     assert.doesNotMatch(html, /Membership Lookup/)
   })
 
@@ -972,14 +1073,26 @@ describe('Enterprise organization department tree workflow', () => {
       ['enterprise.organization.membership.disable', 'Membership disabled'],
       ['enterprise.organization.membership.restore', 'Membership restored'],
       ['enterprise.organization.membership.rename', 'Membership renamed'],
-      ['enterprise.organization.department_admin.grant', 'Department admin granted'],
-      ['enterprise.organization.department_admin.revoke', 'Department admin revoked'],
-      ['enterprise.organization.department_owner.manual_grant', 'Department owner granted'],
+      [
+        'enterprise.organization.department_admin.grant',
+        'Department admin granted',
+      ],
+      [
+        'enterprise.organization.department_admin.revoke',
+        'Department admin revoked',
+      ],
+      [
+        'enterprise.organization.department_owner.manual_grant',
+        'Department owner granted',
+      ],
       [
         'enterprise.organization.department_owner.manual_grant.revoke',
         'Department owner grant revoked',
       ],
-      ['enterprise.organization.department_owner.manual_deny', 'Department owner denied'],
+      [
+        'enterprise.organization.department_owner.manual_deny',
+        'Department owner denied',
+      ],
       [
         'enterprise.organization.department_owner.manual_deny.revoke',
         'Department owner denial revoked',
@@ -1000,21 +1113,51 @@ describe('Enterprise organization department tree workflow', () => {
         'DingTalk sync conflict candidate bound',
       ],
       ['enterprise.usage.report.set', 'Usage report configured'],
-      ['enterprise.organization.department_budget.create', 'Department budget created'],
-      ['enterprise.organization.department_budget.reject', 'Department budget rejected'],
-      ['enterprise.organization.budget_delegation.create', 'Budget delegation created'],
+      [
+        'enterprise.organization.department_budget.create',
+        'Department budget created',
+      ],
+      [
+        'enterprise.organization.department_budget.reject',
+        'Department budget rejected',
+      ],
+      [
+        'enterprise.organization.budget_delegation.create',
+        'Budget delegation created',
+      ],
       [
         'enterprise.organization.budget_delegation.supersede',
         'Budget delegation adjusted',
       ],
-      ['enterprise.organization.budget_delegation.revoke', 'Budget delegation revoked'],
-      ['enterprise.organization.budget_delegation.reject', 'Budget delegation rejected'],
-      ['enterprise.organization.quota_request.submit', 'Quota request submitted'],
-      ['enterprise.organization.quota_request.approve', 'Quota request approved'],
-      ['enterprise.organization.quota_request.reject', 'Quota request rejected'],
+      [
+        'enterprise.organization.budget_delegation.revoke',
+        'Budget delegation revoked',
+      ],
+      [
+        'enterprise.organization.budget_delegation.reject',
+        'Budget delegation rejected',
+      ],
+      [
+        'enterprise.organization.quota_request.submit',
+        'Quota request submitted',
+      ],
+      [
+        'enterprise.organization.quota_request.approve',
+        'Quota request approved',
+      ],
+      [
+        'enterprise.organization.quota_request.reject',
+        'Quota request rejected',
+      ],
       ['enterprise.organization.quota_allocation.create', 'Allocation created'],
-      ['enterprise.organization.quota_allocation.reclaim', 'Allocation reclaimed'],
-      ['enterprise.organization.quota_allocation.cancel', 'Allocation cancelled'],
+      [
+        'enterprise.organization.quota_allocation.reclaim',
+        'Allocation reclaimed',
+      ],
+      [
+        'enterprise.organization.quota_allocation.cancel',
+        'Allocation cancelled',
+      ],
       ['enterprise.organization.quota_allocation.revoke', 'Allocation revoked'],
       ['enterprise.alert.rule.save', 'Alert rule saved'],
       ['enterprise.alert.rule.delete', 'Alert rule deleted'],
@@ -1148,7 +1291,8 @@ describe('Enterprise organization department tree workflow', () => {
               governanceTimelineItem({
                 source_id: 2,
                 trace_id: 'unknown:99',
-                action_type: 'enterprise.organization.future_action.full.internal.key',
+                action_type:
+                  'enterprise.organization.future_action.full.internal.key',
                 status: 'mystery_status',
               }),
             ]}
@@ -1307,8 +1451,14 @@ describe('Enterprise organization department tree workflow', () => {
     }
 
     assert.equal(formatBudgetType('balance', i18n.t), 'Balance Budget')
-    assert.equal(formatBudgetType('subscription', i18n.t), 'Subscription Budget')
-    assert.equal(formatBudgetType('future_budget', i18n.t), 'Unknown budget type')
+    assert.equal(
+      formatBudgetType('subscription', i18n.t),
+      'Subscription Budget'
+    )
+    assert.equal(
+      formatBudgetType('future_budget', i18n.t),
+      'Unknown budget type'
+    )
   })
 
   test('formats enterprise quota amounts and parses amount view through wallet helpers', () => {
@@ -1525,7 +1675,7 @@ describe('Enterprise organization department tree workflow', () => {
     assert.equal(valid.success, true)
   })
 
-  test('delegation schema rejects missing descendant target and quota, then accepts valid input', () => {
+  test('delegation schema rejects missing subordinate target and quota, then accepts valid input', () => {
     const schema = createDelegationSchema((key) => key)
 
     const invalid = schema.safeParse({
@@ -1692,6 +1842,26 @@ describe('Enterprise organization department tree workflow', () => {
   })
 
   test('renders budget pool list with selectable threshold states and usage metrics', () => {
+    const emptyHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetListCard
+          loading={false}
+          selectedBudgetId={null}
+          sortBy='usage_ratio'
+          sortOrder='desc'
+          onSelectBudget={() => undefined}
+          onSortByChange={() => undefined}
+          onSortOrderChange={() => undefined}
+          items={[]}
+        />
+      </I18nextProvider>
+    )
+    assert.match(
+      emptyHtml,
+      /Budget pools created by enterprise administrators will appear here/
+    )
+    assert.doesNotMatch(emptyHtml, /Create the first pool for this department/)
+
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <DepartmentBudgetListCard
@@ -1936,7 +2106,7 @@ describe('Enterprise organization department tree workflow', () => {
     )
   })
 
-  test('renders budget delegation empty state with descendant guidance', () => {
+  test('renders budget delegation empty state with subordinate allocation guidance', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <BudgetDelegationTable items={[]} loading={false} />
@@ -1946,8 +2116,11 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, /No budget delegations yet/)
     assert.match(
       html,
-      /Choose a descendant department budget pool to create the first delegation in this governance chain\./
+      /Choose a subordinate department budget pool to create the first allocation in this governance chain\./
     )
+    assert.doesNotMatch(html, /Descendant/)
+    assert.doesNotMatch(html, /descendant department/)
+    assert.doesNotMatch(html, /后代部门/)
   })
 
   test('renders budget delegation rows with route, quota, status, and supersede guidance', () => {

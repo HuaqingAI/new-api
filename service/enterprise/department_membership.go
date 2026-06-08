@@ -18,6 +18,7 @@ type DepartmentMembershipService struct {
 type MembershipQuery struct {
 	TenantId       *int
 	Status         *int
+	DepartmentIds  []int
 	ExternalSource string
 	Page           int
 	PageSize       int
@@ -501,6 +502,9 @@ func applyMembershipQuery(db *gorm.DB, query MembershipQuery, alias string) *gor
 	}
 	if query.Status != nil {
 		db = db.Where(alias+".status = ?", *query.Status)
+	}
+	if len(query.DepartmentIds) > 0 {
+		db = db.Where(alias+".department_id IN ?", query.DepartmentIds)
 	}
 	if query.ExternalSource != "" {
 		db = db.Where(alias+".external_source = ?", query.ExternalSource)

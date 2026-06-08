@@ -325,14 +325,17 @@ func (s *UsageReportService) markJobFailure(job *entmodel.UsageReportJob, now in
 	job.FailureCount++
 	job.ErrorReason = failure.Error()
 	job.NextRunAt = computeUsageReportNextRunAt(job.Frequency, now)
-	return s.db.Model(job).Updates(map[string]any{
+	if err := s.db.Model(job).Updates(map[string]any{
 		"status":        job.Status,
 		"last_run_at":   job.LastRunAt,
 		"run_count":     job.RunCount,
 		"failure_count": job.FailureCount,
 		"error_reason":  job.ErrorReason,
 		"next_run_at":   job.NextRunAt,
-	}).Error
+	}).Error; err != nil {
+		return err
+	}
+	return failure
 }
 
 func normalizeUsageReportConfigInput(input UsageReportConfigInput) UsageReportConfigInput {

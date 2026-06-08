@@ -86,3 +86,26 @@
 - Keep the repaired story-automator helper changes for contextual story keys, alphanumeric epic IDs, and story-scoped commits.
 - For frontend governance stories, continue prioritizing source verification after tests pass instead of waiting indefinitely for idle codex runners.
 - Add explicit session cleanup/logging in the state doc to reduce confusion from stale tmux sessions on later resume attempts.
+
+## Run: 2026-06-03T16:01:47Z
+
+**Epic:** new-api - Epic Breakdown
+**Stories:** 7B.6, 7B.7
+
+### Patterns Observed
+- Source-of-truth verification remained the strongest completion signal: 7B.7 dev advanced via `sprint-status=review`, and review completed via monitor `verified_complete` plus `sprint-status=done`.
+- The substantive dev/automate/review loops completed cleanly, while parser sub-agent calls and retrospective timeout were the only orchestration weak points.
+
+### Code Review Insights
+- Common issues: role-gating edge cases, frontend visibility for non-admin budget users, and wording/i18n consistency for subordinate allocation copy.
+- Average cycles to clean: one substantive review cycle for 7B.7 after automate guardrails were generated.
+
+### Timing Estimates
+- create-story: short once the story file session launched.
+- dev-story: moderate; status moved correctly to review after implementation.
+- code-review: one cycle, with Go/frontend/i18n validation and an auto-fix for non-admin budget overview layout.
+
+### Recommendations for Future Runs
+- Keep treating parse-output failure as non-blocking when monitor output and sprint-status agree.
+- Consider a shorter, explicit retrospective background policy so active retro sessions can be logged without confusing the main orchestration state.
+- Preserve the API/UI/i18n guardrail pattern for enterprise governance stories because it caught both permission and copy regressions.

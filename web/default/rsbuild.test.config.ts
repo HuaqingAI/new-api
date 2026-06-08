@@ -25,6 +25,7 @@ export default defineConfig({
         './src/features/subscriptions/components/dialogs/user-subscriptions-dialog.test.tsx',
       'quota-settings-section':
         './src/features/system-settings/general/quota-settings-section.test.tsx',
+      'sidebar-view': './src/hooks/use-sidebar-view.test.ts',
     },
   },
   resolve: {

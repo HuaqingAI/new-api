@@ -51,9 +51,7 @@ func TestEnterpriseDepartmentTreeAPIRequiresBackendDepartmentPermission(t *testi
 	commonUserCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
 	commonUser := fixture.performDepartmentTreeRequest(t, commonUserCookies)
 	require.Equal(t, http.StatusOK, commonUser.Code)
-	commonUserPayload := decodeDepartmentTreeAPIResponse(t, commonUser)
-	require.True(t, commonUserPayload.Success, commonUserPayload.Message)
-	require.Empty(t, commonUserPayload.Data)
+	require.Contains(t, commonUser.Body.String(), "error.enterprise.permission.dept_admin_required")
 }
 
 func TestEnterpriseDepartmentTreeAPIReturnsEmptyArray(t *testing.T) {
@@ -205,7 +203,7 @@ func TestEnterpriseDepartmentMembersAPIChecksTenantScopedDepartmentPermission(t 
 	withoutTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members", cookies)
 	withoutTenantPayload := decodeDepartmentMembersAPIResponse(t, withoutTenant)
 	require.False(t, withoutTenantPayload.Success)
-	require.Contains(t, withoutTenantPayload.Message, "common.database_error")
+	require.Contains(t, withoutTenantPayload.Message, "error.enterprise.permission.dept_admin_required")
 
 	withTenant := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/departments/101/members?tenant_id=1", cookies)
 	withTenantPayload := decodeDepartmentMembersAPIResponse(t, withTenant)
@@ -379,12 +377,14 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, modelenterprise.Migrate(db))
 	require.NoError(t, db.Create(&model.User{
-		Id:       1001,
-		Username: "enterprise-admin",
-		Password: "password123",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
-		AffCode:  "enterprise-admin-api",
+		Id:          1001,
+		Username:    "enterprise-admin",
+		DisplayName: "Enterprise Admin",
+		Password:    "password123",
+		Group:       "default",
+		AffCode:     "enterprise-admin-api-fixture",
+		Status:      common.UserStatusEnabled,
+		Role:        common.RoleAdminUser,
 	}).Error)
 	model.DB = db
 	model.LOG_DB = db

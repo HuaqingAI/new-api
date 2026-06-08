@@ -190,6 +190,9 @@
 - `GET /api/enterprise/departments/:id/budgets`
 - `GET /api/enterprise/departments/:id/budgets/:budget_id`
 - `POST /api/enterprise/departments/:id/budget`
+- `POST /api/enterprise/departments/:id/budgets/:budget_id/pause`
+- `POST /api/enterprise/departments/:id/budgets/:budget_id/resume`
+- `POST /api/enterprise/departments/:id/budgets/:budget_id/resize`
 - `GET/POST /api/enterprise/quota-allocations`
 - `POST /api/enterprise/quota-allocations/:id/supersede`
 - `POST /api/enterprise/quota-allocations/:id/cancel`

@@ -448,6 +448,16 @@ export type CreateDepartmentBudgetPayload = {
   expires_at?: number
 }
 
+export type DepartmentBudgetLifecyclePayload = {
+  tenant_id?: number
+}
+
+export type ResizeDepartmentBudgetPayload = {
+  tenant_id?: number
+  total_quota?: number
+  cycle_quota?: number
+}
+
 export type CreateQuotaAllocationPayload = {
   tenant_id?: number
   department_budget_id: number

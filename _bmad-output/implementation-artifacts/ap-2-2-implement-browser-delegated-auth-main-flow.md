@@ -1,4 +1,4 @@
-# Story 2.2: 实现浏览器委托授权主路径
+# Story AP-2.2: 实现浏览器委托授权主路径
 
 Status: done
 
@@ -26,7 +26,7 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
 - [x] 在 Agent Platform bounded context 中落地最小 delegated-auth 主模型 (AC: 1, 2)
   - [x] 新增 `model/agentplatform/authorization_grant.go`（或等价命名），定义 `agent_platform_authorization_grants` 表，至少覆盖：`grant_id`、`client_id`、可空 `user_id`、`grant_type`、`scope_text`、`status`、`token_version`、`contract_version`、`consented_at`、`revoked_at`、`created_at`、`updated_at`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#350-362]
   - [x] 新增最小 consent 事实源（可复用 grant 表字段，也可加单独 consent 记录），确保浏览器委托链路能明确表达“用户已经同意哪些 scope 给哪个 client”。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#444-447; _bmad-output/planning-artifacts/architecture-agent-platform.md#990-992]
-  - [x] 当前故事不要求 refresh token 哈希存储或 token rotation 细节，那属于 2.3；这里的目标是把 delegated-auth 主路径的 grant/consent 事实源先建好。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3]
+  - [x] 当前故事不要求 refresh token 哈希存储或 token rotation 细节，那属于 2.3；这里的目标是把 delegated-auth 主路径的 grant/consent 事实源先建好。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3]
 
 - [x] 实现 `/api/agent-platform/oauth/authorize` 浏览器授权入口 (AC: 1, 2)
   - [x] 扩展 `controller/agentplatform`、`service/agentplatform` 和 `router/agentplatform-router.go`（或 `router/api-router.go` 下专门的 OAuth 子路由注册），提供 `/api/agent-platform/oauth/authorize` 的最小实现。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#561-564; _bmad-output/planning-artifacts/architecture-agent-platform.md#444-447]
@@ -35,11 +35,11 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
 
 - [x] 实现最小 consent + code exchange 主路径 (AC: 1, 2)
   - [x] 在授权页/服务逻辑中记录 consent 结果，并生成短生命周期 authorization code；authorization code 至少要绑定：client、user、scope、PKCE challenge / method、contract_version、过期时间。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#990-1002]
-  - [x] 实现 `/api/agent-platform/oauth/token` 的最小 code exchange 路径，校验 authorization code + PKCE verifier，并返回后续数据面可用的最小 token 响应结构；此故事可以先返回短期 access token，refresh token 细节放到 2.3。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#447-450; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3]
+  - [x] 实现 `/api/agent-platform/oauth/token` 的最小 code exchange 路径，校验 authorization code + PKCE verifier，并返回后续数据面可用的最小 token 响应结构；此故事可以先返回短期 access token，refresh token 细节放到 2.3。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#447-450; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3]
   - [x] 当前故事不实现 `client_credentials` 真正发放逻辑，只保留后续 2.3/2.4 所需的模型与边界约束。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#450]
 
 - [x] 保持 2.2 的范围，不提前做 2.3/2.4 的事情 (AC: 1, 2)
-  - [x] 本故事不实现 refresh token 哈希存储/轮换、token version revoke cache、open-capabilities discovery/detail/invoke、client instance、或 UI 完整 consent 页面体验。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.4]
+  - [x] 本故事不实现 refresh token 哈希存储/轮换、token version revoke cache、open-capabilities discovery/detail/invoke、client instance、或 UI 完整 consent 页面体验。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.4]
   - [x] 也不增加非 MVP grant type；仍然只聚焦 browser delegated auth 的 authorization code + PKCE 主路径。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#440]
 
 - [x] 补齐 model/service/controller 测试与最小管理面合同 (AC: 1, 2)
@@ -51,7 +51,7 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
 
 - `2.2` 的目标不是完整 OAuth 子系统，而是把“浏览器委托授权主路径”打通。也就是说：client 已存在、用户已有登录体系、scope 已有声明，当前故事只负责把它们串成最小的 `authorize -> consent -> code -> token` 主链。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#444-447]
 - 现有仓库已经有 OAuth 登录相关的 controller/service 和 PKCE 生成经验（如 Codex OAuth），这些可以复用为实现参考，但 Agent Platform bearer auth 仍是新的第一方授权平面，不能直接复用旧的登录回调语义。[Source: controller/oauth.go; service/codex_oauth.go; _bmad-output/planning-artifacts/architecture-agent-platform.md#106-109]
-- 2.2 还是 control/auth plane 的故事，不需要去碰 `/api/open-capabilities/**` 数据面；后者要等 2.4 以后再接 discovery/detail/invoke。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.4]
+- 2.2 还是 control/auth plane 的故事，不需要去碰 `/api/open-capabilities/**` 数据面；后者要等 2.4 以后再接 discovery/detail/invoke。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.4]
 - PKCE、client 状态、scope 范围、contract version 都应该在服务层做明确校验，而不是让 controller 层或前端自己猜测授权失败原因。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#129]
 - 仍然遵守跨库和 JSON wrapper 约束：grant/consent/code 相关的结构化字段如果需要 JSON，一律走 `TEXT` + `common.*` 路线；不要引入数据库专属 JSON 类型。[Source: AGENTS.md#Rule 1: JSON Package — Use common/json.go; AGENTS.md#Rule 2]
 
@@ -77,7 +77,7 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.2: 实现浏览器委托授权主路径]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.2: 实现浏览器委托授权主路径]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#341-379]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#440-450]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#990-1002]
@@ -95,7 +95,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- Story Automator 对 Agent Platform 的 `2.2 -> ap-2-2-*` key 映射沿用已修正逻辑；本 story 文件由 manual create-story takeover 补齐，用于避免 create-story 在 Epic 2 范围内空转。
+- Story Automator 对 Agent Platform 的 `2.2 -> ap-2-2-*` key 映射沿用已修正逻辑；本 story 文件由 manual create-story takeover 补齐，用于避免 create-story 在 Epic AP-2 范围内空转。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md`，并参考现有 `controller/oauth.go`、`service/codex_oauth.go` 作为授权主路径实现参照。
 - 当前仓库在 `2.1` 后已经具备 client registration 主模型，因此 `2.2` 的重点是 delegated auth 主链，而不是重新做 client 配置或 token 生命周期全套。
 

@@ -134,6 +134,7 @@ if [ "$primary_agent" = "codex" ]; then agent_cmd="codex exec --full-auto"; fi
 config_json=$(jq -n \
   --arg epic "$epic_id" \
   --arg epicName "$epic_name" \
+  --arg epicSource "$epic_path" \
   --argjson storyRange "$(echo "$range_json" | jq '.storyIds')" \
   --arg status "READY" \
   --arg currentStory "null" \
@@ -142,7 +143,7 @@ config_json=$(jq -n \
   --arg customInstructions "$custom_instructions" \
   --argjson overrides "{\"skipAutomate\":$skip_automate,\"maxParallel\":$max_parallel}" \
   --argjson agentConfig "$agent_config_json" \
-  '{epic:$epic,epicName:$epicName,storyRange:$storyRange,status:$status,currentStory:null,currentStep:$currentStep,aiCommand:$aiCommand,customInstructions:$customInstructions,overrides:$overrides,agentConfig:$agentConfig}'
+  '{epic:$epic,epicName:$epicName,epicSource:$epicSource,storyRange:$storyRange,status:$status,currentStory:null,currentStep:$currentStep,aiCommand:$aiCommand,customInstructions:$customInstructions,overrides:$overrides,agentConfig:$agentConfig}'
 )
 
 state_result=$("{buildStateDoc}" build-state-doc --template "{stateTemplate}" --output-folder "{outputFolder}" --config-json "$config_json")

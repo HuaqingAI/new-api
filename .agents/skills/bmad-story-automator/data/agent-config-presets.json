@@ -1,4 +1,14 @@
 {
   "version": "1.0.0",
-  "presets": []
+  "presets": [
+    {
+      "name": "codex-gpt55",
+      "createdAt": "2026-06-03T08:58:20Z",
+      "config": {
+        "defaultPrimary": "codex",
+        "defaultFallback": false,
+        "defaultModel": "gpt-5.5"
+      }
+    }
+  ]
 }

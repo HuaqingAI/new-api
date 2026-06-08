@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrClientNotFound      = errors.New("agent platform client not found")
-	ErrInvalidClientInput  = errors.New("agent platform client input invalid")
-	ErrInvalidIntegration  = errors.New("agent platform client invalid integration")
+	ErrClientNotFound     = errors.New("agent platform client not found")
+	ErrInvalidClientInput = errors.New("agent platform client input invalid")
+	ErrInvalidIntegration = errors.New("agent platform client invalid integration")
 )
 
 type CreateClientInput struct {
@@ -89,30 +89,33 @@ func (s *ClientService) Create(input CreateClientInput) (ClientItem, error) {
 	if input.Slug == "" || input.DisplayName == "" || input.ClientType == "" {
 		return ClientItem{}, ErrInvalidClientInput
 	}
-
-	grantJSON, err := normalizeClientJSON(input.AllowedGrantTypes)
-	if err != nil {
-		return ClientItem{}, ErrInvalidClientInput
-	}
-	redirectJSON, err := normalizeClientJSON(input.RedirectURIs)
-	if err != nil {
-		return ClientItem{}, ErrInvalidClientInput
-	}
-	scopeJSON, err := normalizeClientJSON(input.AllowedScopes)
-	if err != nil {
-		return ClientItem{}, ErrInvalidClientInput
-	}
-	capabilitiesJSON, err := normalizeClientJSON(input.Capabilities)
-	if err != nil {
-		return ClientItem{}, ErrInvalidClientInput
-	}
-	extensionsJSON, err := normalizeClientJSON(input.Extensions)
-	if err != nil {
+	if !isAllowedClientStatus(input.Status) {
 		return ClientItem{}, ErrInvalidClientInput
 	}
 
-	if input.ContractVersion == "" || capabilitiesJSON == "" {
-		if input.Status == "" {
+	grantJSON, err := normalizeClientJSONArray(input.AllowedGrantTypes)
+	if err != nil {
+		return ClientItem{}, ErrInvalidClientInput
+	}
+	redirectJSON, err := normalizeClientJSONArray(input.RedirectURIs)
+	if err != nil {
+		return ClientItem{}, ErrInvalidClientInput
+	}
+	scopeJSON, err := normalizeClientJSONArray(input.AllowedScopes)
+	if err != nil {
+		return ClientItem{}, ErrInvalidClientInput
+	}
+	capabilitiesJSON, err := normalizeClientJSONObject(input.Capabilities)
+	if err != nil {
+		return ClientItem{}, ErrInvalidClientInput
+	}
+	extensionsJSON, err := normalizeClientJSONObject(input.Extensions)
+	if err != nil {
+		return ClientItem{}, ErrInvalidClientInput
+	}
+
+	if !hasCompleteClientContract(input.ContractVersion, capabilitiesJSON) {
+		if input.Status != "disabled" {
 			input.Status = "invalid_integration"
 		}
 	} else if input.Status == "" {
@@ -121,6 +124,9 @@ func (s *ClientService) Create(input CreateClientInput) (ClientItem, error) {
 
 	if err := validateNamespacedExtensions(extensionsJSON); err != nil {
 		return ClientItem{}, ErrInvalidClientInput
+	}
+	if err := s.ensureSlugAvailable(input.Slug); err != nil {
+		return ClientItem{}, err
 	}
 
 	item := apmodel.Client{
@@ -198,40 +204,43 @@ func (s *ClientService) Update(clientID string, input UpdateClientInput) (Client
 	}
 	if strings.TrimSpace(input.Status) != "" {
 		item.Status = strings.TrimSpace(strings.ToLower(input.Status))
+		if !isAllowedClientStatus(item.Status) {
+			return ClientItem{}, ErrInvalidClientInput
+		}
 	}
 	if strings.TrimSpace(input.ContractVersion) != "" {
 		item.ContractVersion = strings.TrimSpace(input.ContractVersion)
 	}
 	if len(input.AllowedGrantTypes) > 0 {
-		normalized, err := normalizeClientJSON(input.AllowedGrantTypes)
+		normalized, err := normalizeClientJSONArray(input.AllowedGrantTypes)
 		if err != nil {
 			return ClientItem{}, ErrInvalidClientInput
 		}
 		item.AllowedGrantTypesJSON = normalized
 	}
 	if len(input.RedirectURIs) > 0 {
-		normalized, err := normalizeClientJSON(input.RedirectURIs)
+		normalized, err := normalizeClientJSONArray(input.RedirectURIs)
 		if err != nil {
 			return ClientItem{}, ErrInvalidClientInput
 		}
 		item.RedirectURIsJSON = normalized
 	}
 	if len(input.AllowedScopes) > 0 {
-		normalized, err := normalizeClientJSON(input.AllowedScopes)
+		normalized, err := normalizeClientJSONArray(input.AllowedScopes)
 		if err != nil {
 			return ClientItem{}, ErrInvalidClientInput
 		}
 		item.AllowedScopesJSON = normalized
 	}
 	if len(input.Capabilities) > 0 {
-		normalized, err := normalizeClientJSON(input.Capabilities)
+		normalized, err := normalizeClientJSONObject(input.Capabilities)
 		if err != nil {
 			return ClientItem{}, ErrInvalidClientInput
 		}
 		item.CapabilitiesJSON = normalized
 	}
 	if len(input.Extensions) > 0 {
-		normalized, err := normalizeClientJSON(input.Extensions)
+		normalized, err := normalizeClientJSONObject(input.Extensions)
 		if err != nil {
 			return ClientItem{}, ErrInvalidClientInput
 		}
@@ -244,7 +253,15 @@ func (s *ClientService) Update(clientID string, input UpdateClientInput) (Client
 		item.AllowClientCredentials = *input.AllowClientCredentials
 	}
 
-	if item.ContractVersion == "" || item.CapabilitiesJSON == "" {
+	if !hasCompleteClientContract(item.ContractVersion, item.CapabilitiesJSON) {
+		if item.Status != "disabled" {
+			item.Status = "invalid_integration"
+		}
+	} else if item.Status == "invalid_integration" && input.Status == "" {
+		item.Status = "active"
+	}
+
+	if item.Status == "active" && !hasCompleteClientContract(item.ContractVersion, item.CapabilitiesJSON) {
 		item.Status = "invalid_integration"
 	}
 
@@ -255,6 +272,41 @@ func (s *ClientService) Update(clientID string, input UpdateClientInput) (Client
 		return ClientItem{}, err
 	}
 	return mapClientItem(item), nil
+}
+
+func normalizeClientJSONArray(raw []byte) (string, error) {
+	normalized, err := normalizeClientJSON(raw)
+	if err != nil || normalized == "" {
+		return normalized, err
+	}
+	var payload []string
+	if err := common.UnmarshalJsonStr(normalized, &payload); err != nil {
+		return "", err
+	}
+	if payload == nil {
+		return "", ErrInvalidClientInput
+	}
+	for _, value := range payload {
+		if strings.TrimSpace(value) == "" {
+			return "", ErrInvalidClientInput
+		}
+	}
+	return normalized, nil
+}
+
+func normalizeClientJSONObject(raw []byte) (string, error) {
+	normalized, err := normalizeClientJSON(raw)
+	if err != nil || normalized == "" {
+		return normalized, err
+	}
+	var payload map[string]any
+	if err := common.UnmarshalJsonStr(normalized, &payload); err != nil {
+		return "", err
+	}
+	if payload == nil {
+		return "", ErrInvalidClientInput
+	}
+	return normalized, nil
 }
 
 func normalizeClientJSON(raw []byte) (string, error) {
@@ -272,6 +324,26 @@ func normalizeClientJSON(raw []byte) (string, error) {
 	return string(normalized), nil
 }
 
+func hasCompleteClientContract(contractVersion string, capabilitiesJSON string) bool {
+	if strings.TrimSpace(contractVersion) == "" {
+		return false
+	}
+	var capabilities map[string]any
+	if err := common.UnmarshalJsonStr(capabilitiesJSON, &capabilities); err != nil {
+		return false
+	}
+	return len(capabilities) > 0
+}
+
+func isAllowedClientStatus(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "", "active", "disabled", "invalid_integration":
+		return true
+	default:
+		return false
+	}
+}
+
 func validateNamespacedExtensions(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -284,6 +356,17 @@ func validateNamespacedExtensions(raw string) error {
 		if !strings.Contains(key, ".") {
 			return ErrInvalidClientInput
 		}
+	}
+	return nil
+}
+
+func (s *ClientService) ensureSlugAvailable(slug string) error {
+	var count int64
+	if err := s.db.Model(&apmodel.Client{}).Where("slug = ?", slug).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrInvalidClientInput
 	}
 	return nil
 }

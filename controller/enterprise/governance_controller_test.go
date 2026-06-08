@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
@@ -17,6 +18,45 @@ func TestGovernanceTimelineAPIReturnsEmptyArray(t *testing.T) {
 	response := decodeEnterpriseAPIResponse(t, recorder)
 	require.True(t, response.Success, response.Message)
 	require.JSONEq(t, `{"items":[],"total":0,"page":1,"page_size":20}`, string(response.Data))
+}
+
+func TestGovernanceTimelineAPIReturnsRequesterDisplayIdentity(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:       0,
+		UserId:         100,
+		DepartmentId:   1,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+		JoinedAt:       0,
+		LeftAt:         0,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.QuotaRequest{
+		Id:                 42,
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 3,
+		BudgetMode:         "department_budget",
+		RequesterUserId:    100,
+		RequestedQuota:     220,
+		Status:             entmodel.QuotaRequestStatusSubmitted,
+		OwnerCountSnapshot: 1,
+		SubmittedAt:        1717117200,
+		CreatedAt:          1717117200,
+		UpdatedAt:          1717117200,
+	}).Error)
+
+	recorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/governance/timeline?source_type=quota_request&department_id=1&page=1&page_size=20", nil)
+	response := decodeEnterpriseAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	payload := decodeEnterpriseData[dtoenterprise.GovernanceTimelineResponse](t, response)
+	require.Len(t, payload.Items, 1)
+	require.Equal(t, "quota_request:42", payload.Items[0].TraceId)
+	require.Equal(t, "alice", payload.Items[0].Target.Username)
+	require.Equal(t, "Alice", payload.Items[0].Target.DisplayName)
+	require.Equal(t, 100, payload.Items[0].Target.UserId)
 }
 
 func TestGovernanceNotificationListAndResendAPI(t *testing.T) {

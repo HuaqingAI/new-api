@@ -6062,6 +6062,421 @@
         ]
       }
     },
+    "/api/enterprise/quota-requests": {
+      "get": {
+        "summary": "查询企业额度申请列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业用户权限（Enterprise User）",
+        "tags": [
+          "Enterprise / Quota Requests"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "requester_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "include_pending",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/QuotaRequestListResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "提交企业额度申请",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业用户权限（Enterprise User）",
+        "tags": [
+          "Enterprise / Quota Requests"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitQuotaRequestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/QuotaRequestResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/quota-requests/{id}": {
+      "get": {
+        "summary": "获取企业额度申请详情",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业用户权限（Enterprise User）",
+        "tags": [
+          "Enterprise / Quota Requests"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/QuotaRequestResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/quota-requests/{id}/decision": {
+      "post": {
+        "summary": "审批企业额度申请",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Quota Requests"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideQuotaRequestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/QuotaRequestResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/enterprise/governance/timeline": {
+      "get": {
+        "summary": "查询企业治理时间线",
+        "deprecated": false,
+        "description": "👨‍💼 需要企业管理员权限（Enterprise Admin）",
+        "tags": [
+          "Enterprise / Governance"
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "department_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "action_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "end_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/GovernanceTimelineResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/agent-platform/resources": {
       "get": {
         "summary": "分页查询 Agent Platform 资源注册表",
@@ -6554,10 +6969,17 @@
                                 "type": "string"
                               },
                               "freshness_ttl_seconds": {
-                                "type": "integer"
+                                "type": "integer",
+                                "maximum": 300
                               },
                               "freshness": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": [
+                                  "fresh",
+                                  "stale",
+                                  "offline",
+                                  "revoked"
+                                ]
                               },
                               "etag": {
                                 "type": "string"
@@ -6719,10 +7141,17 @@
                           "type": "string"
                         },
                         "freshness_ttl_seconds": {
-                          "type": "integer"
+                          "type": "integer",
+                          "maximum": 300
                         },
                         "freshness": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "offline",
+                            "revoked"
+                          ]
                         },
                         "etag": {
                           "type": "string"
@@ -6741,6 +7170,34 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -6754,7 +7211,181 @@
                         "callable_state",
                         "freshness_ttl_seconds",
                         "freshness",
-                        "etag"
+                        "etag",
+                        "contract_compatible",
+                        "diagnostics"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "request_id": {
+                          "type": "string"
+                        },
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/open-capabilities/models": {
+      "get": {
+        "summary": "读取企业模型发现公共投影",
+        "deprecated": false,
+        "description": "🔑 需要 Agent Platform Bearer Token",
+        "tags": [
+          "Agent Platform"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "default_state": {
+                          "type": "string",
+                          "enum": [
+                            "resolved",
+                            "no_default",
+                            "multiple_defaults",
+                            "default_disabled",
+                            "default_unavailable"
+                          ]
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "model_id": {
+                                "type": "string"
+                              },
+                              "provider_stable_id": {
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "is_default": {
+                                "type": "boolean"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "available",
+                                  "disabled",
+                                  "provider_offline",
+                                  "unavailable",
+                                  "account_tenant_mismatch"
+                                ]
+                              },
+                              "disabled_reason": {
+                                "type": "string"
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "account_id": {
+                                "type": "string"
+                              },
+                              "tenant_id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "model_id",
+                              "provider_stable_id",
+                              "display_name",
+                              "is_default",
+                              "status",
+                              "disabled_reason",
+                              "capabilities",
+                              "account_id",
+                              "tenant_id"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "contract_version",
+                        "default_state",
+                        "items",
+                        "total"
                       ]
                     }
                   },
@@ -6842,6 +7473,16 @@
                 "properties": {
                   "resource_id": {
                     "type": "string"
+                  },
+                  "observed_etag": {
+                    "type": "string"
+                  },
+                  "observed_resource_version": {
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "type": "integer",
+                    "format": "int64"
                   }
                 },
                 "required": [
@@ -6879,10 +7520,17 @@
                           "type": "string"
                         },
                         "freshness_ttl_seconds": {
-                          "type": "integer"
+                          "type": "integer",
+                          "maximum": 300
                         },
                         "freshness": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale",
+                            "offline",
+                            "revoked"
+                          ]
                         },
                         "etag": {
                           "type": "string"
@@ -6892,6 +7540,34 @@
                         },
                         "callable_state": {
                           "type": "string"
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -6902,7 +7578,9 @@
                         "freshness",
                         "etag",
                         "visibility_state",
-                        "callable_state"
+                        "callable_state",
+                        "contract_compatible",
+                        "diagnostics"
                       ]
                     }
                   },
@@ -6996,7 +7674,10 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "input": {}
+                }
               }
             }
           }
@@ -7017,7 +7698,25 @@
                       "type": "string"
                     },
                     "data": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "output": {}
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_version",
+                        "contract_version",
+                        "output"
+                      ]
                     }
                   },
                   "required": [
@@ -7110,7 +7809,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
               }
             }
           }
@@ -7131,7 +7838,73 @@
                       "type": "string"
                     },
                     "data": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": {
+                        "resource_id": {
+                          "type": "string"
+                        },
+                        "resource_version": {
+                          "type": "string"
+                        },
+                        "contract_version": {
+                          "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "score": {
+                                "type": "number"
+                              },
+                              "snippet": {
+                                "type": "string"
+                              },
+                              "metadata": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "score",
+                              "snippet"
+                            ]
+                          }
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "source_id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              },
+                              "metadata": {
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "source_id"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "resource_id",
+                        "resource_version",
+                        "contract_version",
+                        "items",
+                        "citations"
+                      ]
                     }
                   },
                   "required": [
@@ -7285,6 +8058,34 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "contract_compatible": {
+                          "type": "boolean"
+                        },
+                        "diagnostics": {
+                          "type": "object",
+                          "properties": {
+                            "reason": {
+                              "type": "string"
+                            },
+                            "converged": {
+                              "type": "boolean"
+                            },
+                            "client_non_compliant": {
+                              "type": "boolean"
+                            },
+                            "observed_etag": {
+                              "type": "string"
+                            },
+                            "observed_version": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "reason",
+                            "converged",
+                            "client_non_compliant"
+                          ]
                         }
                       },
                       "required": [
@@ -7298,7 +8099,9 @@
                         "callable_state",
                         "freshness_ttl_seconds",
                         "freshness",
-                        "etag"
+                        "etag",
+                        "contract_compatible",
+                        "diagnostics"
                       ]
                     }
                   },
@@ -7354,6 +8157,426 @@
                   "required": [
                     "success",
                     "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/agent-platform/oauth/authorize": {
+      "get": {
+        "summary": "Agent Platform OAuth authorize",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "S256"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API envelope containing authorization result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthAuthorizeResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-platform/oauth/token": {
+      "post": {
+        "summary": "Agent Platform OAuth token exchange",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformOAuthTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API envelope containing token result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthTokenResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-platform/oauth/revoke": {
+      "post": {
+        "summary": "Agent Platform OAuth token revoke",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformOAuthRevokeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API envelope containing revoke result or OAuth error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformOAuthRevokeResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-platform/clients": {
+      "get": {
+        "summary": "查询 Agent Platform Clients",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "disabled",
+                "invalid_integration"
+              ]
+            }
+          },
+          {
+            "name": "contract_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientListResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "创建 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformClientCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/agent-platform/clients/{id}": {
+      "get": {
+        "summary": "查询 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新 Agent Platform Client",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "Agent Platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPlatformClientUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPlatformClientItem"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
                   ]
                 }
               }
@@ -7726,6 +8949,9 @@
           "username": {
             "type": "string"
           },
+          "display_name": {
+            "type": "string"
+          },
           "request_count": {
             "type": "integer",
             "format": "int64"
@@ -7745,6 +8971,20 @@
           "quota": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "DepartmentUsageLogUserOption": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
           }
         }
       },
@@ -7810,6 +9050,12 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "user_options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepartmentUsageLogUserOption"
             }
           }
         }
@@ -8173,6 +9419,12 @@
           "username": {
             "type": "string"
           },
+          "display_name": {
+            "type": "string"
+          },
+          "username_snapshot": {
+            "type": "string"
+          },
           "request_id": {
             "type": "string"
           },
@@ -8212,7 +9464,13 @@
           "tenant_id": {
             "type": "integer"
           },
+          "user_id": {
+            "type": "integer"
+          },
           "username": {
+            "type": "string"
+          },
+          "display_name": {
             "type": "string"
           },
           "model_name": {
@@ -8715,6 +9973,718 @@
             "type": "string"
           }
         }
+      },
+      "SubmitQuotaRequestRequest": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "integer"
+          },
+          "department_id": {
+            "type": "integer"
+          },
+          "department_budget_id": {
+            "type": "integer"
+          },
+          "budget_mode": {
+            "type": "string"
+          },
+          "requested_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "request_reason": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        }
+      },
+      "DecideQuotaRequestRequest": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "approved_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "approval_reason": {
+            "type": "string"
+          },
+          "rejected_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "QuotaRequestItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "department_id": {
+            "type": "integer"
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "department_budget_id": {
+            "type": "integer"
+          },
+          "budget_mode": {
+            "type": "string"
+          },
+          "requester_user_id": {
+            "type": "integer"
+          },
+          "requester_username": {
+            "type": "string"
+          },
+          "requester_display_name": {
+            "type": "string"
+          },
+          "requested_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "approved_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "approver_user_id": {
+            "type": "integer"
+          },
+          "approver_username": {
+            "type": "string"
+          },
+          "approval_reason": {
+            "type": "string"
+          },
+          "request_reason": {
+            "type": "string"
+          },
+          "allocation_id": {
+            "type": "integer"
+          },
+          "owner_count_snapshot": {
+            "type": "integer"
+          },
+          "fallback": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "approved_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rejected_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fulfilled_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "processed_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "QuotaRequestResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/QuotaRequestItem"
+          }
+        }
+      },
+      "QuotaRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuotaRequestItem"
+            }
+          }
+        }
+      },
+      "GovernanceTimelineTarget": {
+        "type": "object",
+        "properties": {
+          "department_id": {
+            "type": "integer"
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "object_type": {
+            "type": "string"
+          },
+          "object_id": {
+            "type": "string"
+          }
+        }
+      },
+      "GovernanceTimelineItem": {
+        "type": "object",
+        "properties": {
+          "trace_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "integer"
+          },
+          "action_type": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "actor_id": {
+            "type": "integer"
+          },
+          "actor_name": {
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/GovernanceTimelineTarget"
+          },
+          "quota_delta": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "before_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "after_quota": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "detail_route": {
+            "type": "string"
+          },
+          "detail_api_path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "GovernanceTimelineResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GovernanceTimelineItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentPlatformOAuthAuthorizeResponse": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "authorization_code": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "consent_recorded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client_id",
+          "contract_version",
+          "scope",
+          "state",
+          "authorization_code",
+          "redirect_uri",
+          "consent_recorded"
+        ]
+      },
+      "AgentPlatformOAuthTokenRequest": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "grant_type": {
+            "type": "string",
+            "enum": [
+              "authorization_code",
+              "refresh_token",
+              "client_credentials"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "code_verifier": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ]
+      },
+      "AgentPlatformOAuthTokenResponse": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "refresh_expires_in": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "grant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "refresh_token",
+          "refresh_expires_in",
+          "scope",
+          "contract_version",
+          "grant_id"
+        ]
+      },
+      "AgentPlatformOAuthRevokeRequest": {
+        "type": "object",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_type_hint": {
+            "type": "string",
+            "enum": [
+              "access_token",
+              "refresh_token"
+            ]
+          }
+        },
+        "required": [
+          "client_id",
+          "token"
+        ]
+      },
+      "AgentPlatformOAuthRevokeResponse": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ]
+      },
+      "AgentPlatformAPIEnvelope": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "AgentPlatformClientCreateRequest": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "cherry-studio"
+          },
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "client_type": {
+            "type": "string",
+            "example": "desktop"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "slug",
+          "display_name",
+          "client_type"
+        ]
+      },
+      "AgentPlatformClientUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentPlatformClientItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "client_id": {
+            "type": "string",
+            "example": "cli_syntheticclientid000000000000000"
+          },
+          "slug": {
+            "type": "string",
+            "example": "cherry-studio"
+          },
+          "display_name": {
+            "type": "string",
+            "example": "Cherry Studio"
+          },
+          "client_type": {
+            "type": "string",
+            "example": "desktop"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "invalid_integration"
+            ]
+          },
+          "allowed_grant_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authorization_code",
+                "refresh_token",
+                "client_credentials"
+              ]
+            },
+            "example": [
+              "authorization_code",
+              "refresh_token"
+            ]
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "cherrystudio://oauth/callback"
+            ]
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ap.resources.read",
+              "ap.skills.invoke"
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "example": "2026-06"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "discovery": true
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "cherry_studio.owner": "ops"
+            }
+          },
+          "allow_client_credentials": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "slug",
+          "display_name",
+          "client_type",
+          "status",
+          "contract_version",
+          "allow_client_credentials",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "AgentPlatformClientListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentPlatformClientItem"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
       }
     },
     "responses": {},

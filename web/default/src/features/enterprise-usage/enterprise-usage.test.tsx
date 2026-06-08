@@ -23,6 +23,7 @@ import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterpris
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { describe, test } from 'node:test'
+import type { ComponentProps } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
@@ -47,9 +48,12 @@ import {
   normalizeEnterpriseUsageSearch,
   normalizeDepartmentUsageDetail,
   normalizeDepartmentUsageItems,
+  resolveEnterpriseUsageSyncedSearch,
   resolveDepartmentUsageExportParams,
   resolveEnterpriseUsageRange,
   resolveRecentLogsSearch,
+  resolveRecentLogsUserOptions,
+  shouldSyncEnterpriseUsageSearch,
   shouldResetReportForm,
   sortDepartmentUserRanking,
 } from './index'
@@ -57,6 +61,7 @@ import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageLogUserOption,
   DepartmentUsageReportJobItem,
+  DepartmentUsageSummaryScope,
   DepartmentUsageSummaryItem,
 } from './types'
 
@@ -228,6 +233,64 @@ describe('Enterprise usage overview dashboard', () => {
         dept_id: undefined,
         include_descendants: false,
         log_user: undefined,
+        sort: 'requests',
+      }
+    )
+
+    const normalizedEmptyTreeSearch = normalizeEnterpriseUsageSearch({
+      departments: [],
+      search: {
+        dept_id: 2,
+        include_descendants: true,
+        log_user: 'alice',
+        sort: 'requests',
+      },
+    })
+    assert.equal(
+      shouldSyncEnterpriseUsageSearch(
+        {
+          dept_id: 2,
+          include_descendants: true,
+          log_user: 'alice',
+          sort: 'requests',
+        },
+        normalizedEmptyTreeSearch
+      ),
+      true
+    )
+    assert.deepEqual(
+      resolveEnterpriseUsageSyncedSearch(
+        {
+          dept_id: 2,
+          include_descendants: true,
+          log_user: 'alice',
+          sort: 'requests',
+        },
+        normalizedEmptyTreeSearch
+      ),
+      {
+        dept_id: undefined,
+        include_descendants: false,
+        log_user: undefined,
+        sort: 'requests',
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseUsageSearch({
+        departments: [],
+        search: {
+          dept_id: 2,
+          include_descendants: true,
+          log_user: 'alice',
+          sort: 'requests',
+        },
+        treeResolved: false,
+      }),
+      {
+        dept_id: 2,
+        include_descendants: true,
+        log_user: 'alice',
         sort: 'requests',
       }
     )
@@ -1123,6 +1186,117 @@ describe('Enterprise usage overview dashboard', () => {
     }
   })
 
+  test('renders the provided organization tree as the primary usage navigator', () => {
+    const html = renderEnterpriseUsageContent({
+      departments: [
+        departmentTreeNode({
+          id: 10,
+          name: 'Headquarters',
+          children: [
+            departmentTreeNode({
+              id: 11,
+              parent_id: 10,
+              name: 'Platform',
+            }),
+          ],
+        }),
+        departmentTreeNode({
+          id: 20,
+          name: 'Operations',
+        }),
+      ],
+      expandedDepartmentIds: [10],
+      items: [
+        departmentUsageItem({ dept_id: 10, dept_name: 'Headquarters' }),
+        departmentUsageItem({ dept_id: 11, dept_name: 'Platform' }),
+        departmentUsageItem({ dept_id: 20, dept_name: 'Operations' }),
+      ],
+      selectedDepartmentId: 11,
+      currentDepartmentName: 'Platform',
+      detail: detailUsageItem({
+        dept_id: 11,
+        dept_name: 'Platform',
+      }),
+    })
+
+    for (const expected of [
+      'Department Tree',
+      'Headquarters',
+      'Platform',
+      'Parent ID 10',
+      'Operations',
+      'Current department context',
+      'Current Department Analysis',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('keeps descendant scope visible inside the current department analysis shell', () => {
+    const html = renderEnterpriseUsageContent({
+      items: [
+        departmentUsageItem({
+          dept_id: 10,
+          dept_name: 'Headquarters',
+          request_count: 10,
+          user_count: 2,
+          quota: 100000,
+        }),
+      ],
+      selectedDepartmentId: 10,
+      currentDepartmentName: 'Headquarters',
+      includeDescendants: true,
+      summaryScope: departmentUsageScope({
+        department_id: 10,
+        department_name: 'Headquarters subtree',
+        include_descendants: true,
+        department_ids: [10, 11, 12],
+        request_count: 30,
+        user_count: 6,
+        quota: 300000,
+      }),
+      detail: detailUsageItem({
+        dept_id: 10,
+        dept_name: 'Headquarters',
+      }),
+    })
+
+    for (const expected of [
+      'Include descendants',
+      'Current scope: Headquarters subtree and all descendant departments',
+      'Headquarters subtree',
+      '30',
+      '6',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+  })
+
+  test('surfaces selected recent-log user context without leaving the analysis view', () => {
+    const html = renderEnterpriseUsageContent({
+      items: [
+        departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' }),
+      ],
+      selectedDepartmentId: 1,
+      currentDepartmentName: 'Engineering',
+      detail: detailUsageItem(),
+      selectedLogUser: 'alice_ops',
+    })
+
+    for (const expected of [
+      'Open Recent Logs',
+      'Recent Logs User Filter',
+      'Alice Zhang',
+      'bob',
+      'Analysis Notes',
+      'Detail ranking and recent logs stay on the current department and do not auto-expand the full descendant tree.',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.match(html, /bg-primary\/10[^>]*>Alice Zhang</)
+  })
+
   test('renders report delivery failure state in the scheduled reports card', () => {
     const Wrapper = () => {
       const form = useForm<{
@@ -1223,7 +1397,7 @@ describe('Enterprise usage overview dashboard', () => {
     assert.equal(params.username, 'alice')
   })
 
-  test('prefers the selected log user when present and falls back to the first available username', () => {
+  test('prefers only real usernames for recent logs and never uses display names as filters', () => {
     const entry = detailUsageItem().recent_logs_entry
 
     assert.deepEqual(resolveRecentLogsSearch(entry, 'bob'), {
@@ -1242,6 +1416,18 @@ describe('Enterprise usage overview dashboard', () => {
       username: 'alice_ops',
     })
 
+    assert.deepEqual(resolveRecentLogsSearch(entry, 'Alice Zhang'), {
+      departmentId: 1,
+      departmentName: 'Engineering',
+      startTime: 1748476800000,
+      endTime: 1748563200000,
+      username: 'alice_ops',
+    })
+    assert.notEqual(
+      resolveRecentLogsSearch(entry, 'Alice Zhang').username,
+      'Alice Zhang'
+    )
+
     assert.deepEqual(resolveRecentLogsSearch(entry), {
       departmentId: 1,
       departmentName: 'Engineering',
@@ -1250,7 +1436,78 @@ describe('Enterprise usage overview dashboard', () => {
       username: 'alice_ops',
     })
   })
+
+  test('does not fabricate user ids when recent log user options fall back to usernames', () => {
+    const entry = {
+      ...detailUsageItem().recent_logs_entry,
+      filters: {
+        ...detailUsageItem().recent_logs_entry.filters,
+        username_options: ['alice_ops'],
+        user_options: [],
+      },
+    }
+
+    assert.deepEqual(resolveRecentLogsUserOptions(entry), [
+      {
+        username: 'alice_ops',
+        display_name: '',
+      },
+    ])
+
+    const html = renderEnterpriseUsageContent({
+      detail: detailUsageItem({
+        user_ranking: [],
+        recent_logs_entry: entry,
+      }),
+    })
+    assert.match(html, /alice_ops/)
+    assert.doesNotMatch(html, /User ID #1/)
+  })
 })
+
+function renderEnterpriseUsageContent(
+  overrides: Partial<ComponentProps<typeof EnterpriseUsageContent>> = {}
+) {
+  const props = {
+    items: [departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })],
+    selectedDepartmentId: 1,
+    currentDepartmentName: 'Engineering',
+    detail: null,
+    detailLoading: false,
+    detailErrorMessage: null,
+    isLoading: false,
+    errorMessage: null,
+    rangeLabel: '2026-05-28 ~ 2026-05-29',
+    customRange: {
+      from: '2026-05-28',
+      to: '2026-05-29',
+      isValid: true,
+    },
+    onCustomRangeChange: () => undefined,
+    onApplyCustomRange: () => undefined,
+    onPresetChange: () => undefined,
+    selectedPreset: 'today',
+    onRetry: () => undefined,
+    onSelectDepartment: () => undefined,
+    onRetryDetail: () => undefined,
+    rankSort: 'quota',
+    onSortChange: () => undefined,
+    summarySort: 'requests',
+    summaryOrder: 'desc',
+    onSummarySortChange: () => undefined,
+    onExport: () => undefined,
+    exportLoading: false,
+    selectedLogUser: undefined,
+    onOpenRecentLogs: () => undefined,
+    ...overrides,
+  } satisfies ComponentProps<typeof EnterpriseUsageContent>
+
+  return renderToStaticMarkup(
+    <I18nextProvider i18n={i18n}>
+      <EnterpriseUsageContent {...props} />
+    </I18nextProvider>
+  )
+}
 
 function departmentUsageItem(
   overrides: Partial<DepartmentUsageSummaryItem>
@@ -1266,6 +1523,23 @@ function departmentUsageItem(
     quota: 250000,
     user_count: 2,
     model_distribution: [],
+    ...overrides,
+  }
+}
+
+function departmentUsageScope(
+  overrides: Partial<DepartmentUsageSummaryScope>
+): DepartmentUsageSummaryScope {
+  return {
+    department_id: 1,
+    department_name: 'Engineering',
+    include_descendants: false,
+    department_ids: [1],
+    request_count: 10,
+    prompt_tokens: 1000,
+    completion_tokens: 500,
+    quota: 250000,
+    user_count: 2,
     ...overrides,
   }
 }

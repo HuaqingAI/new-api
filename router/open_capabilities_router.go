@@ -11,6 +11,7 @@ func RegisterOpenCapabilitiesRouter(apiRouter *gin.RouterGroup) {
 	{
 		openCapabilitiesRoute.GET("/discovery", middleware.AgentPlatformBearer("ap.resources.read"), controlleragentplatform.OpenCapabilityDiscovery)
 		openCapabilitiesRoute.GET("/resources/:id", middleware.AgentPlatformBearer("ap.resources.read"), controlleragentplatform.OpenCapabilityResourceDetail)
+		openCapabilitiesRoute.GET("/models", middleware.AgentPlatformBearer("ap.resources.read"), controlleragentplatform.OpenCapabilityModelDiscovery)
 		openCapabilitiesRoute.POST("/refresh", middleware.AgentPlatformBearer("ap.resources.read"), controlleragentplatform.OpenCapabilityRefresh)
 		openCapabilitiesRoute.POST("/skills/:id/invoke", middleware.AgentPlatformBearer("ap.skills.invoke"), controlleragentplatform.OpenCapabilitySkillInvoke)
 		openCapabilitiesRoute.POST("/knowledge-bases/:id/query", middleware.AgentPlatformBearer("ap.knowledge.query"), controlleragentplatform.OpenCapabilityKnowledgeQuery)

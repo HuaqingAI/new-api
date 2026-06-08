@@ -112,6 +112,7 @@ func (s *DingTalkSyncService) availableSyncUsername(dingTalkUser DingTalkDepartm
 		dingTalkUser.UnionId,
 	)
 	return resolveAvailableEnterpriseUsername(
+		s.db.WithContext(context.Background()),
 		base,
 		dingTalkUser.UserId,
 		dingTalkUser.UnionId,

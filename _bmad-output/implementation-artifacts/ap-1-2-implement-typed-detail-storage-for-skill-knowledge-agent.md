@@ -1,4 +1,4 @@
-# Story 1.2: 为三类资源落地 typed detail 持久化结构
+# Story AP-1.2: 为三类资源落地 typed detail 持久化结构
 
 Status: done
 
@@ -43,8 +43,8 @@ so that 平台不需要依赖巨型多态 payload 也能保持资源差异化表
   - [x] 所有 schema/detail/provider 配置字段默认使用 `TEXT` 存储字符串化 JSON，不使用 PostgreSQL `JSONB`、数据库专属 JSON 运算符或 MySQL-only 行为；如需默认空对象/数组，应用层做归一化，不在 `TEXT` 字段上声明数据库默认值。[Source: AGENTS.md#Rule 2: Database Compatibility — SQLite, MySQL >= 5.7.8, PostgreSQL >= 9.6; model/enterprise/text_default_test.go]
   - [x] 若新增 migration/索引/约束，确保 SQLite、MySQL、PostgreSQL 三库都能跑通；尤其避免在 SQLite 上使用不支持的列变更路径，必要时沿用 `model/enterprise/migration.go` 的补列/兼容策略。[Source: model/enterprise/migration.go; AGENTS.md#Rule 2]
 
-- [x] 明确 Story 1.2 的边界，不提前实现 1.3+ 的行为语义 (AC: 1, 2)
-  - [x] 本故事只负责 typed detail 持久化结构与最小读写，不实现完整 lifecycle governance、rollback、projection/exposure、OAuth grant、refresh token、knowledge provider adapter、invoke/query runtime、或 `web/default` 管理面。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.4; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#6-暂不进入-MVP-的内容]
+- [x] 明确 Story AP-1.2 的边界，不提前实现 1.3+ 的行为语义 (AC: 1, 2)
+  - [x] 本故事只负责 typed detail 持久化结构与最小读写，不实现完整 lifecycle governance、rollback、projection/exposure、OAuth grant、refresh token、knowledge provider adapter、invoke/query runtime、或 `web/default` 管理面。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.3; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.4; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#6-暂不进入-MVP-的内容]
   - [x] `detail_json` / `schema_json` 等字段可以存在于 version/detail 层，但不能把“统一生命周期词汇”“published projection”“visible/callable”这些 1.3/1.4/1.5 的语义提前塞进 1.2 的 controller/service 行为里。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-2; _bmad-output/planning-artifacts/architecture-agent-platform.md#Exposure model]
 
 - [x] 补齐模型、服务、控制器测试，证明 typed detail 分层真的工作 (AC: 1, 2)
@@ -54,8 +54,8 @@ so that 平台不需要依赖巨型多态 payload 也能保持资源差异化表
 
 ## Dev Notes
 
-- Story 1.2 的真正目标是把 `1.1` 刚建立的 registry 基线扩展成“共享治理字段 + typed detail 字段分层存储”，而不是回退到一个 `detail_json` 大对象承载所有类型。架构文档已经把这点明确为 `CP-AP-9`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#CP-AP-9]
-- `agent_platform_resource_versions` 与三张 typed detail 表是后续 publish、audit、invoke/query 契约的基础，但本故事只做结构和最小管理读写，不碰完整 lifecycle/publish/exposure 语义。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Core tables; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.3]
+- Story AP-1.2 的真正目标是把 `1.1` 刚建立的 registry 基线扩展成“共享治理字段 + typed detail 字段分层存储”，而不是回退到一个 `detail_json` 大对象承载所有类型。架构文档已经把这点明确为 `CP-AP-9`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#CP-AP-9]
+- `agent_platform_resource_versions` 与三张 typed detail 表是后续 publish、audit、invoke/query 契约的基础，但本故事只做结构和最小管理读写，不碰完整 lifecycle/publish/exposure 语义。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Core tables; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.3]
 - `Knowledge`、`Skill`、`Agent` 的 detail 结构应该各自清晰，而不是为了“统一”再造一个更大的 polymorphic payload。统一只发生在 registry / version 治理层，不发生在资源专属字段表达层。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Typed detail shape]
 - 延续 `1.1` 的实现经验：所有管理面仍走 Agent Platform bounded context 自己的目录树与 `/api/agent-platform/**` 路由；不要回到 `enterprise` 或 `relay/**` 中借位实现。[Source: _bmad-output/implementation-artifacts/ap-1-1-establish-shared-resource-registry-and-stable-identity.md]
 - 跨库兼容和 JSON wrapper 约束在 1.2 比 1.1 更关键，因为 typed detail 会天然引入更多结构化字段。凡是 schema/detail/provider 配置类数据，都优先走 `TEXT` + `common.*` JSON wrapper；不要为了便利引入 JSONB 或直接 `encoding/json` 业务调用。[Source: AGENTS.md#Rule 1: JSON Package — Use common/json.go; AGENTS.md#Rule 2]
@@ -85,7 +85,7 @@ so that 平台不需要依赖巨型多态 payload 也能保持资源差异化表
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.2: 为三类资源落地 typed detail 持久化结构]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.2: 为三类资源落地 typed detail 持久化结构]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#CP-AP-9]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Core tables]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Typed detail shape]

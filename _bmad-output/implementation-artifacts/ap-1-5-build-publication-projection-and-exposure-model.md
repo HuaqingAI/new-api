@@ -1,4 +1,4 @@
-# Story 1.5: 建立发布投影与 exposure 模型
+# Story AP-1.5: 建立发布投影与 exposure 模型
 
 Status: done
 
@@ -28,19 +28,19 @@ so that 同一个资源可以针对不同客户端拥有不同的 visible/callab
 ## Tasks / Subtasks
 
 - [x] 把 `1.4` 的 projection baseline 扩展成真正的 per-target exposure 模型 (AC: 1, 2, 3)
-  - [x] 在已有 `model/agentplatform/exposure.go` 基础上补足“同一 `resource_id` + `resource_version` 对多个 target 共存”的约束，确保 target A、target B 的 exposure 行独立存在、独立更新，不会互相覆盖。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5; _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
+  - [x] 在已有 `model/agentplatform/exposure.go` 基础上补足“同一 `resource_id` + `resource_version` 对多个 target 共存”的约束，确保 target A、target B 的 exposure 行独立存在、独立更新，不会互相覆盖。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5; _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
   - [x] exposure 仍然必须独立于 registry/status 存在：definition 状态更新不等于 target exposure 自动变化；反之 revoke 某个 target 的 projection 也不能删除 resource definition 或破坏其他 target 的 published projection。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Definition vs exposure separation; _bmad-output/planning-artifacts/architecture-agent-platform.md#319-339]
-  - [x] 若 `1.4` 使用的是 stub target 模型，本故事应把 target 维度提升到真正可区分“client A / client B”的投影粒度，但仍不引入 Epic 2 的完整 client registration 主模型。[Source: _bmad-output/implementation-artifacts/ap-1-4-establish-projection-baseline-decoupled-from-client-registration.md]
+  - [x] 若 `1.4` 使用的是 stub target 模型，本故事应把 target 维度提升到真正可区分“client A / client B”的投影粒度，但仍不引入 Epic AP-2 的完整 client registration 主模型。[Source: _bmad-output/implementation-artifacts/ap-1-4-establish-projection-baseline-decoupled-from-client-registration.md]
 
 - [x] 实现真正的 per-target publish / revoke / read 语义 (AC: 1, 2, 3)
   - [x] 在 `service/agentplatform` 中明确提供针对 target 的发布投影管理入口：create published projection、读取单 target exposure、列出某资源所有 exposures、revoke 单 target exposure。这里的“publish”是 exposure 语义，不是重做 1.3 的 lifecycle。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#974-984; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-3]
-  - [x] 实现后必须满足：资源若未对某 target 发布，该 target 不应在 discovery 视角中被视为可见；资源若已对 A 发布、未对 B 发布，A/B 查询 exposure 时状态必须不同。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5]
+  - [x] 实现后必须满足：资源若未对某 target 发布，该 target 不应在 discovery 视角中被视为可见；资源若已对 A 发布、未对 B 发布，A/B 查询 exposure 时状态必须不同。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5]
   - [x] revoke 单 target exposure 时，只更新该 exposure 行的 visibility/callable/revoked_at 及必要审计，不影响同资源对其它 target 的 published projection。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
 
 - [x] 扩展控制面 API，表达“同一个资源对不同目标的不同暴露状态” (AC: 1, 2, 3)
   - [x] 扩展 `controller/agentplatform`、`dto/agentplatform` 与 `router/agentplatform-router.go`，提供最小管理 API 支持：按 target 创建/更新 exposure、列出某资源的 exposure 列表、按 target revoke、按 target 查看详情。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#555; _bmad-output/planning-artifacts/architecture-agent-platform.md#Requirements -> Components Mapping]
   - [x] 这些 API 仍属于 control plane；本故事不要提前实现 `/api/open-capabilities/discovery`，但要让 exposure 数据结构足以供后续 discovery/detail 直接消费。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#577; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-5]
-  - [x] 如果当前 API 中 target 还叫 placeholder/stub key，本故事要把字段含义写清楚：它现在表达“发布目标标识”，后续 Epic 2 可将其替换为正式 client identity，而不是重新推翻 exposure 模型。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client vs client_instance separation]
+  - [x] 如果当前 API 中 target 还叫 placeholder/stub key，本故事要把字段含义写清楚：它现在表达“发布目标标识”，后续 Epic AP-2 可将其替换为正式 client identity，而不是重新推翻 exposure 模型。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client vs client_instance separation]
 
 - [x] 锁定 1.5 的边界，不提前做真实 discovery/OAuth/client 管理 (AC: 1, 2, 3)
   - [x] 本故事不实现真实 `agent_platform_clients`、grant/token、OAuth、open-capabilities discovery/detail/invoke、真实 freshness 收敛执行或 UI；重点仅是把 exposure 模型做成“可直接承接这些能力”的稳定基线。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-4; _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/addendum.md#6-暂不进入-MVP-的内容]
@@ -48,15 +48,15 @@ so that 同一个资源可以针对不同客户端拥有不同的 visible/callab
 
 - [x] 补齐模型、服务、控制器测试与合同，证明 exposure 的 per-target 独立性真实成立 (AC: 1, 2, 3)
   - [x] 新增 `model/agentplatform/*_test.go`，覆盖：同一资源对多个 target 的 exposure 并存、单 target revoke 不影响其它 target、以及 resource definition 不因 exposure revoke 被删除。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
-  - [x] 新增 `service/agentplatform/*_test.go`，覆盖：A 已发布/B 未发布、A revoke/B 保持 published、非法 target 或非法状态更新被拒绝。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5]
+  - [x] 新增 `service/agentplatform/*_test.go`，覆盖：A 已发布/B 未发布、A revoke/B 保持 published、非法 target 或非法状态更新被拒绝。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5]
   - [x] 新增 `controller/agentplatform/*_test.go`，覆盖最小曝光管理 API 的成功读写与错误输入；若管理面合同变化，同步更新 `docs/openapi/api.json`。[Source: docs/openapi/api.json]
 
 ## Dev Notes
 
 - `1.5` 不是重新发明 exposure，而是把 `1.4` 的“projection baseline”做成真正可表达“对 A 有效、对 B 无效”的 per-target 模型。[Source: _bmad-output/implementation-artifacts/ap-1-4-establish-projection-baseline-decoupled-from-client-registration.md]
-- 这一层最大的坑是把 exposure 状态重新简化回 definition 状态，或者让 revoke 删除 definition。无论实现上多方便，这两种做法都会直接违背 `1.5` AC。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5; _bmad-output/planning-artifacts/architecture-agent-platform.md#Definition vs exposure separation]
+- 这一层最大的坑是把 exposure 状态重新简化回 definition 状态，或者让 revoke 删除 definition。无论实现上多方便，这两种做法都会直接违背 `1.5` AC。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5; _bmad-output/planning-artifacts/architecture-agent-platform.md#Definition vs exposure separation]
 - `visible` / `callable` 仍然必须作为两个独立维度保留，不要退回单一字段或“published 即 callable”的偷懒实现。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
-- 即使当前还没有真实 client registration，对 target 的抽象也必须足够稳定，后续 Epic 2 才能直接把 `client_id` / capability declaration 接上，而不是返工 exposure 表结构。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client vs client_instance separation]
+- 即使当前还没有真实 client registration，对 target 的抽象也必须足够稳定，后续 Epic AP-2 才能直接把 `client_id` / capability declaration 接上，而不是返工 exposure 表结构。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client vs client_instance separation]
 - 1.5 仍不负责 open capability plane 的 discovery 实现，但 exposure 表的数据字段和状态语义要让后续 `/api/open-capabilities/discovery` 能直接消费“只返回 published projections”这一原则。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#577]
 
 ### Project Structure Notes
@@ -80,7 +80,7 @@ so that 同一个资源可以针对不同客户端拥有不同的 visible/callab
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 1.5: 建立发布投影与 exposure 模型]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-1.5: 建立发布投影与 exposure 模型]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#319-339]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#337-339]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#555]

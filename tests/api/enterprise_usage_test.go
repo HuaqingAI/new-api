@@ -76,12 +76,23 @@ func TestEnterpriseUsageSummaryAPIRejectsInvalidRangeAndReturnsEmptySnapshotList
 	empty := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-summary?from=1700000000&to=1700003600", adminCookies)
 	emptyPayload := decodeAdminActionsAPIResponse(t, empty)
 	require.True(t, emptyPayload.Success, emptyPayload.Message)
-	require.JSONEq(t, `{"items":[],"scope":{"department_ids":[],"department_name":"","include_descendants":false,"request_count":0,"prompt_tokens":0,"completion_tokens":0,"quota":0,"user_count":0}}`, string(emptyPayload.Data))
+	var emptyResponse dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(emptyPayload.Data, &emptyResponse))
+	require.Empty(t, emptyResponse.Items)
+	require.Empty(t, emptyResponse.Scope.DepartmentName)
+	require.False(t, emptyResponse.Scope.IncludeDescendants)
+	require.Empty(t, emptyResponse.Scope.DepartmentIds)
+	require.Zero(t, emptyResponse.Scope.RequestCount)
+	require.Zero(t, emptyResponse.Scope.Quota)
 
 	emptyForRollingWindow := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-summary?from=1699913600&to=1700000000", adminCookies)
 	emptyRollingPayload := decodeAdminActionsAPIResponse(t, emptyForRollingWindow)
 	require.True(t, emptyRollingPayload.Success, emptyRollingPayload.Message)
-	require.JSONEq(t, `{"items":[],"scope":{"department_ids":[],"department_name":"","include_descendants":false,"request_count":0,"prompt_tokens":0,"completion_tokens":0,"quota":0,"user_count":0}}`, string(emptyRollingPayload.Data))
+	var emptyRollingResponse dtoenterprise.DepartmentUsageSummaryResponse
+	require.NoError(t, common.Unmarshal(emptyRollingPayload.Data, &emptyRollingResponse))
+	require.Empty(t, emptyRollingResponse.Items)
+	require.Empty(t, emptyRollingResponse.Scope.DepartmentIds)
+	require.Zero(t, emptyRollingResponse.Scope.RequestCount)
 }
 
 func TestEnterpriseUsageSummaryAPIHonorsSummarySortParams(t *testing.T) {

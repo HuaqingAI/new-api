@@ -18,6 +18,7 @@ import (
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -82,6 +83,7 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		AllowedScopesJSON:      `["ap.resources.read","ap.skills.invoke","ap.knowledge.query","ap.agents.read"]`,
 		ContractVersion:        "2026-06",
 		CapabilitiesJSON:       `{"discovery":true}`,
+		ExtensionsJSON:         `{"model_discovery.config":{"default_model":"gpt-4o-mini","account_id":"acct_demo","tenant_id":"tenant_demo","models":[{"model_id":"gpt-4o-mini","provider_stable_id":"openai","display_name":"GPT-4o Mini","capabilities":{"chat":true},"is_default":true},{"model_id":"claude-3-5-sonnet","provider_stable_id":"anthropic","display_name":"Claude 3.5 Sonnet","status":"provider_offline","disabled_reason":"provider_offline","capabilities":{"chat":true}},{"model_id":"gemini-1.5-pro","provider_stable_id":"gemini","display_name":"Gemini 1.5 Pro","account_id":"acct_other","tenant_id":"tenant_demo","capabilities":{"chat":true}}]}}`,
 		AllowClientCredentials: true,
 	}
 	require.NoError(t, db.Create(&client).Error)
@@ -210,11 +212,50 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 	router.Use(middleware.RequestId())
 	router.GET("/api/open-capabilities/discovery", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityDiscovery)
 	router.GET("/api/open-capabilities/resources/:id", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityResourceDetail)
+	router.GET("/api/open-capabilities/models", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityModelDiscovery)
 	router.POST("/api/open-capabilities/refresh", middleware.AgentPlatformBearer("ap.resources.read"), OpenCapabilityRefresh)
 	router.POST("/api/open-capabilities/skills/:id/invoke", middleware.AgentPlatformBearer("ap.skills.invoke"), OpenCapabilitySkillInvoke)
 	router.POST("/api/open-capabilities/knowledge-bases/:id/query", middleware.AgentPlatformBearer("ap.knowledge.query"), OpenCapabilityKnowledgeQuery)
 	router.GET("/api/open-capabilities/agents/:id", middleware.AgentPlatformBearer("ap.agents.read"), OpenCapabilityAgentDetail)
 	return router, db, tokenResult.AccessToken, resource, knowledge, agent
+}
+
+func TestOpenCapabilityModelDiscoveryReturnsEnterpriseProjection(t *testing.T) {
+	router, _, token, _, _, _ := setupOpenCapabilityControllerTest(t)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/models", token, nil)
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.True(t, apiResponse.Success)
+
+	var data struct {
+		ContractVersion string `json:"contract_version"`
+		DefaultState    string `json:"default_state"`
+		Items           []struct {
+			ModelID          string         `json:"model_id"`
+			ProviderStableID string         `json:"provider_stable_id"`
+			DisplayName      string         `json:"display_name"`
+			IsDefault        bool           `json:"is_default"`
+			Status           string         `json:"status"`
+			DisabledReason   string         `json:"disabled_reason"`
+			Capabilities     map[string]any `json:"capabilities"`
+			AccountID        string         `json:"account_id"`
+			TenantID         string         `json:"tenant_id"`
+		} `json:"items"`
+		Total int `json:"total"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, "2026-06", data.ContractVersion)
+	require.Equal(t, "resolved", data.DefaultState)
+	require.Equal(t, 3, data.Total)
+	require.Len(t, data.Items, 3)
+	require.Equal(t, "gpt-4o-mini", data.Items[0].ModelID)
+	require.True(t, data.Items[0].IsDefault)
+	require.Equal(t, "available", data.Items[0].Status)
+	require.Equal(t, "acct_demo", data.Items[0].AccountID)
+	require.Equal(t, "tenant_demo", data.Items[0].TenantID)
+	require.Equal(t, "provider_offline", data.Items[1].Status)
+	require.Equal(t, "account_tenant_mismatch", data.Items[2].Status)
+	require.NotContains(t, string(apiResponse.Data), "/v1/models")
 }
 
 func performOpenCapabilityRequest(t *testing.T, router *gin.Engine, method string, target string, token string, body any) *httptest.ResponseRecorder {
@@ -280,6 +321,71 @@ func TestOpenCapabilityDiscoveryDetailAndRefreshWorkflow(t *testing.T) {
 	require.True(t, refreshResp.Success)
 }
 
+func TestOpenCapabilityConformanceCoversStateAndRefreshDiagnostics(t *testing.T) {
+	router, db, token, resource, knowledge, _ := setupOpenCapabilityControllerTest(t)
+
+	staleAt := time.Now().UTC().Add(-10 * time.Minute)
+	require.NoError(t, db.Model(&apmodel.Exposure{}).
+		Where("resource_id = ?", resource.ResourceId).
+		Updates(map[string]any{
+			"published_at":          staleAt,
+			"freshness_ttl_seconds": 300,
+			"e_tag":                 "etag-stale",
+			"resource_version":      "1.0.0",
+			"visibility_state":      apmodel.ExposureVisibilityVisible,
+			"callable_state":        apmodel.ExposureCallableEnabled,
+		}).Error)
+
+	observedAt := time.Now().UTC().Add(-20 * time.Minute).Unix()
+	refresh := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/refresh", token, map[string]any{
+		"resource_id":               resource.ResourceId,
+		"observed_etag":             "etag-old",
+		"observed_resource_version": "0.9.0",
+		"observed_at":               observedAt,
+	})
+	refreshResp := decodeOpenCapabilityAPIResponse(t, refresh)
+	require.True(t, refreshResp.Success)
+
+	var refreshData struct {
+		Freshness   string `json:"freshness"`
+		Diagnostics struct {
+			Reason             string `json:"reason"`
+			Converged          bool   `json:"converged"`
+			ClientNonCompliant bool   `json:"client_non_compliant"`
+			ObservedETag       string `json:"observed_etag"`
+			ObservedVersion    string `json:"observed_version"`
+		} `json:"diagnostics"`
+	}
+	require.NoError(t, common.Unmarshal(refreshResp.Data, &refreshData))
+	require.Equal(t, apservice.OpenCapabilityFreshnessStale, refreshData.Freshness)
+	require.Equal(t, "client_non_compliant_stale", refreshData.Diagnostics.Reason)
+	require.False(t, refreshData.Diagnostics.Converged)
+	require.True(t, refreshData.Diagnostics.ClientNonCompliant)
+	require.Equal(t, "etag-old", refreshData.Diagnostics.ObservedETag)
+	require.Equal(t, "0.9.0", refreshData.Diagnostics.ObservedVersion)
+
+	require.NoError(t, db.Model(&apmodel.Exposure{}).
+		Where("resource_id = ?", resource.ResourceId).
+		Updates(map[string]any{
+			"visibility_state": apmodel.ExposureVisibilityRevoked,
+			"callable_state":   apmodel.ExposureCallableRevoked,
+		}).Error)
+	revoked := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/resources/"+resource.ResourceId, token, nil)
+	revokedResp := decodeOpenCapabilityAPIResponse(t, revoked)
+	require.False(t, revokedResp.Success)
+	assertOpenCapabilityErrorCode(t, revokedResp, apservice.OpenCapabilityCodeResourceRevoked)
+
+	require.NoError(t, db.Model(&apmodel.Resource{}).
+		Where("resource_id = ?", knowledge.ResourceId).
+		Update("status", apmodel.ResourceStatusOffline).Error)
+	offline := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/refresh", token, map[string]any{
+		"resource_id": knowledge.ResourceId,
+	})
+	offlineResp := decodeOpenCapabilityAPIResponse(t, offline)
+	require.False(t, offlineResp.Success)
+	assertOpenCapabilityErrorCode(t, offlineResp, apservice.OpenCapabilityCodeResourceOffline)
+}
+
 func TestOpenCapabilityReturnsStableErrorEnvelope(t *testing.T) {
 	router, _, token, _, _, _ := setupOpenCapabilityControllerTest(t)
 
@@ -323,6 +429,18 @@ func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
 	})
 	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
 	require.True(t, apiResponse.Success)
+
+	var data struct {
+		ResourceID      string         `json:"resource_id"`
+		ResourceVersion string         `json:"resource_version"`
+		ContractVersion string         `json:"contract_version"`
+		Output          map[string]any `json:"output"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, resource.ResourceId, data.ResourceID)
+	require.Equal(t, "1.0.0", data.ResourceVersion)
+	require.Equal(t, "2026-06", data.ContractVersion)
+	require.Equal(t, true, data.Output["ok"])
 }
 
 func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
@@ -356,10 +474,19 @@ func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
 	require.True(t, apiResponse.Success)
 
 	var data struct {
-		Items []map[string]any `json:"items"`
+		ResourceID      string           `json:"resource_id"`
+		ResourceVersion string           `json:"resource_version"`
+		ContractVersion string           `json:"contract_version"`
+		Items           []map[string]any `json:"items"`
+		Citations       []map[string]any `json:"citations"`
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
+	require.Equal(t, knowledge.ResourceId, data.ResourceID)
+	require.Equal(t, "1.0.0", data.ResourceVersion)
+	require.Equal(t, "2026-06", data.ContractVersion)
 	require.Len(t, data.Items, 1)
+	require.Len(t, data.Citations, 1)
+	require.NotContains(t, string(apiResponse.Data), "provider_config")
 }
 
 func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
@@ -386,6 +513,60 @@ func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
 	require.Equal(t, apservice.OpenCapabilityCodeUpstreamFailed, errorPayload.Code)
+}
+
+func TestOpenCapabilitySkillInvokeMapsTimeout(t *testing.T) {
+	router, _, token, resource, _, _ := setupOpenCapabilityControllerTest(t)
+
+	original := skillInvokeService
+	skillInvokeService = func() *apservice.SkillInvokeService {
+		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
+			do: func(req *http.Request) (*http.Response, error) {
+				<-req.Context().Done()
+				return nil, req.Context().Err()
+			},
+		})
+	}
+	defer func() { skillInvokeService = original }()
+
+	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
+		"input": "demo",
+	})
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+
+	var errorPayload struct {
+		Code      string `json:"code"`
+		Retryable bool   `json:"retryable"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
+	require.Equal(t, apservice.OpenCapabilityCodeTimeout, errorPayload.Code)
+	require.True(t, errorPayload.Retryable)
+}
+
+func TestOpenCapabilityKnowledgeQueryMapsProviderFailureWithoutNativeLeakage(t *testing.T) {
+	router, _, token, _, knowledge, _ := setupOpenCapabilityControllerTest(t)
+
+	original := knowledgeQueryService
+	knowledgeQueryService = func() *apservice.KnowledgeQueryService {
+		return apservice.NewKnowledgeQueryService(model.DB).WithProvider(stubOpenCapabilityKnowledgeProvider{
+			query: func(ctx context.Context, binding apservice.KnowledgeProviderBinding, req apservice.KnowledgeProviderQueryRequest) (apservice.KnowledgeProviderQueryResponse, error) {
+				return apservice.KnowledgeProviderQueryResponse{}, apservice.ErrSkillInvokeUpstreamFailed
+			},
+		})
+	}
+	defer func() { knowledgeQueryService = original }()
+
+	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/knowledge-bases/"+knowledge.ResourceId+"/query", token, map[string]any{
+		"query": "what is the answer?",
+	})
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+
+	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodeUpstreamFailed)
+	errorText := string(apiResponse.Error)
+	require.NotContains(t, errorText, "provider_config")
+	require.NotContains(t, errorText, "endpoint")
 }
 
 func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {
@@ -419,6 +600,32 @@ func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
 	require.Equal(t, apservice.OpenCapabilityCodePermissionDenied, errorPayload.Code)
+}
+
+func TestOpenCapabilityBearerRejectsExpiredToken(t *testing.T) {
+	router, db, _, _, _, _ := setupOpenCapabilityControllerTest(t)
+	token := expiredOpenCapabilityAccessToken(t, db)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/discovery", token, nil)
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodePermissionDenied)
+}
+
+func TestOpenCapabilityBearerRejectsRevokedGrantToken(t *testing.T) {
+	router, db, token, _, _, _ := setupOpenCapabilityControllerTest(t)
+	revokedAt := time.Now().UTC()
+	require.NoError(t, db.Model(&apmodel.AuthorizationGrant{}).
+		Where("status = ?", "issued").
+		Updates(map[string]any{
+			"status":     "revoked",
+			"revoked_at": revokedAt,
+		}).Error)
+
+	response := performOpenCapabilityRequest(t, router, http.MethodGet, "/api/open-capabilities/discovery", token, nil)
+	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
+	require.False(t, apiResponse.Success)
+	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodePermissionDenied)
 }
 
 func TestOpenCapabilityDetailRejectsContractVersionMismatch(t *testing.T) {
@@ -472,4 +679,41 @@ func TestOpenCapabilityAgentDetailBecomesVisibleButNotCallableWhenDependencyBrea
 	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
 	require.Equal(t, "contract_invalid", data.CallableState)
 	require.Equal(t, "dependency_not_callable", data.Diagnostics.Reason)
+}
+
+func assertOpenCapabilityErrorCode(t *testing.T, apiResponse openCapabilityAPIResponse, expected string) {
+	t.Helper()
+	var errorPayload struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
+	require.Equal(t, expected, errorPayload.Code)
+}
+
+func expiredOpenCapabilityAccessToken(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	var grant apmodel.AuthorizationGrant
+	require.NoError(t, db.Where("status = ?", "issued").First(&grant).Error)
+
+	now := time.Now().UTC()
+	claims := apservice.TokenClaims{
+		ClientId:        grant.ClientId,
+		UserId:          grant.UserId,
+		Scope:           grant.ScopeText,
+		ContractVersion: grant.ContractVersion,
+		TokenVersion:    grant.TokenVersion,
+		GrantId:         grant.GrantId,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "new-api/agent-platform",
+			Subject:   grant.ClientId,
+			Audience:  jwt.ClaimStrings{grant.ClientId},
+			ExpiresAt: jwt.NewNumericDate(now.Add(-time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(now.Add(-2 * time.Minute)),
+			ID:        "jti_expired_fixture",
+		},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(common.CryptoSecret))
+	require.NoError(t, err)
+	return token
 }

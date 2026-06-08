@@ -65,9 +65,60 @@ type OpenCapabilityRefreshResponse struct {
 	Diagnostics         OpenCapabilityDiagnostics `json:"diagnostics"`
 }
 
-type OpenCapabilityInvokePlaceholderResponse struct {
-	ResourceId string `json:"resource_id"`
-	Status     string `json:"status"`
+type OpenCapabilitySkillInvokeRequest struct {
+	Input any `json:"input,omitempty"`
+}
+
+type OpenCapabilitySkillInvokeResponse struct {
+	ResourceId      string `json:"resource_id"`
+	ResourceVersion string `json:"resource_version"`
+	ContractVersion string `json:"contract_version"`
+	Output          any    `json:"output"`
+}
+
+type OpenCapabilityKnowledgeQueryRequest struct {
+	Query string `json:"query"`
+}
+
+type OpenCapabilityKnowledgeResultItem struct {
+	ID       string         `json:"id"`
+	Score    float64        `json:"score"`
+	Snippet  string         `json:"snippet"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type OpenCapabilityKnowledgeCitation struct {
+	SourceID string         `json:"source_id"`
+	Title    string         `json:"title,omitempty"`
+	URL      string         `json:"url,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+type OpenCapabilityKnowledgeQueryResponse struct {
+	ResourceId      string                            `json:"resource_id"`
+	ResourceVersion string                            `json:"resource_version"`
+	ContractVersion string                            `json:"contract_version"`
+	Items           []OpenCapabilityKnowledgeResultItem `json:"items"`
+	Citations       []OpenCapabilityKnowledgeCitation `json:"citations"`
+}
+
+type OpenCapabilityModelDiscoveryItem struct {
+	ModelID          string          `json:"model_id"`
+	ProviderStableID string          `json:"provider_stable_id"`
+	DisplayName      string          `json:"display_name"`
+	IsDefault        bool            `json:"is_default"`
+	Status           string          `json:"status"`
+	DisabledReason   string          `json:"disabled_reason"`
+	Capabilities     json.RawMessage `json:"capabilities"`
+	AccountID        string          `json:"account_id"`
+	TenantID         string          `json:"tenant_id"`
+}
+
+type OpenCapabilityModelDiscoveryResponse struct {
+	ContractVersion string                           `json:"contract_version"`
+	DefaultState    string                           `json:"default_state"`
+	Items           []OpenCapabilityModelDiscoveryItem `json:"items"`
+	Total           int                              `json:"total"`
 }
 
 type OpenCapabilityDiagnostics struct {

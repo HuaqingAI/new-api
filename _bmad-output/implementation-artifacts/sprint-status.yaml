@@ -3,7 +3,7 @@
 # project: new-api
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
+# story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
@@ -39,7 +39,7 @@ last_updated: 2026-06-04 00:25:14 +0800
 project: new-api
 project_key: NOKEY
 tracking_system: file-system
-story_location: /Users/hq-it/.codex/worktrees/ab4c/new-api/_bmad-output/implementation-artifacts
+story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
 
 development_status:
   epic-1: done
@@ -98,7 +98,6 @@ development_status:
   7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
   7-6-audit-governance-actions-and-send-dingtalk-notifications: done
   epic-7-retrospective: done
-  
   epic-7a: done
   7a-1-complete-enterprise-governance-i18n-and-action-label-mapping: done
   7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: done
@@ -115,49 +114,50 @@ development_status:
   7b-7-restrict-budget-pool-creation-to-system-admin-and-rename-descendant-delegation: done
   epic-7b-retrospective: optional
 
-  agent-platform-epic-1: done
+  ap-epic-1: done
   ap-1-1-establish-shared-resource-registry-and-stable-identity: done
   ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
   ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: done
   ap-1-4-establish-projection-baseline-decoupled-from-client-registration: done
   ap-1-5-build-publication-projection-and-exposure-model: done
   ap-1-6-deliver-web-default-control-plane-shell: done
-  agent-platform-epic-1-retrospective: done
+  ap-epic-1-retrospective: done
 
-  agent-platform-epic-2: done
+  ap-epic-2: done
   ap-2-1-register-clients-and-capability-declarations: done
   ap-2-2-implement-browser-delegated-auth-main-flow: done
   ap-2-3-implement-token-lifecycle-and-revocation: done
   ap-2-4-publish-open-capability-standard-apis-and-error-envelope: done
   ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: done
-  agent-platform-epic-2-retrospective: optional
+  ap-epic-2-retrospective: optional
 
-  agent-platform-epic-3: done
+  ap-epic-3: done
   ap-3-1-provide-skill-management-in-control-plane: done
   ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
   ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: done
-  agent-platform-epic-3-retrospective: optional
+  ap-epic-3-retrospective: optional
 
-  agent-platform-epic-4: done
+  ap-epic-4: done
   ap-4-1-manage-knowledge-resources-with-provider-metadata: done
   ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: done
   ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: done
   ap-4-4-integrate-first-http-retrieval-provider-adapter: done
-  agent-platform-epic-4-retrospective: optional
+  ap-epic-4-retrospective: optional
 
-  agent-platform-epic-5: done
+  ap-epic-5: done
   ap-5-1-provide-agent-definition-management-in-control-plane: done
   ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
   ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
-  agent-platform-epic-5-retrospective: optional
+  ap-5-4-stabilize-agent-platform-web-default-integration: done
+  ap-epic-5-retrospective: optional
 
-  agent-platform-epic-6: backlog
-  ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: backlog
-  ap-6-2-freeze-client-registration-schema-and-onboarding-flow: backlog
-  ap-6-3-freeze-discovery-detail-and-refresh-public-fields: backlog
-  ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: backlog
-  ap-6-5-freeze-enterprise-model-discovery-contract: backlog
-  ap-6-6-freeze-error-code-and-client-state-matrices: backlog
-  ap-6-7-provide-mock-fixture-and-contract-conformance-suite: backlog
-  ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: backlog
-  agent-platform-epic-6-retrospective: optional
+  ap-epic-6: done
+  ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
+  ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
+  ap-6-3-freeze-discovery-detail-and-refresh-public-fields: done
+  ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: done
+  ap-6-5-freeze-enterprise-model-discovery-contract: done
+  ap-6-6-freeze-error-code-and-client-state-matrices: done
+  ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done
+  ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: done
+  ap-epic-6-retrospective: optional

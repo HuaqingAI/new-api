@@ -1,4 +1,4 @@
-# Story 4.1: 建立带 provider 元数据的 Knowledge 管理能力
+# Story AP-4.1: 建立带 provider 元数据的 Knowledge 管理能力
 
 Status: done
 
@@ -34,8 +34,8 @@ so that `Knowledge` 成为平台治理对象，而不要求平台承担 ingestio
 
 - [x] 把 provider 元数据纳入 Knowledge 管理面而不越界到 provider runtime (AC: 1, 2)
   - [x] 复用现有 `knowledge_def` typed detail，Knowledge 管理面建立在其已有 `knowledge_mode`、`provider_type`、`provider_adapter_key`、`provider_config_json` 等字段之上，为后续 4.2/4.3 铺路。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#387-398]
-  - [x] 控制面把 provider 元数据视为平台治理的一部分，但没有把 provider 变成 control plane 生命周期的 source of truth。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.1]
-  - [x] 本故事没有实现 query/runtime 侧 provider 调用，Knowledge query 闭环继续留给 4.3/4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.3; #Story 4.4]
+  - [x] 控制面把 provider 元数据视为平台治理的一部分，但没有把 provider 变成 control plane 生命周期的 source of truth。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.1]
+  - [x] 本故事没有实现 query/runtime 侧 provider 调用，Knowledge query 闭环继续留给 4.3/4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.3; #Story AP-4.4]
 
 - [x] 衔接 publish / revoke / exposure 语义到 Knowledge 视角 (AC: 3)
   - [x] 复用已有 lifecycle / exposure 模型，让 Knowledge 的发布历史、撤销历史和对客户端的可见范围继续走统一治理基线。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-9]
@@ -84,7 +84,7 @@ so that `Knowledge` 成为平台治理对象，而不要求平台承担 ingestio
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.1: 建立带 provider 元数据的 Knowledge 管理能力]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.1: 建立带 provider 元数据的 Knowledge 管理能力]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-9]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#387-398]
 - [Source: _bmad-output/implementation-artifacts/ap-3-1-provide-skill-management-in-control-plane.md]
@@ -98,7 +98,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `4.1` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Knowledge 管理边界上继续漂移。
-- 已加载 Story 4.1 验收标准、Knowledge typed detail 模型和现有 Agent Platform shell，准备补 Knowledge 控制面入口与 provider 元数据视图。
+- 已加载 Story AP-4.1 验收标准、Knowledge typed detail 模型和现有 Agent Platform shell，准备补 Knowledge 控制面入口与 provider 元数据视图。
 
 ### Completion Notes List
 
@@ -106,6 +106,7 @@ GPT-5 Codex
 - 已实现 Knowledge 的列表、读取、创建、更新基础入口，并确保只返回 `resource_type=knowledge`。
 - 已把 Agent Platform shell 中的 Knowledge 区域升级为真实列表承接面，开始展示 live Knowledge 管理入口而非纯静态占位。
 - 已通过 `GOCACHE=/private/tmp/go-build-cache go test ./service/agentplatform ./controller/agentplatform`、`bun test src/features/agent-platform/agent-platform.test.tsx`、`bun run typecheck` 验证。
+- 轻量 CC 复盘后确认：本 story 的 `done` 表示 Knowledge 控制面能力与最小前端承接已落地，不等于 Agent Platform 控制面真实 route/API/i18n/UI parity 已全部收口；这些跨域集成项由后续 stabilization story 统一补齐。
 
 ### File List
 
@@ -122,3 +123,4 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-06-01: 完成 Knowledge 控制面基础管理入口、最小前端承接面与定向测试，并将故事推进为 done。
+- 2026-06-01: 轻量 CC 复盘补充完成口径说明，明确跨 story 的前端集成收口留给后续 stabilization story。

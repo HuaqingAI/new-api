@@ -16,9 +16,9 @@ so that 我不会看到英文残留或回退到内部 key。
 
 ## Acceptance Criteria
 
-1. **Given** 用户查看 quota request、allocation、timeline、delivery 和 wallet 相关界面  
-   **When** 当前语言不是英文  
-   **Then** 截图可见字段全部存在 locale 资源  
+1. **Given** 用户查看 quota request、allocation、timeline、delivery 和 wallet 相关界面
+   **When** 当前语言不是英文
+   **Then** 截图可见字段全部存在 locale 资源
    **And** action/status/delivery 文案都通过稳定映射层输出，不依赖遗漏的英文 source key。
 
 ## Tasks / Subtasks
@@ -273,7 +273,7 @@ GPT-5 Codex
 
 ## Senior Developer Review (AI)
 
-Reviewer: hth  
+Reviewer: hth
 Date: 2026-06-03
 
 ### Outcome

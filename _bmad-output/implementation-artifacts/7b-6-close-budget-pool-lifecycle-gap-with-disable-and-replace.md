@@ -16,29 +16,29 @@ so that 预算池生命周期保持集中治理，同时部门管理员只消费
 
 ## Acceptance Criteria
 
-1. **Given** 某预算池已创建且当前不应再继续对外分配  
-   **When** 企业管理员执行暂停动作  
-   **Then** 系统将该预算池状态更新为 `paused` 并记录治理审计  
+1. **Given** 某预算池已创建且当前不应再继续对外分配
+   **When** 企业管理员执行暂停动作
+   **Then** 系统将该预算池状态更新为 `paused` 并记录治理审计
    **And** 前端不再把该池作为新的 allocation / delegation / quota request 可选 active 池。
 
-2. **Given** 某预算池当前处于 `paused`  
-   **When** 企业管理员执行恢复动作  
-   **Then** 系统将该预算池状态恢复为 `active`  
+2. **Given** 某预算池当前处于 `paused`
+   **When** 企业管理员执行恢复动作
+   **Then** 系统将该预算池状态恢复为 `active`
    **And** 后续新建 allocation / delegation / quota request 可重新选择该池。
 
-3. **Given** 某预算池已存在派生 wallet、allocation 或预算委派事实  
-   **When** 企业管理员暂停该预算池  
-   **Then** 系统按既有父池状态联动语义处理子项  
+3. **Given** 某预算池已存在派生 wallet、allocation 或预算委派事实
+   **When** 企业管理员暂停该预算池
+   **Then** 系统按既有父池状态联动语义处理子项
    **And** 不物理删除既有事实，历史链路仍可追溯。
 
-4. **Given** 某预算池仍然有效且企业管理员只需要调整容量  
-   **When** 企业管理员执行扩容或缩容  
-   **Then** 系统允许在不改变 `type` 的前提下原地修改容量字段  
+4. **Given** 某预算池仍然有效且企业管理员只需要调整容量
+   **When** 企业管理员执行扩容或缩容
+   **Then** 系统允许在不改变 `type` 的前提下原地修改容量字段
    **And** 缩容不得突破当前已承诺 / 已使用边界，失败时返回可测试错误且无副作用。
 
-5. **Given** 企业管理员需要调整原预算池的类型  
-   **When** 企业管理员查看当前预算池治理入口  
-   **Then** UI 明确表达“类型不可编辑，需暂停旧池并新建新池”  
+5. **Given** 企业管理员需要调整原预算池的类型
+   **When** 企业管理员查看当前预算池治理入口
+   **Then** UI 明确表达“类型不可编辑，需暂停旧池并新建新池”
    **And** 本故事不要求实现完整 successor cutover workflow。
 
 ## Tasks / Subtasks
@@ -322,8 +322,8 @@ GPT-5 Codex
 
 ## Senior Developer Review (AI)
 
-Reviewer: hth  
-Date: 2026-06-03 23:17:17 +0800  
+Reviewer: hth
+Date: 2026-06-03 23:17:17 +0800
 Outcome: Approved after auto-fix
 
 ### Review Scope

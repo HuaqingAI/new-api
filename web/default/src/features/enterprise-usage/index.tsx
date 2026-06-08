@@ -234,8 +234,16 @@ export function resolveDepartmentUsageExportParams(
 export function normalizeEnterpriseUsageSearch(params: {
   departments: DepartmentTreeNode[]
   search: EnterpriseUsageSearch
+  treeResolved?: boolean
 }) {
   if (params.departments.length === 0) {
+    if (params.treeResolved === false) {
+      return {
+        ...params.search,
+        include_descendants: params.search.include_descendants ?? false,
+      }
+    }
+
     return {
       ...params.search,
       dept_id: undefined,
@@ -256,6 +264,33 @@ export function normalizeEnterpriseUsageSearch(params: {
     dept_id: normalizedDepartmentId,
     include_descendants: params.search.include_descendants ?? false,
     log_user: shouldResetChildState ? undefined : params.search.log_user,
+  }
+}
+
+export function shouldSyncEnterpriseUsageSearch(
+  current: EnterpriseUsageSearch,
+  normalized: EnterpriseUsageSearch
+) {
+  return (
+    current.dept_id !== normalized.dept_id ||
+    current.include_descendants !== normalized.include_descendants ||
+    current.log_user !== normalized.log_user
+  )
+}
+
+export function resolveEnterpriseUsageSyncedSearch(
+  current: EnterpriseUsageSearch,
+  normalized: EnterpriseUsageSearch
+): EnterpriseUsageSearch {
+  return {
+    ...current,
+    dept_id: normalized.dept_id,
+    include_descendants:
+      current.include_descendants === undefined &&
+      normalized.include_descendants === false
+        ? undefined
+        : normalized.include_descendants,
+    log_user: normalized.log_user,
   }
 }
 
@@ -380,8 +415,13 @@ export function EnterpriseUsageOverview() {
     [departments, search.dept_id]
   )
   const normalizedSearch = useMemo(
-    () => normalizeEnterpriseUsageSearch({ departments, search }),
-    [departments, search]
+    () =>
+      normalizeEnterpriseUsageSearch({
+        departments,
+        search,
+        treeResolved: !treeLoading && !treeError,
+      }),
+    [departments, search, treeError, treeLoading]
   )
   const [expandedDepartmentIds, setExpandedDepartmentIds] = useState<number[]>(
     []
@@ -411,26 +451,21 @@ export function EnterpriseUsageOverview() {
   }, [departments, resolvedSelection.requiredExpandedIds])
 
   useEffect(() => {
-    if (
-      search.dept_id === normalizedSearch.dept_id &&
-      search.log_user === normalizedSearch.log_user
-    ) {
+    if (!shouldSyncEnterpriseUsageSearch(search, normalizedSearch)) {
       return
     }
     navigate({
       to: '/enterprise-usage',
-      search: (prev) => ({
-        ...prev,
-        dept_id: normalizedSearch.dept_id,
-        log_user: normalizedSearch.log_user,
-      }),
+      search: (prev) => resolveEnterpriseUsageSyncedSearch(prev, normalizedSearch),
       replace: true,
     })
   }, [
     navigate,
     normalizedSearch.dept_id,
+    normalizedSearch.include_descendants,
     normalizedSearch.log_user,
     search.dept_id,
+    search.include_descendants,
     search.log_user,
   ])
 
@@ -2152,7 +2187,9 @@ export function resolveRecentLogsSearch(
   }
 }
 
-function resolveRecentLogsUserOptions(entry: DepartmentUsageLogEntryLink) {
+export function resolveRecentLogsUserOptions(
+  entry: DepartmentUsageLogEntryLink
+): DepartmentUsageLogUserOption[] {
   const unique = new Map<string, DepartmentUsageLogUserOption>()
   for (const item of entry.filters.user_options ?? []) {
     if (!item.username) continue
@@ -2161,8 +2198,7 @@ function resolveRecentLogsUserOptions(entry: DepartmentUsageLogEntryLink) {
   if (unique.size > 0) {
     return Array.from(unique.values())
   }
-  return (entry.filters.username_options ?? []).map((username, index) => ({
-    user_id: index + 1,
+  return (entry.filters.username_options ?? []).map((username) => ({
     username,
     display_name: '',
   }))

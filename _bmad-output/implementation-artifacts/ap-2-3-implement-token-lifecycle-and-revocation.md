@@ -1,4 +1,4 @@
-# Story 2.3: 实现 token 生命周期与撤销机制
+# Story AP-2.3: 实现 token 生命周期与撤销机制
 
 Status: done
 
@@ -32,16 +32,16 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
   - [x] 将 `service/agentplatform/oauth_token.go` 从“最小 code exchange”升级为统一 token exchange 服务，支持 `authorization_code`、`refresh_token`、`client_credentials` 三条路径。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#440-487]
   - [x] access token 改为第一方签发的短期 JWT，claims 至少包含：`iss`、`sub`、`aud`、`exp`、`jti`、`client_id`、可选 `user_id`、`scope`、`contract_version`、`token_version`、`grant_id`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#456-470]
   - [x] refresh token 使用时必须轮换：旧 token 标记为已撤销/已使用，新 token 哈希入库；任何 revoke 都要让后续 refresh 失败。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#484-487]
-  - [x] `client_credentials` 只允许在 client 记录显式开启 `allow_client_credentials=true` 且 grant type 白名单包含 `client_credentials` 时发放。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#450; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3]
+  - [x] `client_credentials` 只允许在 client 记录显式开启 `allow_client_credentials=true` 且 grant type 白名单包含 `client_credentials` 时发放。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#450; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3]
 
 - [x] 提供 revoke 与 token version 校验入口 (AC: 2)
   - [x] 新增 `/api/agent-platform/oauth/revoke`，至少支持 refresh token 与 access token 对应 grant 的撤销。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#563]
   - [x] grant/token revoke 时要更新 `authorization_grant.token_version` 或 grant 状态，使既有 JWT 在后续校验时失效，而不是只删除 refresh token。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#479-487]
-  - [x] 保留最小 `ValidateAccessToken` 能力供后续 open-capabilities bearer auth 复用，但不要在本故事里提前实现整套 `/api/open-capabilities/**` 数据面。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.4]
+  - [x] 保留最小 `ValidateAccessToken` 能力供后续 open-capabilities bearer auth 复用，但不要在本故事里提前实现整套 `/api/open-capabilities/**` 数据面。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.4]
 
 - [x] 修正 OAuth auth plane 路由边界并补定向测试 (AC: 1, 2)
   - [x] `router/agentplatform-router.go` 中 `/api/agent-platform/oauth/**` 不能继续挂在 `AdminAuth()` 下；authorize 可基于已有登录 session，token/revoke 走 auth plane 语义。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#API & Communication Patterns]
-  - [x] 更新 `service/agentplatform/oauth_token_test.go`、`controller/agentplatform/oauth_test.go`，覆盖：JWT access token 发放、refresh token 哈希存储与轮换、revoke 失效、client credentials 按 client 开关放行。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3]
+  - [x] 更新 `service/agentplatform/oauth_token_test.go`、`controller/agentplatform/oauth_test.go`，覆盖：JWT access token 发放、refresh token 哈希存储与轮换、revoke 失效、client credentials 按 client 开关放行。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3]
 
 - [x] 保持 2.3 边界，不提前做 2.4/2.5 的数据面工作 (AC: 1, 2)
   - [x] 本故事不实现 `/api/open-capabilities/**` discovery/detail/invoke/refresh 正式接口。
@@ -97,7 +97,7 @@ so that 消费者能安全访问开放能力面，而不用发明自定义授权
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3: 实现 token 生命周期与撤销机制]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3: 实现 token 生命周期与撤销机制]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#440-487]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#520-570]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#972-1002]
@@ -112,7 +112,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- Story Automator 继续作为总编排状态源，但 `2.3` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic 2 上继续漂移。
+- Story Automator 继续作为总编排状态源，但 `2.3` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic AP-2 上继续漂移。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md`，并基于 `2.1/2.2` 已有 client + delegated auth 实现继续扩展 token lifecycle。
 
 ### Completion Notes List

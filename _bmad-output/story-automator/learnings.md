@@ -42,6 +42,28 @@
 - Add explicit self-healing for repeated create-story stalls so the automator can switch to manual artifact generation logic sooner.
 - Keep dedicated regression coverage for shared `[from, to)` boundaries anywhere enterprise usage and alerts reuse the same facts.
 
+## Run: 2026-06-03T02:30:00Z
+
+**Epic:** Agent Platform - Epic Breakdown
+**Stories:** 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8
+
+### Patterns Observed
+- Codex session execution was generally stable after the CODEX_HOME auth/config symlink fix; the main remaining friction was verifier drift around AP sprint keys that use `ap-*` rather than plain `6.*` aliases.
+- Source-of-truth checks against story artifacts and sprint-status were essential to recover from monitor/workflow_not_complete cases without blocking the run.
+
+### Code Review Insights
+- Common issues: review verification mismatched normalized story aliases vs real sprint keys for AP-6.6 through AP-6.8, requiring source-of-truth confirmation.
+- Average cycles to clean: ~1.5
+
+### Timing Estimates
+- create-story: ~6m
+- dev-story: ~13m
+- code-review: ~8m per cycle
+
+### Recommendations for Future Runs
+- Teach review/finalization helpers to resolve real AP sprint keys (`ap-*`) before declaring workflow_not_complete.
+- Keep using direct sprint-status/story-artifact verification immediately after each step whenever monitor output is incomplete.
+
 ## Run: 2026-06-03T08:16:30Z
 
 **Epic:** new-api - Epic Breakdown

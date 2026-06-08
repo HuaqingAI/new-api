@@ -1,4 +1,4 @@
-# Story 2.4: 发布开放能力标准接口与统一错误语义
+# Story AP-2.4: 发布开放能力标准接口与统一错误语义
 
 Status: done
 
@@ -39,7 +39,7 @@ so that 我能通过一套稳定协议完成接入，而不是面向不同消费
 
 - [x] 发布 `/api/open-capabilities/**` 路由骨架并守住资源边界 (AC: 1, 2, 3)
   - [x] 路由至少包含：`/api/open-capabilities/discovery`、`/api/open-capabilities/resources/:id`、`/api/open-capabilities/skills/:id/invoke`、`/api/open-capabilities/knowledge-bases/:id/query`、`/api/open-capabilities/agents/:id`、`/api/open-capabilities/refresh`。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#570-573]
-  - [x] 在 `2.4` 范围内，`skills/:id/invoke` 与 `knowledge-bases/:id/query` 先提供标准 envelope + `contractInvalid` 占位行为，路由语义、边界和错误模型先固定下来。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Implementation order mandated by this architecture; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 3.3; #Story 4.3]
+  - [x] 在 `2.4` 范围内，`skills/:id/invoke` 与 `knowledge-bases/:id/query` 先提供标准 envelope + `contractInvalid` 占位行为，路由语义、边界和错误模型先固定下来。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Implementation order mandated by this architecture; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-3.3; #Story AP-4.3]
   - [x] `agents/:id` detail 只返回定义与依赖边界相关的标准化 detail，不越界承诺服务端 runtime。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Agent runtime boundary]
 
 - [x] 衔接现有 exposure/resource/version/typed detail 模型 (AC: 1, 2, 3)
@@ -100,7 +100,7 @@ so that 我能通过一套稳定协议完成接入，而不是面向不同消费
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.4: 发布开放能力标准接口与统一错误语义]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.4: 发布开放能力标准接口与统一错误语义]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#570-608]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#638-670]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1298-1330]
@@ -117,7 +117,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- Story Automator 继续作为总编排状态源，但 `2.4` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic 2 上继续漂移。
+- Story Automator 继续作为总编排状态源，但 `2.4` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent Platform Epic AP-2 上继续漂移。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md`，并对齐 `1.5` exposure 基线与 `2.3` JWT token 基线，准备实现 `/api/open-capabilities/**`。
 
 ### Completion Notes List

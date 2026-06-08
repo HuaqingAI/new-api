@@ -16,14 +16,14 @@ so that 我能用更直观的金额视角理解预算和钱包额度，同时保
 
 ## Acceptance Criteria
 
-1. **Given** 管理员在创建预算池、创建 allocation、创建 delegation，或员工提交 quota request  
-   **When** 填写额度字段  
-   **Then** 表单支持在 quota 与金额（$）视角之间切换  
+1. **Given** 管理员在创建预算池、创建 allocation、创建 delegation，或员工提交 quota request
+   **When** 填写额度字段
+   **Then** 表单支持在 quota 与金额（$）视角之间切换
    **And** 该切换不改变后端底层 quota 存储模型。
 
-2. **Given** 用户查看预算池列表、预算池详情、allocation 记录或 quota request 记录  
-   **When** 页面展示额度相关列  
-   **Then** 在保留 quota 原值的同时补充金额（$）显示  
+2. **Given** 用户查看预算池列表、预算池详情、allocation 记录或 quota request 记录
+   **When** 页面展示额度相关列
+   **Then** 在保留 quota 原值的同时补充金额（$）显示
    **And** 显示方式尽量与钱包额度语义保持一致。
 
 ## Tasks / Subtasks

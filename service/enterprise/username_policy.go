@@ -1,12 +1,14 @@
 package enterprise
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"gorm.io/gorm"
 )
 
 const (
@@ -127,22 +129,46 @@ func buildEnterpriseUsernameCandidates(base string, stableSuffixes ...string) []
 	return out
 }
 
-func resolveAvailableEnterpriseUsername(base string, stableSuffixes ...string) string {
+func enterpriseUsernameExists(db *gorm.DB, username string) (bool, error) {
+	var user model.User
+	err := db.Unscoped().Where("username = ?", username).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func maxUserIdForUsernameGeneration(db *gorm.DB) int {
+	var user model.User
+	if err := db.Unscoped().Order("id DESC").First(&user).Error; err != nil {
+		return 0
+	}
+	return user.Id
+}
+
+func resolveAvailableEnterpriseUsername(db *gorm.DB, base string, stableSuffixes ...string) string {
+	if db == nil {
+		db = model.DB
+	}
 	candidates := buildEnterpriseUsernameCandidates(base, stableSuffixes...)
 	for _, candidate := range candidates {
-		if exists, err := model.CheckUserExistOrDeleted(candidate.Value, ""); err == nil && !exists {
+		if exists, err := enterpriseUsernameExists(db, candidate.Value); err == nil && !exists {
 			return candidate.Value
 		}
 	}
 
+	maxUserId := maxUserIdForUsernameGeneration(db)
 	for i := 0; i < maxUsernameGenerationTries; i++ {
-		suffix := strconv.Itoa(model.GetMaxUserId() + 1 + i)
+		suffix := strconv.Itoa(maxUserId + 1 + i)
 		fallbackCandidates := buildEnterpriseUsernameCandidates(base, suffix)
 		for _, candidate := range fallbackCandidates {
 			if candidate.PreferBase {
 				continue
 			}
-			if exists, err := model.CheckUserExistOrDeleted(candidate.Value, ""); err == nil && !exists {
+			if exists, err := enterpriseUsernameExists(db, candidate.Value); err == nil && !exists {
 				return candidate.Value
 			}
 		}

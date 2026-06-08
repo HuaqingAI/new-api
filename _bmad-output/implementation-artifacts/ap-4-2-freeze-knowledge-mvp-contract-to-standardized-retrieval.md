@@ -1,4 +1,4 @@
-# Story 4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval
+# Story AP-4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval
 
 Status: done
 
@@ -39,7 +39,7 @@ so that 我只需要围绕一个清晰的 `retrieval` 模式完成消费，而�
 - [x] 在 Knowledge resource version 创建路径中冻结 retrieval-only 语义 (AC: 1, 2, 3)
   - [x] `service/agentplatform/resource_version.go` 在创建 Knowledge 版本时阻止非 `retrieval` 模式、缺失 query/citation 契约、缺失 provider binding 的版本进入可发布候选。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#271-277]
   - [x] 平台 detail 侧继续只暴露 retrieval query shape 与结果结构预期，不增加 provider-specific 公共字段。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#274-277]
-  - [x] 本故事没有实现 retrieval query 调用，query runtime 继续留给 4.3/4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.3; #Story 4.4]
+  - [x] 本故事没有实现 retrieval query 调用，query runtime 继续留给 4.3/4.4。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.3; #Story AP-4.4]
 
 - [x] 将 visible-but-not-callable 的契约原因接入 Knowledge detail / readiness 判断 (AC: 4)
   - [x] 对于不满足 retrieval-only 契约的 Knowledge，平台现在会在版本创建阶段明确阻断，避免其进入后续可调用候选。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#276]
@@ -83,7 +83,7 @@ so that 我只需要围绕一个清晰的 `retrieval` 模式完成消费，而�
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-10]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#389-400]
 - [Source: _bmad-output/implementation-artifacts/ap-4-1-manage-knowledge-resources-with-provider-metadata.md]
@@ -97,7 +97,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `4.2` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Knowledge 契约冻结边界上继续漂移。
-- 已加载 Story 4.2 验收标准、Knowledge typed detail 模型、open capability detail 与 UX 约束，准备冻结 retrieval-only 契约。
+- 已加载 Story AP-4.2 验收标准、Knowledge typed detail 模型、open capability detail 与 UX 约束，准备冻结 retrieval-only 契约。
 
 ### Completion Notes List
 

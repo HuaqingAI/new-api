@@ -47,6 +47,16 @@ describe('Enterprise alerts classic helpers', () => {
       }),
       'alice_ops',
     );
+    assert.equal(
+      formatClassicEnterpriseUserSecondary(
+        {
+          display_name: 'Alice Zhang',
+          username: 'alice_ops',
+        },
+        (value) => value,
+      ),
+      'alice_ops',
+    );
   });
 
   test('alerts page exposes rule management entry', () => {

@@ -117,6 +117,39 @@ func OpenCapabilityRefresh(c *gin.Context) {
 	})
 }
 
+func OpenCapabilityModelDiscovery(c *gin.Context) {
+	claims, ok := openCapabilityClaims(c)
+	if !ok {
+		writeOpenCapabilityError(c, apservice.ErrOpenCapabilityPermissionDenied, "", "")
+		return
+	}
+	result, err := modelDiscoveryService().List(claims.ClientId)
+	if err != nil {
+		writeOpenCapabilityError(c, err, "", "")
+		return
+	}
+	items := make([]dtoagentplatform.OpenCapabilityModelDiscoveryItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, dtoagentplatform.OpenCapabilityModelDiscoveryItem{
+			ModelID:          item.ModelID,
+			ProviderStableID: item.ProviderStableID,
+			DisplayName:      item.DisplayName,
+			IsDefault:        item.IsDefault,
+			Status:           item.Status,
+			DisabledReason:   item.DisabledReason,
+			Capabilities:     jsonTextToRawMessage(item.CapabilitiesJSON),
+			AccountID:        item.AccountID,
+			TenantID:         item.TenantID,
+		})
+	}
+	common.ApiSuccess(c, dtoagentplatform.OpenCapabilityModelDiscoveryResponse{
+		ContractVersion: result.ContractVersion,
+		DefaultState:    result.DefaultState,
+		Items:           items,
+		Total:           result.Total,
+	})
+}
+
 func OpenCapabilitySkillInvoke(c *gin.Context) {
 	claims, ok := openCapabilityClaims(c)
 	if !ok {
@@ -141,11 +174,11 @@ func OpenCapabilitySkillInvoke(c *gin.Context) {
 	if err := common.Unmarshal(result.Output, &output); err != nil {
 		output = gin.H{"raw": string(result.Output)}
 	}
-	common.ApiSuccess(c, gin.H{
-		"resource_id":      result.ResourceID,
-		"resource_version": result.ResourceVersion,
-		"contract_version": result.ContractVersion,
-		"output":           output,
+	common.ApiSuccess(c, dtoagentplatform.OpenCapabilitySkillInvokeResponse{
+		ResourceId:      result.ResourceID,
+		ResourceVersion: result.ResourceVersion,
+		ContractVersion: result.ContractVersion,
+		Output:          output,
 	})
 }
 
@@ -169,12 +202,30 @@ func OpenCapabilityKnowledgeQuery(c *gin.Context) {
 		writeOpenCapabilityError(c, err, c.Param("id"), "")
 		return
 	}
-	common.ApiSuccess(c, gin.H{
-		"resource_id":      result.ResourceID,
-		"resource_version": result.ResourceVersion,
-		"contract_version": result.ContractVersion,
-		"items":            result.Items,
-		"citations":        result.Citations,
+	items := make([]dtoagentplatform.OpenCapabilityKnowledgeResultItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, dtoagentplatform.OpenCapabilityKnowledgeResultItem{
+			ID:       item.ID,
+			Score:    item.Score,
+			Snippet:  item.Snippet,
+			Metadata: item.Metadata,
+		})
+	}
+	citations := make([]dtoagentplatform.OpenCapabilityKnowledgeCitation, 0, len(result.Citations))
+	for _, citation := range result.Citations {
+		citations = append(citations, dtoagentplatform.OpenCapabilityKnowledgeCitation{
+			SourceID: citation.SourceID,
+			Title:    citation.Title,
+			URL:      citation.URL,
+			Metadata: citation.Metadata,
+		})
+	}
+	common.ApiSuccess(c, dtoagentplatform.OpenCapabilityKnowledgeQueryResponse{
+		ResourceId:      result.ResourceID,
+		ResourceVersion: result.ResourceVersion,
+		ContractVersion: result.ContractVersion,
+		Items:           items,
+		Citations:       citations,
 	})
 }
 
@@ -192,6 +243,10 @@ var skillInvokeService = func() *apservice.SkillInvokeService {
 
 var knowledgeQueryService = func() *apservice.KnowledgeQueryService {
 	return apservice.NewKnowledgeQueryService(model.DB)
+}
+
+var modelDiscoveryService = func() *apservice.ModelDiscoveryService {
+	return apservice.NewModelDiscoveryService(model.DB)
 }
 
 func writeOpenCapabilityError(c *gin.Context, err error, resourceID string, resourceVersion string) {

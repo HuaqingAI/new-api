@@ -1,4 +1,4 @@
-# Story 4.4: 接入首个 `http_retrieval` provider 适配器
+# Story AP-4.4: 接入首个 `http_retrieval` provider 适配器
 
 Status: done
 
@@ -71,7 +71,7 @@ so that 平台可以验证 Knowledge 契约闭环，而不会把公共接口绑�
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 4.4: 接入首个 http_retrieval provider 适配器]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-4.4: 接入首个 http_retrieval provider 适配器]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#889-893]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#996-1001]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#277]
@@ -85,7 +85,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `4.4` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 provider adapter 边界上继续漂移。
-- 已加载 Story 4.4 验收标准、Knowledge query MVP 和架构中的 `KnowledgeProvider` 契约建议，准备抽出 provider-neutral adapter 并接入首个 `http_retrieval` 实现。
+- 已加载 Story AP-4.4 验收标准、Knowledge query MVP 和架构中的 `KnowledgeProvider` 契约建议，准备抽出 provider-neutral adapter 并接入首个 `http_retrieval` 实现。
 
 ### Completion Notes List
 

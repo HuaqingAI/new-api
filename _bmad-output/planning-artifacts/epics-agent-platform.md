@@ -97,65 +97,65 @@ UX-DR5: 实施前必须有一份轻量 UX 文档冻结关键交互：客户端�
 
 ### FR Coverage Map
 
-FR1: Epic 1 - 统一资源注册与治理基线。
-FR2: Epic 1 - 生命周期、版本与回滚治理动作。
-FR3: Epic 1 - 发布投影与按客户端暴露治理。
-FR4: Epic 2 - 客户端注册与下游主体管理。
-FR5: Epic 2 - 开放能力标准层。
-FR6: Epic 2 - freshness、refresh、revoke 与收敛契约。
-FR15: Epic 2 - 契约版本与扩展治理。
-FR7: Epic 3 - Skill 管理。
-FR8: Epic 3 - Skill 调用契约。
-FR9: Epic 4 - Knowledge 管理。
-FR10: Epic 4 - retrieval-only Knowledge 契约。
-FR11: Epic 5 - Agent 定义管理。
-FR12: Epic 5 - Agent 依赖声明与边界校验。
-FR13: Epic 2 - 开放能力接口统一错误 envelope。
-FR14: Epic 1 - 治理审计与诊断基线，并在 Epic 2-5 中由领域流程补强。
+FR1: Epic AP-1 - 统一资源注册与治理基线。
+FR2: Epic AP-1 - 生命周期、版本与回滚治理动作。
+FR3: Epic AP-1 - 发布投影与按客户端暴露治理。
+FR4: Epic AP-2 - 客户端注册与下游主体管理。
+FR5: Epic AP-2 - 开放能力标准层。
+FR6: Epic AP-2 - freshness、refresh、revoke 与收敛契约。
+FR15: Epic AP-2 - 契约版本与扩展治理。
+FR7: Epic AP-3 - Skill 管理。
+FR8: Epic AP-3 - Skill 调用契约。
+FR9: Epic AP-4 - Knowledge 管理。
+FR10: Epic AP-4 - retrieval-only Knowledge 契约。
+FR11: Epic AP-5 - Agent 定义管理。
+FR12: Epic AP-5 - Agent 依赖声明与边界校验。
+FR13: Epic AP-2 - 开放能力接口统一错误 envelope。
+FR14: Epic AP-1 - 治理审计与诊断基线，并在 Epic AP-2 到 AP-5 中由领域流程补强。
 
 ## Epic List
 
-### Epic 1: 资源治理基线
+### Epic AP-1: 资源治理基线
 
 平台管理员与资源发布者可以在一个统一治理框架中管理 `Skill`、`Knowledge`、`Agent` 三类资源的注册、生命周期、版本、发布投影与审计基础。
 
 **FRs covered:** FR1, FR2, FR3, FR14
 
-### Epic 2: 客户端接入与开放能力标准层
+### Epic AP-2: 客户端接入与开放能力标准层
 
 平台管理员可以注册下游客户端、发放受控访问能力、发布标准化能力接口，并强制 freshness、契约版本与错误语义在多个消费者之间保持一致。
 
 **FRs covered:** FR4, FR5, FR6, FR15, FR13, FR14
 
-### Epic 3: Skill 库管理与调用
+### Epic AP-3: Skill 库管理与调用
 
 资源发布者与下游消费者可以围绕 `Skill` 完成管理、发布、发现、详情读取与调用闭环，而无需引入面向单客户端的私有协议分支。
 
 **FRs covered:** FR7, FR8, FR13, FR14
 
-### Epic 4: Knowledge 库管理与检索契约
+### Epic AP-4: Knowledge 库管理与检索契约
 
 资源发布者与下游消费者可以把 `Knowledge` 作为 provider-backed 的 `retrieval` 契约进行治理与消费，并清晰识别其调用边界。
 
 **FRs covered:** FR9, FR10, FR13, FR14
 
-### Epic 5: Agent 定义库与依赖边界
+### Epic AP-5: Agent 定义库与依赖边界
 
 资源发布者与下游消费者可以管理和发布 `Agent` 定义、查看其依赖关系并校验组合边界，同时避免平台被错误拉入服务端运行时范围。
 
 **FRs covered:** FR11, FR12, FR13, FR14
 
-### Epic 6: 下游公共契约冻结与接入签核
+### Epic AP-6: 下游公共契约冻结与接入签核
 
 平台团队和下游集成方可以基于一套正式公共契约、状态矩阵、错误矩阵与 mock / fixture 完成 Cherry Studio 首个消费者签核，并验证 Codex 作为第二消费者时不需要新建平行协议主干。
 
 **FRs covered:** FR5, FR6, FR13, FR14, FR15；补充下游 P0 model discovery 签核缺口
 
-## Epic 1: 资源治理基线
+## Epic AP-1: 资源治理基线
 
 先建立 Agent Platform 的 bounded context 基础，让后续所有面向客户端的能力都建立在统一资源模型、统一发布模型和统一审计模型之上，而不是在各领域重复造治理底座。
 
-### Story 1.1: 建立共享资源注册表与稳定资源身份
+### Story AP-1.1: 建立共享资源注册表与稳定资源身份
 
 As a 平台管理员,
 I want `Skill`、`Knowledge`、`Agent` 都通过统一注册表进入平台并拥有稳定资源身份,
@@ -173,7 +173,7 @@ So that 平台在三类资源之间拥有稳定资源身份和一致治理语义
 **Then** 共享治理字段与资源身份字段足以独立支持这些流程
 **And** 后续 typed detail 的演进不会改变已有资源身份。
 
-### Story 1.2: 为三类资源落地 typed detail 持久化结构
+### Story AP-1.2: 为三类资源落地 typed detail 持久化结构
 
 As a 平台管理员,
 I want `Skill`、`Knowledge`、`Agent` 的专属字段通过 typed detail 结构落地,
@@ -191,7 +191,7 @@ So that 平台不需要依赖巨型多态 payload 也能保持资源差异化表
 **Then** JSON 编解码使用 `common/json.go`
 **And** schema 与迁移保持 SQLite、MySQL、PostgreSQL 三库兼容。
 
-### Story 1.3: 实现统一生命周期、版本与可回滚治理动作
+### Story AP-1.3: 实现统一生命周期、版本与可回滚治理动作
 
 As a 资源发布者,
 I want 资源与资源版本按照统一生命周期流转，并通过显式治理动作改变状态,
@@ -214,11 +214,11 @@ So that publish、disable、revoke、offline、rollback 的行为是一致且可
 **Then** 审计事件至少包含操作者、对象、动作、前后状态、请求标识与结果
 **And** 该事件链后续可用于 publish/revoke/rollback 诊断。
 
-### Story 1.4: 建立与客户端注册解耦的发布投影基线
+### Story AP-1.4: 建立与客户端注册解耦的发布投影基线
 
 As a 平台管理员,
 I want 在不依赖真实客户端记录的前提下先定义 projection/exposure 语义,
-So that Epic 1 可以独立交付发布模型基线，而不会前向依赖 Epic 2 的客户端接入实现。
+So that Epic AP-1 可以独立交付发布模型基线，而不会前向依赖 Epic AP-2 的客户端接入实现。
 
 **Acceptance Criteria:**
 
@@ -227,12 +227,12 @@ So that Epic 1 可以独立交付发布模型基线，而不会前向依赖 Epic
 **Then** 平台先定义 projection 对象、visibility/callable 语义与状态转移规则
 **And** 这些规则可以在测试桩或占位客户端场景中被验证。
 
-**Given** Epic 2 后续引入正式客户端记录
+**Given** Epic AP-2 后续引入正式客户端记录
 **When** projection 需要绑定目标客户端
-**Then** Epic 1 的投影语义可直接复用
+**Then** Epic AP-1 的投影语义可直接复用
 **And** 不需要返工资源生命周期与审计基线。
 
-### Story 1.5: 建立发布投影与 exposure 模型
+### Story AP-1.5: 建立发布投影与 exposure 模型
 
 As a 平台管理员,
 I want 发布投影独立于源资源定义进行管理,
@@ -255,7 +255,7 @@ So that 同一个资源可以针对不同客户端拥有不同的 visible/callab
 **Then** 平台只撤销目标客户端相关的 published projection
 **And** 不删除或破坏底层资源定义。
 
-### Story 1.6: 在 `web/default` 交付管理控制面骨架
+### Story AP-1.6: 在 `web/default` 交付管理控制面骨架
 
 As a 平台管理员,
 I want 在 `web/default` 中拥有专门的 Agent Platform 控制面骨架,
@@ -283,11 +283,11 @@ So that 后续客户端管理、资源治理、发布流程和诊断能力都落
 **Then** 已存在一份轻量 UX 文档覆盖客户端注册、发布/撤销、状态解释与审计 drill-down
 **And** 前后端对关键操作名称与状态标签使用一致术语。
 
-## Epic 2: 客户端接入与开放能力标准层
+## Epic AP-2: 客户端接入与开放能力标准层
 
 建立可复用的客户端契约平面，让首个消费者通过标准层完成接入，同时保证后续消费者无需重新定义平台核心模型。
 
-### Story 2.1: 建立下游客户端注册与能力声明模型
+### Story AP-2.1: 建立下游客户端注册与能力声明模型
 
 As a 平台管理员,
 I want 以统一对象模型注册并维护下游客户端的契约与能力信息,
@@ -310,7 +310,7 @@ So that 新消费者接入不再依赖一次性集成记录或特判结构。
 **Then** 平台允许 namespaced extension 字段
 **And** 这些扩展字段不能重定义核心契约语义。
 
-### Story 2.2: 实现浏览器委托授权主路径
+### Story AP-2.2: 实现浏览器委托授权主路径
 
 As a 下游集成负责人,
 I want 平台先交付最小可用的浏览器委托授权路径,
@@ -328,7 +328,7 @@ So that 消费者能安全访问开放能力面，而不用发明自定义授权
 **Then** 平台能够串联既有登录态与 consent 记录
 **And** 审计链能关联 user、client、scope 与 grant 结果。
 
-### Story 2.3: 实现 token 生命周期与撤销机制
+### Story AP-2.3: 实现 token 生命周期与撤销机制
 
 As a 下游集成负责人,
 I want 平台对已发放 token 提供可审计、可撤销、可轮换的生命周期治理,
@@ -346,7 +346,7 @@ So that 消费者能安全访问开放能力面，而不用发明自定义授权
 **Then** refresh token 必须以哈希形式存储并支持单独撤销
 **And** access token 采用短期 JWT，并结合当前 token version 校验。
 
-### Story 2.4: 发布开放能力标准接口与统一错误语义
+### Story AP-2.4: 发布开放能力标准接口与统一错误语义
 
 As a 客户端集成人员,
 I want 通过共享开放能力层访问 discovery、detail、invoke/query、refresh,
@@ -369,7 +369,7 @@ So that 我能通过一套稳定协议完成接入，而不是面向不同消费
 **Then** 扩展字段以 namespaced 方式承载
 **And** 核心 discovery/detail/invoke/refresh 语义不被改变。
 
-### Story 2.5: 强制 freshness、revoke 与契约版本收敛规则
+### Story AP-2.5: 强制 freshness、revoke 与契约版本收敛规则
 
 As a 客户端集成人员,
 I want freshness、`ETag` / `Version`、refresh 和 revoke 行为具备明确契约语义,
@@ -397,11 +397,11 @@ So that 客户端可以一致地收敛发布投影，平台也能诊断陈旧状
 **Then** 平台必须要求显式 contract version 变更
 **And** 兼容判断基于客户端声明的支持版本与能力集合完成。
 
-## Epic 3: Skill 库管理与调用
+## Epic AP-3: Skill 库管理与调用
 
 把 `Skill` 做成第一个完整跑通的资源闭环，作为控制面治理与标准调用能力的最清晰样板。
 
-### Story 3.1: 在控制面提供 Skill 管理能力
+### Story AP-3.1: 在控制面提供 Skill 管理能力
 
 As a 资源发布者,
 I want 在控制面中创建、编辑、查看、发布、禁用、撤销 `Skill`,
@@ -422,9 +422,9 @@ So that `Skill` 的治理不再依赖静态配置或手工改库。
 **Given** 某个 `Skill` 尚未发布给目标客户端
 **When** 该客户端执行 discovery
 **Then** 该 `Skill` 不会出现在 discovery 结果中
-**And** 该行为遵循 Epic 1 中共享 exposure 规则。
+**And** 该行为遵循 Epic AP-1 中共享 exposure 规则。
 
-### Story 3.2: 定义 Skill 契约 detail、schema 与调用准备度
+### Story AP-3.2: 定义 Skill 契约 detail、schema 与调用准备度
 
 As a 资源发布者,
 I want 每个 `Skill` 都具备明确的 schema、invoke mode 与版本化契约 detail,
@@ -447,7 +447,7 @@ So that 客户端无需猜测请求和返回结构就能准备调用。
 **Then** 契约信息足以支持调用前准备
 **And** 可选扩展字段不能替代核心 invoke 契约。
 
-### Story 3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke
+### Story AP-3.3: 通过开放能力层暴露 Skill 的 discovery/detail/invoke
 
 As a 客户端集成人员,
 I want 通过共享能力层发现、查看并调用 `Skill`,
@@ -470,11 +470,11 @@ So that 首个消费者和后续消费者都能走同一条集成路径。
 **Then** 失败会映射到稳定的标准错误类别
 **And** 结果可以被审计和诊断，而不是只能依赖零散日志。
 
-## Epic 4: Knowledge 库管理与检索契约
+## Epic AP-4: Knowledge 库管理与检索契约
 
 将 `Knowledge` 做成受治理、可发布、边界明确的资源类型，同时严格控制 MVP 不滑向“完整 RAG 平台”。
 
-### Story 4.1: 建立带 provider 元数据的 Knowledge 管理能力
+### Story AP-4.1: 建立带 provider 元数据的 Knowledge 管理能力
 
 As a 资源发布者,
 I want 管理 `Knowledge` 资源、版本、发布状态与 provider 绑定元数据,
@@ -497,7 +497,7 @@ So that `Knowledge` 成为平台治理对象，而不要求平台承担 ingestio
 **Then** 平台能追踪其发布历史、撤销历史与客户端可见范围
 **And** 它复用与其他资源一致的 exposure 模型。
 
-### Story 4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval
+### Story AP-4.2: 将 Knowledge 的 MVP 契约冻结为标准化 retrieval
 
 As a 客户端集成人员,
 I want `Knowledge` 的契约语义在 MVP 中被明确收束,
@@ -525,7 +525,7 @@ So that 我只需要围绕一个清晰的 `retrieval` 模式完成消费，而�
 **Then** 平台可以将该资源判定为 visible but not callable
 **And** 返回明确的兼容性或契约错误原因。
 
-### Story 4.3: 通过共享能力层暴露 Knowledge 检索行为
+### Story AP-4.3: 通过共享能力层暴露 Knowledge 检索行为
 
 As a 客户端集成人员,
 I want 像使用其他资源一样，通过共享标准层发现并查询 `Knowledge`,
@@ -548,7 +548,7 @@ So that retrieval 能成为可复用的平台能力，而不是消费者特例�
 **Then** 失败映射到共享错误 envelope
 **And** 诊断信息不会泄露 provider secret 或敏感配置。
 
-### Story 4.4: 接入首个 `http_retrieval` provider 适配器
+### Story AP-4.4: 接入首个 `http_retrieval` provider 适配器
 
 As a 平台管理员,
 I want 通过 provider-neutral 的 `http_retrieval` adapter 接入首个外部检索引擎,
@@ -566,11 +566,11 @@ So that 平台可以验证 Knowledge 契约闭环，而不会把公共接口绑�
 **Then** 平台能把失败归因到 provider 适配层
 **And** 对客户端保持稳定的错误 envelope 与诊断语义。
 
-## Epic 5: Agent 定义库与依赖边界
+## Epic AP-5: Agent 定义库与依赖边界
 
 把 `Agent` 纳入平台作为受治理、可发布、可解释依赖边界的定义对象，同时守住“不进入服务端 runtime”的架构红线。
 
-### Story 5.1: 在控制面提供 Agent 定义管理能力
+### Story AP-5.1: 在控制面提供 Agent 定义管理能力
 
 As a 资源发布者,
 I want 创建、更新、发布、撤销并查看 `Agent` 定义,
@@ -593,7 +593,7 @@ So that `Agent` 成为一等治理资源，而不是被误当成平台必须执�
 **Then** 平台不会在本 Story 中引入 execution state、workflow state 或 multi-step orchestration
 **And** 这些能力保持明确 out of scope。
 
-### Story 5.2: 实现 Agent 依赖声明与边界校验
+### Story AP-5.2: 实现 Agent 依赖声明与边界校验
 
 As a 资源发布者,
 I want 让 `Agent` 显式声明其 `Skill` 与 `Knowledge` 依赖,
@@ -616,7 +616,7 @@ So that 平台与消费者都能在使用前理解其组合边界。
 **Then** 客户端能够理解该 `Agent` 的依赖边界与组合元数据
 **And** 不需要自行猜测平台并不拥有的隐式 runtime 行为。
 
-### Story 5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime
+### Story AP-5.3: 通过 discovery/detail 发布 Agent 定义而不越界到 runtime
 
 As a 客户端集成人员,
 I want 通过标准能力层发现并读取 `Agent` 定义,
@@ -639,11 +639,34 @@ So that 我可以消费可复用的 `Agent` 元数据，而不要求平台替我
 **Then** 首个 `Agent` 验证闭环覆盖 publish -> discovery -> detail -> dependency/reference-boundary validation -> audit trail
 **And** 不要求平台交付任何服务端 `Agent` runtime 或 orchestration engine。
 
-## Epic 6: 下游公共契约冻结与接入签核
+### Story AP-5.4: 收口 Agent Platform `web/default` 控制面集成与体验一致性
 
-AP-1 到 AP-5 已完成资源治理、客户端接入、开放能力、Skill、Knowledge 与 Agent 的 MVP 基线。Epic 6 不重建这些能力，而是把已实现能力冻结成下游可签核的公共契约，并补齐模型发现、错误/状态矩阵、mock fixture 和 onboarding 最小闭环。
+As a 平台管理员,
+I want Agent Platform 控制面在 `web/default` 中以真实可访问、可取数、可国际化且与既有管理模块一致的方式交付,
+So that 这个产品线的控制面不是 story 占位壳，而是可持续扩展的正式管理入口。
 
-### Story 6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract
+**Acceptance Criteria:**
+
+**Given** 侧边栏已出现 Agent Platform 导航入口
+**When** 管理员点击进入
+**Then** 真实 route surface 可访问且不会因生成路由缺失而 404
+**And** 该入口与 `web/default` 其余 admin 模块处于同一导航与布局体系中。
+
+**Given** Skill、Knowledge、Agent 控制面入口已经存在
+**When** 页面请求对应数据
+**Then** 页面能够连通 live `/api/agent-platform/**` 控制面接口或显式批准的兼容 fallback
+**And** 不会因前后端路由接线不一致而出现默认 404。
+
+**Given** Agent Platform 页面在 `web/default` 中渲染
+**When** 页面展示文案、状态、空态和错误态
+**Then** 新增文案遵循 frontend i18n 约束
+**And** 页面结构、状态表达与现有 `enterprise-*` 模块一致，不以 narrative shell 视作完成。
+
+## Epic AP-6: 下游公共契约冻结与接入签核
+
+AP-1 到 AP-5 已完成资源治理、客户端接入、开放能力、Skill、Knowledge 与 Agent 的 MVP 基线。Epic AP-6 不重建这些能力，而是把已实现能力冻结成下游可签核的公共契约，并补齐模型发现、错误/状态矩阵、mock fixture 和 onboarding 最小闭环。
+
+### Story AP-6.1: 冻结 OAuth、Token、Revoke 与 Callback Wire Contract
 
 As a 客户端集成人员,
 I want 获得明确的 OAuth / token / revoke / callback / allowlist wire contract,
@@ -661,7 +684,7 @@ So that 下游可以稳定实现企业登录与授权回调，而不是依赖当
 **Then** 契约明确对应状态、错误语义、可重试性和审计要求
 **And** 不要求下游读取 dashboard session 或 relay token。
 
-### Story 6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程
+### Story AP-6.2: 冻结 Client Registration Schema 与 Onboarding 最小流程
 
 As a 平台管理员,
 I want 有一套可签核的 client registration schema 与最小 onboarding 流程,
@@ -679,7 +702,7 @@ So that 运维人员可以为 Cherry Studio / Codex 注册客户端并解释每�
 **Then** 明确哪些 onboarding 动作必须在 UI 完成，哪些可暂由 API / fixture 支撑
 **And** 若完整 Clients 工作区超出 AP-6，则拆入后续产品化 epic。
 
-### Story 6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集
+### Story AP-6.3: 冻结 Discovery、Detail 与 Refresh 公共字段集
 
 As a 客户端集成人员,
 I want discovery / detail / refresh 字段集被正式冻结,
@@ -696,7 +719,7 @@ So that 下游可以稳定展示资源列表、详情、freshness 与撤销状�
 **When** 下游执行 refresh 或超过 TTL
 **Then** 契约明确 stale / revoked / offline / fresh 的收敛规则和示例 payload。
 
-### Story 6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec
+### Story AP-6.4: 冻结 Skill Invoke 与 Knowledge Query Request/Response Spec
 
 As a 客户端集成人员,
 I want Skill invoke 与 Knowledge query 有正式请求/响应规格,
@@ -714,7 +737,7 @@ So that 下游可以在不阅读服务端代码的情况下实现调用和错误
 **Then** retrieval query shape、items、citations、source metadata、排序信息、provider failure 与敏感配置保护均有示例
 **And** 公共契约不暴露 LightRAG / FastGPT / RAGFlow 等 provider-native 字段。
 
-### Story 6.5: 冻结 Enterprise Model Discovery 公共契约
+### Story AP-6.5: 冻结 Enterprise Model Discovery 公共契约
 
 As a 客户端集成人员,
 I want 获得企业模型发现、默认模型和模型状态的公共契约,
@@ -731,7 +754,7 @@ So that Cherry Studio P0 可以展示可用模型并解释不可用原因。
 **When** 下游读取模型状态
 **Then** 契约明确状态矩阵、错误语义和 UI 展示建议。
 
-### Story 6.6: 冻结错误码矩阵与客户端状态矩阵
+### Story AP-6.6: 冻结错误码矩阵与客户端状态矩阵
 
 As a 下游产品负责人,
 I want 平台错误码与客户端展示状态有一张稳定矩阵,
@@ -744,7 +767,7 @@ So that 登录过期、空列表、加载失败、无可用资源、网络失败
 **Then** `permissionDenied`、`resourceRevoked`、`resourceOffline`、`quotaOrRateLimited`、`timeout`、`upstreamFailed`、`contractInvalid` 等错误码都有 HTTP/status、retryable、责任边界和 UI state 映射
 **And** 下游需求中的 `loginExpired`、`noAssignedResource`、`networkFailed`、`empty`、`loadFailed` 等客户端态被纳入矩阵。
 
-### Story 6.7: 提供 Mock、Fixture 与 Contract Conformance 套件
+### Story AP-6.7: 提供 Mock、Fixture 与 Contract Conformance 套件
 
 As a 下游集成方,
 I want 获得 mock / fixture / conformance 测试资产,
@@ -761,7 +784,7 @@ So that 我可以在真实环境前验证 OAuth、discovery、detail、refresh�
 **When** 运行 conformance tests
 **Then** 可以验证字段解析、错误映射、状态矩阵、TTL/refresh 收敛和 model discovery 默认模型处理。
 
-### Story 6.8: 完成 Cherry Studio First / Codex Second 签核路径
+### Story AP-6.8: 完成 Cherry Studio First / Codex Second 签核路径
 
 As a 平台负责人,
 I want 用 Cherry Studio 完成首个签核，并用 Codex 验证第二消费者不会要求平行协议主干,

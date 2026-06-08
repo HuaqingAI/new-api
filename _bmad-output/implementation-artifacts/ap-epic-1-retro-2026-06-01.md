@@ -1,4 +1,4 @@
-# Agent Platform Epic 1 Retrospective: 资源治理基线
+# Agent Platform Epic AP-1 Retrospective: 资源治理基线
 
 日期：2026-06-01
 
@@ -12,7 +12,7 @@
 
 ## Epic Review
 
-本次回顾针对 **Agent Platform Epic 1**，不是旧的 enterprise Epic 1。
+本次回顾针对 **Agent Platform Epic AP-1**，不是旧的 enterprise Epic 1。
 
 Epic 1 已完成 6/6 个 story：
 
@@ -32,7 +32,7 @@ Epic 1 已完成 6/6 个 story：
 - `91822996`
 - `c2a21134`
 
-Sprint 状态中这六个 `ap-1-*` story 都已是 `done`。本次 retrospective 额外发现并修正了 source-of-truth 漂移：`agent-platform-epic-1` 主键仍停留在 `backlog`，与 story 完成事实不一致；现已同步修正为 `done`，并将 `agent-platform-epic-1-retrospective` 标记为 `done`。
+Sprint 状态中这六个 `ap-1-*` story 都已是 `done`。本次 retrospective 额外发现并修正了 source-of-truth 漂移：`ap-epic-1` 主键仍停留在 `backlog`，与 story 完成事实不一致；现已同步修正为 `done`，并将 `ap-epic-1-retrospective` 标记为 `done`。
 
 ## Quality Evidence
 
@@ -42,7 +42,7 @@ Epic 1 的交付证据比较完整，但分散在 story artifact 与 orchestrati
 - Story 1.1 的 review 自动修复了稳定身份相关关键问题，包括 `resource_id` 生成时序、`resource_id` / `resource_type` 不可变约束、非法 `resource_type` 过滤值校验等。
 - Story 1.2-1.5 的实现记录显示，shared registry、typed detail、lifecycle、projection、per-target exposure 都沿同一个 bounded context 持续演进，没有回流到 `enterprise` 或 `relay/**`。
 - Story 1.6 的 story artifact 记录了 `web/default` 的 typecheck、`test:e2e` 与 `i18n:sync` 验证，说明前端壳层不是只写静态页面，而是完成了最小集成闭环。
-- story-automator 的编排日志 `orchestration-1-20260531-145351.md` 记录了 Agent Platform Epic 1 的真实过程：create-story 与 dev-story 多次漂移，最终依靠 manual takeover + source-of-truth closure 收口。
+- story-automator 的编排日志 `orchestration-1-20260531-145351.md` 记录了 Agent Platform Epic AP-1 的真实过程：create-story 与 dev-story 多次漂移，最终依靠 manual takeover + source-of-truth closure 收口。
 
 已知限制：
 
@@ -61,13 +61,13 @@ Epic 1 的交付证据比较完整，但分散在 story artifact 与 orchestrati
 
 - **story-automator 在 Agent Platform 流程上明显漂移。** 1.1 的 create-story 两次失败，dev-story 也多次停留在 enterprise 参考阅读；1.2-1.5 则几乎都要靠 manual create-story takeover 或 direct manual dev takeover 才能继续。
 - **Agent Platform 的 epic/source 映射曾经不稳定。** 1.1 的 story artifact 已明确记下 `1.1 -> ap-1-1-*` key 映射与 epic source 解析是修正过的，这说明 automator 对“新产品线 + 新 story key 体系”的识别此前并不稳。
-- **source-of-truth 分裂依然存在。** orchestration log 显示 Epic 1 六个 story 实际都完成了，但 `sprint-status.yaml` 中 `agent-platform-epic-1` 仍是 `backlog`。这说明 automator 已经学会盯 story key，却还没有把 epic 聚合状态当成同等重要的同步对象。
+- **source-of-truth 分裂依然存在。** orchestration log 显示 Epic 1 六个 story 实际都完成了，但 `sprint-status.yaml` 中 `ap-epic-1` 仍是 `backlog`。这说明 automator 已经学会盯 story key，却还没有把 epic 聚合状态当成同等重要的同步对象。
 - **bounded context 脚手架阶段对提示词容错要求很低。** 一旦 create/dev 会话回到旧的 enterprise 代码上下文，就容易长时间阅读已有结构而不真正写出新的 `agentplatform` 文件树。
 - **前端 Story 1.6 的证据粒度偏薄。** 目前 artifact 只摘要说明壳层、测试和 i18n 已完成，没有像 1.1-1.5 那样列出更细的交互合同或 review 修复记录；这会让后续 Epic 2 继续接页面时，需要再次回读代码本身才能建立完整上下文。
 
 ## Story Pattern Synthesis
 
-跨 6 个 story，Agent Platform Epic 1 呈现出很清楚的模式：
+跨 6 个 story，Agent Platform Epic AP-1 呈现出很清楚的模式：
 
 1. 真正的成功点不是“六个故事都做完了”，而是 **实现顺序高度尊重架构分层**：identity -> detail -> lifecycle -> projection baseline -> per-target exposure -> frontend shell。
 2. 真正的失败模式也很一致：**automator 对新 bounded context 的上下文切换能力弱于对成熟域的工作能力**。它能在 source-of-truth 校验时收口，但在 create/dev 的前半程很容易漂移回旧代码或长时间阅读。
@@ -82,7 +82,7 @@ Epic 1 的交付证据比较完整，但分散在 story artifact 与 orchestrati
    影响：后续继续跑 Agent Platform epic 时，应把“连续两次未产出 story artifact 或未写入目标目录树”视为明确切换到 manual takeover 的触发条件。
 
 2. **Agent Platform 的 epic 聚合状态需要单独校验。**
-   影响：不能只验证 `ap-*` stories 是否完成，还要验证 `agent-platform-epic-*` 与 `agent-platform-epic-*-retrospective` 主键是否同步，否则 sprint-status 会持续对外撒谎。
+   影响：不能只验证 `ap-*` stories 是否完成，还要验证 `ap-epic-*` 与 `ap-epic-*-retrospective` 主键是否同步，否则 sprint-status 会持续对外撒谎。
 
 3. **frontend shell 已经把信息架构冻结成真实入口。**
    影响：Epic 2 及以后应直接沿用 `Overview -> Clients -> Skills -> Knowledge -> Agents -> Publishing -> Audit & Diagnostics` 这条导航主线推进，不要再重新讨论 Agent Platform 控制面放在哪、如何进 sidebar。
@@ -98,7 +98,7 @@ Epic 1 的交付证据比较完整，但分散在 story artifact 与 orchestrati
 1. 新产品线的第一批 story，最该优先交付的是 **bounded context 可生长性**，不是 UI 漂亮度，也不是先跑 open capability 协议。Epic 1 这样做是对的。
 2. shared registry、typed detail、lifecycle、projection、exposure 这些层次一旦顺序错了，后续每一步都会返工；Epic 1 的顺序值得保持。
 3. 对 Agent Platform 这种全新域，automator 的默认“先广泛读上下文再动手”策略不够好。更有效的是“先写 story artifact / 先锁目标文件树 / 先验证 sprint-status key 是否正确”。
-4. source-of-truth 不只是 story artifact 和 story status，还包括 **epic 聚合状态**。这次 retro 能发现 `agent-platform-epic-1: backlog`，说明当前收尾流程仍有漏口。
+4. source-of-truth 不只是 story artifact 和 story status，还包括 **epic 聚合状态**。这次 retro 能发现 `ap-epic-1: backlog`，说明当前收尾流程仍有漏口。
 5. 前端壳层应在信息架构冻结后尽早落地。它能提前暴露导航、命名、i18n、测试入口等问题，但不会像“先做完整交互”那样把后端域模型拖偏。
 
 ## Next Epic Preparation
@@ -120,7 +120,7 @@ Epic 2 的成功，不取决于能不能快速写出 client registration 或 OAu
 - 流程健康：实现链路可交付，但 story-automator 对 Agent Platform 的 create/dev 收敛能力仍明显弱于人工文件优先流程。
 - Epic 2 准备度：高，但前提是先把 automation 的 source-of-truth 修补和 epic 聚合状态校验纳入默认流程。
 
-结论：Agent Platform Epic 1 可以标记为 `done`，`agent-platform-epic-1-retrospective` 可以标记为 `done`，并可作为 Epic 2 的正式起点。
+结论：Agent Platform Epic AP-1 可以标记为 `done`，`ap-epic-1-retrospective` 可以标记为 `done`，并可作为 Epic 2 的正式起点。
 
 ## Action Items
 
@@ -129,7 +129,7 @@ Epic 2 的成功，不取决于能不能快速写出 client registration 或 OAu
    Success criteria: `ap-*` create-story 不再长时间停留在旧域上下文阅读，能更早切换到人工补齐模式。
 
 2. Owner: Developer / Automation
-   Action: 把 `agent-platform-epic-*` 聚合状态与 retrospective 状态纳入 source-of-truth 校验，而不是只检查 story 级 key。
+   Action: 把 `ap-epic-*` 聚合状态与 retrospective 状态纳入 source-of-truth 校验，而不是只检查 story 级 key。
    Success criteria: 所有 Agent Platform epic 在故事完结后，其 epic 主键和 retrospective 主键都会自动与事实源同步。
 
 3. Owner: Developer
@@ -153,6 +153,6 @@ Epic 2 的成功，不取决于能不能快速写出 client registration 或 OAu
 
 ## Final Summary
 
-Agent Platform Epic 1 最重要的成果，不是“又完成了六个 story”，而是把一个全新的产品线从零拉成了可持续演进的控制面骨架。shared registry、typed detail、lifecycle、projection、per-target exposure 和 `web/default` shell 已经形成了一条清晰主线，Epic 2 不需要再回头补地基。
+Agent Platform Epic AP-1 最重要的成果，不是“又完成了六个 story”，而是把一个全新的产品线从零拉成了可持续演进的控制面骨架。shared registry、typed detail、lifecycle、projection、per-target exposure 和 `web/default` shell 已经形成了一条清晰主线，Epic 2 不需要再回头补地基。
 
 这次回顾也把自动化编排的真实问题暴露得很清楚：对于新 bounded context，story-automator 的 create/dev 前半程比 review 更容易漂移，source-of-truth 同步也还没有覆盖 epic 聚合状态。把这两个问题修掉，Agent Platform 后续 epic 的推进速度和稳定性都会明显更好。

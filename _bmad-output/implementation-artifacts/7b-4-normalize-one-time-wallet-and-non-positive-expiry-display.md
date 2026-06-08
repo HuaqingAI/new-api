@@ -16,14 +16,14 @@ so that 我不会看到 1970 时间、错误的“已过期”判断或过于技
 
 ## Acceptance Criteria
 
-1. **Given** 企业派生 wallet 的 `cycle_type = never`  
-   **When** 页面展示周期信息  
-   **Then** 使用“一次性额度”或等价业务文案  
+1. **Given** 企业派生 wallet 的 `cycle_type = never`
+   **When** 页面展示周期信息
+   **Then** 使用“一次性额度”或等价业务文案
    **And** 不再仅显示 `No Reset`。
 
-2. **Given** `end_time <= 0` 或 `expires_at <= 0`  
-   **When** 页面展示过期信息  
-   **Then** 不得格式化为 epoch 时间  
+2. **Given** `end_time <= 0` 或 `expires_at <= 0`
+   **When** 页面展示过期信息
+   **Then** 不得格式化为 epoch 时间
    **And** 必须展示“永不过期”或“未设置过期时间”等业务语义，并避免误判为已过期。
 
 ## Tasks / Subtasks

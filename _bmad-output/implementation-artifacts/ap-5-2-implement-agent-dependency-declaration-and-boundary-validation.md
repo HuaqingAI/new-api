@@ -1,4 +1,4 @@
-# Story 5.2: 实现 Agent 依赖声明与边界校验
+# Story AP-5.2: 实现 Agent 依赖声明与边界校验
 
 Status: done
 
@@ -32,13 +32,13 @@ so that 平台与消费者都能在使用前理解其组合边界。
   - [x] 依赖声明必须显式表达对 `Skill` / `Knowledge` 的引用，而不是隐式字符串约定或外部文档。[Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-12]
 
 - [x] 在 Agent resource version / detail 路径中增加依赖边界校验 (AC: 1, 2, 3)
-  - [x] `service/agentplatform/resource_version.go` 在创建 Agent 版本时校验依赖声明结构，拒绝缺失依赖类型、缺失目标 resource id、或引用不存在资源的 Agent detail。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.2]
+  - [x] `service/agentplatform/resource_version.go` 在创建 Agent 版本时校验依赖声明结构，拒绝缺失依赖类型、缺失目标 resource id、或引用不存在资源的 Agent detail。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.2]
   - [x] 对已存在但结构不满足要求的依赖给出明确 validation failure，避免 Agent 被视为稳定可调用资源；更深的发布/兼容状态校验继续留给 5.3 的开放能力层判定。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1004-1008]
   - [x] 兼容性元数据继续保留在 definition/template 语义内，没有越界为 runtime 执行状态。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#899-904]
 
 - [x] 让 Agent detail 能表达依赖边界给控制面与后续开放能力层 (AC: 1, 3)
   - [x] Agent detail 查询结果继续稳定返回 dependencies 与 compatibility metadata，供控制面和后续 discovery/detail 消费。[Source: service/agentplatform/resource_version.go]
-  - [x] 本故事没有实现 open capability Agent detail 路由改造，但已经让后续 5.3 能直接复用这些依赖边界数据。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.3]
+  - [x] 本故事没有实现 open capability Agent detail 路由改造，但已经让后续 5.3 能直接复用这些依赖边界数据。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.3]
 
 - [x] 补定向测试，锁住依赖校验行为 (AC: 1, 2, 3)
   - [x] 更新 `service/agentplatform/resource_version_test.go`、`controller/agentplatform/resource_version_test.go`，覆盖：合法依赖可保存、依赖缺失/类型错误/资源不存在被拒绝。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Testing organization]
@@ -77,7 +77,7 @@ so that 平台与消费者都能在使用前理解其组合边界。
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 5.2: 实现 Agent 依赖声明与边界校验]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-5.2: 实现 Agent 依赖声明与边界校验]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-12]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#280]
 - [Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#1004-1008]
@@ -92,7 +92,7 @@ GPT-5 Codex
 ### Debug Log References
 
 - Story Automator 继续作为总编排状态源，但 `5.2` 采用 manual create/dev takeover，避免 create-story / dev-story 子进程在 Agent 依赖边界语义上继续漂移。
-- 已加载 Story 5.2 验收标准、Agent typed detail 模型和依赖边界相关架构约束，准备补依赖声明与边界校验。
+- 已加载 Story AP-5.2 验收标准、Agent typed detail 模型和依赖边界相关架构约束，准备补依赖声明与边界校验。
 
 ### Completion Notes List
 

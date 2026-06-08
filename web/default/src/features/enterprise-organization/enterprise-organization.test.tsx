@@ -14,13 +14,22 @@ import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
+import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import {
+  createQuotaAllocation,
+  departmentMembersQueryKey,
   departmentOwnersQueryKey,
+  getDepartmentBudgetDetail,
+  getDepartmentBudgets,
+  getDepartmentMembers,
+  getQuotaAllocations,
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
   quotaRequestQueryKey,
+  renameDepartmentMember,
 } from './api'
+import { DepartmentTree } from './components/DepartmentTree'
 import {
   BudgetDelegationTable,
   __testRenderApiMessage,
@@ -29,6 +38,7 @@ import {
   createQuotaRequestSchema,
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
+  DepartmentBudgetPanel,
   enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
   EnterpriseOrganizationWorkspace,
@@ -57,6 +67,10 @@ import {
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
 } from './lib/tree-utils'
+import {
+  formatEnterpriseUserPrimary,
+  formatEnterpriseUserSecondary,
+} from './lib/user-display'
 import {
   convertEnterpriseQuotaInputMode,
   formatEnterpriseQuotaAmount,
@@ -99,6 +113,81 @@ const testRouter = createRouter({
 })
 
 describe('Enterprise organization department tree workflow', () => {
+  test('formats enterprise user labels with readable name, username, then user id fallback', () => {
+    const t = (value: string) => value
+
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: 'Alice Zhang',
+        username: 'alice_ops',
+        userId: 2001,
+      }),
+      'Alice Zhang'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+          userId: 2001,
+        },
+        t
+      ),
+      'alice_ops · User ID #2001'
+    )
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: '',
+        username: 'alice_ops',
+        userId: 2001,
+      }),
+      'alice_ops'
+    )
+    assert.equal(
+      formatEnterpriseUserPrimary({
+        displayName: '',
+        username: '',
+        userId: 2001,
+      }),
+      '#2001'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: '',
+          username: '',
+          userId: 2001,
+        },
+        t
+      ),
+      'User ID #2001'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+          userId: null,
+        },
+        t
+      ),
+      'alice_ops'
+    )
+    assert.equal(
+      formatEnterpriseUserSecondary(
+        {
+          displayName: 'Alice Zhang',
+          username: 'alice_ops',
+        },
+        t
+      ),
+      'alice_ops'
+    )
+    assert.equal(formatEnterpriseUserPrimary({}), '-')
+    assert.equal(formatEnterpriseUserSecondary({}, t), '-')
+    assert.notEqual(formatEnterpriseUserSecondary({}, t), 'User ID #-')
+  })
+
   test('renders the empty state with actionable disabled next-step entries', () => {
     const html = renderEnterpriseOrganizationContent([])
 
@@ -176,6 +265,64 @@ describe('Enterprise organization department tree workflow', () => {
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('renders collapsed, expanded, and selected tree states', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({
+                id: 3,
+                parent_id: 2,
+                name: 'Platform',
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]
+
+    const collapsedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentTree
+          nodes={tree}
+          expandedIds={[1]}
+          selectedDepartmentId={2}
+          onToggleExpand={() => undefined}
+          onSelectDepartment={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(collapsedHtml, /Headquarters/)
+    assert.match(collapsedHtml, /Engineering/)
+    assert.doesNotMatch(collapsedHtml, /Platform/)
+    assert.match(collapsedHtml, /aria-label="Collapse department"/)
+    assert.match(collapsedHtml, /aria-label="Expand department"/)
+    assert.match(collapsedHtml, /bg-muted\/50/)
+
+    const expandedHtml = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentTree
+          nodes={tree}
+          expandedIds={[1, 2]}
+          selectedDepartmentId={3}
+          onToggleExpand={() => undefined}
+          onSelectDepartment={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(expandedHtml, /Platform/)
+    assert.match(expandedHtml, /Parent ID 2/)
+    assert.match(expandedHtml, /bg-muted\/50/)
   })
 
   test('search schema accepts valid department and budget identifiers and drops invalid values', () => {
@@ -323,6 +470,22 @@ describe('Enterprise organization department tree workflow', () => {
           dept_id: 7,
           budget_id: 12,
         },
+        treeLoaded: false,
+      }),
+      {
+        dept_id: 7,
+        budget_id: 12,
+      }
+    )
+
+    assert.deepEqual(
+      normalizeEnterpriseOrganizationSearch({
+        departments: [],
+        search: {
+          dept_id: 7,
+          budget_id: 12,
+        },
+        treeLoaded: true,
       }),
       {
         dept_id: undefined,
@@ -351,6 +514,7 @@ describe('Enterprise organization department tree workflow', () => {
           dept_id: 999,
           budget_id: 12,
         },
+        treeLoaded: true,
       }),
       {
         dept_id: 1,
@@ -668,6 +832,9 @@ describe('Enterprise organization department tree workflow', () => {
 
     for (const expected of [
       'Department Members',
+      'Add member from user search',
+      'Search users by username, display name, or email...',
+      'Search for a user, then add the selected user to the current department.',
       'Department Owners',
       'No effective owner',
       'Admin fallback',
@@ -692,6 +859,16 @@ describe('Enterprise organization department tree workflow', () => {
     ])
   })
 
+  test('department member query key includes tenant context', () => {
+    assert.deepEqual(departmentMembersQueryKey(7, 2), [
+      'enterprise',
+      'organization',
+      'department-members',
+      7,
+      2,
+    ])
+  })
+
   test('quota request query key stays scoped to enterprise organization namespace', () => {
     assert.deepEqual(quotaRequestQueryKey(7, 0, 100), [
       'enterprise',
@@ -701,6 +878,175 @@ describe('Enterprise organization department tree workflow', () => {
       0,
       100,
     ])
+  })
+
+  test('api calls keep members, budgets, and allocations scoped to the selected department', async () => {
+    const originalGet = api.get
+    const calls: Array<{ url: string; params?: unknown }> = []
+
+    api.get = (async (url: string, config?: Record<string, unknown>) => {
+      calls.push({ url, params: config?.params })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: {
+            items: [],
+            total: 0,
+            thresholds: { warning: 80, critical: 95 },
+          },
+        },
+      }
+    }) as typeof api.get
+
+    try {
+      await getDepartmentMembers(7, 2)
+      await getDepartmentBudgets(7, {
+        tenant_id: 2,
+        include_descendants: false,
+        sort_by: 'usage_ratio',
+        sort_order: 'desc',
+      })
+      await getDepartmentBudgetDetail(7, 11, 2)
+      await getQuotaAllocations(11, 2, 7)
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/departments/7/members',
+          params: { tenant_id: 2 },
+        },
+        {
+          url: '/api/enterprise/departments/7/budgets',
+          params: {
+            tenant_id: 2,
+            include_descendants: false,
+            sort_by: 'usage_ratio',
+            sort_order: 'desc',
+          },
+        },
+        {
+          url: '/api/enterprise/departments/7/budgets/11',
+          params: { tenant_id: 2 },
+        },
+        {
+          url: '/api/enterprise/quota-allocations',
+          params: {
+            department_budget_id: 11,
+            department_id: 7,
+            tenant_id: 2,
+          },
+        },
+      ])
+    } finally {
+      api.get = originalGet
+    }
+  })
+
+  test('quota allocation creation posts selected department and member context without manual ids', async () => {
+    const originalPost = api.post
+    const calls: Array<{ url: string; payload?: unknown }> = []
+
+    api.post = (async (url: string, payload?: unknown) => {
+      calls.push({ url, payload })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: { item: quotaAllocation({ department_id: 7 }) },
+        },
+      }
+    }) as typeof api.post
+
+    try {
+      await createQuotaAllocation({
+        tenant_id: 2,
+        department_id: 7,
+        department_budget_id: 11,
+        target_user_id: 2001,
+        committed_quota: 300,
+        reason: 'workspace allocation',
+      })
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/quota-allocations',
+          payload: {
+            tenant_id: 2,
+            department_id: 7,
+            department_budget_id: 11,
+            target_user_id: 2001,
+            committed_quota: 300,
+            reason: 'workspace allocation',
+          },
+        },
+      ])
+    } finally {
+      api.post = originalPost
+    }
+  })
+
+  test('username rename posts the current department member context and tenant payload', async () => {
+    const originalPut = api.put
+    const calls: Array<{ url: string; payload?: unknown }> = []
+
+    api.put = (async (url: string, payload?: unknown) => {
+      calls.push({ url, payload })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: departmentMember({
+            department_id: 7,
+            user_id: 2001,
+            username: 'alice_ops',
+          }),
+        },
+      }
+    }) as typeof api.put
+
+    try {
+      const result = await renameDepartmentMember(7, 2001, {
+        tenant_id: 2,
+        new_username: 'alice_ops',
+      })
+
+      assert.equal(result.success, true)
+      assert.equal(result.data?.username, 'alice_ops')
+      assert.deepEqual(calls, [
+        {
+          url: '/api/enterprise/departments/7/members/2001/username',
+          payload: {
+            tenant_id: 2,
+            new_username: 'alice_ops',
+          },
+        },
+      ])
+    } finally {
+      api.put = originalPut
+    }
+  })
+
+  test('api functions surface business failures for scoped department member loading', async () => {
+    const originalGet = api.get
+
+    api.get = (async () => ({
+      data: {
+        success: false,
+        message: 'enterprise.organization.department_not_found',
+      },
+    })) as typeof api.get
+
+    try {
+      const result = await getDepartmentMembers(404, 2)
+
+      assert.equal(result.success, false)
+      assert.equal(
+        result.message,
+        'enterprise.organization.department_not_found'
+      )
+    } finally {
+      api.get = originalGet
+    }
   })
 
   test('governance query keys stay scoped to enterprise organization namespace', () => {
@@ -2133,6 +2479,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Current department member',
       'Selected from Security',
       'Rename Username',
+      'Keep history logs and risk events on their original username snapshots. Current governance views switch to the updated username after refresh.',
       'Readable Username',
       'Update Username',
       'Department',
@@ -2140,6 +2487,54 @@ describe('Enterprise organization department tree workflow', () => {
     ]) {
       assert.match(selectedHtml, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('wallet allocation form explains missing current member and budget context instead of exposing id inputs', () => {
+    const html = renderDepartmentBudgetPanel({
+      departmentId: 7,
+      departmentName: 'Security',
+      selectedMember: null,
+    })
+
+    for (const expected of [
+      'Current Member Wallet Allocation',
+      'No member selected',
+      'Select a member from the current department list before creating a wallet allocation.',
+      'Select a budget pool',
+      'Choose a budget pool in the current department before creating a member wallet allocation.',
+      'Create wallet allocation',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.doesNotMatch(html, /Target User ID/)
+    assert.doesNotMatch(html, /Membership Lookup/)
+  })
+
+  test('wallet allocation form inherits the selected department member context', () => {
+    const html = renderDepartmentBudgetPanel({
+      departmentId: 7,
+      departmentName: 'Security',
+      selectedMember: departmentMember({
+        department_id: 7,
+        user_id: 2001,
+        username: 'alice',
+        display_name: 'Alice',
+      }),
+    })
+
+    for (const expected of [
+      'Current Member Wallet Allocation',
+      'Alice',
+      'Selected from Security',
+      'Allocation Quota',
+      'Optional allocation note',
+    ]) {
+      assert.match(html, new RegExp(escapeRegExp(expected)))
+    }
+
+    assert.doesNotMatch(html, /Target User ID/)
+    assert.doesNotMatch(html, /Department ID/)
   })
 })
 
@@ -2178,6 +2573,31 @@ function renderWorkspace(
         </I18nextProvider>
       </QueryClientProvider>
     </RouterContextProvider>
+  )
+}
+
+function renderDepartmentBudgetPanel({
+  departmentId,
+  departmentName,
+  selectedMember,
+}: {
+  departmentId: number
+  departmentName: string
+  selectedMember: DepartmentMemberItem | null
+}) {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <I18nextProvider i18n={i18n}>
+        <DepartmentBudgetPanel
+          departmentId={departmentId}
+          tenantId={0}
+          departmentName={departmentName}
+          selectedBudgetId={null}
+          onSelectedBudgetIdChange={() => undefined}
+          selectedMember={selectedMember}
+        />
+      </I18nextProvider>
+    </QueryClientProvider>
   )
 }
 

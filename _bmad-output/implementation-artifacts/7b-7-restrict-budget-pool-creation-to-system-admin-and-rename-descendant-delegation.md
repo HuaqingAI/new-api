@@ -17,24 +17,24 @@ so that 预算池供给权与预算使用/分配权分离，治理边界更清�
 
 ## Acceptance Criteria
 
-1. **Given** 普通部门管理员进入本部门预算工作区  
-   **When** 页面渲染预算池治理入口  
-   **Then** 不显示 "Create Budget Pool" 入口  
+1. **Given** 普通部门管理员进入本部门预算工作区
+   **When** 页面渲染预算池治理入口
+   **Then** 不显示 "Create Budget Pool" 入口
    **And** 其只能查看既有预算池并执行被授权的下级预算分配或成员分配动作。
 
-2. **Given** 部门管理员直接调用 `POST /departments/:id/budget`  
-   **When** 后端执行权限校验  
-   **Then** 请求被拒绝并返回项目既有错误响应语义（HTTP 200 + `success=false`）  
+2. **Given** 部门管理员直接调用 `POST /departments/:id/budget`
+   **When** 后端执行权限校验
+   **Then** 请求被拒绝并返回项目既有错误响应语义（HTTP 200 + `success=false`）
    **And** 错误消息与 `EnterpriseAdmin` 权限要求一致。
 
-3. **Given** 企业管理员进入任意部门预算工作区  
-   **When** 需要为该部门建立预算池  
-   **Then** 系统允许创建预算池  
+3. **Given** 企业管理员进入任意部门预算工作区
+   **When** 需要为该部门建立预算池
+   **Then** 系统允许创建预算池
    **And** 创建接口权限明确从 `EnterpriseDepartmentAdmin("id")` 收敛到 `EnterpriseAdmin()`。
 
-4. **Given** 负责人或部门管理员把当前部门预算继续分给下级部门  
-   **When** 页面展示该治理动作  
-   **Then** UI 与文案不再强调 "descendant / 后代部门"  
+4. **Given** 负责人或部门管理员把当前部门预算继续分给下级部门
+   **When** 页面展示该治理动作
+   **Then** UI 与文案不再强调 "descendant / 后代部门"
    **And** 改为"向下级部门分配预算"或等价更自然的话术。
 
 ## Tasks / Subtasks

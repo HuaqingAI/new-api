@@ -68,6 +68,8 @@ func TestQuotaRequestAPIWorkflow(t *testing.T) {
 	listResponse := decodeEnterpriseAPIResponse(t, list)
 	require.True(t, listResponse.Success, listResponse.Message)
 	require.Contains(t, string(listResponse.Data), `"budget_mode":"department_budget"`)
+	require.Contains(t, string(listResponse.Data), `"requester_username":"actor-admin"`)
+	require.Contains(t, string(listResponse.Data), `"requester_display_name":"Actor Admin"`)
 
 	router.Use(func(c *gin.Context) {
 		c.Set("id", 3001)

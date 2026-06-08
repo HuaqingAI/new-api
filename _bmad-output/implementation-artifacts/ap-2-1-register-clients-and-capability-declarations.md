@@ -1,4 +1,4 @@
-# Story 2.1: 建立下游客户端注册与能力声明模型
+# Story AP-2.1: 建立下游客户端注册与能力声明模型
 
 Status: done
 
@@ -35,7 +35,7 @@ so that 新消费者接入不再依赖一次性集成记录或特判结构。
 - [x] 实现客户端能力声明与无效集成状态判定 (AC: 1, 2, 3)
   - [x] 在服务层明确哪些字段决定“invalid integration”：至少包括缺失 `contract_version`、缺失 capability declarations、grant types 与 redirect URIs 不匹配等。该状态必须是可诊断业务状态，而不是只靠 UI 侧猜测。[Source: _bmad-output/planning-artifacts/ux-agent-platform.md#3-1-客户端注册]
   - [x] `capabilities_json` 与 `extensions_json` 要求做基础结构校验：capabilities 表达核心契约边界，extensions 只允许 namespaced 元数据，不得重定义 grant/scope/contract 等核心语义。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#205; _bmad-output/planning-artifacts/architecture-agent-platform.md#503-606]
-  - [x] 当前故事不实现 OAuth token/grant 颁发，也不做 open-capabilities 调用；这里只需要把 client registration 与 capability declaration 作为 control plane 事实源建好。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3]
+  - [x] 当前故事不实现 OAuth token/grant 颁发，也不做 open-capabilities 调用；这里只需要把 client registration 与 capability declaration 作为 control plane 事实源建好。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3]
 
 - [x] 提供最小客户端注册控制面 API (AC: 1, 2, 3)
   - [x] 新增 `dto/agentplatform/client.go`、`service/agentplatform/client.go`、`controller/agentplatform/client.go`（命名可等价），提供最小 CRUD：创建 client、读取单个 client、分页/列表查询、更新 client 配置与状态。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Requirements -> Components Mapping]
@@ -47,7 +47,7 @@ so that 新消费者接入不再依赖一次性集成记录或特判结构。
   - [x] 本故事不要求一次性把所有旧 exposure target 数据迁移成正式 `client_id`，但至少要防止新增 exposure 继续使用无法映射的自由文本 target 结构。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client vs client_instance separation]
 
 - [x] 锁定 2.1 的边界，不提前做 2.2/2.3/开放能力数据面 (AC: 1, 2, 3)
-  - [x] 本故事不实现 authorization code + PKCE、refresh token、token version、client credentials 真正发放、OAuth consent、`/api/open-capabilities/**`、`client_instance` 模型或 UI 完整表单体验。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.3; _bmad-output/planning-artifacts/architecture-agent-platform.md#348-370]
+  - [x] 本故事不实现 authorization code + PKCE、refresh token、token version、client credentials 真正发放、OAuth consent、`/api/open-capabilities/**`、`client_instance` 模型或 UI 完整表单体验。[Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.2; _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.3; _bmad-output/planning-artifacts/architecture-agent-platform.md#348-370]
   - [x] `allow_client_credentials` 只作为注册配置位落地，不意味着 2.1 就要实现真实 token grant 路径。[Source: _bmad-output/planning-artifacts/architecture-agent-platform.md#Client model]
 
 - [x] 补齐 model/service/controller 测试与管理面合同 (AC: 1, 2, 3)
@@ -85,7 +85,7 @@ so that 新消费者接入不再依赖一次性集成记录或特判结构。
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story 2.1: 建立下游客户端注册与能力声明模型]
+- [Source: _bmad-output/planning-artifacts/epics-agent-platform.md#Story AP-2.1: 建立下游客户端注册与能力声明模型]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#FR-4]
 - [Source: _bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md#UJ-1]
 - [Source: _bmad-output/planning-artifacts/ux-agent-platform.md#3-1-客户端注册]
@@ -104,7 +104,7 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- Story Automator 对 Agent Platform 的 `2.1 -> ap-2-1-*` key 映射沿用已修正逻辑；本 story 文件由 manual create-story takeover 补齐，用于避免 create-story 停留在 Epic 1 exposure 基线上空转。
+- Story Automator 对 Agent Platform 的 `2.1 -> ap-2-1-*` key 映射沿用已修正逻辑；本 story 文件由 manual create-story takeover 补齐，用于避免 create-story 停留在 Epic AP-1 exposure 基线上空转。
 - 已加载 `epics-agent-platform.md`、`architecture-agent-platform.md`、`prd-agent-platform-2026-05-31/prd.md` / `ux-agent-platform.md`，并参考已完成的 `ap-1-4`、`ap-1-5` 投影相关产物作为前序上下文。
 - 当前仓库已经具备 registry、typed detail、lifecycle 与 exposure 基线，因此 `2.1` 的焦点是正式 client 主模型和 capability declaration，而不是重新定义前面的控制面资源模型。
 

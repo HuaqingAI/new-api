@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -59,7 +60,13 @@ func MapOpenCapabilityError(err error, ctx OpenCapabilityContext) OpenCapability
 	}
 
 	switch {
-	case errors.Is(err, ErrOpenCapabilityPermissionDenied), errors.Is(err, ErrUnauthorizedClient), errors.Is(err, ErrGrantRevoked):
+	case errors.Is(err, ErrOpenCapabilityPermissionDenied),
+		errors.Is(err, ErrUnauthorizedClient),
+		errors.Is(err, ErrGrantRevoked),
+		errors.Is(err, jwt.ErrTokenExpired),
+		errors.Is(err, jwt.ErrTokenMalformed),
+		errors.Is(err, jwt.ErrTokenSignatureInvalid),
+		errors.Is(err, jwt.ErrTokenNotValidYet):
 		response.Error.Code = OpenCapabilityCodePermissionDenied
 		response.Error.Message = "permission denied"
 	case errors.Is(err, ErrOpenCapabilityResourceNotFound), errors.Is(err, ErrResourceNotFound), errors.Is(err, ErrExposureNotFound), errors.Is(err, ErrResourceVersionNotFound):

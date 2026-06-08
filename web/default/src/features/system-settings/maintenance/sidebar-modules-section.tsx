@@ -130,6 +130,14 @@ export function SidebarModulesSection({
         title: t('Channels'),
         description: t('Configure upstream providers and routing.'),
       },
+      enterprise_organization: {
+        title: t('Enterprise Organization'),
+        description: t('Manage enterprise departments and governance.'),
+      },
+      enterprise_usage: {
+        title: t('Department Usage Overview'),
+        description: t('Review department usage and reports.'),
+      },
       models: {
         title: t('Models'),
         description: t('Manage catalog visibility and pricing.'),

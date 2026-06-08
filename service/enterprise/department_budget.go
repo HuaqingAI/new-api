@@ -26,6 +26,11 @@ type CreateDepartmentBudgetInput struct {
 	ExpiresAt      *int64
 }
 
+type ResizeDepartmentBudgetInput struct {
+	TotalQuota *int64
+	CycleQuota *int64
+}
+
 type DepartmentBudgetSortField string
 
 const (
@@ -198,6 +203,74 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 	}
 }
 
+func (s *DepartmentBudgetService) Pause(departmentId int, budgetId int, tenantId int) (DepartmentBudgetItem, error) {
+	return s.updateStatus(departmentId, budgetId, tenantId, entmodel.DepartmentBudgetStatusActive, entmodel.DepartmentBudgetStatusPaused)
+}
+
+func (s *DepartmentBudgetService) Resume(departmentId int, budgetId int, tenantId int) (DepartmentBudgetItem, error) {
+	return s.updateStatus(departmentId, budgetId, tenantId, entmodel.DepartmentBudgetStatusPaused, entmodel.DepartmentBudgetStatusActive)
+}
+
+func (s *DepartmentBudgetService) Resize(departmentId int, budgetId int, tenantId int, input ResizeDepartmentBudgetInput) (DepartmentBudgetItem, error) {
+	if departmentId <= 0 || budgetId <= 0 {
+		return DepartmentBudgetItem{}, ErrInvalidDepartmentBudgetInput
+	}
+	if err := s.ensureDepartmentExists(tenantId, departmentId); err != nil {
+		return DepartmentBudgetItem{}, err
+	}
+
+	var result DepartmentBudgetItem
+	err := withBudgetMutationRetry(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			budget, err := s.lockBudget(tx, tenantId, departmentId, budgetId)
+			if err != nil {
+				return err
+			}
+			if budget.Status != entmodel.DepartmentBudgetStatusActive {
+				return ErrDepartmentBudgetStatusTransitionInvalid
+			}
+			switch budget.Type {
+			case entmodel.DepartmentBudgetTypeBalance:
+				if input.TotalQuota == nil || input.CycleQuota != nil {
+					return ErrDepartmentBudgetTypeImmutable
+				}
+				if *input.TotalQuota <= 0 {
+					return ErrDepartmentBudgetInvalidQuota
+				}
+				used := budget.TotalQuota - budget.Remaining
+				if used < 0 {
+					used = 0
+				}
+				if *input.TotalQuota < used {
+					return ErrDepartmentBudgetResizeBelowCommitted
+				}
+				budget.TotalQuota = *input.TotalQuota
+				budget.Remaining = *input.TotalQuota - used
+			case entmodel.DepartmentBudgetTypeSubscription:
+				if input.CycleQuota == nil || input.TotalQuota != nil {
+					return ErrDepartmentBudgetTypeImmutable
+				}
+				if *input.CycleQuota <= 0 {
+					return ErrDepartmentBudgetInvalidCycleQuota
+				}
+				if *input.CycleQuota < budget.AllocatedTotal {
+					return ErrDepartmentBudgetResizeBelowCommitted
+				}
+				budget.CycleQuota = *input.CycleQuota
+				budget.Remaining = maxInt64(*input.CycleQuota-budget.AllocatedTotal, 0)
+			default:
+				return ErrDepartmentBudgetInvalidType
+			}
+			if err := tx.Save(&budget).Error; err != nil {
+				return err
+			}
+			result = s.mapDepartmentBudgetItem(budget, "")
+			return nil
+		})
+	})
+	return result, err
+}
+
 func (s *DepartmentBudgetService) GetByDepartment(departmentId int, tenantId int) (*DepartmentBudgetItem, error) {
 	if departmentId <= 0 {
 		return nil, ErrInvalidDepartmentBudgetInput
@@ -214,6 +287,51 @@ func (s *DepartmentBudgetService) GetByDepartment(departmentId int, tenantId int
 	}
 	item := s.mapDepartmentBudgetItem(*budget, "")
 	return &item, nil
+}
+
+func (s *DepartmentBudgetService) updateStatus(departmentId int, budgetId int, tenantId int, fromStatus string, toStatus string) (DepartmentBudgetItem, error) {
+	if departmentId <= 0 || budgetId <= 0 {
+		return DepartmentBudgetItem{}, ErrInvalidDepartmentBudgetInput
+	}
+	if err := s.ensureDepartmentExists(tenantId, departmentId); err != nil {
+		return DepartmentBudgetItem{}, err
+	}
+
+	var result DepartmentBudgetItem
+	err := withBudgetMutationRetry(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			budget, err := s.lockBudget(tx, tenantId, departmentId, budgetId)
+			if err != nil {
+				return err
+			}
+			if budget.Status != fromStatus {
+				return ErrDepartmentBudgetStatusTransitionInvalid
+			}
+			budget.Status = toStatus
+			if err := tx.Save(&budget).Error; err != nil {
+				return err
+			}
+			if err := syncBudgetChildrenForStatusTx(tx, budget); err != nil {
+				return err
+			}
+			result = s.mapDepartmentBudgetItem(budget, "")
+			return nil
+		})
+	})
+	return result, err
+}
+
+func (s *DepartmentBudgetService) lockBudget(tx *gorm.DB, tenantId int, departmentId int, budgetId int) (entmodel.DepartmentBudget, error) {
+	var budget entmodel.DepartmentBudget
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("tenant_id = ? AND department_id = ? AND id = ?", tenantId, departmentId, budgetId).
+		First(&budget).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return entmodel.DepartmentBudget{}, ErrQuotaAllocationBudgetNotFound
+		}
+		return entmodel.DepartmentBudget{}, err
+	}
+	return budget, nil
 }
 
 func (s *DepartmentBudgetService) ListByDepartment(departmentId int, tenantId int, query DepartmentBudgetListQuery) (*DepartmentBudgetListResult, error) {

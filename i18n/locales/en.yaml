@@ -41,6 +41,8 @@ enterprise.organization.department_budget_invalid_custom_seconds: "Custom cycle 
 enterprise.organization.department_budget_invalid_cycle_started_at: "Subscription budget cycle start time is required"
 enterprise.organization.department_budget_type_immutable: "Department budget type cannot be changed once created"
 enterprise.organization.department_budget_threshold_invalid: "Enterprise budget thresholds must satisfy 0 < warning < critical <= 100"
+enterprise.organization.department_budget_status_transition_invalid: "Department budget pool status transition is not allowed"
+enterprise.organization.department_budget_resize_below_committed: "Department budget pool capacity cannot be reduced below committed or used quota"
 enterprise.organization.enterprise_budget_insufficient: "Department budget is insufficient"
 enterprise.organization.balance_remaining_insufficient: "Allocation exceeds the remaining balance budget"
 enterprise.organization.subscription_cycle_allocated_exceeded: "Allocation exceeds the subscription budget cycle commitment limit"

@@ -211,6 +211,74 @@ func TestEnterpriseMembershipAPIAllowsUsersToReadOnlyTheirOwnDepartments(t *test
 	require.Equal(t, "auth.insufficient_privilege", otherResponse.Message)
 }
 
+func TestEnterpriseMembershipAPIAllowsDepartmentGovernorsToReadManageableMemberDepartments(t *testing.T) {
+	adminRouter, db := setupEnterpriseControllerTest(t)
+
+	require.NoError(t, db.Create(&model.User{Id: 102, Username: "carol", Password: "password123", DisplayName: "Carol", Group: "default", AffCode: "carol-api"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 103, Username: "department-owner", Password: "password123", DisplayName: "Department Owner", Group: "default", AffCode: "owner-api"}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:       0,
+		UserId:         101,
+		DepartmentId:   1,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:       0,
+		UserId:         101,
+		DepartmentId:   2,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:       0,
+		UserId:         102,
+		DepartmentId:   2,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		TenantId:       7,
+		UserId:         101,
+		DepartmentId:   1,
+		ExternalSource: constant.EnterpriseExternalSourceManual,
+		Status:         constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	grantRecorder := performEnterpriseRequest(t, adminRouter, http.MethodPost, "/api/enterprise/departments/1/admins", dtoenterprise.DepartmentAdminRoleRequest{
+		UserId: 103,
+	})
+	grantResponse := decodeEnterpriseAPIResponse(t, grantRecorder)
+	require.True(t, grantResponse.Success, grantResponse.Message)
+
+	governorRouter := gin.New()
+	governorRouter.Use(func(c *gin.Context) {
+		c.Set("id", 103)
+		c.Set("role", common.RoleCommonUser)
+		c.Next()
+	})
+	governorRouter.GET("/api/enterprise/users/:id/departments", ListUserDepartments)
+
+	memberRecorder := performEnterpriseRequest(t, governorRouter, http.MethodGet, "/api/enterprise/users/101/departments", nil)
+	memberResponse := decodeEnterpriseAPIResponse(t, memberRecorder)
+	require.True(t, memberResponse.Success, memberResponse.Message)
+	memberData := decodeEnterpriseData[dtoenterprise.UserDepartmentsResponse](t, memberResponse)
+	require.False(t, memberData.IsUnassigned)
+	require.Len(t, memberData.Items, 1)
+	require.Equal(t, 1, memberData.Items[0].DepartmentId)
+	require.Equal(t, 0, memberData.Items[0].TenantId)
+	require.Equal(t, "Engineering", memberData.Items[0].DepartmentName)
+
+	inactiveRecorder := performEnterpriseRequest(t, governorRouter, http.MethodGet, "/api/enterprise/users/101/departments?status=2", nil)
+	inactiveResponse := decodeEnterpriseAPIResponse(t, inactiveRecorder)
+	require.False(t, inactiveResponse.Success)
+	require.Equal(t, "auth.insufficient_privilege", inactiveResponse.Message)
+
+	outsideRecorder := performEnterpriseRequest(t, governorRouter, http.MethodGet, "/api/enterprise/users/102/departments", nil)
+	outsideResponse := decodeEnterpriseAPIResponse(t, outsideRecorder)
+	require.False(t, outsideResponse.Success)
+	require.Equal(t, "auth.insufficient_privilege", outsideResponse.Message)
+}
+
 func TestEnterpriseMembershipAPIDepartmentMemberLifecycle(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 

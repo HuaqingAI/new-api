@@ -3,7 +3,6 @@ package enterprise_test
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -196,32 +195,27 @@ func TestDingTalkOAuthBindIdentityToCurrentUser(t *testing.T) {
 
 func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.T) {
 	_, db := newDingTalkOAuthTestService(t)
-	openAPIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
 		case "/gettoken":
-			_, _ = w.Write([]byte(`{"errcode":0,"access_token":"app-token"}`))
+			return dingTalkJSONResponse(`{"errcode":0,"access_token":"app-token"}`), nil
 		case "/topapi/user/getbyunionid":
-			_, _ = w.Write([]byte(`{"errcode":60020,"errmsg":"access denied"}`))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	t.Cleanup(openAPIServer.Close)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+			return dingTalkJSONResponse(`{"errcode":60020,"errmsg":"access denied"}`), nil
 		case "/v1.0/oauth2/userAccessToken":
-			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-1","unionId":"union-1"}`))
+			return dingTalkJSONResponse(`{"accessToken":"user-token","openId":"open-1","unionId":"union-1"}`), nil
 		case "/v1.0/contact/users/me":
-			_, _ = w.Write([]byte(`{"openId":"open-1","unionId":"union-1","nick":"Ding User"}`))
+			return dingTalkJSONResponse(`{"openId":"open-1","unionId":"union-1","nick":"Ding User"}`), nil
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
 		}
-	}))
-	t.Cleanup(apiServer.Close)
+	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL(openAPIServer.URL),
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkOpenAPIBaseURL("https://openapi.example.test"),
+		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
+		entservice.WithDingTalkHTTPClient(&http.Client{
+			Timeout:   time.Second,
+			Transport: httpClient,
+		}),
 	)
 	svc := entservice.NewDingTalkOAuthService(db, client)
 
@@ -235,21 +229,22 @@ func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.
 
 func TestDingTalkOAuthResolveIdentityUsesTokenIdentityWhenUserInfoFails(t *testing.T) {
 	_, db := newDingTalkOAuthTestService(t)
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
+	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
 		case "/v1.0/oauth2/userAccessToken":
-			_, _ = w.Write([]byte(`{"accessToken":"user-token","openId":"open-token","unionId":"union-token"}`))
+			return dingTalkJSONResponse(`{"accessToken":"user-token","openId":"open-token","unionId":"union-token"}`), nil
 		case "/v1.0/contact/users/me":
-			w.WriteHeader(http.StatusForbidden)
-			_, _ = w.Write([]byte(`{"code":"Forbidden","message":"access denied"}`))
+			return dingTalkStatusResponse(http.StatusForbidden, `{"code":"Forbidden","message":"access denied"}`), nil
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
 		}
-	}))
-	t.Cleanup(apiServer.Close)
+	})
 	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkAPIBaseURL(apiServer.URL),
-		entservice.WithDingTalkHTTPClient(&http.Client{Timeout: time.Second}),
+		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
+		entservice.WithDingTalkHTTPClient(&http.Client{
+			Timeout:   time.Second,
+			Transport: httpClient,
+		}),
 	)
 	svc := entservice.NewDingTalkOAuthService(db, client)
 

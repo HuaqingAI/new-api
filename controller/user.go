@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -404,7 +405,7 @@ func GetSelf(c *gin.Context) {
 	user.Remark = ""
 
 	// 计算用户权限信息
-	permissions := calculateUserPermissions(userRole)
+	permissions := calculateUserPermissions(id, userRole)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -447,8 +448,17 @@ func GetSelf(c *gin.Context) {
 }
 
 // 计算用户权限的辅助函数
-func calculateUserPermissions(userRole int) map[string]interface{} {
+func calculateUserPermissions(userId int, userRole int) map[string]interface{} {
 	permissions := map[string]interface{}{}
+	canAccessEnterpriseOrganization := userRole >= common.RoleAdminUser
+	if !canAccessEnterpriseOrganization && model.DB != nil {
+		manageableDepartmentIds, err := entservice.NewPermissionService(model.DB).ListManageableDepartmentIds(userId, 0)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to calculate enterprise organization permission for user %d: %v", userId, err))
+		} else {
+			canAccessEnterpriseOrganization = len(manageableDepartmentIds) > 0
+		}
+	}
 
 	// 根据用户角色计算权限
 	if userRole == common.RoleRootUser {
@@ -470,6 +480,7 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 			"admin": false, // 普通用户不能访问管理员区域
 		}
 	}
+	permissions["enterprise_organization"] = canAccessEnterpriseOrganization
 
 	return permissions
 }
@@ -506,22 +517,26 @@ func generateDefaultSidebarConfig(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":                 true,
+			"channel":                 true,
+			"enterprise_organization": true,
+			"enterprise_usage":        true,
+			"models":                  true,
+			"redemption":              true,
+			"user":                    true,
+			"setting":                 false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":                 true,
+			"channel":                 true,
+			"enterprise_organization": true,
+			"enterprise_usage":        true,
+			"models":                  true,
+			"redemption":              true,
+			"user":                    true,
+			"setting":                 true,
 		}
 	}
 	// 普通用户不包含admin区域

@@ -91,6 +91,162 @@ func TestCreateDepartmentBudgetRejectsInvalidInputs(t *testing.T) {
 	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetInvalidCustomSeconds)
 }
 
+func TestDepartmentBudgetLifecyclePauseAndResume(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           40,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    700,
+	}).Error)
+
+	paused, err := svc.Pause(1, 40, 0)
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetStatusPaused, paused.Status)
+	require.Equal(t, int64(1000), paused.TotalQuota)
+	require.Equal(t, int64(700), paused.Remaining)
+
+	_, err = svc.Pause(1, 40, 0)
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetStatusTransitionInvalid)
+
+	resumed, err := svc.Resume(1, 40, 0)
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetStatusActive, resumed.Status)
+
+	_, err = svc.Resume(1, 40, 0)
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetStatusTransitionInvalid)
+}
+
+func TestDepartmentBudgetResizeBalancePreservesUsedBoundary(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           41,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    700,
+	}).Error)
+
+	total := int64(1200)
+	expanded, err := svc.Resize(1, 41, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &total})
+	require.NoError(t, err)
+	require.Equal(t, int64(1200), expanded.TotalQuota)
+	require.Equal(t, int64(900), expanded.Remaining)
+
+	total = int64(500)
+	shrunk, err := svc.Resize(1, 41, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &total})
+	require.NoError(t, err)
+	require.Equal(t, int64(500), shrunk.TotalQuota)
+	require.Equal(t, int64(200), shrunk.Remaining)
+
+	total = int64(299)
+	_, err = svc.Resize(1, 41, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &total})
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetResizeBelowCommitted)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 41).First(&budget).Error)
+	require.Equal(t, int64(500), budget.TotalQuota)
+	require.Equal(t, int64(200), budget.Remaining)
+}
+
+func TestDepartmentBudgetResizeSubscriptionPreservesAllocatedBoundary(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:             42,
+		TenantId:       0,
+		DepartmentId:   1,
+		Type:           entmodel.DepartmentBudgetTypeSubscription,
+		Status:         entmodel.DepartmentBudgetStatusActive,
+		CycleQuota:     1000,
+		Remaining:      600,
+		AllocatedTotal: 400,
+		CycleType:      "monthly",
+		CycleStartedAt: 1700000000,
+	}).Error)
+
+	cycleQuota := int64(1500)
+	expanded, err := svc.Resize(1, 42, 0, entservice.ResizeDepartmentBudgetInput{CycleQuota: &cycleQuota})
+	require.NoError(t, err)
+	require.Equal(t, int64(1500), expanded.CycleQuota)
+	require.Equal(t, int64(1100), expanded.Remaining)
+
+	cycleQuota = int64(450)
+	shrunk, err := svc.Resize(1, 42, 0, entservice.ResizeDepartmentBudgetInput{CycleQuota: &cycleQuota})
+	require.NoError(t, err)
+	require.Equal(t, int64(450), shrunk.CycleQuota)
+	require.Equal(t, int64(50), shrunk.Remaining)
+
+	cycleQuota = int64(399)
+	_, err = svc.Resize(1, 42, 0, entservice.ResizeDepartmentBudgetInput{CycleQuota: &cycleQuota})
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetResizeBelowCommitted)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 42).First(&budget).Error)
+	require.Equal(t, int64(450), budget.CycleQuota)
+	require.Equal(t, int64(50), budget.Remaining)
+}
+
+func TestDepartmentBudgetResizeRejectsTypeMismatchedAndInvalidCapacity(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           43,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+
+	cycleQuota := int64(1000)
+	_, err := svc.Resize(1, 43, 0, entservice.ResizeDepartmentBudgetInput{CycleQuota: &cycleQuota})
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetTypeImmutable)
+
+	zero := int64(0)
+	_, err = svc.Resize(1, 43, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &zero})
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetInvalidQuota)
+
+	_, err = svc.Resize(2, 43, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &cycleQuota})
+	require.ErrorIs(t, err, entservice.ErrDepartmentNotFound)
+
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       2,
+		TenantId: 0,
+		Name:     "Other",
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+	_, err = svc.Resize(2, 43, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &cycleQuota})
+	require.ErrorIs(t, err, entservice.ErrQuotaAllocationBudgetNotFound)
+}
+
+func TestDepartmentBudgetResizeRejectsInactiveBudget(t *testing.T) {
+	svc, db := newDepartmentBudgetTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           44,
+		TenantId:     0,
+		DepartmentId: 1,
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusPaused,
+		TotalQuota:   1000,
+		Remaining:    700,
+	}).Error)
+
+	total := int64(1200)
+	_, err := svc.Resize(1, 44, 0, entservice.ResizeDepartmentBudgetInput{TotalQuota: &total})
+	require.ErrorIs(t, err, entservice.ErrDepartmentBudgetStatusTransitionInvalid)
+
+	var budget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 44).First(&budget).Error)
+	require.Equal(t, entmodel.DepartmentBudgetStatusPaused, budget.Status)
+	require.Equal(t, int64(1000), budget.TotalQuota)
+	require.Equal(t, int64(700), budget.Remaining)
+}
+
 func TestCreateDepartmentBudgetAllowsMixedTypesInSameDepartment(t *testing.T) {
 	svc, db := newDepartmentBudgetTestService(t)
 	total := int64(1000)

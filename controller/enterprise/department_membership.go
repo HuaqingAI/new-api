@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
@@ -18,13 +19,13 @@ func ListUserDepartments(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if c.GetInt("role") < common.RoleAdminUser && c.GetInt("id") != userId {
-		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-		return
-	}
 
 	query, ok := parseMembershipQuery(c)
 	if !ok {
+		return
+	}
+	query, allowed := userDepartmentsReadableQuery(c, userId, query)
+	if !allowed {
 		return
 	}
 	result, err := departmentMembershipService().ListUserDepartments(userId, query)
@@ -38,6 +39,36 @@ func ListUserDepartments(c *gin.Context) {
 		Total:        result.Total,
 		IsUnassigned: result.IsUnassigned,
 	})
+}
+
+func userDepartmentsReadableQuery(c *gin.Context, targetUserId int, query entservice.MembershipQuery) (entservice.MembershipQuery, bool) {
+	actorId := c.GetInt("id")
+	if c.GetInt("role") >= common.RoleAdminUser || actorId == targetUserId {
+		return query, true
+	}
+
+	tenantId := 0
+	if query.TenantId != nil {
+		tenantId = *query.TenantId
+	}
+	if query.Status != nil && *query.Status != constant.EnterpriseMembershipStatusActive {
+		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+		return query, false
+	}
+	departmentIds, err := entservice.NewPermissionService(model.DB).ReadableUserDepartmentIds(actorId, targetUserId, tenantId)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return query, false
+	}
+	if len(departmentIds) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+		return query, false
+	}
+	query.TenantId = &tenantId
+	activeStatus := constant.EnterpriseMembershipStatusActive
+	query.Status = &activeStatus
+	query.DepartmentIds = departmentIds
+	return query, true
 }
 
 func ReplaceUserDepartments(c *gin.Context) {

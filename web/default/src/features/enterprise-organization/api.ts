@@ -24,6 +24,7 @@ import type {
   BudgetDelegationResponse,
   CreateBudgetDelegationPayload,
   CreateDepartmentBudgetPayload,
+  DepartmentBudgetLifecyclePayload,
   CreateQuotaAllocationPayload,
   DecideQuotaRequestPayload,
   DepartmentBudgetDetailResponse,
@@ -44,6 +45,7 @@ import type {
   QuotaRequestListResponse,
   QuotaRequestResponse,
   RenameDepartmentMemberPayload,
+  ResizeDepartmentBudgetPayload,
   ReclaimQuotaAllocationPayload,
   RevokeQuotaAllocationPayload,
   ReplaceUserDepartmentsPayload,
@@ -372,6 +374,42 @@ export async function createDepartmentBudget(
 ): Promise<ApiResponse<DepartmentBudgetResponse>> {
   const res = await api.post(
     `/api/enterprise/departments/${departmentId}/budget`,
+    payload
+  )
+  return res.data
+}
+
+export async function pauseDepartmentBudget(
+  departmentId: number,
+  budgetId: number,
+  payload: DepartmentBudgetLifecyclePayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/budgets/${budgetId}/pause`,
+    payload
+  )
+  return res.data
+}
+
+export async function resumeDepartmentBudget(
+  departmentId: number,
+  budgetId: number,
+  payload: DepartmentBudgetLifecyclePayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/budgets/${budgetId}/resume`,
+    payload
+  )
+  return res.data
+}
+
+export async function resizeDepartmentBudget(
+  departmentId: number,
+  budgetId: number,
+  payload: ResizeDepartmentBudgetPayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/departments/${departmentId}/budgets/${budgetId}/resize`,
     payload
   )
   return res.data

@@ -120,6 +120,12 @@ jobs:
       contents: read
       id-token: write
 
+    env:
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || secrets.IMAGE_REGISTRY || 'docker.io' }}
+      IMAGE_REGISTRY_USERNAME: ${{ secrets.IMAGE_REGISTRY_USERNAME || secrets.DOCKERHUB_USERNAME }}
+      IMAGE_REGISTRY_PASSWORD: ${{ secrets.IMAGE_REGISTRY_PASSWORD || secrets.DOCKERHUB_TOKEN }}
+
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -146,17 +152,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Validate image registry configuration
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -z "${IMAGE_REPOSITORY}" ] && missing+=("variable or secret IMAGE_REPOSITORY")
+          [ -z "${IMAGE_REGISTRY}" ] && missing+=("variable or secret IMAGE_REGISTRY")
+          [ -z "${IMAGE_REGISTRY_USERNAME}" ] && missing+=("secret IMAGE_REGISTRY_USERNAME")
+          [ -z "${IMAGE_REGISTRY_PASSWORD}" ] && missing+=("secret IMAGE_REGISTRY_PASSWORD")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required image registry configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Log in to image registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.IMAGE_REGISTRY_USERNAME }}
+          password: ${{ env.IMAGE_REGISTRY_PASSWORD }}
 
       - name: Extract metadata (labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: calciumion/new-api
+          images: ${{ env.IMAGE_REPOSITORY }}
 
       - name: Build & push
         id: build
@@ -166,9 +188,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            calciumion/new-api:${{ env.TAG }}-${{ matrix.arch }}
-            calciumion/new-api:${{ env.RELEASE_TAG }}-${{ matrix.arch }}
-            calciumion/new-api:latest-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.TAG }}-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_TAG }}-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:latest-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -179,14 +201,14 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image with cosign
-        run: cosign sign --yes calciumion/new-api@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_REPOSITORY}@${{ steps.build.outputs.digest }}"
 
       - name: Image summary
         run: |
           echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "calciumion/new-api:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
-          echo "calciumion/new-api:${RELEASE_TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_REPOSITORY}:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_REPOSITORY}:${RELEASE_TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
           echo "VERSION=${APP_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -196,6 +218,12 @@ jobs:
     needs: [resolve_version, build_single_arch]
     runs-on: ubuntu-latest
     if: needs.resolve_version.outputs.image_tag != ''
+
+    env:
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || secrets.IMAGE_REGISTRY || 'docker.io' }}
+      IMAGE_REGISTRY_USERNAME: ${{ secrets.IMAGE_REGISTRY_USERNAME || secrets.DOCKERHUB_USERNAME }}
+      IMAGE_REGISTRY_PASSWORD: ${{ secrets.IMAGE_REGISTRY_PASSWORD || secrets.DOCKERHUB_TOKEN }}
 
     steps:
       - name: Set version
@@ -208,32 +236,48 @@ jobs:
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
           echo "APP_VERSION=${APP_VERSION}" >> "$GITHUB_ENV"
 
-      - name: Log in to Docker Hub
+      - name: Validate image registry configuration
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -z "${IMAGE_REPOSITORY}" ] && missing+=("variable or secret IMAGE_REPOSITORY")
+          [ -z "${IMAGE_REGISTRY}" ] && missing+=("variable or secret IMAGE_REGISTRY")
+          [ -z "${IMAGE_REGISTRY_USERNAME}" ] && missing+=("secret IMAGE_REGISTRY_USERNAME")
+          [ -z "${IMAGE_REGISTRY_PASSWORD}" ] && missing+=("secret IMAGE_REGISTRY_PASSWORD")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required image registry configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Log in to image registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.IMAGE_REGISTRY_USERNAME }}
+          password: ${{ env.IMAGE_REGISTRY_PASSWORD }}
 
       - name: Create & push manifest (version)
         run: |
           docker buildx imagetools create \
-            -t calciumion/new-api:${TAG} \
-            calciumion/new-api:${TAG}-amd64 \
-            calciumion/new-api:${TAG}-arm64
+            -t "${IMAGE_REPOSITORY}:${TAG}" \
+            "${IMAGE_REPOSITORY}:${TAG}-amd64" \
+            "${IMAGE_REPOSITORY}:${TAG}-arm64"
 
       - name: Create & push manifest (release tag)
         run: |
           docker buildx imagetools create \
-            -t calciumion/new-api:${RELEASE_TAG} \
-            calciumion/new-api:${RELEASE_TAG}-amd64 \
-            calciumion/new-api:${RELEASE_TAG}-arm64
+            -t "${IMAGE_REPOSITORY}:${RELEASE_TAG}" \
+            "${IMAGE_REPOSITORY}:${RELEASE_TAG}-amd64" \
+            "${IMAGE_REPOSITORY}:${RELEASE_TAG}-arm64"
 
       - name: Create & push manifest (latest)
         run: |
           docker buildx imagetools create \
-            -t calciumion/new-api:latest \
-            calciumion/new-api:latest-amd64 \
-            calciumion/new-api:latest-arm64
+            -t "${IMAGE_REPOSITORY}:latest" \
+            "${IMAGE_REPOSITORY}:latest-amd64" \
+            "${IMAGE_REPOSITORY}:latest-arm64"
 
       - name: Manifest summary
         run: |
@@ -241,7 +285,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "VERSION=${APP_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
-          docker buildx imagetools inspect calciumion/new-api:${TAG} >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect "${IMAGE_REPOSITORY}:${TAG}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   deploy_kubernetes:
@@ -265,7 +309,7 @@ jobs:
       KUBE_NAMESPACE: ${{ vars.KUBE_NAMESPACE || secrets.KUBE_NAMESPACE }}
       KUBE_DEPLOYMENTS: ${{ vars.KUBE_DEPLOYMENTS || secrets.KUBE_DEPLOYMENTS || vars.KUBE_DEPLOYMENT || secrets.KUBE_DEPLOYMENT }}
       KUBE_CONTAINER: ${{ vars.KUBE_CONTAINER || secrets.KUBE_CONTAINER }}
-      KUBE_IMAGE_REPOSITORY: ${{ vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      KUBE_IMAGE_REPOSITORY: ${{ vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || 'calciumion/new-api' }}
       KUBE_ROLLOUT_TIMEOUT: ${{ vars.KUBE_ROLLOUT_TIMEOUT || secrets.KUBE_ROLLOUT_TIMEOUT || '5m' }}
       HELM_RELEASE: ${{ vars.HELM_RELEASE || secrets.HELM_RELEASE }}
       HELM_CHART: ${{ vars.HELM_CHART || secrets.HELM_CHART }}

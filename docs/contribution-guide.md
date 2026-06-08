@@ -23,7 +23,7 @@ git checkout -b feature/your-thing origin/dev
 ### 1.1 发布流水线
 
 - `release.yml`：tag push 时构建 Linux / macOS / Windows 二进制并上传到 GitHub Release。
-- `docker-build.yml`：GitHub Release `published` 事件或手动触发时构建 Docker Hub 多架构镜像，并在 manifest 推送成功后更新 Kubernetes Deployment 镜像。
+- `docker-build.yml`：GitHub Release `published` 事件或手动触发时构建多架构镜像、推送到配置的镜像仓库，并在 manifest 推送成功后更新 Kubernetes Deployment 镜像。
 - 双版本号规则：Docker 发布同时记录“我们的 Release tag”和“对应上游 new-api 官方版本号”。每次从上游官方分支合并版本代码时，同步更新根目录 `UPSTREAM_VERSION`：
 
 ```text
@@ -36,10 +36,14 @@ Kubernetes 部署更新需要配置：
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
+| `IMAGE_REPOSITORY` | Variable / Secret，可选 | 构建推送目标镜像仓库，默认 `calciumion/new-api`；阿里云 ACR 可配置为 `crpi-dgkl9khr1943eg60.cn-hangzhou.personal.cr.aliyuncs.com/hq-service/hth-newapi` |
+| `IMAGE_REGISTRY` | Variable / Secret，可选 | 镜像仓库 registry host，默认 `docker.io`；阿里云 ACR 可配置为 `crpi-dgkl9khr1943eg60.cn-hangzhou.personal.cr.aliyuncs.com` |
+| `IMAGE_REGISTRY_USERNAME` | Secret | 镜像仓库登录用户名 |
+| `IMAGE_REGISTRY_PASSWORD` | Secret | 镜像仓库登录密码或访问令牌 |
 | `KUBE_CONFIG` | Secret | kubeconfig YAML 或 base64 编码内容 |
 | `KUBE_DEPLOY_STRATEGY` | Variable / Secret，可选 | `helm` 或 `kubectl`；配置 `HELM_RELEASE` / `HELM_CHART` 时默认 `helm`，否则默认 `kubectl` |
 | `KUBE_NAMESPACE` | Variable / Secret | `kubectl` 策略目标命名空间；Helm 策略未配置 `HELM_NAMESPACE` 时也会复用 |
-| `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 镜像仓库，默认 `calciumion/new-api` |
+| `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 部署时写入 Kubernetes/Helm values 的镜像仓库；默认复用 `IMAGE_REPOSITORY`，都未配置时使用 `calciumion/new-api` |
 | `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | `kubectl rollout status` 超时时间，默认 `5m` |
 
 Helm 部署推荐配置：

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type ReactNode, useState, useEffect } from 'react'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -146,23 +146,33 @@ function SidebarMenuCollapsible({
   href: string
 }) {
   const { setOpenMobile } = useSidebar()
+  const navigate = useNavigate()
   // 检查当前路径是否匹配子菜单项
   const isSubItemActive = checkIsActive(href, item)
   // 使用受控状态，初始值基于当前路径是否匹配
   const [isOpen, setIsOpen] = useState(() => isSubItemActive)
 
-  // 当路径变化时，如果匹配子菜单项，自动展开父级菜单
+  // 当路径变化时，同步父级菜单的展开状态
   useEffect(() => {
-    if (isSubItemActive) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsOpen(true)
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsOpen(isSubItemActive)
   }, [isSubItemActive])
+
+  const firstSubItemUrl = item.items[0]?.url
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+
+    if (open && !isSubItemActive && firstSubItemUrl) {
+      navigate({ to: firstSubItemUrl })
+      setOpenMobile(false)
+    }
+  }
 
   return (
     <Collapsible
       open={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={handleOpenChange}
       className='group/collapsible'
       render={<SidebarMenuItem />}
     >

@@ -337,6 +337,89 @@ func sortUserSubscriptions(subs []UserSubscription) {
 	})
 }
 
+func movedUserSubscriptionSortOrder(subs []UserSubscription, userSubscriptionId int, targetSortOrder int) (int, bool) {
+	if len(subs) <= 1 {
+		return 0, false
+	}
+	currentIndex := -1
+	for i := range subs {
+		if subs[i].Id == userSubscriptionId {
+			currentIndex = i
+			break
+		}
+	}
+	if currentIndex < 0 {
+		return 0, false
+	}
+	current := subs[currentIndex]
+	primaryScore := subscriptionPrimaryScore(current)
+	if targetSortOrder == current.SortOrder {
+		return 0, false
+	}
+	groupStart := currentIndex
+	for groupStart > 0 && subscriptionPrimaryScore(subs[groupStart-1]) == primaryScore {
+		groupStart--
+	}
+	groupEnd := currentIndex + 1
+	for groupEnd < len(subs) && subscriptionPrimaryScore(subs[groupEnd]) == primaryScore {
+		groupEnd++
+	}
+	if groupEnd-groupStart <= 1 {
+		return 0, false
+	}
+
+	group := slices.Clone(subs[groupStart:groupEnd])
+	localIndex := currentIndex - groupStart
+	without := slices.Delete(group, localIndex, localIndex+1)
+	insertIndex := 0
+	if targetSortOrder > current.SortOrder {
+		for insertIndex < len(without) && without[insertIndex].SortOrder <= targetSortOrder {
+			insertIndex++
+		}
+	} else {
+		for insertIndex < len(without) && without[insertIndex].SortOrder < targetSortOrder {
+			insertIndex++
+		}
+	}
+	if insertIndex == localIndex {
+		return 0, false
+	}
+
+	var newSortOrder int
+	switch {
+	case insertIndex == 0:
+		newSortOrder = without[0].SortOrder - 1
+	case insertIndex == len(without):
+		newSortOrder = without[len(without)-1].SortOrder + 1
+	default:
+		lower := without[insertIndex-1].SortOrder
+		upper := without[insertIndex].SortOrder
+		if upper-lower > 1 {
+			newSortOrder = lower + (upper-lower)/2
+		} else if targetSortOrder > current.SortOrder {
+			newSortOrder = lower + 1
+		} else {
+			newSortOrder = upper - 1
+		}
+	}
+	if newSortOrder == current.SortOrder {
+		return 0, false
+	}
+	return newSortOrder, true
+}
+
+func updateUserSubscriptionSortOrderTx(tx *gorm.DB, userSubscriptionId int, sortOrder int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	return tx.Model(&UserSubscription{}).
+		Where("id = ?", userSubscriptionId).
+		Updates(map[string]any{
+			"sort_order": sortOrder,
+			"updated_at": common.GetTimestamp(),
+		}).Error
+}
+
 func activeSubscriptionWhere(db *gorm.DB, now int64) *gorm.DB {
 	return db.Where("status = ? AND (end_time = 0 OR end_time > ?)", "active", now)
 }
@@ -483,15 +566,18 @@ func ReorderUserSubscription(userId int, userSubscriptionId int, targetSortOrder
 			First(&sub).Error; err != nil {
 			return err
 		}
-		if targetSortOrder == sub.SortOrder {
+		var subs []UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_id = ?", userId).
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		sortUserSubscriptions(subs)
+		sortOrder, changed := movedUserSubscriptionSortOrder(subs, sub.Id, targetSortOrder)
+		if !changed {
 			return nil
 		}
-		return tx.Model(&UserSubscription{}).
-			Where("id = ?", sub.Id).
-			Updates(map[string]any{
-				"sort_order": targetSortOrder,
-				"updated_at": common.GetTimestamp(),
-			}).Error
+		return updateUserSubscriptionSortOrderTx(tx, sub.Id, sortOrder)
 	})
 }
 
@@ -506,15 +592,18 @@ func AdminReorderUserSubscription(userSubscriptionId int, targetSortOrder int) e
 			First(&sub).Error; err != nil {
 			return err
 		}
-		if targetSortOrder == sub.SortOrder {
+		var subs []UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_id = ?", sub.UserId).
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		sortUserSubscriptions(subs)
+		sortOrder, changed := movedUserSubscriptionSortOrder(subs, sub.Id, targetSortOrder)
+		if !changed {
 			return nil
 		}
-		return tx.Model(&UserSubscription{}).
-			Where("id = ?", sub.Id).
-			Updates(map[string]any{
-				"sort_order": targetSortOrder,
-				"updated_at": common.GetTimestamp(),
-			}).Error
+		return updateUserSubscriptionSortOrderTx(tx, sub.Id, sortOrder)
 	})
 }
 

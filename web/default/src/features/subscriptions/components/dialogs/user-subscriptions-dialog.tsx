@@ -219,7 +219,11 @@ export function UserSubscriptionsDialog(props: Props) {
       })
       if (res.success) {
         toast.success(t('Subscription priority updated'))
-        await loadData()
+        if (res.data) {
+          setSubs(res.data)
+        } else {
+          await loadData()
+        }
       } else {
         toast.error(res.message || t('Request failed'))
       }
@@ -308,7 +312,7 @@ export function UserSubscriptionsDialog(props: Props) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    subs.map((record) => {
+                    subs.map((record, index) => {
                       const sub = record.subscription
                       const now = Date.now() / 1000
                       const isExpired =
@@ -340,7 +344,7 @@ export function UserSubscriptionsDialog(props: Props) {
                               </div>
                               <div className='text-muted-foreground text-sm'>
                                 {t('Subscription Priority')}:{' '}
-                                {sub.sort_order ?? 0}
+                                {t('No. {{rank}}', { rank: index + 1 })}
                               </div>
                             </div>
                           </TableCell>

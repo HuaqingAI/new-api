@@ -65,6 +65,320 @@ func TestGetAllUserSubscriptionsOrdersEnterpriseWalletFirst(t *testing.T) {
 	require.Equal(t, -100, items[0].Subscription.SortOrder)
 }
 
+func TestReorderUserSubscriptionMovesAdjacentWhenSortOrdersTie(t *testing.T) {
+	truncateTables(t)
+	ensureEnterpriseAllocationTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       507,
+		Username: "subscription-reorder-user",
+		Password: "pwd",
+		AffCode:  "subscription-reorder-aff",
+	}).Error)
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&SubscriptionPlan{
+		Id:            71,
+		Title:         "Small",
+		DurationUnit:  SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		TotalAmount:   100,
+	}).Error)
+	require.NoError(t, DB.Create(&SubscriptionPlan{
+		Id:            72,
+		Title:         "Large",
+		DurationUnit:  SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		TotalAmount:   500,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          71,
+		UserId:      507,
+		PlanId:      71,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeBalance,
+		SourceType:  SubscriptionSourceTypeBalance,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          72,
+		UserId:      507,
+		PlanId:      72,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeBalance,
+		SourceType:  SubscriptionSourceTypeBalance,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 500,
+	}).Error)
+
+	before, err := GetAllUserSubscriptions(507)
+	require.NoError(t, err)
+	require.Equal(t, 71, before[0].Subscription.Id)
+	require.Equal(t, 72, before[1].Subscription.Id)
+
+	require.NoError(t, ReorderUserSubscription(507, 71, 200))
+
+	after, err := GetAllUserSubscriptions(507)
+	require.NoError(t, err)
+	require.Equal(t, 72, after[0].Subscription.Id)
+	require.Equal(t, 71, after[1].Subscription.Id)
+	require.Equal(t, 100, after[0].Subscription.SortOrder)
+	require.Equal(t, 101, after[1].Subscription.SortOrder)
+
+	result, err := PreConsumeUserSubscription("subscription-reorder-request-1", 507, "gpt-4o-mini", 0, 300)
+	require.NoError(t, err)
+	require.Equal(t, 72, result.UserSubscriptionId)
+}
+
+func TestAdminReorderUserSubscriptionMovesWithinOwnerList(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       508,
+		Username: "subscription-admin-reorder-user",
+		Password: "pwd",
+		AffCode:  "subscription-admin-reorder-aff",
+	}).Error)
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          81,
+		UserId:      508,
+		PlanId:      81,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          82,
+		UserId:      508,
+		PlanId:      82,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   200,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+
+	require.NoError(t, AdminReorderUserSubscription(82, 100))
+
+	items, err := GetAllUserSubscriptions(508)
+	require.NoError(t, err)
+	require.Equal(t, 82, items[0].Subscription.Id)
+	require.Equal(t, 81, items[1].Subscription.Id)
+	require.Equal(t, 99, items[0].Subscription.SortOrder)
+	require.Equal(t, 100, items[1].Subscription.SortOrder)
+}
+
+func TestReorderUserSubscriptionMovesAcrossSamePriorityGroupByTargetSortOrder(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       510,
+		Username: "subscription-long-reorder-user",
+		Password: "pwd",
+		AffCode:  "subscription-long-reorder-aff",
+	}).Error)
+	now := time.Now().Unix()
+	for _, sub := range []UserSubscription{
+		{
+			Id:          101,
+			UserId:      510,
+			PlanId:      101,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   100,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+		{
+			Id:          102,
+			UserId:      510,
+			PlanId:      102,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   200,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+		{
+			Id:          103,
+			UserId:      510,
+			PlanId:      103,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   300,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+	} {
+		require.NoError(t, DB.Create(&sub).Error)
+	}
+
+	require.NoError(t, ReorderUserSubscription(510, 101, 300))
+
+	items, err := GetAllUserSubscriptions(510)
+	require.NoError(t, err)
+	require.Equal(t, 102, items[0].Subscription.Id)
+	require.Equal(t, 103, items[1].Subscription.Id)
+	require.Equal(t, 101, items[2].Subscription.Id)
+	require.Equal(t, 200, items[0].Subscription.SortOrder)
+	require.Equal(t, 300, items[1].Subscription.SortOrder)
+	require.Equal(t, 301, items[2].Subscription.SortOrder)
+}
+
+func TestReorderUserSubscriptionMovesAdjacentWithoutChangingOtherSortOrders(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       511,
+		Username: "subscription-adjacent-reorder-user",
+		Password: "pwd",
+		AffCode:  "subscription-adjacent-reorder-aff",
+	}).Error)
+	now := time.Now().Unix()
+	for _, sub := range []UserSubscription{
+		{
+			Id:          111,
+			UserId:      511,
+			PlanId:      111,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   100,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+		{
+			Id:          112,
+			UserId:      511,
+			PlanId:      112,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   200,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+		{
+			Id:          113,
+			UserId:      511,
+			PlanId:      113,
+			Status:      "active",
+			Source:      SubscriptionSourceTypeAdmin,
+			SourceType:  SubscriptionSourceTypeAdmin,
+			SortOrder:   300,
+			IsPrimary:   true,
+			StartTime:   now,
+			EndTime:     now + 86400,
+			AmountTotal: 100,
+		},
+	} {
+		require.NoError(t, DB.Create(&sub).Error)
+	}
+
+	require.NoError(t, ReorderUserSubscription(511, 113, 200))
+
+	items, err := GetAllUserSubscriptions(511)
+	require.NoError(t, err)
+	require.Equal(t, 111, items[0].Subscription.Id)
+	require.Equal(t, 113, items[1].Subscription.Id)
+	require.Equal(t, 112, items[2].Subscription.Id)
+	require.Equal(t, 100, items[0].Subscription.SortOrder)
+	require.Equal(t, 150, items[1].Subscription.SortOrder)
+	require.Equal(t, 200, items[2].Subscription.SortOrder)
+}
+
+func TestReorderUserSubscriptionPreservesEnterpriseWalletSortOrder(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       509,
+		Username: "subscription-enterprise-boundary-user",
+		Password: "pwd",
+		AffCode:  "subscription-enterprise-boundary-aff",
+	}).Error)
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:                 91,
+		UserId:             509,
+		Status:             "active",
+		Source:             SubscriptionSourceTypeEnterprise,
+		SourceType:         SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: 91,
+		SortOrder:          -100,
+		IsPrimary:          false,
+		StartTime:          now,
+		EndTime:            now + 86400,
+		AmountTotal:        100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          92,
+		UserId:      509,
+		PlanId:      92,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          93,
+		UserId:      509,
+		PlanId:      93,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   200,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+
+	require.NoError(t, ReorderUserSubscription(509, 92, 200))
+
+	items, err := GetAllUserSubscriptions(509)
+	require.NoError(t, err)
+	require.Equal(t, 91, items[0].Subscription.Id)
+	require.Equal(t, -100, items[0].Subscription.SortOrder)
+	require.Equal(t, 93, items[1].Subscription.Id)
+	require.Equal(t, 200, items[1].Subscription.SortOrder)
+	require.Equal(t, 92, items[2].Subscription.Id)
+	require.Equal(t, 201, items[2].Subscription.SortOrder)
+}
+
 func TestAdminDeleteUserSubscriptionRejectsEnterpriseWallet(t *testing.T) {
 	truncateTables(t)
 

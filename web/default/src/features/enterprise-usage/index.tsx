@@ -21,7 +21,7 @@ import z from 'zod'
 import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   AlertTriangle,
   BarChart3,
@@ -402,6 +402,7 @@ export function EnterpriseUsageOverview() {
   const search = useSearch({
     from: '/_authenticated/enterprise-usage/',
   }) as EnterpriseUsageSearch
+  const pathname = useLocation({ select: (location) => location.pathname })
   const navigate = useNavigate()
   const { auth } = useAuthStore()
   const {
@@ -451,6 +452,9 @@ export function EnterpriseUsageOverview() {
   }, [departments, resolvedSelection.requiredExpandedIds])
 
   useEffect(() => {
+    if (pathname !== '/enterprise-usage') {
+      return
+    }
     if (!shouldSyncEnterpriseUsageSearch(search, normalizedSearch)) {
       return
     }
@@ -464,6 +468,7 @@ export function EnterpriseUsageOverview() {
     normalizedSearch.dept_id,
     normalizedSearch.include_descendants,
     normalizedSearch.log_user,
+    pathname,
     search.dept_id,
     search.include_descendants,
     search.log_user,

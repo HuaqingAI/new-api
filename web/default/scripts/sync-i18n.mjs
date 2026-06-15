@@ -40,6 +40,7 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'AZURE_OPENAI_ENDPOINT *',
   'Baidu V2',
   'ChatGPT',
+  'ChatGPT Subscription (Codex)',
   'Claude',
   'Client ID',
   'Client Secret',

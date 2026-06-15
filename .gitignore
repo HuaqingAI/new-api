@@ -42,3 +42,4 @@ skills-lock.json
 
 __pycache__
 .claude/.story-automator-active
+.playwright-mcp

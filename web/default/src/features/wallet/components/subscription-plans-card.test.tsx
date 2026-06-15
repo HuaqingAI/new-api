@@ -9,6 +9,7 @@ import {
   getSubscriptionStatusDisplay,
   getSubscriptionSourceLabel,
   getSubscriptionCardTitle,
+  isActiveSubscriptionForBilling,
 } from './subscription-plans-card'
 
 describe('Subscription plans card enterprise wallet helpers', () => {
@@ -101,14 +102,8 @@ describe('Subscription plans card enterprise wallet helpers', () => {
         next_reset_time: 0,
       } as const
 
-      const title = getSubscriptionCardTitle(
-        subscription,
-        i18n.t.bind(i18n)
-      )
-      const note = getManagedSubscriptionNote(
-        subscription,
-        i18n.t.bind(i18n)
-      )
+      const title = getSubscriptionCardTitle(subscription, i18n.t.bind(i18n))
+      const note = getManagedSubscriptionNote(subscription, i18n.t.bind(i18n))
 
       assert.equal(title, '企业分配钱包 · 订阅 #12')
       assert.equal(note, '由部门管理 · 用户不可删除')
@@ -133,17 +128,17 @@ describe('Subscription plans card enterprise wallet helpers', () => {
         '未知扣费偏好'
       )
       assert.equal(
-        getSubscriptionSourceLabel(
-          'enterprise_allocation',
-          i18n.t.bind(i18n)
-        ),
+        getSubscriptionSourceLabel('enterprise_allocation', i18n.t.bind(i18n)),
         '企业分配'
       )
       assert.equal(
         getSubscriptionSourceLabel('future_source', i18n.t.bind(i18n)),
         '未知来源'
       )
-      assert.equal(getSubscriptionSourceLabel(undefined, i18n.t.bind(i18n)), '-')
+      assert.equal(
+        getSubscriptionSourceLabel(undefined, i18n.t.bind(i18n)),
+        '-'
+      )
     } finally {
       await i18n.changeLanguage(previousLanguage)
     }
@@ -212,6 +207,55 @@ describe('Subscription plans card enterprise wallet helpers', () => {
     assert.equal(expiry.value, 'No expiry set')
     assert.equal(t('No Reset'), 'No Reset')
     assert.doesNotMatch(expiry.value, /1970|1969|Invalid Date/)
+    assert.equal(isActiveSubscriptionForBilling(subscription), true)
+  })
+
+  test('maps active subscriptions for billing using backend active-subscription semantics', () => {
+    const now = 1800000000
+    assert.equal(
+      isActiveSubscriptionForBilling(
+        {
+          id: 18,
+          user_id: 9001,
+          plan_id: 7,
+          status: 'active',
+          source: 'admin',
+          source_type: 'admin',
+          source_allocation_id: 0,
+          sort_order: 100,
+          is_primary: true,
+          start_time: 1700000000,
+          end_time: 0,
+          amount_total: 500,
+          amount_used: 20,
+          next_reset_time: 0,
+        },
+        now
+      ),
+      true
+    )
+    assert.equal(
+      isActiveSubscriptionForBilling(
+        {
+          id: 19,
+          user_id: 9001,
+          plan_id: 7,
+          status: 'active',
+          source: 'admin',
+          source_type: 'admin',
+          source_allocation_id: 0,
+          sort_order: 100,
+          is_primary: true,
+          start_time: 1700000000,
+          end_time: now - 1,
+          amount_total: 500,
+          amount_used: 20,
+          next_reset_time: 0,
+        },
+        now
+      ),
+      false
+    )
   })
 
   test('enterprise wallet non-positive expiry semantics are translated in zh locale', async () => {

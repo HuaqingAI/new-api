@@ -83,15 +83,13 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
 
-	user, err := model.GetUserById(userId, true)
+	current, err := model.GetUserSetting(userId, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	current := user.GetSetting()
 	current.BillingPreference = pref
-	user.SetSetting(current)
-	if err := user.Update(false); err != nil {
+	if err := model.UpdateUserSetting(userId, current); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -462,7 +460,12 @@ func ReorderUserSubscription(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	subs, err := model.GetAllUserSubscriptions(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, subs)
 }
 
 func AdminReorderUserSubscription(c *gin.Context) {
@@ -483,5 +486,15 @@ func AdminReorderUserSubscription(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	var sub model.UserSubscription
+	if err := model.DB.Where("id = ?", req.UserSubscriptionId).First(&sub).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	subs, err := model.GetAllUserSubscriptions(sub.UserId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, subs)
 }

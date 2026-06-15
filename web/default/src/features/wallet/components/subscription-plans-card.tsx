@@ -149,7 +149,9 @@ function isEnterpriseAllocationSubscription(sub: UserSubscription): boolean {
   )
 }
 
-function hasPositiveTimestamp(value: number | undefined | null): value is number {
+function hasPositiveTimestamp(
+  value: number | undefined | null
+): value is number {
   return typeof value === 'number' && value > 0
 }
 
@@ -245,6 +247,15 @@ export function getSubscriptionExpiryDisplay(
   }
 }
 
+export function isActiveSubscriptionForBilling(
+  sub: UserSubscription,
+  nowSeconds = Date.now() / 1000
+): boolean {
+  return (
+    sub.status === 'active' && (sub.end_time === 0 || sub.end_time > nowSeconds)
+  )
+}
+
 export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
@@ -334,7 +345,16 @@ export function SubscriptionPlansCard({
       })
       if (res.success) {
         toast.success(t('Subscription priority updated'))
-        await fetchSelfSubscription()
+        if (res.data) {
+          setAllSubscriptions(res.data)
+          setActiveSubscriptions(
+            res.data.filter((item) =>
+              isActiveSubscriptionForBilling(item.subscription)
+            )
+          )
+        } else {
+          await fetchSelfSubscription()
+        }
       } else {
         toast.error(res.message || t('Request failed'))
       }
@@ -352,6 +372,7 @@ export function SubscriptionPlansCard({
         toast.success(t('Updated successfully'))
         const normalized = res.data?.billing_preference || pref
         setBillingPreference(normalized)
+        await fetchSelfSubscription()
       } else {
         toast.error(res.message || t('Update failed'))
         setBillingPreference(previous)
@@ -563,7 +584,7 @@ export function SubscriptionPlansCard({
             <>
               <Separator className='my-3' />
               <div className='max-h-64 space-y-3 overflow-y-auto pr-1'>
-                {allSubscriptions.map((sub) => {
+                {allSubscriptions.map((sub, index) => {
                   const subscription = sub.subscription
                   const totalAmount = Number(subscription?.amount_total || 0)
                   const usedAmount = Number(subscription?.amount_used || 0)
@@ -643,7 +664,7 @@ export function SubscriptionPlansCard({
                           t
                         )}{' '}
                         · {t('Subscription Priority')}:{' '}
-                        {subscription?.sort_order ?? 0}
+                        {t('No. {{rank}}', { rank: index + 1 })}
                       </div>
                       {getManagedSubscriptionNote(subscription!, t) && (
                         <div className='text-muted-foreground mt-1'>

@@ -107,7 +107,7 @@ export async function deleteUserSubscription(
 
 export async function reorderUserSubscriptionByAdmin(
   data: ReorderUserSubscriptionRequest
-): Promise<ApiResponse> {
+): Promise<ApiResponse<UserSubscriptionRecord[]>> {
   const res = await api.post(
     '/api/subscription/admin/user_subscriptions/reorder',
     data
@@ -117,7 +117,7 @@ export async function reorderUserSubscriptionByAdmin(
 
 export async function reorderSelfSubscription(
   data: ReorderUserSubscriptionRequest
-): Promise<ApiResponse> {
+): Promise<ApiResponse<UserSubscriptionRecord[]>> {
   const res = await api.post('/api/subscription/self/reorder', data)
   return res.data
 }

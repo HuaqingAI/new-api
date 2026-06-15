@@ -2911,6 +2911,7 @@
     "No stores on this merchant yet. Set a return URL and click Create to mint your first pair.": "このマーチャントにはまだストアがありません。戻り URL を設定し、作成をクリックして最初のペアを作成してください。",
     "No subscription plans yet": "サブスクリプションプランがありません",
     "No subscription records": "サブスクリプション記録がありません",
+    "No. {{rank}}": "{{rank}} 番目",
     "No Sync": "同期なし",
     "No system announcements": "システムのお知らせがありません",
     "No token found.": "トークンが見つかりません。",

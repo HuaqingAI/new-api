@@ -121,9 +121,10 @@ function UsageLogsContent() {
     [navigate]
   )
 
-  const pageTitleKey = getUsageLogsPageTitleKey(activeCategory)
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
+  const pageMeta =
+    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
   const departmentContextLabel = getUsageLogsDepartmentContextLabel({
     departmentId: searchParams.departmentId,
     departmentName: searchParams.departmentName,
@@ -131,12 +132,14 @@ function UsageLogsContent() {
 
   return (
     <>
-      <SectionPageLayout>
-        <SectionPageLayout.Title>{t(pageTitleKey)}</SectionPageLayout.Title>
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>
+          {t(pageMeta.titleKey)}
+        </SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <div className='space-y-4'>
+          <div className='flex h-full min-h-0 flex-col gap-4'>
             {departmentContextLabel ? (
-              <div className='text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm'>
+              <div className='text-muted-foreground shrink-0 rounded-md border border-dashed px-3 py-2 text-sm'>
                 {t('Context')}: {t('Department')} {departmentContextLabel}
               </div>
             ) : null}
@@ -151,7 +154,9 @@ function UsageLogsContent() {
                 </TabsList>
               </Tabs>
             )}
-            <UsageLogsTable logCategory={activeCategory} />
+            <div className='min-h-0 flex-1'>
+              <UsageLogsTable logCategory={activeCategory} />
+            </div>
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

@@ -412,10 +412,35 @@ jobs:
 
           chmod 600 "$kubeconfig"
           image="${KUBE_IMAGE_REPOSITORY}:${TAG}"
+          kube_namespace="${HELM_NAMESPACE:-${KUBE_NAMESPACE:-}}"
+
+          kube_access_error="${RUNNER_TEMP}/kube-access-error.txt"
+          if [ "$deploy_strategy" = "helm" ]; then
+            access_check=(kubectl --request-timeout=15s --namespace "$kube_namespace" auth can-i get secrets --quiet)
+          else
+            access_check=(kubectl --request-timeout=15s --namespace "$kube_namespace" auth can-i patch deployments --quiet)
+          fi
+
+          if ! KUBECONFIG="$kubeconfig" "${access_check[@]}" 2>"$kube_access_error"; then
+            echo "::error::KUBE_CONFIG cannot authenticate to the Kubernetes cluster or is not authorized for ${deploy_strategy} deployments in namespace '${kube_namespace}'. Update the KUBE_CONFIG secret with a non-interactive kubeconfig that is valid from GitHub Actions."
+            {
+              echo "### Kubernetes deployment"
+              echo ""
+              echo "Kubernetes access validation failed before deployment."
+              echo ""
+              echo "Check:"
+              printf '```text\n%s\n```\n' "${access_check[*]}"
+              echo ""
+              echo '```text'
+              sed -E 's/[[:cntrl:]]//g' "$kube_access_error"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
           echo "KUBECONFIG=${kubeconfig}" >> "$GITHUB_ENV"
           echo "DEPLOY_STRATEGY=${deploy_strategy}" >> "$GITHUB_ENV"
-          echo "HELM_NAMESPACE=${HELM_NAMESPACE:-$KUBE_NAMESPACE}" >> "$GITHUB_ENV"
+          echo "HELM_NAMESPACE=${kube_namespace}" >> "$GITHUB_ENV"
           echo "IMAGE=${image}" >> "$GITHUB_ENV"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
 
@@ -450,6 +475,8 @@ jobs:
           if [ "$HELM_CREATE_NAMESPACE" = "true" ]; then
             helm_args+=(--create-namespace)
           fi
+
+          helm_value_args=()
 
           maybe_scale_down_rwo_deployments() {
             case "$HELM_RWO_ROLLOUT_MODE" in
@@ -548,40 +575,66 @@ jobs:
 
           while IFS= read -r key; do
             [ -z "$key" ] && continue
-            helm_args+=(--set-string "${key}=${KUBE_IMAGE_REPOSITORY}")
+            helm_value_args+=(--set-string "${key}=${KUBE_IMAGE_REPOSITORY}")
           done < <(printf '%s\n' "$HELM_IMAGE_REPOSITORY_KEYS" | tr ',' '\n')
 
           while IFS= read -r key; do
             [ -z "$key" ] && continue
-            helm_args+=(--set-string "${key}=${TAG}")
+            helm_value_args+=(--set-string "${key}=${TAG}")
           done < <(printf '%s\n' "$HELM_IMAGE_TAG_KEYS" | tr ',' '\n')
 
           if [ -n "$HELM_VALUES" ]; then
             values_file="${RUNNER_TEMP}/helm-values.yaml"
             printf '%s' "$HELM_VALUES" > "$values_file"
-            helm_args+=(--values "$values_file")
+            helm_value_args+=(--values "$values_file")
           fi
 
           if [ -n "$HELM_EXTRA_SET" ]; then
             while IFS= read -r item; do
               [ -z "$item" ] && continue
-              helm_args+=(--set-string "$item")
+              helm_value_args+=(--set-string "$item")
             done <<< "$HELM_EXTRA_SET"
           fi
 
           if [ -n "$HELM_EXTRA_SET_TYPED" ]; then
             while IFS= read -r item; do
               [ -z "$item" ] && continue
-              helm_args+=(--set "$item")
+              helm_value_args+=(--set "$item")
             done <<< "$HELM_EXTRA_SET_TYPED"
           fi
 
-          if ! helm "${helm_args[@]}" --dry-run=client --hide-secret >/dev/null; then
+          helm_args+=("${helm_value_args[@]}")
+
+          helm_template_args=(
+            template "$HELM_RELEASE" "$HELM_CHART"
+            --namespace "$HELM_NAMESPACE"
+          )
+
+          current_values_file="${RUNNER_TEMP}/helm-current-values.yaml"
+          release_exists=false
+          if helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE" >/dev/null 2>&1; then
+            release_exists=true
+            if helm --namespace "$HELM_NAMESPACE" get values "$HELM_RELEASE" --output yaml > "$current_values_file"; then
+              if [ -s "$current_values_file" ] && ! grep -qx 'null' "$current_values_file"; then
+                helm_template_args+=(--values "$current_values_file")
+              fi
+            else
+              echo "::warning::Unable to read existing Helm values for template validation; continuing without reused values."
+            fi
+          fi
+
+          if [ "$release_exists" = "true" ]; then
+            helm_template_args+=(--is-upgrade)
+          fi
+
+          helm_template_args+=("${helm_value_args[@]}")
+
+          if ! helm "${helm_template_args[@]}" >/dev/null; then
             if [ "$HELM_RWO_ROLLOUT_MODE" = "recreate" ]; then
-              echo "::error::Helm client dry-run failed before RWO/RWOP pre-scale. Fix the Helm chart or values before scaling down existing deployments."
+              echo "::error::Helm template validation failed before RWO/RWOP pre-scale. Fix the Helm chart or values before scaling down existing deployments."
               exit 1
             fi
-            echo "::warning::Helm client dry-run failed; continuing so the real upgrade can report server-side details."
+            echo "::warning::Helm template validation failed; continuing so the real upgrade can report server-side details."
           fi
           maybe_scale_down_rwo_deployments
           helm "${helm_args[@]}"

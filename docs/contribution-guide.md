@@ -40,12 +40,14 @@ Kubernetes 部署更新需要配置：
 | `IMAGE_REGISTRY` | Variable / Secret，可选 | 镜像仓库 registry host，默认 `docker.io`；阿里云 ACR 可配置为 `crpi-dgkl9khr1943eg60.cn-hangzhou.personal.cr.aliyuncs.com` |
 | `IMAGE_REGISTRY_USERNAME` | Secret | 镜像仓库登录用户名 |
 | `IMAGE_REGISTRY_PASSWORD` | Secret | 镜像仓库登录密码或访问令牌 |
-| `KUBE_CONFIG` | Secret | kubeconfig YAML 或 base64 编码内容 |
+| `KUBE_CONFIG` | Secret | kubeconfig YAML 或 base64 编码内容；必须包含 GitHub Actions 可直接使用的非交互式凭据（例如有效的 service account token），不能依赖本机登录态或交互式云厂商登录 |
 | `KUBE_DEPLOY_STRATEGY` | Variable / Secret，可选 | `helm` 或 `kubectl`；配置 `HELM_RELEASE` / `HELM_CHART` 时默认 `helm`，否则默认 `kubectl` |
 | `KUBE_NAMESPACE` | Variable / Secret | `kubectl` 策略目标命名空间；Helm 策略未配置 `HELM_NAMESPACE` 时也会复用 |
 | `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 部署时写入 Kubernetes/Helm values 的镜像仓库；默认复用 `IMAGE_REPOSITORY`，都未配置时使用 `calciumion/new-api` |
 | `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | Helm / kubectl 等待 rollout 的超时时间，默认 `10m` |
 | `KUBE_COLLECT_POD_LOGS` | Variable / Secret，可选 | 部署失败时是否采集相关 Pod 最近日志，默认 `false`；日志可能包含业务上下文，生产环境谨慎开启 |
+
+workflow 会在部署前用 `KUBE_CONFIG` 访问 Kubernetes API 做认证/权限校验。Helm 策略至少需要在目标 namespace 读取 Helm release storage（默认 Kubernetes Secret），kubectl 策略至少需要 patch Deployment。如果日志出现 `the server has asked for the client to provide credentials` 或 `You must be logged in to the server`，说明 `KUBE_CONFIG` 中的用户/token 在 GitHub Actions 环境不可用、已过期，或依赖了本地/云厂商交互式认证，需要重新生成可用于 CI 的 kubeconfig secret。
 
 Helm 部署推荐配置：
 

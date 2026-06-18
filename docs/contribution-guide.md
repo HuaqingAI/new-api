@@ -67,7 +67,7 @@ Helm 部署推荐配置：
 | `HELM_REPO_NAME` / `HELM_REPO_URL` | Variable / Secret，可选 | 需要添加 Helm repo 时配置 |
 | `HELM_REPO_USERNAME` / `HELM_REPO_PASSWORD` | Secret，可选 | 私有 Helm repo 凭据 |
 
-如果 Helm 部署失败信息类似 `Pending termination: 1` 或 `context deadline exceeded`，优先检查 release 下的 Deployment 是否挂载了 `ReadWriteOnce` PVC。流水线默认会在 Helm 升级前将这类 Deployment 缩容到 0，等待旧 Pod 删除后再升级，避免旧 Pod 未释放卷导致新 Pod 一直无法就绪。若生产环境不能接受这段短暂停机，可以将 `HELM_RWO_ROLLOUT_MODE=warn`，并改用支持多写的存储、关闭不需要的 `newapi.persistence.enabled`，或调整 chart 架构。
+如果 Helm 部署失败信息类似 `Pending termination: 1` 或 `context deadline exceeded`，优先检查 release 下的 Deployment 是否挂载了 `ReadWriteOnce` PVC。流水线默认会在 Helm 升级前将这类 Deployment 缩容到 0，等待旧 Pod 删除后再升级，避免旧 Pod 未释放卷导致新 Pod 一直无法就绪。预缩容前会先执行 server-side Helm dry-run，因此 chart 中依赖 `lookup` 读取既有 Secret 的升级校验会使用集群现状，而不是离线渲染结果。若生产环境不能接受这段短暂停机，可以将 `HELM_RWO_ROLLOUT_MODE=warn`，并改用支持多写的存储、关闭不需要的 `newapi.persistence.enabled`，或调整 chart 架构。
 
 部署失败时，workflow 会自动把 Helm status/history、Deployment、Pod、PVC 和 namespace events 写入 GitHub Actions summary；只有 `KUBE_COLLECT_POD_LOGS=true` 时才会额外采集 Pod 日志。
 

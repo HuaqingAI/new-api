@@ -605,36 +605,13 @@ jobs:
 
           helm_args+=("${helm_value_args[@]}")
 
-          helm_template_args=(
-            template "$HELM_RELEASE" "$HELM_CHART"
-            --namespace "$HELM_NAMESPACE"
-          )
-
-          current_values_file="${RUNNER_TEMP}/helm-current-values.yaml"
-          release_exists=false
-          if helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE" >/dev/null 2>&1; then
-            release_exists=true
-            if helm --namespace "$HELM_NAMESPACE" get values "$HELM_RELEASE" --output yaml > "$current_values_file"; then
-              if [ -s "$current_values_file" ] && ! grep -qx 'null' "$current_values_file"; then
-                helm_template_args+=(--values "$current_values_file")
-              fi
-            else
-              echo "::warning::Unable to read existing Helm values for template validation; continuing without reused values."
-            fi
-          fi
-
-          if [ "$release_exists" = "true" ]; then
-            helm_template_args+=(--is-upgrade)
-          fi
-
-          helm_template_args+=("${helm_value_args[@]}")
-
-          if ! helm "${helm_template_args[@]}" >/dev/null; then
+          helm_dry_run_args=("${helm_args[@]}" --dry-run=server)
+          if ! helm "${helm_dry_run_args[@]}" >/dev/null; then
             if [ "$HELM_RWO_ROLLOUT_MODE" = "recreate" ]; then
-              echo "::error::Helm template validation failed before RWO/RWOP pre-scale. Fix the Helm chart or values before scaling down existing deployments."
+              echo "::error::Helm server-side dry-run failed before RWO/RWOP pre-scale. Fix the Helm chart, values, or Kubernetes permissions before scaling down existing deployments."
               exit 1
             fi
-            echo "::warning::Helm template validation failed; continuing so the real upgrade can report server-side details."
+            echo "::warning::Helm server-side dry-run failed; continuing so the real upgrade can report server-side details."
           fi
           maybe_scale_down_rwo_deployments
           helm "${helm_args[@]}"

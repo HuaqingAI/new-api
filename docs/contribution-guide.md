@@ -44,7 +44,8 @@ Kubernetes 部署更新需要配置：
 | `KUBE_DEPLOY_STRATEGY` | Variable / Secret，可选 | `helm` 或 `kubectl`；配置 `HELM_RELEASE` / `HELM_CHART` 时默认 `helm`，否则默认 `kubectl` |
 | `KUBE_NAMESPACE` | Variable / Secret | `kubectl` 策略目标命名空间；Helm 策略未配置 `HELM_NAMESPACE` 时也会复用 |
 | `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 部署时写入 Kubernetes/Helm values 的镜像仓库；默认复用 `IMAGE_REPOSITORY`，都未配置时使用 `calciumion/new-api` |
-| `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | `kubectl rollout status` 超时时间，默认 `5m` |
+| `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | Helm / kubectl 等待 rollout 的超时时间，默认 `10m` |
+| `KUBE_COLLECT_POD_LOGS` | Variable / Secret，可选 | 部署失败时是否采集相关 Pod 最近日志，默认 `false`；日志可能包含业务上下文，生产环境谨慎开启 |
 
 Helm 部署推荐配置：
 
@@ -58,8 +59,15 @@ Helm 部署推荐配置：
 | `HELM_IMAGE_TAG_KEYS` | Variable / Secret，可选 | 镜像 tag values key，默认 `image.tag`；master/slave 分开配置时可用逗号分隔 |
 | `HELM_VALUES` | Secret，可选 | 追加的 values YAML 内容 |
 | `HELM_EXTRA_SET` | Variable / Secret，可选 | 额外 `--set-string` 项，每行一个 `key=value` |
+| `HELM_EXTRA_SET_TYPED` | Variable / Secret，可选 | 额外 `--set` 项，每行一个 `key=value`，用于布尔值/数字等 typed values，例如 `newapi.persistence.enabled=false` |
+| `HELM_RWO_ROLLOUT_MODE` | Variable / Secret，可选 | 检测到 Helm release 下已有 Deployment 使用 `ReadWriteOnce` / `ReadWriteOncePod` PVC 时的处理方式：`recreate` 默认，先缩容到 0 再升级；`warn` 仅告警；`off` 关闭检测 |
+| `HELM_VERSION` | Variable，可选 | GitHub Actions 安装的 Helm 版本，默认固定为 `v3.17.1`，避免 `latest` 行为漂移 |
 | `HELM_REPO_NAME` / `HELM_REPO_URL` | Variable / Secret，可选 | 需要添加 Helm repo 时配置 |
 | `HELM_REPO_USERNAME` / `HELM_REPO_PASSWORD` | Secret，可选 | 私有 Helm repo 凭据 |
+
+如果 Helm 部署失败信息类似 `Pending termination: 1` 或 `context deadline exceeded`，优先检查 release 下的 Deployment 是否挂载了 `ReadWriteOnce` PVC。流水线默认会在 Helm 升级前将这类 Deployment 缩容到 0，等待旧 Pod 删除后再升级，避免旧 Pod 未释放卷导致新 Pod 一直无法就绪。若生产环境不能接受这段短暂停机，可以将 `HELM_RWO_ROLLOUT_MODE=warn`，并改用支持多写的存储、关闭不需要的 `newapi.persistence.enabled`，或调整 chart 架构。
+
+部署失败时，workflow 会自动把 Helm status/history、Deployment、Pod、PVC 和 namespace events 写入 GitHub Actions summary；只有 `KUBE_COLLECT_POD_LOGS=true` 时才会额外采集 Pod 日志。
 
 裸 Deployment 部署可配置：
 

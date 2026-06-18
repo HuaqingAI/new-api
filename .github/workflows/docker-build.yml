@@ -310,7 +310,8 @@ jobs:
       KUBE_DEPLOYMENTS: ${{ vars.KUBE_DEPLOYMENTS || secrets.KUBE_DEPLOYMENTS || vars.KUBE_DEPLOYMENT || secrets.KUBE_DEPLOYMENT }}
       KUBE_CONTAINER: ${{ vars.KUBE_CONTAINER || secrets.KUBE_CONTAINER }}
       KUBE_IMAGE_REPOSITORY: ${{ vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || 'calciumion/new-api' }}
-      KUBE_ROLLOUT_TIMEOUT: ${{ vars.KUBE_ROLLOUT_TIMEOUT || secrets.KUBE_ROLLOUT_TIMEOUT || '5m' }}
+      KUBE_ROLLOUT_TIMEOUT: ${{ vars.KUBE_ROLLOUT_TIMEOUT || secrets.KUBE_ROLLOUT_TIMEOUT || '10m' }}
+      KUBE_COLLECT_POD_LOGS: ${{ vars.KUBE_COLLECT_POD_LOGS || secrets.KUBE_COLLECT_POD_LOGS || 'false' }}
       HELM_RELEASE: ${{ vars.HELM_RELEASE || secrets.HELM_RELEASE }}
       HELM_CHART: ${{ vars.HELM_CHART || secrets.HELM_CHART }}
       HELM_NAMESPACE: ${{ vars.HELM_NAMESPACE || secrets.HELM_NAMESPACE }}
@@ -318,6 +319,8 @@ jobs:
       HELM_IMAGE_REPOSITORY_KEYS: ${{ vars.HELM_IMAGE_REPOSITORY_KEYS || secrets.HELM_IMAGE_REPOSITORY_KEYS || 'image.repository' }}
       HELM_IMAGE_TAG_KEYS: ${{ vars.HELM_IMAGE_TAG_KEYS || secrets.HELM_IMAGE_TAG_KEYS || 'image.tag' }}
       HELM_EXTRA_SET: ${{ vars.HELM_EXTRA_SET || secrets.HELM_EXTRA_SET }}
+      HELM_EXTRA_SET_TYPED: ${{ vars.HELM_EXTRA_SET_TYPED || secrets.HELM_EXTRA_SET_TYPED }}
+      HELM_RWO_ROLLOUT_MODE: ${{ vars.HELM_RWO_ROLLOUT_MODE || secrets.HELM_RWO_ROLLOUT_MODE || 'recreate' }}
       HELM_VALUES: ${{ secrets.HELM_VALUES }}
       HELM_REPO_NAME: ${{ vars.HELM_REPO_NAME || secrets.HELM_REPO_NAME }}
       HELM_REPO_URL: ${{ vars.HELM_REPO_URL || secrets.HELM_REPO_URL }}
@@ -330,6 +333,8 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
+        with:
+          version: ${{ vars.HELM_VERSION || 'v3.17.1' }}
 
       - name: Prepare deployment configuration
         id: deploy_config
@@ -352,6 +357,16 @@ jobs:
               exit 1
               ;;
           esac
+
+          if [ "$deploy_strategy" = "helm" ]; then
+            case "$HELM_RWO_ROLLOUT_MODE" in
+              recreate|warn|off) ;;
+              *)
+                echo "::error::HELM_RWO_ROLLOUT_MODE must be 'recreate', 'warn', or 'off'"
+                exit 1
+                ;;
+            esac
+          fi
 
           missing=()
           [ -z "${KUBE_CONFIG}" ] && missing+=("secret KUBE_CONFIG")
@@ -436,6 +451,101 @@ jobs:
             helm_args+=(--create-namespace)
           fi
 
+          maybe_scale_down_rwo_deployments() {
+            case "$HELM_RWO_ROLLOUT_MODE" in
+              off)
+                echo "RWO rollout pre-scale is disabled."
+                return 0
+                ;;
+            esac
+
+            selector="app.kubernetes.io/instance=${HELM_RELEASE}"
+            mapfile -t release_deployments < <(
+              kubectl --namespace "$HELM_NAMESPACE" get deployment \
+                -l "$selector" \
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true
+            )
+
+            if [ "${#release_deployments[@]}" -eq 0 ]; then
+              echo "No existing Helm release deployments found with selector ${selector}; skipping RWO rollout pre-check."
+              return 0
+            fi
+
+            rwo_deployments=()
+            pods_before_scale_down="${RUNNER_TEMP}/helm-rwo-pods-before-scale-down.txt"
+            : > "$pods_before_scale_down"
+
+            for deployment in "${release_deployments[@]}"; do
+              [ -z "$deployment" ] && continue
+
+              claims="$(
+                kubectl --namespace "$HELM_NAMESPACE" get deployment "$deployment" \
+                  -o jsonpath='{range .spec.template.spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}' 2>/dev/null || true
+              )"
+              [ -z "$claims" ] && continue
+
+              while IFS= read -r claim; do
+                [ -z "$claim" ] && continue
+
+                access_modes="$(
+                  kubectl --namespace "$HELM_NAMESPACE" get pvc "$claim" \
+                    -o jsonpath='{.spec.accessModes[*]}' 2>/dev/null || true
+                )"
+
+                if [[ " ${access_modes} " == *" ReadWriteOnce "* ]] || [[ " ${access_modes} " == *" ReadWriteOncePod "* ]]; then
+                  echo "Deployment ${deployment} uses ${access_modes:-unknown} PVC ${claim}."
+                  rwo_deployments+=("$deployment")
+
+                  pod_selector="$(
+                    kubectl --namespace "$HELM_NAMESPACE" get deployment "$deployment" \
+                      -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{printf "%s=%s," $k $v}}{{end}}' 2>/dev/null | sed 's/,$//' || true
+                  )"
+                  if [ -n "$pod_selector" ]; then
+                    kubectl --namespace "$HELM_NAMESPACE" get pod \
+                      -l "$pod_selector" \
+                      -o name 2>/dev/null >> "$pods_before_scale_down" || true
+                  fi
+                  break
+                fi
+              done <<< "$claims"
+            done
+
+            if [ "${#rwo_deployments[@]}" -eq 0 ]; then
+              echo "No RWO/RWOP PVC-backed Helm release deployments found; using normal Helm rolling upgrade."
+              return 0
+            fi
+
+            {
+              echo "### Helm RWO rollout handling"
+              echo ""
+              printf -- "- Mode: %s\n" "$HELM_RWO_ROLLOUT_MODE"
+              printf -- "- Deployment: %s\n" "${rwo_deployments[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$HELM_RWO_ROLLOUT_MODE" = "warn" ]; then
+              echo "::warning::RWO/RWOP PVC-backed deployments detected; normal rolling upgrade may wait on old pods terminating."
+              return 0
+            fi
+
+            echo "::notice::Scaling RWO/RWOP PVC-backed deployments down before Helm upgrade to avoid old/new pod volume conflicts."
+            for deployment in "${rwo_deployments[@]}"; do
+              kubectl --namespace "$HELM_NAMESPACE" scale "deployment/${deployment}" --replicas=0
+            done
+
+            for deployment in "${rwo_deployments[@]}"; do
+              kubectl --namespace "$HELM_NAMESPACE" rollout status \
+                "deployment/${deployment}" \
+                --timeout="$KUBE_ROLLOUT_TIMEOUT"
+            done
+
+            if [ -s "$pods_before_scale_down" ]; then
+              sort -u "$pods_before_scale_down" | \
+                xargs -r kubectl --namespace "$HELM_NAMESPACE" wait \
+                  --for=delete \
+                  --timeout="$KUBE_ROLLOUT_TIMEOUT"
+            fi
+          }
+
           while IFS= read -r key; do
             [ -z "$key" ] && continue
             helm_args+=(--set-string "${key}=${KUBE_IMAGE_REPOSITORY}")
@@ -459,6 +569,21 @@ jobs:
             done <<< "$HELM_EXTRA_SET"
           fi
 
+          if [ -n "$HELM_EXTRA_SET_TYPED" ]; then
+            while IFS= read -r item; do
+              [ -z "$item" ] && continue
+              helm_args+=(--set "$item")
+            done <<< "$HELM_EXTRA_SET_TYPED"
+          fi
+
+          if ! helm "${helm_args[@]}" --dry-run=client --hide-secret >/dev/null; then
+            if [ "$HELM_RWO_ROLLOUT_MODE" = "recreate" ]; then
+              echo "::error::Helm client dry-run failed before RWO/RWOP pre-scale. Fix the Helm chart or values before scaling down existing deployments."
+              exit 1
+            fi
+            echo "::warning::Helm client dry-run failed; continuing so the real upgrade can report server-side details."
+          fi
+          maybe_scale_down_rwo_deployments
           helm "${helm_args[@]}"
           helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE"
 
@@ -479,6 +604,83 @@ jobs:
               --timeout="$KUBE_ROLLOUT_TIMEOUT"
           done < <(printf '%s\n' "$KUBE_DEPLOYMENTS" | tr ',' '\n')
 
+      - name: Collect Kubernetes diagnostics
+        if: failure()
+        run: |
+          set +e
+
+          if [ -z "${KUBECONFIG:-}" ] || [ ! -f "${KUBECONFIG:-}" ]; then
+            echo "KUBECONFIG is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+
+          namespace="${HELM_NAMESPACE:-${KUBE_NAMESPACE:-}}"
+          if [ -z "$namespace" ]; then
+            echo "Kubernetes namespace is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+
+          append_command() {
+            title="$1"
+            shift
+
+            echo "::group::${title}"
+            {
+              echo ""
+              echo "#### ${title}"
+              echo '```text'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            "$@" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            status=${PIPESTATUS[0]}
+
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
+            return "$status"
+          }
+
+          {
+            echo "### Kubernetes diagnostics"
+            echo ""
+            echo "- Namespace: ${namespace}"
+            echo "- Strategy: ${DEPLOY_STRATEGY:-unset}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          append_command "Recent events" kubectl --namespace "$namespace" get events --sort-by=.lastTimestamp
+
+          if [ "${DEPLOY_STRATEGY:-}" = "helm" ]; then
+            selector="app.kubernetes.io/instance=${HELM_RELEASE}"
+
+            append_command "Helm status" helm --namespace "$namespace" status "$HELM_RELEASE"
+            append_command "Helm history" helm --namespace "$namespace" history "$HELM_RELEASE"
+            append_command "Deployments" kubectl --namespace "$namespace" get deployments -l "$selector" -o wide
+            append_command "Pods" kubectl --namespace "$namespace" get pods -l "$selector" -o wide
+            append_command "PVCs" kubectl --namespace "$namespace" get pvc -l "$selector" -o wide
+            append_command "Describe deployments" kubectl --namespace "$namespace" describe deployments -l "$selector"
+
+            pod_names="$(kubectl --namespace "$namespace" get pods -l "$selector" -o name 2>/dev/null)"
+            if [ -n "$pod_names" ]; then
+              append_command "Describe pods" kubectl --namespace "$namespace" describe $pod_names
+
+              if [ "$KUBE_COLLECT_POD_LOGS" = "true" ]; then
+                while IFS= read -r pod; do
+                  [ -z "$pod" ] && continue
+                  append_command "Logs ${pod}" kubectl --namespace "$namespace" logs "$pod" --all-containers --tail=100
+                done <<< "$pod_names"
+              fi
+            fi
+          elif [ "${DEPLOY_STRATEGY:-}" = "kubectl" ]; then
+            append_command "Deployments" kubectl --namespace "$namespace" get deployments -o wide
+            append_command "Pods" kubectl --namespace "$namespace" get pods -o wide
+
+            while IFS= read -r deployment; do
+              [ -z "$deployment" ] && continue
+              append_command "Describe deployment ${deployment}" kubectl --namespace "$namespace" describe "deployment/${deployment}"
+            done < <(printf '%s\n' "$KUBE_DEPLOYMENTS" | tr ',' '\n')
+          fi
+
+          exit 0
+
       - name: Deployment summary
         if: always()
         env:
@@ -497,6 +699,7 @@ jobs:
             echo "- Namespace: ${KUBE_NAMESPACE:-unset}"
             echo "- Helm namespace: ${HELM_NAMESPACE:-unset}"
             echo "- Helm create namespace: ${HELM_CREATE_NAMESPACE:-false}"
+            echo "- Helm RWO rollout mode: ${HELM_RWO_ROLLOUT_MODE:-unset}"
             echo "- Helm release: ${HELM_RELEASE:-unset}"
             echo "- Helm chart: ${HELM_CHART:-unset}"
             echo "- Deployments: ${KUBE_DEPLOYMENTS:-unset}"

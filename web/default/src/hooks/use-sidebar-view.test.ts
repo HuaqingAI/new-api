@@ -34,6 +34,11 @@ const rootNavGroups: NavGroup[] = [
         title: 'Enterprise Alerts',
         url: '/enterprise-alerts',
       },
+      {
+        title: 'System Info',
+        url: '/system-info',
+        requiredRole: 20,
+      },
     ],
   },
 ]
@@ -41,6 +46,7 @@ const rootNavGroups: NavGroup[] = [
 describe('sidebar role filtering', () => {
   test('exposes only enterprise organization to department governors', () => {
     const groups = filterRootNavGroupsByRole(rootNavGroups, {
+      role: 10,
       isAdmin: false,
       canAccessEnterpriseOrganization: true,
     })
@@ -54,6 +60,7 @@ describe('sidebar role filtering', () => {
 
   test('keeps admin navigation hidden for ordinary users', () => {
     const groups = filterRootNavGroupsByRole(rootNavGroups, {
+      role: 1,
       isAdmin: false,
       canAccessEnterpriseOrganization: false,
     })
@@ -66,6 +73,7 @@ describe('sidebar role filtering', () => {
 
   test('keeps full admin navigation for admins', () => {
     const groups = filterRootNavGroupsByRole(rootNavGroups, {
+      role: 10,
       isAdmin: true,
       canAccessEnterpriseOrganization: false,
     })
@@ -79,6 +87,34 @@ describe('sidebar role filtering', () => {
         '/enterprise-usage',
         '/enterprise-alerts',
       ]
+    )
+  })
+
+  test('hides requiredRole items for admins below the threshold', () => {
+    const groups = filterRootNavGroupsByRole(rootNavGroups, {
+      role: 10,
+      isAdmin: true,
+      canAccessEnterpriseOrganization: false,
+    })
+
+    const adminItems = groups.find((group) => group.id === 'admin')?.items ?? []
+    assert.equal(
+      adminItems.some((item) => 'url' in item && item.url === '/system-info'),
+      false
+    )
+  })
+
+  test('shows requiredRole items for sufficiently privileged admins', () => {
+    const groups = filterRootNavGroupsByRole(rootNavGroups, {
+      role: 20,
+      isAdmin: true,
+      canAccessEnterpriseOrganization: false,
+    })
+
+    const adminItems = groups.find((group) => group.id === 'admin')?.items ?? []
+    assert.equal(
+      adminItems.some((item) => 'url' in item && item.url === '/system-info'),
+      true
     )
   })
 })

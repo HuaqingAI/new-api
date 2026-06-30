@@ -33,10 +33,14 @@ const DEPARTMENT_GOVERNANCE_URLS = new Set(['/enterprise-organization'])
 function userCanSeeRootNavItem(
   item: NavGroup['items'][number],
   params: {
+    role: number
     isAdmin: boolean
     canAccessEnterpriseOrganization: boolean
   }
 ): boolean {
+  if (item.requiredRole !== undefined && params.role < item.requiredRole) {
+    return false
+  }
   if (params.isAdmin) return true
   if (!('url' in item) || !item.url) return false
   return (
@@ -48,6 +52,7 @@ function userCanSeeRootNavItem(
 export function filterRootNavGroupsByRole(
   navGroups: NavGroup[],
   params: {
+    role: number
     isAdmin: boolean
     canAccessEnterpriseOrganization: boolean
   }
@@ -86,8 +91,10 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
+    const role = user?.role ?? ROLE.GUEST
     const isAdmin = user?.role !== undefined && user.role >= ROLE.ADMIN
     return filterRootNavGroupsByRole(configFilteredRoot, {
+      role,
       isAdmin,
       canAccessEnterpriseOrganization: Boolean(
         user?.permissions?.enterprise_organization

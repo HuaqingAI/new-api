@@ -27,7 +27,7 @@ func withBudgetMutationRetry(run func() error) error {
 }
 
 func shouldRetryBudgetMutationTx(err error) bool {
-	if err == nil || !common.UsingSQLite {
+	if err == nil || !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		return false
 	}
 	message := strings.ToLower(err.Error())

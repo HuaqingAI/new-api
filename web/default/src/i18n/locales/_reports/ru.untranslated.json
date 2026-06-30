@@ -10,10 +10,13 @@
   "DingTalk connectivity tested": "DingTalk connectivity tested",
   "DingTalk owner sync updated": "DingTalk owner sync updated",
   "DingTalk sync conflict candidate bound": "DingTalk sync conflict candidate bound",
+  "footer.columns.related.links.midjourney": "Midjourney-Proxy",
   "Membership added": "Membership added",
   "Membership disabled": "Membership disabled",
   "Membership renamed": "Membership renamed",
   "Membership replaced": "Membership replaced",
   "Membership restored": "Membership restored",
+  "Midjourney": "Midjourney",
+  "MidjourneyPlus": "MidjourneyPlus",
   "Usage report configured": "Usage report configured"
 }

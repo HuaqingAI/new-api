@@ -49,6 +49,26 @@ func TestGetSelfKeepsEnterpriseOrganizationHiddenForOrdinaryUsers(t *testing.T) 
 	require.Equal(t, false, permissions["enterprise_organization"])
 }
 
+func TestGetSelfUsesDatabaseRoleForPermissionSnapshot(t *testing.T) {
+	db := setupUserSelfControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       102,
+		Username: "promoted-admin",
+		Password: "password123",
+		AffCode:  "promoted-admin-aff",
+		Role:     common.RoleAdminUser,
+	}).Error)
+
+	recorder := performGetSelfRequest(102, common.RoleCommonUser)
+	response := decodeUserSelfResponse(t, recorder)
+
+	require.Equal(t, float64(common.RoleAdminUser), response.Data["role"])
+	permissions := response.Data["permissions"].(map[string]any)
+	require.Equal(t, true, permissions["sidebar_settings"])
+	adminModules := permissions["sidebar_modules"].(map[string]any)
+	require.IsType(t, map[string]any{}, adminModules["admin"])
+}
+
 type userSelfAPIResponse struct {
 	Success bool           `json:"success"`
 	Message string         `json:"message"`

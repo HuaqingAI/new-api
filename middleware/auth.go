@@ -39,6 +39,7 @@ func authHelper(c *gin.Context, minRole int) {
 	role := session.Get("role")
 	id := session.Get("id")
 	status := session.Get("status")
+	group := session.Get("group")
 	useAccessToken := false
 	if username == nil {
 		// Check access token
@@ -82,6 +83,7 @@ func authHelper(c *gin.Context, minRole int) {
 			role = user.Role
 			id = user.Id
 			status = user.Status
+			group = user.Group
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -91,7 +93,65 @@ func authHelper(c *gin.Context, minRole int) {
 			c.Abort()
 			return
 		}
+	} else {
+		sessionUserId, ok := id.(int)
+		if !ok || sessionUserId <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+			})
+			c.Abort()
+			return
+		}
+		if model.DB == nil {
+			goto sessionResolved
+		}
+		currentUser, err := model.GetUserById(sessionUserId, false)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				session.Clear()
+				_ = session.Save()
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+				})
+			} else {
+				common.SysLog("authHelper GetUserById database error: " + err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+				})
+			}
+			c.Abort()
+			return
+		}
+		previousUsername, _ := username.(string)
+		previousRole, _ := role.(int)
+		previousStatus, _ := status.(int)
+		previousGroup, _ := group.(string)
+		username = currentUser.Username
+		role = currentUser.Role
+		status = currentUser.Status
+		group = currentUser.Group
+		if previousUsername != currentUser.Username ||
+			previousRole != currentUser.Role ||
+			previousStatus != currentUser.Status ||
+			previousGroup != currentUser.Group {
+			session.Set("username", currentUser.Username)
+			session.Set("role", currentUser.Role)
+			session.Set("status", currentUser.Status)
+			session.Set("group", currentUser.Group)
+			if err := session.Save(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgUserSessionSaveFailed),
+				})
+				c.Abort()
+				return
+			}
+		}
 	}
+sessionResolved:
 	// get header New-Api-User
 	apiUserIdStr := c.Request.Header.Get("New-Api-User")
 	if apiUserIdStr == "" {
@@ -149,8 +209,8 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
-	c.Set("group", session.Get("group"))
-	c.Set("user_group", session.Get("group"))
+	c.Set("group", group)
+	c.Set("user_group", group)
 	c.Set("use_access_token", useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth

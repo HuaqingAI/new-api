@@ -182,6 +182,7 @@ subscription.purchase_max: "已达到该套餐购买上限"
 subscription.invalid_id: "无效的订阅ID"
 subscription.invalid_user_id: "无效的用户ID"
 subscription.protected_delete: "企业分配钱包不可删除"
+subscription.protected_invalidate: "企业分配钱包由部门统一管理，不能在订阅管理中直接作废"
 subscription.invalid_sort_order: "无效的钱包排序值"
 
 # Payment messages

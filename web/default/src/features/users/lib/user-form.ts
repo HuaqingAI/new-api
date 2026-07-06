@@ -73,6 +73,7 @@ export function transformFormDataToPayload(
     payload.role = data.role || 1 // Default to common user
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
+    payload.role = data.role
     payload.group = data.group
     payload.remark = data.remark || undefined
     payload.id = userId

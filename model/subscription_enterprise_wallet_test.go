@@ -379,6 +379,66 @@ func TestReorderUserSubscriptionPreservesEnterpriseWalletSortOrder(t *testing.T)
 	require.Equal(t, 201, items[2].Subscription.SortOrder)
 }
 
+func TestReorderUserSubscriptionAllowsMovingEnterpriseWalletBehindOrdinarySubscriptions(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       512,
+		Username: "subscription-enterprise-reorder-user",
+		Password: "pwd",
+		AffCode:  "subscription-enterprise-reorder-aff",
+	}).Error)
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:                 121,
+		UserId:             512,
+		Status:             "active",
+		Source:             SubscriptionSourceTypeEnterprise,
+		SourceType:         SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: 121,
+		SortOrder:          -100,
+		IsPrimary:          false,
+		StartTime:          now,
+		EndTime:            now + 86400,
+		AmountTotal:        100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          122,
+		UserId:      512,
+		PlanId:      122,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          123,
+		UserId:      512,
+		PlanId:      123,
+		Status:      "active",
+		Source:      SubscriptionSourceTypeAdmin,
+		SourceType:  SubscriptionSourceTypeAdmin,
+		SortOrder:   200,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 100,
+	}).Error)
+
+	require.NoError(t, ReorderUserSubscription(512, 121, 200))
+
+	items, err := GetAllUserSubscriptions(512)
+	require.NoError(t, err)
+	require.Equal(t, 122, items[0].Subscription.Id)
+	require.Equal(t, 123, items[1].Subscription.Id)
+	require.Equal(t, 121, items[2].Subscription.Id)
+	require.Equal(t, 201, items[2].Subscription.SortOrder)
+}
+
 func TestAdminDeleteUserSubscriptionRejectsEnterpriseWallet(t *testing.T) {
 	truncateTables(t)
 
@@ -401,6 +461,56 @@ func TestAdminDeleteUserSubscriptionRejectsEnterpriseWallet(t *testing.T) {
 	}).Error)
 
 	_, err := AdminDeleteUserSubscription(3)
+	require.ErrorIs(t, err, ErrEnterpriseSubscriptionDeletion)
+}
+
+func TestAdminInvalidateUserSubscriptionRejectsSourceOnlyEnterpriseWallet(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       520,
+		Username: "enterprise-invalidate-source-user",
+		Password: "pwd",
+		AffCode:  "enterprise-invalidate-source-aff",
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:                 30,
+		UserId:             520,
+		Status:             "active",
+		Source:             SubscriptionSourceTypeEnterprise,
+		SourceType:         "",
+		SourceAllocationId: 430,
+		SortOrder:          -100,
+		StartTime:          time.Now().Unix(),
+		EndTime:            time.Now().Unix() + 86400,
+	}).Error)
+
+	_, err := AdminInvalidateUserSubscription(30)
+	require.ErrorIs(t, err, ErrEnterpriseSubscriptionInvalid)
+}
+
+func TestAdminDeleteUserSubscriptionRejectsSourceOnlyEnterpriseWallet(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       521,
+		Username: "enterprise-delete-source-user",
+		Password: "pwd",
+		AffCode:  "enterprise-delete-source-aff",
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:                 31,
+		UserId:             521,
+		Status:             "active",
+		Source:             SubscriptionSourceTypeEnterprise,
+		SourceType:         "",
+		SourceAllocationId: 431,
+		SortOrder:          -100,
+		StartTime:          time.Now().Unix(),
+		EndTime:            time.Now().Unix() + 86400,
+	}).Error)
+
+	_, err := AdminDeleteUserSubscription(31)
 	require.ErrorIs(t, err, ErrEnterpriseSubscriptionDeletion)
 }
 

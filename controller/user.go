@@ -433,7 +433,6 @@ func GetAffCode(c *gin.Context) {
 
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	userRole := c.GetInt("role")
 	user, err := model.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -443,7 +442,7 @@ func GetSelf(c *gin.Context) {
 	user.Remark = ""
 
 	// 计算用户权限信息
-	permissions := calculateUserPermissions(id, userRole)
+	permissions := calculateUserPermissions(id, user.Role)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()

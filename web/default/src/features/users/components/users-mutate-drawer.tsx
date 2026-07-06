@@ -232,7 +232,7 @@ export function UsersMutateDrawer({
                   )}
                 />
 
-                {!isUpdate && (
+                {(!isUpdate || currentRow?.role !== 100) && (
                   <FormField
                     control={form.control}
                     name='role'
@@ -271,7 +271,6 @@ export function UsersMutateDrawer({
                     )}
                   />
                 )}
-
                 <FormField
                   control={form.control}
                   name='display_name'

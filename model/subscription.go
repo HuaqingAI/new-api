@@ -40,6 +40,7 @@ var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
 	ErrEnterpriseSubscriptionDeletion = errors.New("enterprise allocation wallet cannot be deleted")
+	ErrEnterpriseSubscriptionInvalid  = errors.New("enterprise allocation wallet cannot be invalidated")
 )
 
 const (
@@ -335,23 +336,23 @@ func normalizeSubscriptionSourceType(source string) string {
 	}
 }
 
-func subscriptionPrimaryScore(sub UserSubscription) int {
-	if sub.SourceType == SubscriptionSourceTypeEnterprise {
-		return 0
+func resolveSubscriptionSourceType(sourceType string, source string) string {
+	if trimmed := strings.TrimSpace(sourceType); trimmed != "" {
+		return normalizeSubscriptionSourceType(trimmed)
 	}
-	if sub.IsPrimary {
-		return 1
-	}
-	return 2
+	return normalizeSubscriptionSourceType(source)
 }
 
 func sortUserSubscriptions(subs []UserSubscription) {
 	slices.SortStableFunc(subs, func(a, b UserSubscription) int {
-		if ap, bp := subscriptionPrimaryScore(a), subscriptionPrimaryScore(b); ap != bp {
-			return cmp.Compare(ap, bp)
-		}
 		if a.SortOrder != b.SortOrder {
 			return cmp.Compare(a.SortOrder, b.SortOrder)
+		}
+		if a.IsPrimary != b.IsPrimary {
+			if a.IsPrimary {
+				return -1
+			}
+			return 1
 		}
 		if a.EndTime != b.EndTime {
 			return cmp.Compare(a.EndTime, b.EndTime)
@@ -375,25 +376,10 @@ func movedUserSubscriptionSortOrder(subs []UserSubscription, userSubscriptionId 
 		return 0, false
 	}
 	current := subs[currentIndex]
-	primaryScore := subscriptionPrimaryScore(current)
 	if targetSortOrder == current.SortOrder {
 		return 0, false
 	}
-	groupStart := currentIndex
-	for groupStart > 0 && subscriptionPrimaryScore(subs[groupStart-1]) == primaryScore {
-		groupStart--
-	}
-	groupEnd := currentIndex + 1
-	for groupEnd < len(subs) && subscriptionPrimaryScore(subs[groupEnd]) == primaryScore {
-		groupEnd++
-	}
-	if groupEnd-groupStart <= 1 {
-		return 0, false
-	}
-
-	group := slices.Clone(subs[groupStart:groupEnd])
-	localIndex := currentIndex - groupStart
-	without := slices.Delete(group, localIndex, localIndex+1)
+	without := slices.Delete(slices.Clone(subs), currentIndex, currentIndex+1)
 	insertIndex := 0
 	if targetSortOrder > current.SortOrder {
 		for insertIndex < len(without) && without[insertIndex].SortOrder <= targetSortOrder {
@@ -404,7 +390,7 @@ func movedUserSubscriptionSortOrder(subs []UserSubscription, userSubscriptionId 
 			insertIndex++
 		}
 	}
-	if insertIndex == localIndex {
+	if insertIndex == currentIndex {
 		return 0, false
 	}
 
@@ -730,8 +716,8 @@ func CreateUserSubscriptionFromPlanWithOptionsTx(tx *gorm.DB, userId int, plan *
 			}
 			return true
 		}(),
-		CreatedAt:          common.GetTimestamp(),
-		UpdatedAt:          common.GetTimestamp(),
+		CreatedAt: common.GetTimestamp(),
+		UpdatedAt: common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
@@ -1271,11 +1257,16 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	cacheGroup := ""
 	downgradeGroup := ""
 	var userId int
+	var sourceAllocationId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
+		}
+		if resolveSubscriptionSourceType(sub.SourceType, sub.Source) == SubscriptionSourceTypeEnterprise {
+			sourceAllocationId = sub.SourceAllocationId
+			return ErrEnterpriseSubscriptionInvalid
 		}
 		userId = sub.UserId
 		if err := tx.Model(&sub).Updates(map[string]interface{}{
@@ -1296,6 +1287,9 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, ErrEnterpriseSubscriptionInvalid) && sourceAllocationId > 0 {
+			return "", err
+		}
 		return "", err
 	}
 	if cacheGroup != "" && userId > 0 {
@@ -1322,7 +1316,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
-		if sub.SourceType == SubscriptionSourceTypeEnterprise {
+		if resolveSubscriptionSourceType(sub.SourceType, sub.Source) == SubscriptionSourceTypeEnterprise {
 			return ErrEnterpriseSubscriptionDeletion
 		}
 		userId = sub.UserId

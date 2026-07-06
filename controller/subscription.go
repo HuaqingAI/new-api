@@ -437,6 +437,10 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 	}
 	msg, err := model.AdminInvalidateUserSubscription(subId)
 	if err != nil {
+		if errors.Is(err, model.ErrEnterpriseSubscriptionInvalid) {
+			common.ApiErrorI18n(c, i18n.MsgSubscriptionProtectedInvalidate)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}

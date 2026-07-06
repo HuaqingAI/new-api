@@ -379,66 +379,6 @@ func TestReorderUserSubscriptionPreservesEnterpriseWalletSortOrder(t *testing.T)
 	require.Equal(t, 201, items[2].Subscription.SortOrder)
 }
 
-func TestReorderUserSubscriptionAllowsMovingEnterpriseWalletBehindOrdinarySubscriptions(t *testing.T) {
-	truncateTables(t)
-
-	require.NoError(t, DB.Create(&User{
-		Id:       512,
-		Username: "subscription-enterprise-reorder-user",
-		Password: "pwd",
-		AffCode:  "subscription-enterprise-reorder-aff",
-	}).Error)
-	now := time.Now().Unix()
-	require.NoError(t, DB.Create(&UserSubscription{
-		Id:                 121,
-		UserId:             512,
-		Status:             "active",
-		Source:             SubscriptionSourceTypeEnterprise,
-		SourceType:         SubscriptionSourceTypeEnterprise,
-		SourceAllocationId: 121,
-		SortOrder:          -100,
-		IsPrimary:          false,
-		StartTime:          now,
-		EndTime:            now + 86400,
-		AmountTotal:        100,
-	}).Error)
-	require.NoError(t, DB.Create(&UserSubscription{
-		Id:          122,
-		UserId:      512,
-		PlanId:      122,
-		Status:      "active",
-		Source:      SubscriptionSourceTypeAdmin,
-		SourceType:  SubscriptionSourceTypeAdmin,
-		SortOrder:   100,
-		IsPrimary:   true,
-		StartTime:   now,
-		EndTime:     now + 86400,
-		AmountTotal: 100,
-	}).Error)
-	require.NoError(t, DB.Create(&UserSubscription{
-		Id:          123,
-		UserId:      512,
-		PlanId:      123,
-		Status:      "active",
-		Source:      SubscriptionSourceTypeAdmin,
-		SourceType:  SubscriptionSourceTypeAdmin,
-		SortOrder:   200,
-		IsPrimary:   true,
-		StartTime:   now,
-		EndTime:     now + 86400,
-		AmountTotal: 100,
-	}).Error)
-
-	require.NoError(t, ReorderUserSubscription(512, 121, 200))
-
-	items, err := GetAllUserSubscriptions(512)
-	require.NoError(t, err)
-	require.Equal(t, 122, items[0].Subscription.Id)
-	require.Equal(t, 123, items[1].Subscription.Id)
-	require.Equal(t, 121, items[2].Subscription.Id)
-	require.Equal(t, 201, items[2].Subscription.SortOrder)
-}
-
 func TestAdminDeleteUserSubscriptionRejectsEnterpriseWallet(t *testing.T) {
 	truncateTables(t)
 

@@ -343,16 +343,23 @@ func resolveSubscriptionSourceType(sourceType string, source string) string {
 	return normalizeSubscriptionSourceType(source)
 }
 
+func subscriptionPrimaryScore(sub UserSubscription) int {
+	if resolveSubscriptionSourceType(sub.SourceType, sub.Source) == SubscriptionSourceTypeEnterprise {
+		return 0
+	}
+	if sub.IsPrimary {
+		return 1
+	}
+	return 2
+}
+
 func sortUserSubscriptions(subs []UserSubscription) {
 	slices.SortStableFunc(subs, func(a, b UserSubscription) int {
+		if ap, bp := subscriptionPrimaryScore(a), subscriptionPrimaryScore(b); ap != bp {
+			return cmp.Compare(ap, bp)
+		}
 		if a.SortOrder != b.SortOrder {
 			return cmp.Compare(a.SortOrder, b.SortOrder)
-		}
-		if a.IsPrimary != b.IsPrimary {
-			if a.IsPrimary {
-				return -1
-			}
-			return 1
 		}
 		if a.EndTime != b.EndTime {
 			return cmp.Compare(a.EndTime, b.EndTime)
@@ -376,10 +383,26 @@ func movedUserSubscriptionSortOrder(subs []UserSubscription, userSubscriptionId 
 		return 0, false
 	}
 	current := subs[currentIndex]
+	primaryScore := subscriptionPrimaryScore(current)
 	if targetSortOrder == current.SortOrder {
 		return 0, false
 	}
-	without := slices.Delete(slices.Clone(subs), currentIndex, currentIndex+1)
+
+	groupStart := currentIndex
+	for groupStart > 0 && subscriptionPrimaryScore(subs[groupStart-1]) == primaryScore {
+		groupStart--
+	}
+	groupEnd := currentIndex + 1
+	for groupEnd < len(subs) && subscriptionPrimaryScore(subs[groupEnd]) == primaryScore {
+		groupEnd++
+	}
+	if groupEnd-groupStart <= 1 {
+		return 0, false
+	}
+
+	group := slices.Clone(subs[groupStart:groupEnd])
+	localIndex := currentIndex - groupStart
+	without := slices.Delete(group, localIndex, localIndex+1)
 	insertIndex := 0
 	if targetSortOrder > current.SortOrder {
 		for insertIndex < len(without) && without[insertIndex].SortOrder <= targetSortOrder {
@@ -390,7 +413,7 @@ func movedUserSubscriptionSortOrder(subs []UserSubscription, userSubscriptionId 
 			insertIndex++
 		}
 	}
-	if insertIndex == currentIndex {
+	if insertIndex == localIndex {
 		return 0, false
 	}
 

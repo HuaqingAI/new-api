@@ -80,6 +80,30 @@ describe('User subscription dialog enterprise allocation labels', () => {
     assert.equal(title, 'Enterprise Allocation Wallet')
   })
 
+  test('treats legacy enterprise source types as enterprise wallets', () => {
+    const title = renderSubscriptionSourceLabel(
+      {
+        id: 22,
+        user_id: 1001,
+        plan_id: 0,
+        status: 'active',
+        source: 'enterprise',
+        source_type: 'enterprise',
+        source_allocation_id: 10,
+        sort_order: -100,
+        is_primary: false,
+        start_time: 1700000000,
+        end_time: 0,
+        amount_total: 300,
+        amount_used: 0,
+        next_reset_time: 0,
+      },
+      i18n.t.bind(i18n)
+    )
+
+    assert.equal(title, 'Enterprise Allocation Wallet')
+  })
+
   test('maps source detail labels without leaking raw internal codes', async () => {
     const previousLanguage = i18n.language
     await i18n.changeLanguage('zh')
@@ -93,6 +117,28 @@ describe('User subscription dialog enterprise allocation labels', () => {
             status: 'active',
             source: 'enterprise_allocation',
             source_type: '',
+            source_allocation_id: 10,
+            sort_order: -100,
+            is_primary: false,
+            start_time: 1700000000,
+            end_time: 0,
+            amount_total: 300,
+            amount_used: 0,
+            next_reset_time: 0,
+          },
+          i18n.t.bind(i18n)
+        ),
+        '企业分配'
+      )
+      assert.equal(
+        renderSubscriptionSourceTypeLabel(
+          {
+            id: 31,
+            user_id: 1001,
+            plan_id: 0,
+            status: 'active',
+            source: 'enterprise',
+            source_type: 'enterprise',
             source_allocation_id: 10,
             sort_order: -100,
             is_primary: false,

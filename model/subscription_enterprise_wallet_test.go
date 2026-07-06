@@ -65,6 +65,41 @@ func TestGetAllUserSubscriptionsOrdersEnterpriseWalletFirst(t *testing.T) {
 	require.Equal(t, -100, items[0].Subscription.SortOrder)
 }
 
+func TestGetAllUserSubscriptionsNormalizesLegacyEnterpriseWalletSourceType(t *testing.T) {
+	truncateTables(t)
+
+	require.NoError(t, DB.Create(&User{
+		Id:       502,
+		Username: "enterprise-legacy-order-user",
+		Password: "pwd",
+		AffCode:  "enterprise-legacy-order-aff",
+	}).Error)
+
+	now := time.Now().Unix()
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:         11,
+		UserId:     502,
+		PlanId:     10,
+		Status:     "active",
+		Source:     SubscriptionSourceTypeAdmin,
+		SourceType: SubscriptionSourceTypeAdmin,
+		SortOrder:  100,
+		IsPrimary:  true,
+		StartTime:  now,
+		EndTime:    now + 86400,
+	}).Error)
+	require.NoError(t, DB.Exec(
+		"INSERT INTO user_subscriptions (id,user_id,plan_id,amount_total,amount_used,start_time,end_time,status,source,source_type,source_allocation_id,sort_order,is_primary,last_reset_time,next_reset_time,upgrade_group,prev_user_group,created_at,updated_at,downgrade_group,allow_wallet_overflow) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		12, 502, 0, 300, 0, now, now+86400, "active", SubscriptionSourceTypeEnterpriseV0, SubscriptionSourceTypeEnterpriseV0, 44, -100, false, 0, 0, "", "", now, now, "", true,
+	).Error)
+
+	items, err := GetAllUserSubscriptions(502)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	require.Equal(t, SubscriptionSourceTypeEnterprise, items[0].Subscription.SourceType)
+	require.Equal(t, SubscriptionSourceTypeEnterprise, items[0].Subscription.Source)
+}
+
 func TestReorderUserSubscriptionMovesAdjacentWhenSortOrdersTie(t *testing.T) {
 	truncateTables(t)
 	ensureEnterpriseAllocationTables(t)

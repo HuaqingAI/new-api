@@ -133,6 +133,32 @@ type departmentBudgetWalletDetailRow struct {
 	WalletSourceAlloc int
 }
 
+func normalizeDepartmentBudgetForDisplay(
+	budget entmodel.DepartmentBudget,
+) entmodel.DepartmentBudget {
+	switch budget.Type {
+	case entmodel.DepartmentBudgetTypeSubscription:
+		if budget.AllocatedTotal < 0 {
+			budget.AllocatedTotal = 0
+		}
+		if budget.CycleQuota < 0 {
+			budget.CycleQuota = 0
+		}
+		budget.Remaining = maxInt64(budget.CycleQuota-budget.AllocatedTotal, 0)
+	default:
+		if budget.TotalQuota < 0 {
+			budget.TotalQuota = 0
+		}
+		if budget.Remaining < 0 {
+			budget.Remaining = 0
+		}
+		if budget.TotalQuota > 0 && budget.Remaining > budget.TotalQuota {
+			budget.Remaining = budget.TotalQuota
+		}
+	}
+	return budget
+}
+
 func NewDepartmentBudgetService(db *gorm.DB) *DepartmentBudgetService {
 	return &DepartmentBudgetService{db: db}
 }
@@ -356,7 +382,7 @@ func (s *DepartmentBudgetService) ListByDepartment(departmentId int, tenantId in
 
 	items := make([]DepartmentBudgetItem, 0, len(budgets))
 	for _, budget := range budgets {
-		items = append(items, s.mapDepartmentBudgetItem(budget, departmentNames[budget.DepartmentId]))
+		items = append(items, s.mapDepartmentBudgetItem(normalizeDepartmentBudgetForDisplay(budget), departmentNames[budget.DepartmentId]))
 	}
 	sortDepartmentBudgetItems(items, query)
 
@@ -437,7 +463,7 @@ func (s *DepartmentBudgetService) GetDetail(departmentId int, budgetId int, tena
 	}
 
 	return &DepartmentBudgetDetailResult{
-		Budget:     s.mapDepartmentBudgetItem(budget, ""),
+		Budget:     s.mapDepartmentBudgetItem(normalizeDepartmentBudgetForDisplay(budget), ""),
 		Wallets:    details,
 		Thresholds: currentDepartmentBudgetThresholds(),
 	}, nil
@@ -456,6 +482,7 @@ func (s *DepartmentBudgetService) ensureDepartmentExists(tenantId int, departmen
 }
 
 func (s *DepartmentBudgetService) mapDepartmentBudgetItem(budget entmodel.DepartmentBudget, departmentName string) DepartmentBudgetItem {
+	budget = normalizeDepartmentBudgetForDisplay(budget)
 	usageRatio := calculateDepartmentBudgetUsageRatio(budget)
 	return DepartmentBudgetItem{
 		Id:             budget.Id,

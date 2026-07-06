@@ -50,6 +50,7 @@ const (
 	SubscriptionSourceTypeAdmin        = "admin"
 	SubscriptionSourceTypeBalance      = "balance"
 	SubscriptionSourceTypeEnterprise   = "enterprise_allocation"
+	SubscriptionSourceTypeEnterpriseV0 = "enterprise"
 )
 
 var (
@@ -297,17 +298,18 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
 	s.UpdatedAt = now
-	if strings.TrimSpace(s.SourceType) == "" {
-		s.SourceType = strings.TrimSpace(s.Source)
-		if s.SourceType == "" {
-			s.SourceType = SubscriptionSourceTypeOrder
-		}
-	}
+	s.normalizeSourceFields()
 	return nil
 }
 
 func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 	s.UpdatedAt = common.GetTimestamp()
+	s.normalizeSourceFields()
+	return nil
+}
+
+func (s *UserSubscription) AfterFind(tx *gorm.DB) error {
+	s.normalizeSourceFields()
 	return nil
 }
 
@@ -329,6 +331,8 @@ func normalizeSubscriptionSourceType(source string) string {
 		SubscriptionSourceTypeBalance,
 		SubscriptionSourceTypeEnterprise:
 		return strings.TrimSpace(source)
+	case SubscriptionSourceTypeEnterpriseV0:
+		return SubscriptionSourceTypeEnterprise
 	case "":
 		return SubscriptionSourceTypeOrder
 	default:
@@ -341,6 +345,19 @@ func resolveSubscriptionSourceType(sourceType string, source string) string {
 		return normalizeSubscriptionSourceType(trimmed)
 	}
 	return normalizeSubscriptionSourceType(source)
+}
+
+func (s *UserSubscription) normalizeSourceFields() {
+	if s == nil {
+		return
+	}
+	s.SourceType = resolveSubscriptionSourceType(s.SourceType, s.Source)
+	if strings.TrimSpace(s.Source) == SubscriptionSourceTypeEnterpriseV0 {
+		s.Source = SubscriptionSourceTypeEnterprise
+	}
+	if strings.TrimSpace(s.Source) == "" && s.SourceType == SubscriptionSourceTypeEnterprise {
+		s.Source = SubscriptionSourceTypeEnterprise
+	}
 }
 
 func subscriptionPrimaryScore(sub UserSubscription) int {
@@ -479,7 +496,7 @@ func defaultEnterpriseSortOrderTx(tx *gorm.DB, userId int) (int, error) {
 		tx = DB
 	}
 	var minNonEnterprise UserSubscription
-	err := tx.Where("user_id = ? AND source_type <> ?", userId, SubscriptionSourceTypeEnterprise).
+	err := tx.Where("user_id = ? AND source_type NOT IN ?", userId, []string{SubscriptionSourceTypeEnterprise, SubscriptionSourceTypeEnterpriseV0}).
 		Order("sort_order ASC, id ASC").
 		First(&minNonEnterprise).Error
 	if err == nil {
@@ -506,7 +523,7 @@ func buildEnterpriseSubscriptionRuntimePlanTx(tx *gorm.DB, sub *UserSubscription
 	if sub == nil {
 		return nil, errors.New("subscription is nil")
 	}
-	if sub.SourceType != SubscriptionSourceTypeEnterprise || sub.SourceAllocationId <= 0 {
+	if resolveSubscriptionSourceType(sub.SourceType, sub.Source) != SubscriptionSourceTypeEnterprise || sub.SourceAllocationId <= 0 {
 		return nil, nil
 	}
 	if tx == nil {
@@ -1740,7 +1757,7 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 		return nil, err
 	}
-	if sub.PlanId <= 0 && sub.SourceType == SubscriptionSourceTypeEnterprise {
+	if sub.PlanId <= 0 && resolveSubscriptionSourceType(sub.SourceType, sub.Source) == SubscriptionSourceTypeEnterprise {
 		info := &SubscriptionPlanInfo{
 			PlanId:    0,
 			PlanTitle: "enterprise_allocation",

@@ -126,6 +126,34 @@ describe('Subscription plans card enterprise wallet helpers', () => {
     assert.equal(title, 'Enterprise Allocation Wallet · Subscription #130')
   })
 
+  test('treats legacy enterprise wallets as managed by department', () => {
+    const subscription = {
+      id: 131,
+      user_id: 9001,
+      plan_id: 0,
+      status: 'active',
+      source: 'enterprise',
+      source_type: 'enterprise',
+      source_allocation_id: 89,
+      sort_order: -100,
+      is_primary: false,
+      start_time: 1700000000,
+      end_time: 1800000000,
+      amount_total: 500,
+      amount_used: 0,
+      next_reset_time: 0,
+    } as const
+
+    assert.equal(
+      getManagedSubscriptionNote(subscription, i18n.t.bind(i18n)),
+      'Managed by department · Cannot be deleted by user'
+    )
+    assert.equal(
+      getSubscriptionCardTitle(subscription, i18n.t.bind(i18n)),
+      'Enterprise Allocation Wallet · Subscription #131'
+    )
+  })
+
   test('renders enterprise wallet title and managed note with zh locale translations', async () => {
     const previousLanguage = i18n.language
     await i18n.changeLanguage('zh')
@@ -174,6 +202,10 @@ describe('Subscription plans card enterprise wallet helpers', () => {
       )
       assert.equal(
         getSubscriptionSourceLabel('enterprise_allocation', i18n.t.bind(i18n)),
+        '企业分配'
+      )
+      assert.equal(
+        getSubscriptionSourceLabel('enterprise', i18n.t.bind(i18n)),
         '企业分配'
       )
       assert.equal(
@@ -252,6 +284,33 @@ describe('Subscription plans card enterprise wallet helpers', () => {
       getSubscriptionSourceLabel(subscription.source, t),
       'Enterprise allocation'
     )
+  })
+
+  test('treats legacy enterprise wallets as active and semantic', () => {
+    const t = i18n.t.bind(i18n)
+    const subscription = {
+      id: 152,
+      user_id: 9001,
+      plan_id: 0,
+      status: 'active',
+      source: 'enterprise',
+      source_type: 'enterprise',
+      source_allocation_id: 90,
+      sort_order: -100,
+      is_primary: false,
+      start_time: 1700000000,
+      end_time: 0,
+      amount_total: 500,
+      amount_used: 20,
+      next_reset_time: 0,
+    } as const
+
+    const status = getSubscriptionStatusDisplay(subscription, t)
+    const expiry = getSubscriptionExpiryDisplay(subscription, t)
+
+    assert.equal(status.label, 'Active')
+    assert.equal(expiry.value, 'Never expires')
+    assert.equal(getSubscriptionSourceLabel(subscription.source, t), 'Enterprise allocation')
   })
 
   test('keeps ordinary plans with non-positive end time expired while preserving No Reset plan wording', () => {

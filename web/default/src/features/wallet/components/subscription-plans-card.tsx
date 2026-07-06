@@ -98,6 +98,7 @@ export function getSubscriptionSourceLabel(
 ): string {
   switch (source) {
     case 'enterprise_allocation':
+    case 'enterprise':
       return t('Enterprise allocation')
     case 'admin':
       return t('Admin')
@@ -145,7 +146,9 @@ export function getManagedSubscriptionNote(
 function isEnterpriseAllocationSubscription(sub: UserSubscription): boolean {
   return (
     sub.source_type === 'enterprise_allocation' ||
-    sub.source === 'enterprise_allocation'
+    sub.source_type === 'enterprise' ||
+    sub.source === 'enterprise_allocation' ||
+    sub.source === 'enterprise'
   )
 }
 

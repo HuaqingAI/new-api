@@ -64,6 +64,17 @@ interface Props {
   onSuccess?: () => void
 }
 
+function isEnterpriseAllocationSubscription(
+  sub: UserSubscriptionRecord['subscription']
+) {
+  return (
+    sub.source_type === 'enterprise_allocation' ||
+    sub.source_type === 'enterprise' ||
+    sub.source === 'enterprise_allocation' ||
+    sub.source === 'enterprise'
+  )
+}
+
 function SubscriptionStatusBadge(props: {
   sub: UserSubscriptionRecord['subscription']
   t: (key: string) => string
@@ -102,10 +113,7 @@ export function renderSubscriptionSourceLabel(
   t: (key: string) => string,
   planTitle?: string
 ) {
-  if (
-    sub.source_type === 'enterprise_allocation' ||
-    sub.source === 'enterprise_allocation'
-  ) {
+  if (isEnterpriseAllocationSubscription(sub)) {
     return planTitle || t('Enterprise Allocation Wallet')
   }
   return planTitle || `#${sub.plan_id}`
@@ -117,6 +125,7 @@ export function renderSubscriptionSourceTypeLabel(
 ) {
   switch (sub.source_type || sub.source) {
     case 'enterprise_allocation':
+    case 'enterprise':
       return t('Enterprise allocation')
     case 'admin':
       return t('Admin')
@@ -395,8 +404,7 @@ export function UserSubscriptionsDialog(props: Props) {
                       (sub.end_time || 0) > 0 && sub.end_time < now
                     const isActive = sub.status === 'active' && !isExpired
                     const isEnterpriseAllocation =
-                      sub.source_type === 'enterprise_allocation' ||
-                      sub.source === 'enterprise_allocation'
+                      isEnterpriseAllocationSubscription(sub)
 
                     return (
                       <div className='flex justify-end gap-1'>

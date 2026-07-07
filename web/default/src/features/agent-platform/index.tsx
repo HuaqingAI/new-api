@@ -39,6 +39,8 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import { formatTimestamp } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1246,6 +1248,8 @@ function VersionFormDialog(props: {
 
 export function AgentPlatformShell() {
   const { t } = useTranslation()
+  const userRole = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const isSuperAdmin = userRole >= ROLE.SUPER_ADMIN
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<ResourceEditorState | null>(null)
   const [resourceForm, setResourceForm] = useState<ResourceFormState>(
@@ -1573,13 +1577,15 @@ export function AgentPlatformShell() {
               <RefreshCw className='size-4' />
               {t('Refresh')}
             </Button>
-            <Button
-              variant='outline'
-              size='sm'
-              render={
-                <Link to='/system-settings/site'>{t('System Settings')}</Link>
-              }
-            />
+            {isSuperAdmin && (
+              <Button
+                variant='outline'
+                size='sm'
+                render={
+                  <Link to='/system-settings/site'>{t('System Settings')}</Link>
+                }
+              />
+            )}
           </div>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,8 +13,21 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
+
+// TestDecimalToQuotaSaturation guards the billing invariant that an oversized
+// quota product (e.g. per-call price multiplied by a huge image n ratio) must
+// saturate instead of wrapping into a negative charge (credit).
+func TestDecimalToQuotaSaturation(t *testing.T) {
+	// 2000 quota per call * n=18446744073686646784 overflows int64.
+	overflowing := decimal.NewFromInt(2000).Mul(decimal.NewFromFloat(1.8446744073686647e19))
+	require.Equal(t, math.MaxInt32, decimalToQuota(overflowing))
+
+	require.Equal(t, math.MinInt32, decimalToQuota(overflowing.Neg()))
+	require.Equal(t, 42, decimalToQuota(decimal.NewFromFloat(41.7)))
+}
 
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)

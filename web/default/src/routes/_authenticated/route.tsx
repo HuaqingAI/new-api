@@ -17,46 +17,44 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { useAuthStore } from '@/stores/auth-store'
-import { getSelf } from '@/lib/api'
+
 import { AuthenticatedLayout } from '@/components/layout'
+import { getSelf } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth-store'
+
+// Avoid revalidating the same authenticated user on every route transition.
+let verifiedSessionUserId: number | null = null
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
     const { auth } = useAuthStore.getState()
 
-    // 如果本地没有用户信息，直接跳转登录页
     if (!auth.user) {
+      verifiedSessionUserId = null
       throw redirect({
         to: '/sign-in',
         search: { redirect: location.href },
       })
     }
 
-    try {
-      const res = await getSelf()
+    if (verifiedSessionUserId !== auth.user.id) {
+      const res = await getSelf().catch((err: unknown) =>
+        (err as { response?: { status?: number } })?.response?.status === 401
+          ? { success: false }
+          : null
+      )
+
       if (res?.success && res.data) {
         auth.setUser(res.data)
-        return
-      }
-
-      auth.reset()
-      throw redirect({
-        to: '/sign-in',
-        search: { redirect: location.href },
-      })
-    } catch (error) {
-      const status = (error as { response?: { status?: number } })?.response
-        ?.status
-      if (status === 401) {
+        verifiedSessionUserId = res.data.id
+      } else if (res) {
+        verifiedSessionUserId = null
         auth.reset()
         throw redirect({
           to: '/sign-in',
           search: { redirect: location.href },
         })
       }
-
-      return
     }
   },
   component: AuthenticatedLayout,

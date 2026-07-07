@@ -880,6 +880,8 @@ function DepartmentTreeSkeleton() {
 
 function EnterpriseOrganizationEmptyState() {
   const { t } = useTranslation()
+  const userRole = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const canConfigureDingTalk = userRole >= ROLE.SUPER_ADMIN
 
   return (
     <Empty className='min-h-[360px] border'>
@@ -896,10 +898,17 @@ function EnterpriseOrganizationEmptyState() {
       </EmptyHeader>
       <EmptyContent>
         <div className='flex flex-wrap justify-center gap-2'>
-          <Button variant='outline' render={<Link to='/enterprise-dingtalk' />}>
-            <Settings className='size-4' />
-            {t('Configure DingTalk sync')}
-          </Button>
+          {canConfigureDingTalk ? (
+            <Button variant='outline' render={<Link to='/enterprise-dingtalk' />}>
+              <Settings className='size-4' />
+              {t('Configure DingTalk sync')}
+            </Button>
+          ) : (
+            <Button variant='outline' disabled>
+              <Settings className='size-4' />
+              {t('Configure DingTalk sync')}
+            </Button>
+          )}
           <Button variant='outline' disabled>
             <UserPlus className='size-4' />
             {t('Manual creation coming soon')}

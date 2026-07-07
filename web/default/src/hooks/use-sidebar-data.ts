@@ -162,6 +162,7 @@ export function useSidebarData(): SidebarData {
             title: t('DingTalk Integration'),
             url: '/enterprise-dingtalk',
             icon: ShieldCheck,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('Redemption Codes'),
@@ -184,6 +185,7 @@ export function useSidebarData(): SidebarData {
             url: '/system-settings/site',
             activeUrls: ['/system-settings'],
             icon: Settings,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
         ],
       },

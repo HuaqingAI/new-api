@@ -1,8 +1,12 @@
 import i18n from '@/i18n/config'
+import { isRedirect } from '@tanstack/react-router'
+import { Route as EnterpriseDingTalkRoute } from '@/routes/_authenticated/enterprise-dingtalk/index'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import {
   EnterpriseDingTalkConnectivityResult,
   EnterpriseDingTalkSyncPanel,
@@ -183,6 +187,45 @@ describe('Enterprise DingTalk sync panel', () => {
     assert.match(html, /Many Candidates/)
     assert.match(html, /Multiple candidate users/)
     assert.equal((html.match(/Bind candidate/g) ?? []).length, 1)
+  })
+})
+
+describe('Enterprise DingTalk route guard', () => {
+  test('allows only super admins to enter DingTalk integration', () => {
+    const { auth } = useAuthStore.getState()
+    const previousUser = auth.user
+
+    try {
+      auth.setUser({
+        id: 1001,
+        username: 'admin',
+        role: ROLE.ADMIN,
+      })
+
+      let redirected: unknown = null
+      try {
+        EnterpriseDingTalkRoute.options.beforeLoad?.({} as never)
+      } catch (error) {
+        redirected = error
+      }
+
+      assert.ok(isRedirect(redirected))
+      if (isRedirect(redirected)) {
+        assert.equal(redirected.options.to, '/403')
+      }
+
+      auth.setUser({
+        id: 1002,
+        username: 'root',
+        role: ROLE.SUPER_ADMIN,
+      })
+
+      assert.doesNotThrow(() =>
+        EnterpriseDingTalkRoute.options.beforeLoad?.({} as never)
+      )
+    } finally {
+      auth.setUser(previousUser)
+    }
   })
 })
 

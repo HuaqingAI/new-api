@@ -35,9 +35,19 @@ const rootNavGroups: NavGroup[] = [
         url: '/enterprise-alerts',
       },
       {
+        title: 'DingTalk Integration',
+        url: '/enterprise-dingtalk',
+        requiredRole: 100,
+      },
+      {
         title: 'System Info',
         url: '/system-info',
         requiredRole: 20,
+      },
+      {
+        title: 'System Settings',
+        url: '/system-settings/site',
+        requiredRole: 100,
       },
     ],
   },
@@ -102,11 +112,23 @@ describe('sidebar role filtering', () => {
       adminItems.some((item) => 'url' in item && item.url === '/system-info'),
       false
     )
+    assert.equal(
+      adminItems.some(
+        (item) => 'url' in item && item.url === '/enterprise-dingtalk'
+      ),
+      false
+    )
+    assert.equal(
+      adminItems.some(
+        (item) => 'url' in item && item.url === '/system-settings/site'
+      ),
+      false
+    )
   })
 
   test('shows requiredRole items for sufficiently privileged admins', () => {
     const groups = filterRootNavGroupsByRole(rootNavGroups, {
-      role: 20,
+      role: 100,
       isAdmin: true,
       canAccessEnterpriseOrganization: false,
     })
@@ -114,6 +136,18 @@ describe('sidebar role filtering', () => {
     const adminItems = groups.find((group) => group.id === 'admin')?.items ?? []
     assert.equal(
       adminItems.some((item) => 'url' in item && item.url === '/system-info'),
+      true
+    )
+    assert.equal(
+      adminItems.some(
+        (item) => 'url' in item && item.url === '/enterprise-dingtalk'
+      ),
+      true
+    )
+    assert.equal(
+      adminItems.some(
+        (item) => 'url' in item && item.url === '/system-settings/site'
+      ),
       true
     )
   })

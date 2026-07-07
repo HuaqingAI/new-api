@@ -139,6 +139,7 @@ const (
 	MsgSubscriptionInvalidId        = "subscription.invalid_id"
 	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
 	MsgSubscriptionProtectedDelete  = "subscription.protected_delete"
+	MsgSubscriptionProtectedInvalidate = "subscription.protected_invalidate"
 	MsgSubscriptionInvalidSortOrder = "subscription.invalid_sort_order"
 )
 

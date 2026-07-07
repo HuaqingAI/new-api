@@ -64,6 +64,17 @@ interface Props {
   onSuccess?: () => void
 }
 
+function isEnterpriseAllocationSubscription(
+  sub: UserSubscriptionRecord['subscription']
+) {
+  return (
+    sub.source_type === 'enterprise_allocation' ||
+    sub.source_type === 'enterprise' ||
+    sub.source === 'enterprise_allocation' ||
+    sub.source === 'enterprise'
+  )
+}
+
 function SubscriptionStatusBadge(props: {
   sub: UserSubscriptionRecord['subscription']
   t: (key: string) => string
@@ -102,10 +113,37 @@ export function renderSubscriptionSourceLabel(
   t: (key: string) => string,
   planTitle?: string
 ) {
-  if (sub.source_type === 'enterprise_allocation') {
+  if (isEnterpriseAllocationSubscription(sub)) {
     return planTitle || t('Enterprise Allocation Wallet')
   }
   return planTitle || `#${sub.plan_id}`
+}
+
+export function renderSubscriptionSourceTypeLabel(
+  sub: UserSubscriptionRecord['subscription'],
+  t: (key: string) => string
+) {
+  switch (sub.source_type || sub.source) {
+    case 'enterprise_allocation':
+    case 'enterprise':
+      return t('Enterprise allocation')
+    case 'admin':
+      return t('Admin')
+    case 'user':
+      return t('User')
+    case 'system':
+      return t('System')
+    case 'payment':
+      return t('Payment')
+    case 'manual':
+      return t('Manual')
+    case 'subscription':
+      return t('Subscription')
+    case 'wallet':
+      return t('Wallet')
+    default:
+      return sub.source_type || sub.source ? t('Unknown source') : '-'
+  }
 }
 
 export function UserSubscriptionsDialog(props: Props) {
@@ -306,7 +344,8 @@ export function UserSubscriptionsDialog(props: Props) {
                           )}
                         </div>
                         <div className='text-muted-foreground text-sm'>
-                          {t('Source')}: {sub.source_type || sub.source || '-'}
+                          {t('Source')}:{' '}
+                          {renderSubscriptionSourceTypeLabel(sub, t)}
                         </div>
                         <div className='text-muted-foreground text-sm'>
                           {t('Subscription Priority')}:{' '}
@@ -365,7 +404,7 @@ export function UserSubscriptionsDialog(props: Props) {
                       (sub.end_time || 0) > 0 && sub.end_time < now
                     const isActive = sub.status === 'active' && !isExpired
                     const isEnterpriseAllocation =
-                      sub.source_type === 'enterprise_allocation'
+                      isEnterpriseAllocationSubscription(sub)
 
                     return (
                       <div className='flex justify-end gap-1'>
@@ -390,7 +429,7 @@ export function UserSubscriptionsDialog(props: Props) {
                         <Button
                           size='sm'
                           variant='outline'
-                          disabled={!isActive}
+                          disabled={!isActive || isEnterpriseAllocation}
                           onClick={() =>
                             setConfirmAction({
                               type: 'invalidate',
@@ -398,7 +437,9 @@ export function UserSubscriptionsDialog(props: Props) {
                             })
                           }
                         >
-                          {t('Invalidate')}
+                          {isEnterpriseAllocation
+                            ? t('Managed by department')
+                            : t('Invalidate')}
                         </Button>
                         <Button
                           size='sm'

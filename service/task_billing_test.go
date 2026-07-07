@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/glebarez/sqlite"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -43,7 +45,9 @@ func TestMain(m *testing.M) {
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
+		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
+		&model.SubscriptionPreConsumeRecord{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
 	); err != nil {
@@ -66,7 +70,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
+		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})
@@ -250,6 +256,84 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestNewBillingSessionSubscriptionFirstHonorsReorderedEnterpriseWalletOrder(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID = 31, 31
+	seedUser(t, userID, 5000)
+	seedToken(t, tokenID, userID, "sk-billing-order", 9000)
+
+	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                 311,
+		UserId:             userID,
+		Status:             "active",
+		Source:             model.SubscriptionSourceTypeEnterprise,
+		SourceType:         model.SubscriptionSourceTypeEnterprise,
+		SourceAllocationId: 311,
+		SortOrder:          300,
+		IsPrimary:          false,
+		StartTime:          now,
+		EndTime:            now + 86400,
+		AmountTotal:        600,
+		AmountUsed:         0,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:          312,
+		UserId:      userID,
+		PlanId:      312,
+		Status:      "active",
+		Source:      model.SubscriptionSourceTypeAdmin,
+		SourceType:  model.SubscriptionSourceTypeAdmin,
+		SortOrder:   100,
+		IsPrimary:   true,
+		StartTime:   now,
+		EndTime:     now + 86400,
+		AmountTotal: 600,
+		AmountUsed:  0,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.SubscriptionPlan{
+		Id:            312,
+		Title:         "priority-plan",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		TotalAmount:   600,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(nil)
+	ctx.Set("token_quota", 9000)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "billing-session-subscription-first-order",
+		UserId:          userID,
+		TokenId:         tokenID,
+		TokenKey:        "sk-billing-order",
+		TokenUnlimited:  false,
+		OriginModelName: "gpt-4o-mini",
+		UserQuota:       5000,
+		IsPlayground:    true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, relayInfo, 200)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	assert.Equal(t, BillingSourceSubscription, relayInfo.BillingSource)
+	assert.Equal(t, 312, relayInfo.SubscriptionId)
+	assert.Equal(t, int64(200), relayInfo.SubscriptionPreConsumed)
+
+	var preferred model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", 312).First(&preferred).Error)
+	assert.Equal(t, int64(200), preferred.AmountUsed)
+
+	var enterprise model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", 311).First(&enterprise).Error)
+	assert.Equal(t, int64(0), enterprise.AmountUsed)
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {

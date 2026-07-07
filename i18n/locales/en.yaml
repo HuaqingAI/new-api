@@ -179,6 +179,7 @@ subscription.purchase_max: "Purchase limit for this plan has been reached"
 subscription.invalid_id: "Invalid subscription ID"
 subscription.invalid_user_id: "Invalid user ID"
 subscription.protected_delete: "Enterprise allocation wallets cannot be deleted"
+subscription.protected_invalidate: "Enterprise allocation wallets are managed by department and cannot be invalidated from subscription management"
 subscription.invalid_sort_order: "Invalid wallet sort order"
 
 # Payment messages

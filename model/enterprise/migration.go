@@ -44,7 +44,10 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	return backfillAlertEventDepartmentTokens(db)
+	if err := backfillAlertEventDepartmentTokens(db); err != nil {
+		return err
+	}
+	return normalizeDepartmentBudgetRemaining(db)
 }
 
 func ensureGovernanceNotificationDeliveryColumns(db *gorm.DB) error {
@@ -154,6 +157,64 @@ func backfillAlertEventDepartmentTokens(db *gorm.DB) error {
 			}
 			return nil
 		}).Error
+}
+
+func normalizeDepartmentBudgetRemaining(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&DepartmentBudget{}) {
+		return nil
+	}
+
+	var batch []DepartmentBudget
+	return db.FindInBatches(&batch, 100, func(tx *gorm.DB, batchIndex int) error {
+		for _, budget := range batch {
+			updates := map[string]any{}
+			switch budget.Type {
+			case DepartmentBudgetTypeSubscription:
+				allocatedTotal := budget.AllocatedTotal
+				if allocatedTotal < 0 {
+					allocatedTotal = 0
+					updates["allocated_total"] = allocatedTotal
+				}
+				cycleQuota := budget.CycleQuota
+				if cycleQuota < 0 {
+					cycleQuota = 0
+					updates["cycle_quota"] = cycleQuota
+				}
+				remaining := cycleQuota - allocatedTotal
+				if remaining < 0 {
+					remaining = 0
+				}
+				if budget.Remaining != remaining {
+					updates["remaining"] = remaining
+				}
+			default:
+				totalQuota := budget.TotalQuota
+				if totalQuota < 0 {
+					totalQuota = 0
+					updates["total_quota"] = totalQuota
+				}
+				remaining := budget.Remaining
+				if remaining < 0 {
+					remaining = 0
+				}
+				if totalQuota > 0 && remaining > totalQuota {
+					remaining = totalQuota
+				}
+				if budget.Remaining != remaining {
+					updates["remaining"] = remaining
+				}
+			}
+			if len(updates) == 0 {
+				continue
+			}
+			if err := tx.Model(&DepartmentBudget{}).
+				Where("id = ?", budget.Id).
+				Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}).Error
 }
 
 func ensureAlertDeliveryColumns(db *gorm.DB) error {

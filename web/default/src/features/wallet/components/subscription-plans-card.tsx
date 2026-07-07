@@ -98,6 +98,7 @@ export function getSubscriptionSourceLabel(
 ): string {
   switch (source) {
     case 'enterprise_allocation':
+    case 'enterprise':
       return t('Enterprise allocation')
     case 'admin':
       return t('Admin')
@@ -126,7 +127,7 @@ export function getSubscriptionCardTitle(
   if (planTitle) {
     return `${planTitle} · ${t('Subscription')} #${sub.id}`
   }
-  if (sub.source_type === 'enterprise_allocation') {
+  if (isEnterpriseAllocationSubscription(sub)) {
     return `${t('Enterprise Allocation Wallet')} · ${t('Subscription')} #${sub.id}`
   }
   return `${t('Subscription')} #${sub.id}`
@@ -136,7 +137,7 @@ export function getManagedSubscriptionNote(
   sub: UserSubscriptionRecord['subscription'],
   t: (key: string) => string
 ): string | null {
-  if (sub.source_type !== 'enterprise_allocation') {
+  if (!isEnterpriseAllocationSubscription(sub)) {
     return null
   }
   return `${t('Managed by department')} · ${t('Cannot be deleted by user')}`
@@ -145,7 +146,9 @@ export function getManagedSubscriptionNote(
 function isEnterpriseAllocationSubscription(sub: UserSubscription): boolean {
   return (
     sub.source_type === 'enterprise_allocation' ||
-    sub.source === 'enterprise_allocation'
+    sub.source_type === 'enterprise' ||
+    sub.source === 'enterprise_allocation' ||
+    sub.source === 'enterprise'
   )
 }
 
@@ -220,7 +223,8 @@ export function getSubscriptionExpiryDisplay(
 ): { label: string; value: string } {
   const status = getSubscriptionStatusDisplay(sub, t, nowSeconds)
   if (!hasPositiveTimestamp(sub.end_time)) {
-    const isEnterpriseNoExpiry = isEnterpriseAllocationSubscription(sub)
+    const isEnterpriseNoExpiry =
+      isEnterpriseAllocationSubscription(sub) && status.isActive
     const label = isEnterpriseNoExpiry
       ? t('Until')
       : status.isCancelled

@@ -3873,6 +3873,12 @@
     "默认折叠侧边栏": "Default collapse sidebar",
     "默认测试模型": "Default Test Model",
     "默认用户消息": "Default User Message",
-    "默认补全倍率": "Default completion ratio"
+    "默认补全倍率": "Default completion ratio",
+    "你正在使用旧版前端，该版本即将停止维护，部分功能可能无法使用。建议切换到新版前端以获得完整体验。": "You are using the classic frontend. This version will stop receiving maintenance soon, and some features may be unavailable. Switch to the new frontend for the complete experience.",
+    "你正在使用旧版前端，该版本即将停止维护，部分功能可能无法使用。请联系管理员切换到新版前端。": "You are using the classic frontend. This version will stop receiving maintenance soon, and some features may be unavailable. Contact an administrator to switch to the new frontend.",
+    "已切换到新版前端，正在跳转首页": "Switched to the new frontend, redirecting to home",
+    "提示：如果切换后页面无法正常渲染，请清空浏览器缓存后重试。": "Tip: If the page does not render correctly after switching, clear your browser cache and try again.",
+    "旧版前端即将停止维护": "Classic frontend maintenance will end soon",
+    "该条历史记录缺少审计字段。当前版本已支持记录服务器 IP、回调 IP、支付方式与系统版本等审计信息；这些字段仅会写入后续新产生的记录，历史记录无法自动补齐。": "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward."
   }
 }

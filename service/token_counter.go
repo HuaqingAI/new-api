@@ -208,8 +208,14 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 			if err != nil {
 				return 0, fmt.Errorf("error getting audio duration: %v", err)
 			}
-			// 一分钟 1000 token，与 $price / minute 对齐
-			totalAudioToken += int(math.Round(math.Ceil(duration) / 60.0 * 1000))
+			// 一分钟 1000 token，与 $price / minute 对齐。
+			// duration 来自用户上传文件的元数据，可被伪造成天文数字，
+			// 必须饱和转换防止 int 回绕成负数 token。
+			audioTokens := common.QuotaFromFloat(math.Round(math.Ceil(duration) / 60.0 * 1000))
+			if audioTokens < 0 {
+				audioTokens = 0
+			}
+			totalAudioToken += audioTokens
 		}
 		return totalAudioToken, nil
 	}
@@ -377,7 +383,8 @@ func CountAudioTokenInput(audioBase64 string, audioFormat string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return int(duration / 60 * 100 / 0.06), nil
+	// duration 来自用户提供的音频元数据，饱和转换防止 int 回绕
+	return common.QuotaFromFloat(duration / 60 * 100 / 0.06), nil
 }
 
 func CountAudioTokenOutput(audioBase64 string, audioFormat string) (int, error) {
@@ -388,7 +395,8 @@ func CountAudioTokenOutput(audioBase64 string, audioFormat string) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-	return int(duration / 60 * 200 / 0.24), nil
+	// duration 来自上游返回的音频元数据，饱和转换防止 int 回绕
+	return common.QuotaFromFloat(duration / 60 * 200 / 0.24), nil
 }
 
 // CountTextToken 统计文本的token数量，仅OpenAI模型使用tokenizer，其余模型使用估算

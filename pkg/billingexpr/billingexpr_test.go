@@ -291,6 +291,12 @@ func TestQuotaRound(t *testing.T) {
 		{999.4999, 999},
 		{999.5, 1000},
 		{1e9 + 0.5, 1e9 + 1},
+		// Oversized expression results must saturate at int32 bounds
+		// instead of wrapping into a negative charge.
+		{3.6893488147419103e19, math.MaxInt32},
+		{-3.6893488147419103e19, math.MinInt32},
+		{math.Inf(1), math.MaxInt32},
+		{math.NaN(), 0},
 	}
 	for _, tt := range tests {
 		got := billingexpr.QuotaRound(tt.in)

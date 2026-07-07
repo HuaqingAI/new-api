@@ -105,7 +105,7 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
-import { FaLinkedin } from 'react-icons/fa';
+import { FaLinkedin, FaSlack } from 'react-icons/fa';
 
 function SlackIcon({ size = 20 }) {
   return (

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { formatQuota } from '@/lib/format'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -49,9 +50,11 @@ import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
+// oxlint-disable-next-line react/only-export-components
 export const enterpriseBudgetThresholdValidationMessage =
   'Enterprise budget thresholds must satisfy 0 < warning < critical <= 100'
 
+// oxlint-disable-next-line react/only-export-components
 export function createQuotaSettingsSchema(t: (key: string) => string) {
   return z
     .object({
@@ -92,6 +95,11 @@ export function createQuotaSettingsSchema(t: (key: string) => string) {
 }
 
 type QuotaFormValues = z.infer<ReturnType<typeof createQuotaSettingsSchema>>
+type QuotaInputValue = number | ''
+
+function formatQuotaInputValue(value: QuotaInputValue): string {
+  return formatQuota(value === '' ? 0 : value)
+}
 
 type QuotaSettingsSectionProps = {
   defaultValues: QuotaFormValues
@@ -106,11 +114,10 @@ export function QuotaSettingsSection({
   const updateOption = useUpdateOption()
   const quotaSchema = createQuotaSettingsSchema(t)
   const handleNumberChange =
-    (onChange: (value: number | string) => void) =>
+    (onChange: (value: QuotaInputValue) => void) =>
     (event: ChangeEvent<HTMLInputElement>) => {
-      onChange(
-        event.target.value === '' ? '' : event.currentTarget.valueAsNumber
-      )
+      const value = event.currentTarget.valueAsNumber
+      onChange(Number.isNaN(value) ? '' : value)
     }
 
   const { form, handleSubmit, isDirty, isSubmitting } =
@@ -170,7 +177,12 @@ export function QuotaSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Initial quota given to new users')}
+                    {t(
+                      'Initial quota given to new users ({{formattedQuota}})',
+                      {
+                        formattedQuota: formatQuotaInputValue(field.value),
+                      }
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -218,7 +230,12 @@ export function QuotaSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Quota given to users who invite others')}
+                    {t(
+                      'Quota given to users who invite others ({{formattedQuota}})',
+                      {
+                        formattedQuota: formatQuotaInputValue(field.value),
+                      }
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -242,7 +259,9 @@ export function QuotaSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Quota given to invited users')}
+                    {t('Quota given to invited users ({{formattedQuota}})', {
+                      formattedQuota: formatQuotaInputValue(field.value),
+                    })}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

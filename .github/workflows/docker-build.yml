@@ -287,8 +287,9 @@ jobs:
 
       - name: Sign manifests with cosign
         run: |
-          cosign sign --yes calciumion/new-api:${TAG}
-          cosign sign --yes calciumion/new-api:latest
+          cosign sign --yes "${IMAGE_REPOSITORY}:${TAG}"
+          cosign sign --yes "${IMAGE_REPOSITORY}:${RELEASE_TAG}"
+          cosign sign --yes "${IMAGE_REPOSITORY}:latest"
 
       - name: Manifest summary
         run: |

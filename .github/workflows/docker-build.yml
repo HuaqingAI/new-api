@@ -225,6 +225,9 @@ jobs:
       IMAGE_REGISTRY_USERNAME: ${{ secrets.IMAGE_REGISTRY_USERNAME || secrets.DOCKERHUB_USERNAME }}
       IMAGE_REGISTRY_PASSWORD: ${{ secrets.IMAGE_REGISTRY_PASSWORD || secrets.DOCKERHUB_TOKEN }}
 
+    permissions:
+      id-token: write
+
     steps:
       - name: Set version
         env:
@@ -278,6 +281,14 @@ jobs:
             -t "${IMAGE_REPOSITORY}:latest" \
             "${IMAGE_REPOSITORY}:latest-amd64" \
             "${IMAGE_REPOSITORY}:latest-arm64"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign manifests with cosign
+        run: |
+          cosign sign --yes calciumion/new-api:${TAG}
+          cosign sign --yes calciumion/new-api:latest
 
       - name: Manifest summary
         run: |

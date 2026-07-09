@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -13,21 +14,8 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
-
-// TestDecimalToQuotaSaturation guards the billing invariant that an oversized
-// quota product (e.g. per-call price multiplied by a huge image n ratio) must
-// saturate instead of wrapping into a negative charge (credit).
-func TestDecimalToQuotaSaturation(t *testing.T) {
-	// 2000 quota per call * n=18446744073686646784 overflows int64.
-	overflowing := decimal.NewFromInt(2000).Mul(decimal.NewFromFloat(1.8446744073686647e19))
-	require.Equal(t, math.MaxInt32, decimalToQuota(overflowing))
-
-	require.Equal(t, math.MinInt32, decimalToQuota(overflowing.Neg()))
-	require.Equal(t, 42, decimalToQuota(decimal.NewFromFloat(41.7)))
-}
 
 func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -452,4 +440,53 @@ func TestComposeTieredTextQuotaErrorFallbackUsesPreConsumedQuota(t *testing.T) {
 
 	require.Equal(t, int64(12500), summary.ToolCallSurchargeQuota.Round(0).IntPart())
 	require.Equal(t, 14500, quota)
+}
+
+// TestTryTieredSettleRecordsClampOnOverflow guards that an oversized tiered
+// settlement both saturates the quota and records the clamp on RelayInfo, so
+// every consume path (text, audio, WSS) can surface it under admin_info.
+func TestTryTieredSettleRecordsClampOnOverflow(t *testing.T) {
+	// exprOutput = p * 1e9; quotaBeforeGroup = p*1e9 / 1e6 * 5e5 far exceeds
+	// MaxInt32 and must saturate.
+	exprStr := `tier("base", p * 1000000000)`
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "overflow-model",
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:  "tiered_expr",
+			ExprString:   exprStr,
+			ExprHash:     billingexpr.ExprHashString(exprStr),
+			GroupRatio:   1,
+			QuotaPerUnit: 500_000,
+		},
+	}
+
+	ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1_000_000_000})
+
+	require.True(t, ok)
+	require.NotNil(t, result)
+	require.Equal(t, math.MaxInt32, quota, "oversized settlement must clamp, never wrap negative")
+	require.NotNil(t, relayInfo.QuotaClamp, "clamp must be recorded on RelayInfo for admin auditing")
+	require.Equal(t, common.QuotaClampOverflow, relayInfo.QuotaClamp.Kind)
+}
+
+// TestTryTieredSettleNoClampInRange confirms an in-range settlement leaves
+// RelayInfo.QuotaClamp nil.
+func TestTryTieredSettleNoClampInRange(t *testing.T) {
+	exprStr := `tier("base", p * 2 + c * 10)`
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "in-range-model",
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:  "tiered_expr",
+			ExprString:   exprStr,
+			ExprHash:     billingexpr.ExprHashString(exprStr),
+			GroupRatio:   1,
+			QuotaPerUnit: 500_000,
+		},
+	}
+
+	ok, _, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1000, C: 500})
+
+	require.True(t, ok)
+	require.NotNil(t, result)
+	require.Nil(t, relayInfo.QuotaClamp, "in-range settlement must not record a clamp")
 }

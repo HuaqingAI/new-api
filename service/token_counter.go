@@ -208,14 +208,13 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 			if err != nil {
 				return 0, fmt.Errorf("error getting audio duration: %v", err)
 			}
-			// 一分钟 1000 token，与 $price / minute 对齐。
-			// duration 来自用户上传文件的元数据，可被伪造成天文数字，
-			// 必须饱和转换防止 int 回绕成负数 token。
-			audioTokens := common.QuotaFromFloat(math.Round(math.Ceil(duration) / 60.0 * 1000))
-			if audioTokens < 0 {
-				audioTokens = 0
+			// duration 来自用户上传文件的元数据，可被伪造成天文数字或负数。
+			// 负值会让 token 估算变成负数（低估预扣费），先钳到 0 再转换。
+			if duration < 0 {
+				duration = 0
 			}
-			totalAudioToken += audioTokens
+			// 一分钟 1000 token，与 $price / minute 对齐。
+			totalAudioToken += common.QuotaRound(math.Ceil(duration) / 60.0 * 1000)
 		}
 		return totalAudioToken, nil
 	}

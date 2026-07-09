@@ -25,6 +25,9 @@ import type {
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
   ReorderUserSubscriptionRequest,
+  ResetUserSubscriptionsRequest,
+  ResetPlanSubscriptionsRequest,
+  SubscriptionResetResult,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
@@ -116,10 +119,32 @@ export async function reorderUserSubscriptionByAdmin(
   return res.data
 }
 
+export async function resetUserSubscriptionsByPlan(
+  userId: number,
+  data: ResetUserSubscriptionsRequest
+): Promise<ApiResponse<SubscriptionResetResult>> {
+  const res = await api.post(
+    `/api/subscription/admin/users/${userId}/subscriptions/reset`,
+    data
+  )
+  return res.data
+}
+
 export async function reorderSelfSubscription(
   data: ReorderUserSubscriptionRequest
 ): Promise<ApiResponse<UserSubscriptionRecord[]>> {
   const res = await api.post('/api/subscription/self/reorder', data)
+  return res.data
+}
+
+export async function resetPlanSubscriptions(
+  planId: number,
+  data: ResetPlanSubscriptionsRequest
+): Promise<ApiResponse<SubscriptionResetResult>> {
+  const res = await api.post(
+    `/api/subscription/admin/plans/${planId}/subscriptions/reset`,
+    data
+  )
   return res.data
 }
 

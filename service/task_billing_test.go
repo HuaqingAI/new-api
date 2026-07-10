@@ -435,6 +435,220 @@ func TestNewBillingSessionSubscriptionFirstHonorsReorderedEnterpriseWalletOrder(
 	assert.Equal(t, int64(0), enterprise.AmountUsed)
 }
 
+func TestNewBillingSessionSubscriptionFirstFallsBackToWallet(t *testing.T) {
+	truncate(t)
+
+	const userID = 41
+	const initialWalletQuota, preConsumedQuota = 1000, 200
+	const firstSubscriptionID, secondSubscriptionID = 411, 412
+	seedUser(t, userID, initialWalletQuota)
+
+	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  firstSubscriptionID,
+		UserId:              userID,
+		PlanId:              0,
+		AmountTotal:         1000,
+		AmountUsed:          950,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		SortOrder:           100,
+		AllowWalletOverflow: false,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  secondSubscriptionID,
+		UserId:              userID,
+		PlanId:              0,
+		AmountTotal:         1000,
+		AmountUsed:          900,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		SortOrder:           200,
+		AllowWalletOverflow: true,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(nil)
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "subscription-first-wallet-fallback",
+		UserId:          userID,
+		OriginModelName: "gpt-4o-mini",
+		UserQuota:       initialWalletQuota,
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	assert.Equal(t, BillingSourceWallet, relayInfo.BillingSource)
+	assert.Equal(t, initialWalletQuota-preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(950), getSubscriptionUsed(t, firstSubscriptionID))
+	assert.Equal(t, int64(900), getSubscriptionUsed(t, secondSubscriptionID))
+}
+
+func TestNewBillingSessionSubscriptionFirstReturnsWalletInsufficient(t *testing.T) {
+	truncate(t)
+
+	const userID = 42
+	const initialWalletQuota, preConsumedQuota = 100, 200
+	const firstSubscriptionID, secondSubscriptionID = 421, 422
+	seedUser(t, userID, initialWalletQuota)
+
+	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  firstSubscriptionID,
+		UserId:              userID,
+		PlanId:              0,
+		AmountTotal:         1000,
+		AmountUsed:          950,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		SortOrder:           100,
+		AllowWalletOverflow: false,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  secondSubscriptionID,
+		UserId:              userID,
+		PlanId:              0,
+		AmountTotal:         1000,
+		AmountUsed:          900,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		SortOrder:           200,
+		AllowWalletOverflow: true,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(nil)
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "subscription-first-wallet-insufficient",
+		UserId:          userID,
+		OriginModelName: "gpt-4o-mini",
+		UserQuota:       initialWalletQuota,
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
+	require.Nil(t, session)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), "预扣费额度失败")
+	assert.NotContains(t, apiErr.Error(), "订阅额度不足")
+	assert.Equal(t, initialWalletQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(950), getSubscriptionUsed(t, firstSubscriptionID))
+	assert.Equal(t, int64(900), getSubscriptionUsed(t, secondSubscriptionID))
+}
+
+func TestNewBillingSessionSubscriptionOnlyDoesNotFallbackToWallet(t *testing.T) {
+	truncate(t)
+
+	const userID = 43
+	const initialWalletQuota, preConsumedQuota = 1000, 200
+	const subscriptionID = 431
+	seedUser(t, userID, initialWalletQuota)
+
+	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  subscriptionID,
+		UserId:              userID,
+		PlanId:              0,
+		AmountTotal:         1000,
+		AmountUsed:          950,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		AllowWalletOverflow: true,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(nil)
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "subscription-only-insufficient",
+		UserId:          userID,
+		OriginModelName: "gpt-4o-mini",
+		UserQuota:       initialWalletQuota,
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_only",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
+	require.Nil(t, session)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), "订阅额度不足")
+	assert.Equal(t, initialWalletQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(950), getSubscriptionUsed(t, subscriptionID))
+}
+
+func TestNewBillingSessionSubscriptionFirstDoesNotFallbackOnNonQuotaError(t *testing.T) {
+	truncate(t)
+
+	const userID = 44
+	const initialWalletQuota, preConsumedQuota = 1000, 200
+	const subscriptionID = 441
+	seedUser(t, userID, initialWalletQuota)
+
+	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		Id:                  subscriptionID,
+		UserId:              userID,
+		PlanId:              999999,
+		AmountTotal:         1000,
+		AmountUsed:          0,
+		StartTime:           now - 60,
+		EndTime:             now + 86400,
+		Status:              "active",
+		Source:              model.SubscriptionSourceTypeAdmin,
+		SourceType:          model.SubscriptionSourceTypeAdmin,
+		AllowWalletOverflow: true,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(nil)
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "subscription-first-non-quota-error",
+		UserId:          userID,
+		OriginModelName: "gpt-4o-mini",
+		UserQuota:       initialWalletQuota,
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
+	require.Nil(t, session)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeUpdateDataError, apiErr.GetErrorCode())
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Equal(t, initialWalletQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(0), getSubscriptionUsed(t, subscriptionID))
+}
+
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

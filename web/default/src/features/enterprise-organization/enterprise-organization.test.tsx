@@ -1273,7 +1273,7 @@ describe('Enterprise organization department tree workflow', () => {
 
   test('renders governance activity with zh locale translations and safe fallbacks', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const html = renderToStaticMarkup(
         <I18nextProvider i18n={i18n}>
@@ -2317,7 +2317,7 @@ describe('Enterprise organization department tree workflow', () => {
 
   test('renders quota request governance surfaces with zh locale without internal status fallback', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const html = renderToStaticMarkup(
         <I18nextProvider i18n={i18n}>

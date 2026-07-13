@@ -439,8 +439,8 @@ export function SubscriptionPlansCard({
         <CardContent className='space-y-4 p-3 sm:p-5'>
           <Skeleton className='h-20 w-full' />
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className='h-48 w-full' />
+            {['first', 'second', 'third'].map((key) => (
+              <Skeleton key={key} className='h-48 w-full' />
             ))}
           </div>
         </CardContent>
@@ -458,6 +458,7 @@ export function SubscriptionPlansCard({
         title={t('Subscription Plans')}
         description={t('Subscribe to a plan for model access')}
         icon={<Crown className='h-4 w-4' />}
+        iconTone='warning'
         disableHoverEffect
         contentClassName='space-y-4 sm:space-y-5'
       >
@@ -609,6 +610,7 @@ export function SubscriptionPlansCard({
                     subscription,
                     t
                   )
+                  const nextResetTime = subscription?.next_reset_time ?? 0
 
                   return (
                     <div
@@ -624,25 +626,11 @@ export function SubscriptionPlansCard({
                               planTitle
                             )}
                           </span>
-                          {statusDisplay.isActive ? (
-                            <StatusBadge
-                              label={statusDisplay.label}
-                              variant={statusDisplay.variant}
-                              copyable={false}
-                            />
-                          ) : statusDisplay.isCancelled ? (
-                            <StatusBadge
-                              label={statusDisplay.label}
-                              variant={statusDisplay.variant}
-                              copyable={false}
-                            />
-                          ) : (
-                            <StatusBadge
-                              label={statusDisplay.label}
-                              variant={statusDisplay.variant}
-                              copyable={false}
-                            />
-                          )}
+                          <StatusBadge
+                            label={statusDisplay.label}
+                            variant={statusDisplay.variant}
+                            copyable={false}
+                          />
                         </div>
                         {statusDisplay.isActive && remainDays !== null && (
                           <span className='text-muted-foreground'>
@@ -655,15 +643,12 @@ export function SubscriptionPlansCard({
                       <div className='text-muted-foreground mt-1.5'>
                         {expiryDisplay.label} {expiryDisplay.value}
                       </div>
-                      {statusDisplay.isActive &&
-                        (subscription?.next_reset_time ?? 0) > 0 && (
-                          <div className='text-muted-foreground mt-1'>
-                            {t('Next reset')}:{' '}
-                            {new Date(
-                              subscription!.next_reset_time! * 1000
-                            ).toLocaleString()}
-                          </div>
-                        )}
+                      {statusDisplay.isActive && nextResetTime > 0 && (
+                        <div className='text-muted-foreground mt-1'>
+                          {t('Next reset')}:{' '}
+                          {new Date(nextResetTime * 1000).toLocaleString()}
+                        </div>
+                      )}
                       <div className='text-muted-foreground mt-1'>
                         {t('Source')}:{' '}
                         {getSubscriptionSourceLabel(

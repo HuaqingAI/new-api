@@ -156,7 +156,7 @@ describe('Subscription plans card enterprise wallet helpers', () => {
 
   test('renders enterprise wallet title and managed note with zh locale translations', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const subscription = {
         id: 12,
@@ -190,7 +190,7 @@ describe('Subscription plans card enterprise wallet helpers', () => {
 
   test('maps billing preference and subscription source without raw internal fallback', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       assert.equal(
         getBillingPreferenceLabel('subscription_first', i18n.t.bind(i18n)),
@@ -394,7 +394,7 @@ describe('Subscription plans card enterprise wallet helpers', () => {
 
   test('enterprise wallet non-positive expiry semantics are translated in zh locale', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const subscription = {
         id: 17,

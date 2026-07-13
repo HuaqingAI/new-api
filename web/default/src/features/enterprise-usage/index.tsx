@@ -1978,7 +1978,7 @@ function EnterpriseUsageSummaryCards(props: {
               },
             ]}
             icon={Rows3}
-            tone='teal'
+            tone='accent-1'
           />
         </CardContent>
       </Card>
@@ -1999,7 +1999,7 @@ function EnterpriseUsageSummaryCards(props: {
               },
             ]}
             icon={Coins}
-            tone='rose'
+            tone='accent-2'
           />
         </CardContent>
       </Card>
@@ -2025,7 +2025,7 @@ function EnterpriseUsageSummaryCards(props: {
               },
             ]}
             icon={BarChart3}
-            tone='gray'
+            tone='accent-3'
           />
         </CardContent>
       </Card>
@@ -2046,7 +2046,7 @@ function EnterpriseUsageSummaryCards(props: {
               },
             ]}
             icon={Users}
-            tone='teal'
+            tone='accent-1'
           />
         </CardContent>
       </Card>

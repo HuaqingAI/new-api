@@ -106,7 +106,7 @@ describe('User subscription dialog enterprise allocation labels', () => {
 
   test('maps source detail labels without leaking raw internal codes', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       assert.equal(
         renderSubscriptionSourceTypeLabel(

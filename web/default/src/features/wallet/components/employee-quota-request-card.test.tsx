@@ -103,7 +103,7 @@ describe('Employee quota request wallet entry', () => {
 
   test('formats wallet quota request budget surfaces with zh locale translations', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const budget = {
         ...quotaRequestBudget({
@@ -158,7 +158,7 @@ describe('Employee quota request wallet entry', () => {
 
   test('renders wallet quota request form labels with zh locale translations', async () => {
     const previousLanguage = i18n.language
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('zhCN')
     try {
       const html = renderToStaticMarkup(
         <QueryClientProvider client={new QueryClient()}>

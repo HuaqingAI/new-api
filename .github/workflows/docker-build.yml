@@ -201,6 +201,8 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign image with cosign
+        env:
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
         run: cosign sign --yes "${IMAGE_REPOSITORY}@${{ steps.build.outputs.digest }}"
 
       - name: Image summary
@@ -286,6 +288,8 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign manifests with cosign
+        env:
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
         run: |
           cosign sign --yes "${IMAGE_REPOSITORY}:${TAG}"
           cosign sign --yes "${IMAGE_REPOSITORY}:${RELEASE_TAG}"

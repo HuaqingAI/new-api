@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -27,6 +28,10 @@ type oauthAPIResponse struct {
 }
 
 func setupOAuthControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.Client) {
+	return setupOAuthControllerTestWithSession(t, true)
+}
+
+func setupOAuthControllerTestWithSession(t *testing.T, authenticated bool) (*gin.Engine, *gorm.DB, apmodel.Client) {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -59,9 +64,11 @@ func setupOAuthControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.Clie
 	router := gin.New()
 	router.Use(sessions.Sessions("test-session", store))
 	router.Use(func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", 999)
-		require.NoError(t, session.Save())
+		if authenticated {
+			session := sessions.Default(c)
+			session.Set("id", 999)
+			require.NoError(t, session.Save())
+		}
 		c.Next()
 	})
 	router.GET("/api/agent-platform/oauth/authorize", OAuthAuthorize)
@@ -129,6 +136,41 @@ func TestOAuthControllerWorkflow(t *testing.T) {
 	require.NotEmpty(t, tokenData.AccessToken)
 	require.NotEmpty(t, tokenData.RefreshToken)
 	require.NotEmpty(t, tokenData.GrantId)
+}
+
+func TestOAuthControllerRedirectModeSendsBrowserToClientCallback(t *testing.T) {
+	router, _, client := setupOAuthControllerTest(t)
+
+	challenge := oauthTestPKCEChallenge("verifier-redirect")
+	authURL := "/api/agent-platform/oauth/authorize?client_id=" + client.ClientId + "&redirect_uri=https://example.com/callback&scope=skills.read&state=s-redirect&code_challenge=" + challenge + "&code_challenge_method=S256&response_mode=redirect"
+	recorder := performOAuthRequest(t, router, http.MethodGet, authURL, nil)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.NotEmpty(t, location)
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.Equal(t, "https", parsed.Scheme)
+	require.Equal(t, "example.com", parsed.Host)
+	require.Equal(t, "/callback", parsed.Path)
+	require.NotEmpty(t, parsed.Query().Get("code"))
+	require.Equal(t, "s-redirect", parsed.Query().Get("state"))
+}
+
+func TestOAuthControllerRedirectModeSendsAnonymousBrowserToSignIn(t *testing.T) {
+	router, _, client := setupOAuthControllerTestWithSession(t, false)
+
+	challenge := oauthTestPKCEChallenge("verifier-login")
+	authURL := "/api/agent-platform/oauth/authorize?client_id=" + client.ClientId + "&redirect_uri=https://example.com/callback&scope=skills.read&state=s-login&code_challenge=" + challenge + "&code_challenge_method=S256&response_mode=redirect"
+	recorder := performOAuthRequest(t, router, http.MethodGet, authURL, nil)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.NotEmpty(t, location)
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.Equal(t, "/sign-in", parsed.Path)
+	require.Equal(t, authURL, parsed.Query().Get("redirect"))
 }
 
 func TestOAuthControllerRefreshAndRevokeWorkflow(t *testing.T) {

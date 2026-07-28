@@ -3,13 +3,16 @@ package controller
 import (
 	"context"
 	"errors"
+	"html"
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	controlleraionui "github.com/QuantumNous/new-api/controller/aionui"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -56,6 +59,9 @@ func HandleDingTalkOAuth(c *gin.Context) {
 	result, err := oauthService.LoginWithIdentity(c.Request.Context(), tenantId, identity, session)
 	if err != nil {
 		writeDingTalkOAuthError(c, err)
+		return
+	}
+	if handleAionUiDesktopLogin(c, result.User, identity) {
 		return
 	}
 	setupLogin(result.User, c)
@@ -125,4 +131,61 @@ func sessionInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func handleAionUiDesktopLogin(c *gin.Context, user *model.User, identity entservice.DingTalkOAuthIdentity) bool {
+	session := sessions.Default(c)
+	redirectURI, _ := session.Get(controlleraionui.DesktopSessionRedirectURI).(string)
+	state, _ := session.Get(controlleraionui.DesktopSessionState).(string)
+	if redirectURI == "" && state == "" {
+		return false
+	}
+	if redirectURI == "" || state == "" {
+		writeAionUiDesktopLoginError(c, "desktop login session is incomplete")
+		return true
+	}
+
+	if user != nil && model.NormalizeEmail(user.Email) == "" && model.NormalizeEmail(identity.Email) != "" {
+		email := model.NormalizeEmail(identity.Email)
+		if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("email", email).Error; err != nil {
+			writeAionUiDesktopLoginError(c, "failed to persist DingTalk email: "+err.Error())
+			return true
+		}
+		user.Email = email
+	}
+
+	code, err := serviceaionui.DefaultDesktopAuthService().IssueCode(user, redirectURI, state)
+	if err != nil {
+		writeAionUiDesktopLoginError(c, err.Error())
+		return true
+	}
+	callbackURL, err := serviceaionui.BuildDesktopCallbackURL(redirectURI, code, state)
+	if err != nil {
+		writeAionUiDesktopLoginError(c, err.Error())
+		return true
+	}
+	if err := setupLoginSession(user, c); err != nil {
+		writeAionUiDesktopLoginError(c, err.Error())
+		return true
+	}
+	session.Delete(controlleraionui.DesktopSessionRedirectURI)
+	session.Delete(controlleraionui.DesktopSessionState)
+	session.Delete("oauth_state")
+	if err := session.Save(); err != nil {
+		writeAionUiDesktopLoginError(c, err.Error())
+		return true
+	}
+	c.Redirect(http.StatusFound, callbackURL)
+	return true
+}
+
+func writeAionUiDesktopLoginError(c *gin.Context, message string) {
+	common.SysError("[AionUi Desktop Login] failed: " + message)
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(
+		http.StatusBadRequest,
+		`<!doctype html><html><head><meta charset="utf-8"><title>AionUi 登录失败</title></head><body style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:48px;line-height:1.6"><h2>AionUi 登录失败</h2><p>new-api 已完成钉钉登录，但无法向 AionUi 签发桌面登录凭证。</p><pre style="white-space:pre-wrap;background:#f5f5f5;padding:16px;border-radius:6px">`+
+			html.EscapeString(message)+
+			`</pre><p>请保留此页面并查看 new-api 控制台日志中的 [AionUi Desktop Login] failed 记录。</p></body></html>`,
+	)
 }

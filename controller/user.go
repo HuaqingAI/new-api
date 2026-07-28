@@ -16,8 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/service/authz"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -137,19 +137,10 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
-	model.UpdateUserLastLoginAt(user.Id)
-	session := sessions.Default(c)
-	session.Set("id", user.Id)
-	session.Set("username", user.Username)
-	session.Set("role", user.Role)
-	session.Set("status", user.Status)
-	session.Set("group", user.Group)
-	err := session.Save()
-	if err != nil {
+	if err := setupLoginSession(user, c); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
 	}
-	recordLoginAudit(user, c)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",
 		"success": true,
@@ -162,6 +153,21 @@ func setupLogin(user *model.User, c *gin.Context) {
 			"group":        user.Group,
 		},
 	})
+}
+
+func setupLoginSession(user *model.User, c *gin.Context) error {
+	model.UpdateUserLastLoginAt(user.Id)
+	session := sessions.Default(c)
+	session.Set("id", user.Id)
+	session.Set("username", user.Username)
+	session.Set("role", user.Role)
+	session.Set("status", user.Status)
+	session.Set("group", user.Group)
+	if err := session.Save(); err != nil {
+		return err
+	}
+	recordLoginAudit(user, c)
+	return nil
 }
 
 func Logout(c *gin.Context) {

@@ -55,6 +55,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 		RegisterAgentPlatformRouter(apiRouter)
+		RegisterAionUiRouter(apiRouter)
 		RegisterEnterpriseRouter(apiRouter)
 		RegisterOpenCapabilitiesRouter(apiRouter)
 

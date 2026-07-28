@@ -156,12 +156,16 @@ sessionResolved:
 	// get header New-Api-User
 	apiUserIdStr := c.Request.Header.Get("New-Api-User")
 	if apiUserIdStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": common.TranslateMessage(c, i18n.MsgAuthUserIdNotProvided),
-		})
-		c.Abort()
-		return
+		if sessionUserId, ok := id.(int); !useAccessToken && ok && sessionUserId > 0 && canBootstrapSelfRequest(c) {
+			apiUserIdStr = strconv.Itoa(sessionUserId)
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserIdNotProvided),
+			})
+			c.Abort()
+			return
+		}
 	}
 	apiUserId, err := strconv.Atoi(apiUserIdStr)
 	if err != nil {
@@ -225,6 +229,10 @@ sessionResolved:
 	c.Next()
 
 	finishAdminAudit(c, auditWriter)
+}
+
+func canBootstrapSelfRequest(c *gin.Context) bool {
+	return c.Request.Method == http.MethodGet && c.FullPath() == "/api/user/self"
 }
 
 func TryUserAuth() func(c *gin.Context) {

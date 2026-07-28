@@ -73,6 +73,83 @@ func TestAdminAuthRefreshesStaleSessionRoleFromDatabase(t *testing.T) {
 	require.NotEmpty(t, recorder.Result().Cookies())
 }
 
+func TestUserAuthBootstrapsSelfRequestFromSession(t *testing.T) {
+	router := setupUserAuthBootstrapRouter(t)
+	cookies := loginAuthTestUser(t, router)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	require.Contains(t, recorder.Body.String(), `"id":92`)
+}
+
+func TestUserAuthDoesNotBootstrapOtherRequestsFromSession(t *testing.T) {
+	router := setupUserAuthBootstrapRouter(t)
+	cookies := loginAuthTestUser(t, router)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"success":false`)
+}
+
+func setupUserAuthBootstrapRouter(t *testing.T) *gin.Engine {
+	t.Helper()
+	db := setupAuthTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       92,
+		Username: "desktop-login",
+		Password: "password123",
+		AffCode:  "desktop-login-aff",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}).Error)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("auth-bootstrap-test"))))
+	router.GET("/login", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "desktop-login")
+		session.Set("role", common.RoleCommonUser)
+		session.Set("id", 92)
+		session.Set("status", common.UserStatusEnabled)
+		session.Set("group", "default")
+		require.NoError(t, session.Save())
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/api/user/self", UserAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"id":      c.GetInt("id"),
+		})
+	})
+	router.GET("/api/protected", UserAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+	})
+	return router
+}
+
+func loginAuthTestUser(t *testing.T, router *gin.Engine) []*http.Cookie {
+	t.Helper()
+	loginRecorder := httptest.NewRecorder()
+	router.ServeHTTP(loginRecorder, httptest.NewRequest(http.MethodGet, "/login", nil))
+	require.Equal(t, http.StatusNoContent, loginRecorder.Code)
+	return loginRecorder.Result().Cookies()
+}
+
 func setupAuthTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -86,6 +163,9 @@ func setupAuthTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 
 	t.Cleanup(func() {
+		if model.DB == db {
+			model.DB = nil
+		}
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()

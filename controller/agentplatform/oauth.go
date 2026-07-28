@@ -2,6 +2,8 @@ package agentplatform
 
 import (
 	"errors"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -13,8 +15,13 @@ import (
 )
 
 func OAuthAuthorize(c *gin.Context) {
+	redirectMode := wantsOAuthAuthorizeRedirect(c)
 	userID, ok := sessionUserID(c)
 	if !ok || userID <= 0 {
+		if redirectMode {
+			redirectToSignIn(c)
+			return
+		}
 		common.ApiErrorMsg(c, "not logged in")
 		return
 	}
@@ -36,6 +43,10 @@ func OAuthAuthorize(c *gin.Context) {
 		writeOAuthError(c, err)
 		return
 	}
+	if redirectMode {
+		redirectOAuthAuthorizeSuccess(c, result)
+		return
+	}
 	common.ApiSuccess(c, dtoagentplatform.OAuthAuthorizeResponse{
 		ClientId:          result.ClientId,
 		ContractVersion:   result.ContractVersion,
@@ -45,6 +56,33 @@ func OAuthAuthorize(c *gin.Context) {
 		RedirectURI:       result.RedirectURI,
 		ConsentRecorded:   result.ConsentRecorded,
 	})
+}
+
+func wantsOAuthAuthorizeRedirect(c *gin.Context) bool {
+	if strings.EqualFold(strings.TrimSpace(c.Query("response_mode")), "redirect") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/html")
+}
+
+func redirectToSignIn(c *gin.Context) {
+	target := c.Request.URL.RequestURI()
+	c.Redirect(http.StatusFound, "/sign-in?redirect="+url.QueryEscape(target))
+}
+
+func redirectOAuthAuthorizeSuccess(c *gin.Context, result apservice.AuthorizeResult) {
+	redirectURL, err := url.Parse(result.RedirectURI)
+	if err != nil {
+		writeOAuthError(c, apservice.ErrInvalidAuthorizeInput)
+		return
+	}
+	query := redirectURL.Query()
+	query.Set("code", result.AuthorizationCode)
+	if strings.TrimSpace(result.State) != "" {
+		query.Set("state", result.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+	c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 func OAuthToken(c *gin.Context) {

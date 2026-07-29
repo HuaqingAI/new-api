@@ -16,32 +16,44 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
   BookOpen,
   Bot,
   Boxes,
-  CircleOff,
-  FileJson2,
-  Layers3,
-  Pencil,
+  CheckCircle2,
+  Download,
+  ChevronsUpDown,
+  Image,
   PanelRightOpen,
   Plus,
   Puzzle,
   RefreshCw,
   Rocket,
   Save,
-  ShieldOff,
   SquarePen,
+  Trash2,
   Unplug,
+  XCircle,
 } from 'lucide-react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ElementType,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
-import { formatTimestamp } from '@/lib/format'
+
+import {
+  sideDrawerContentClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
+import { ErrorState } from '@/components/error-state'
+import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -51,6 +63,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -74,6 +95,12 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Sheet,
   SheetContent,
@@ -92,31 +119,44 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { getDepartmentTree } from '@/features/enterprise-organization/api'
+import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
+import { searchUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
+import { formatTimestamp } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
-  sideDrawerContentClassName,
-  sideDrawerHeaderClassName,
-} from '@/components/drawer-layout'
-import { ErrorState } from '@/components/error-state'
-import { SectionPageLayout } from '@/components/layout'
-import { StatusBadge } from '@/components/status-badge'
-import type {
-  AgentPlatformItem,
-  AgentPlatformLifecycleAction,
-  AgentPlatformListResponse,
-  AgentPlatformResourceType,
-  CreateAgentPlatformResourceRequest,
-  CreateAgentPlatformVersionRequest,
-} from './api'
-import {
-  createAgentPlatformResource,
-  createAgentPlatformResourceVersion,
+  type AgentPlatformAgentItem,
+  type AgentPlatformAgentVersion,
+  type AgentPlatformGrantRequest,
+  type AgentPlatformItem,
+  type AgentPlatformJsonValue,
+  type AgentPlatformListResponse,
+  type AgentPlatformResourceType,
+  createAgentPlatformAgent,
+  createAgentPlatformKnowledge,
+  createAgentPlatformMcp,
+  createAgentPlatformSkill,
+  deleteAgentPlatformResource,
   getAgentPlatformAgents,
+  getAgentPlatformAgentVersionGrants,
+  getAgentPlatformAgentVersions,
   getAgentPlatformKnowledge,
+  getAgentPlatformMcps,
+  getAgentPlatformPublishDefaults,
   getAgentPlatformResource,
-  getAgentPlatformResourceVersion,
+  getAgentPlatformSkillPackageDownloadUrl,
   getAgentPlatformSkills,
-  runAgentPlatformLifecycleAction,
-  updateAgentPlatformResource,
+  publishAgentPlatformAgent,
+  setAgentPlatformResourceEnabled,
+  updateAgentPlatformAgent,
+  updateAgentPlatformKnowledge,
+  updateAgentPlatformMcp,
+  updateAgentPlatformSkill,
+  uploadAgentPlatformAvatar,
+  uploadAgentPlatformSkillPackage,
 } from './api'
 
 type ResourceListCardProps = {
@@ -126,7 +166,7 @@ type ResourceListCardProps = {
   emptyDescription: string
   error?: unknown
   errorPrefix: string
-  icon: React.ElementType
+  icon: ElementType
   isError: boolean
   isLoading: boolean
   onCreate: () => void
@@ -134,6 +174,7 @@ type ResourceListCardProps = {
   onOpenEdit: (item: AgentPlatformItem) => void
   onRetry: () => void
   response?: AgentPlatformListResponse
+  showLatestVersion: boolean
   title: string
   typeLabel: string
 }
@@ -141,8 +182,15 @@ type ResourceListCardProps = {
 type ResourceFormState = {
   type: AgentPlatformResourceType
   displayName: string
-  ownerUserId: string
-  tenantId: string
+  description: string
+  avatar: string
+  mcpConfigJson: string
+  skillFile: File | null
+  externalKnowledgeId: string
+  instructions: string
+  mcpIds: string[]
+  skillIds: string[]
+  knowledgeIds: string[]
 }
 
 type ResourceEditorState =
@@ -157,45 +205,54 @@ type ResourceEditorState =
       item: AgentPlatformItem
     }
 
-type VersionFormState = {
-  version: string
-  contractVersion: string
+type AgentPlatformDetailItem = AgentPlatformItem &
+  Partial<{
+    config: AgentPlatformJsonValue
+    file_name: string
+    sha256: string
+    size_bytes: number
+    external_knowledge_id: string
+    cli_type: string
+    instructions: string
+    mcp_ids: string[]
+    skill_ids: string[]
+    knowledge_ids: string[]
+  }>
+
+type PublishFormState = {
   summary: string
-  schemaJson: string
-  invokeMode: string
-  timeoutSeconds: string
-  invokeSchemaJson: string
-  outputSchemaJson: string
-  bindingConfigJson: string
-  knowledgeMode: string
-  providerType: string
-  providerAdapterKey: string
-  providerConfigJson: string
-  querySchemaJson: string
-  citationSchemaJson: string
-  freshnessRulesJson: string
-  providerCapabilitiesJson: string
-  manifestJson: string
-  dependenciesJson: string
-  promptMetadataJson: string
-  compatibilityMetadataJson: string
+  selectedUserIds: string[]
+  selectedDepartmentIds: string[]
+  selectedUserOptions: GrantSelectOption[]
+  selectedDepartmentOptions: GrantSelectOption[]
 }
-
-const CREATE_QUERY_KEYS = {
-  skill: ['agent-platform', 'skills', 'summary'] as const,
-  knowledge: ['agent-platform', 'knowledge', 'summary'] as const,
-  agent: ['agent-platform', 'agents', 'summary'] as const,
-}
-
-const DEFAULT_CONTRACT_VERSION = '2026-06'
 
 type SummaryMetric = {
   key: string
   label: string
   value: string | number
   helper: string
-  icon: React.ElementType
+  icon: ElementType
 }
+
+type GrantSelectOption = {
+  value: string
+  label: string
+  description: string
+}
+
+const RESOURCE_QUERY_KEYS = {
+  mcp: ['agent-platform', 'mcps', 'summary'] as const,
+  skill: ['agent-platform', 'skills', 'summary'] as const,
+  knowledge: ['agent-platform', 'knowledge', 'summary'] as const,
+  agent: ['agent-platform', 'agents', 'summary'] as const,
+}
+
+const DEFAULT_MCP_CONFIG_JSON =
+  '{\n  "mcpServers": {\n    "stdio-server-example": {\n      "command": "npx",\n      "args": ["-y", "mcp-server-example"]\n    }\n  }\n}'
+
+const DEFAULT_AGENT_INSTRUCTIONS =
+  'You are an assistant managed by the Agent Platform. Follow team conventions and answer with concise, actionable guidance.'
 
 function formatStatusLabel(
   status: string,
@@ -206,6 +263,43 @@ function formatStatusLabel(
     return t('Unknown')
   }
   return t(value)
+}
+
+function formatDateTimeText(value?: string) {
+  if (!value) {
+    return '-'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString()
+}
+
+function isImageAvatar(value?: string) {
+  const avatar = value?.trim() ?? ''
+  return (
+    avatar.startsWith('/api/') ||
+    avatar.startsWith('http://') ||
+    avatar.startsWith('https://') ||
+    avatar.startsWith('data:image/')
+  )
+}
+
+function AvatarPreview(props: { value?: string }) {
+  if (!props.value) {
+    return null
+  }
+  if (isImageAvatar(props.value)) {
+    return (
+      <img
+        alt=''
+        className='size-6 rounded-full object-cover'
+        src={props.value}
+      />
+    )
+  }
+  return <span>{props.value}</span>
 }
 
 function statusVariantFor(value: string) {
@@ -224,7 +318,9 @@ function statusVariantFor(value: string) {
   }
 }
 
-function getItems(response?: AgentPlatformListResponse) {
+function getItems<TItem extends AgentPlatformItem>(
+  response?: AgentPlatformListResponse<TItem>
+) {
   return response?.success && Array.isArray(response.data?.items)
     ? response.data.items
     : []
@@ -246,8 +342,67 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function userGrantOption(user: User): GrantSelectOption {
+  const displayName = user.display_name?.trim()
+  const email = user.email?.trim()
+  const username = user.username.trim()
+  const label = displayName || username || `#${user.id}`
+  const descriptionParts = [`#${user.id}`]
+  if (username && username !== label) {
+    descriptionParts.push(username)
+  }
+  if (email) {
+    descriptionParts.push(email)
+  }
+  return {
+    value: String(user.id),
+    label,
+    description: descriptionParts.join(' · '),
+  }
+}
+
+function grantOptionFromGrant(grant: AgentPlatformGrantRequest) {
+  const subjectName = grant.subject_name?.trim()
+  const label = subjectName || `#${grant.subject_id}`
+  return {
+    value: grant.subject_id,
+    label,
+    description: subjectName ? `#${grant.subject_id}` : label,
+  }
+}
+
+function flattenDepartmentGrantOptions(
+  nodes: DepartmentTreeNode[],
+  keyword: string
+) {
+  const normalizedKeyword = keyword.trim().toLowerCase()
+  const options: GrantSelectOption[] = []
+
+  const visit = (items: DepartmentTreeNode[], path: string[]) => {
+    for (const item of items) {
+      const label = item.name || `#${item.id}`
+      const nextPath = [...path, label]
+      const description = `#${item.id} · ${nextPath.join(' / ')}`
+      const haystack = `${item.id} ${label} ${description}`.toLowerCase()
+      if (!normalizedKeyword || haystack.includes(normalizedKeyword)) {
+        options.push({
+          value: String(item.id),
+          label,
+          description,
+        })
+      }
+      visit(item.children ?? [], nextPath)
+    }
+  }
+
+  visit(nodes, [])
+  return options
+}
+
 function resourceTypeIcon(type: AgentPlatformResourceType) {
   switch (type) {
+    case 'mcp':
+      return Unplug
     case 'skill':
       return Puzzle
     case 'knowledge':
@@ -257,81 +412,40 @@ function resourceTypeIcon(type: AgentPlatformResourceType) {
   }
 }
 
-function defaultResourceFormState(
+function resourceTypeLabel(
   type: AgentPlatformResourceType,
-  item?: AgentPlatformItem
-): ResourceFormState {
-  return {
-    type,
-    displayName: item?.display_name ?? '',
-    ownerUserId: item ? String(item.owner_user_id) : '',
-    tenantId: item && item.tenant_id > 0 ? String(item.tenant_id) : '',
+  t: (key: string) => string
+) {
+  switch (type) {
+    case 'mcp':
+      return t('MCP')
+    case 'skill':
+      return t('Skill')
+    case 'knowledge':
+      return t('Knowledge')
+    case 'agent':
+      return t('Agent')
   }
 }
 
-function defaultVersionFormState(
-  resource?: AgentPlatformItem
-): VersionFormState {
-  const nextVersion = resource?.latest_version ? '' : '1.0.0'
-
-  return {
-    version: nextVersion,
-    contractVersion: DEFAULT_CONTRACT_VERSION,
-    summary: '',
-    schemaJson: '{}',
-    invokeMode: 'sync',
-    timeoutSeconds: '30',
-    invokeSchemaJson:
-      '{\n  "type": "object",\n  "properties": {},\n  "additionalProperties": true\n}',
-    outputSchemaJson:
-      '{\n  "type": "object",\n  "properties": {},\n  "additionalProperties": true\n}',
-    bindingConfigJson: '{}',
-    knowledgeMode: 'retrieval',
-    providerType: 'http_retrieval',
-    providerAdapterKey: '',
-    providerConfigJson: '{}',
-    querySchemaJson:
-      '{\n  "type": "object",\n  "required": ["query"],\n  "properties": {\n    "query": { "type": "string" }\n  }\n}',
-    citationSchemaJson:
-      '{\n  "type": "array",\n  "items": {\n    "type": "object"\n  }\n}',
-    freshnessRulesJson: '{}',
-    providerCapabilitiesJson: '{}',
-    manifestJson: '{}',
-    dependenciesJson:
-      '[\n  {\n    "resource_type": "skill",\n    "resource_id": "res_replace_me"\n  }\n]',
-    promptMetadataJson: '{}',
-    compatibilityMetadataJson: '{}',
-  }
-}
-
-function parseOptionalInt(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-  const parsed = Number(trimmed)
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error('agent_platform.validation.non_negative_integer')
-  }
-  return parsed
-}
-
-function parseRequiredPositiveInt(value: string) {
-  const trimmed = value.trim()
-  const parsed = Number(trimmed)
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error('agent_platform.validation.positive_integer')
-  }
-  return parsed
-}
-
-function parseJsonField(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
+function formatJsonPreview(value: unknown) {
+  if (value == null || value === '') {
+    return ''
   }
   try {
-    return JSON.parse(trimmed)
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function parseJsonField(value: string): AgentPlatformJsonValue {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error('agent_platform.validation.json_required')
+  }
+  try {
+    return JSON.parse(trimmed) as AgentPlatformJsonValue
   } catch {
     throw new Error('agent_platform.validation.json')
   }
@@ -347,78 +461,67 @@ function translateFormError(
       return t('Enter a non-negative integer')
     case 'agent_platform.validation.positive_integer':
       return t('Enter a positive integer')
+    case 'agent_platform.validation.json_required':
+      return t('JSON configuration is required')
     case 'agent_platform.validation.json':
       return t('JSON fields must contain valid JSON')
+    case 'agent_platform.validation.zip_required':
+      return t('Upload a zip package')
+    case 'agent_platform.validation.grant_required':
+      return t('Add at least one user or department grant')
+    case 'agent_platform.validation.subject_required':
+      return t('Grant subject ID is required')
+    case 'agent_platform.validation.current_user_required':
+      return t('Current user is required')
     default:
       return message
   }
 }
 
-function formatJsonPreview(value: unknown) {
-  if (value == null || value === '') {
-    return ''
-  }
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
+function defaultResourceFormState(
+  type: AgentPlatformResourceType,
+  item?: AgentPlatformItem
+): ResourceFormState {
+  const detail = item as AgentPlatformDetailItem | undefined
+  const agent = item as AgentPlatformAgentItem | undefined
+  const mcpConfig =
+    detail?.resource_type === 'mcp'
+      ? formatJsonPreview(detail.config)
+      : DEFAULT_MCP_CONFIG_JSON
+
+  return {
+    type,
+    displayName: item?.display_name ?? '',
+    description: item?.description ?? '',
+    avatar: item?.avatar ?? '',
+    mcpConfigJson: mcpConfig || DEFAULT_MCP_CONFIG_JSON,
+    skillFile: null,
+    externalKnowledgeId: detail?.external_knowledge_id ?? '',
+    instructions: agent?.instructions ?? DEFAULT_AGENT_INSTRUCTIONS,
+    mcpIds: agent?.mcp_ids ?? [],
+    skillIds: agent?.skill_ids ?? [],
+    knowledgeIds: agent?.knowledge_ids ?? [],
   }
 }
 
-function buildCreatePayload(
-  form: ResourceFormState
-): CreateAgentPlatformResourceRequest {
+function buildCreateOrUpdateBase(form: ResourceFormState) {
   return {
     display_name: form.displayName.trim(),
-    owner_user_id: parseRequiredPositiveInt(form.ownerUserId),
-    tenant_id: parseOptionalInt(form.tenantId),
+    description: form.description.trim(),
   }
 }
 
-function buildVersionPayload(
-  resourceType: AgentPlatformResourceType,
-  form: VersionFormState
-): CreateAgentPlatformVersionRequest {
-  const base: CreateAgentPlatformVersionRequest = {
-    version: form.version.trim(),
-    contract_version: form.contractVersion.trim(),
-    summary: form.summary.trim(),
-    schema: parseJsonField(form.schemaJson),
-  }
-
-  switch (resourceType) {
-    case 'skill':
-      base.skill = {
-        invoke_mode: form.invokeMode.trim(),
-        timeout_seconds: parseRequiredPositiveInt(form.timeoutSeconds),
-        invoke_schema: parseJsonField(form.invokeSchemaJson),
-        output_schema: parseJsonField(form.outputSchemaJson),
-        binding_config: parseJsonField(form.bindingConfigJson),
-      }
-      break
-    case 'knowledge':
-      base.knowledge = {
-        knowledge_mode: form.knowledgeMode.trim(),
-        provider_type: form.providerType.trim(),
-        provider_adapter_key: form.providerAdapterKey.trim(),
-        provider_config: parseJsonField(form.providerConfigJson),
-        query_schema: parseJsonField(form.querySchemaJson),
-        citation_schema: parseJsonField(form.citationSchemaJson),
-        freshness_rules: parseJsonField(form.freshnessRulesJson),
-        provider_capabilities: parseJsonField(form.providerCapabilitiesJson),
-      }
-      break
-    case 'agent':
-      base.agent = {
-        manifest: parseJsonField(form.manifestJson),
-        dependencies: parseJsonField(form.dependenciesJson),
-        prompt_metadata: parseJsonField(form.promptMetadataJson),
-        compatibility_metadata: parseJsonField(form.compatibilityMetadataJson),
-      }
-      break
-  }
-
-  return base
+function countResourcesByStatus(
+  resourceSets: AgentPlatformItem[][],
+  status: string
+) {
+  return resourceSets.reduce(
+    (total, items) =>
+      total +
+      items.filter((item) => item.status.trim().toLowerCase() === status)
+        .length,
+    0
+  )
 }
 
 function ResourceListCard(props: ResourceListCardProps) {
@@ -456,16 +559,16 @@ function ResourceListCard(props: ResourceListCardProps) {
         </div>
       </CardHeader>
       <CardContent className='pt-4'>
-        {props.isLoading ? (
-          <ResourceTableSkeleton />
-        ) : loadFailed ? (
+        {props.isLoading && <ResourceTableSkeleton />}
+        {!props.isLoading && loadFailed && (
           <ErrorState
             className='min-h-[240px]'
             title={t('Failed to load data')}
             description={`${props.errorPrefix}: ${errorMessage}`}
             onRetry={props.onRetry}
           />
-        ) : items.length === 0 ? (
+        )}
+        {!props.isLoading && !loadFailed && items.length === 0 && (
           <Empty className='min-h-[240px] border'>
             <EmptyHeader>
               <EmptyMedia variant='icon'>
@@ -476,11 +579,13 @@ function ResourceListCard(props: ResourceListCardProps) {
             </EmptyHeader>
             <EmptyContent />
           </Empty>
-        ) : (
+        )}
+        {!props.isLoading && !loadFailed && items.length > 0 && (
           <ResourceTable
             items={items}
             onOpenDetails={props.onOpenDetails}
             onOpenEdit={props.onOpenEdit}
+            showLatestVersion={props.showLatestVersion}
             typeLabel={props.typeLabel}
           />
         )}
@@ -493,6 +598,7 @@ function ResourceTable(props: {
   items: AgentPlatformItem[]
   onOpenDetails: (item: AgentPlatformItem) => void
   onOpenEdit: (item: AgentPlatformItem) => void
+  showLatestVersion: boolean
   typeLabel: string
 }) {
   const { t } = useTranslation()
@@ -506,7 +612,9 @@ function ResourceTable(props: {
             <TableHead>{t('Type')}</TableHead>
             <TableHead>{t('Status')}</TableHead>
             <TableHead>{t('Owner')}</TableHead>
-            <TableHead>{t('Latest version')}</TableHead>
+            {props.showLatestVersion ? (
+              <TableHead>{t('Latest version')}</TableHead>
+            ) : null}
             <TableHead>{t('Tenant')}</TableHead>
             <TableHead>{t('Updated At')}</TableHead>
             <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -519,6 +627,7 @@ function ResourceTable(props: {
               item={item}
               onOpenDetails={props.onOpenDetails}
               onOpenEdit={props.onOpenEdit}
+              showLatestVersion={props.showLatestVersion}
               typeLabel={props.typeLabel}
             />
           ))}
@@ -543,6 +652,7 @@ function ResourceRow(props: {
   item: AgentPlatformItem
   onOpenDetails: (item: AgentPlatformItem) => void
   onOpenEdit: (item: AgentPlatformItem) => void
+  showLatestVersion: boolean
   typeLabel: string
 }) {
   const { t } = useTranslation()
@@ -552,10 +662,18 @@ function ResourceRow(props: {
     <TableRow>
       <TableCell>
         <div className='min-w-[220px] space-y-1'>
-          <div className='font-medium'>{item.display_name}</div>
+          <div className='flex items-center gap-2 font-medium'>
+            <AvatarPreview value={item.avatar} />
+            {item.display_name}
+          </div>
           <div className='text-muted-foreground text-xs'>
             {item.resource_id}
           </div>
+          {item.description ? (
+            <div className='text-muted-foreground max-w-[360px] truncate text-xs'>
+              {item.description}
+            </div>
+          ) : null}
         </div>
       </TableCell>
       <TableCell>
@@ -568,8 +686,10 @@ function ResourceRow(props: {
           copyable={false}
         />
       </TableCell>
-      <TableCell>#{item.owner_user_id}</TableCell>
-      <TableCell>{item.latest_version || t('Not versioned')}</TableCell>
+      <TableCell>{item.owner_name || `#${item.owner_user_id}`}</TableCell>
+      {props.showLatestVersion ? (
+        <TableCell>{item.latest_version || t('Not versioned')}</TableCell>
+      ) : null}
       <TableCell>{item.tenant_id || t('Global')}</TableCell>
       <TableCell>{formatTimestamp(item.updated_at)}</TableCell>
       <TableCell className='text-right'>
@@ -596,45 +716,109 @@ function ResourceRow(props: {
   )
 }
 
-function countResourcesByStatus(
-  resourceSets: AgentPlatformItem[][],
-  status: string
-) {
-  return resourceSets.reduce(
-    (total, items) =>
-      total +
-      items.filter((item) => item.status.trim().toLowerCase() === status)
-        .length,
-    0
+function DetailField(props: { label: string; value: ReactNode }) {
+  return (
+    <div className='space-y-1'>
+      <div className='text-muted-foreground text-xs font-medium'>
+        {props.label}
+      </div>
+      <div className='text-sm break-words'>{props.value}</div>
+    </div>
   )
 }
 
-function resourceTypeLabel(
-  type: AgentPlatformResourceType,
-  t: (key: string) => string
-) {
-  switch (type) {
-    case 'skill':
-      return t('Skill')
-    case 'knowledge':
-      return t('Knowledge')
-    case 'agent':
-      return t('Agent')
+function JsonPreviewBlock(props: { label: string; value: unknown }) {
+  const text = formatJsonPreview(props.value)
+  if (!text) {
+    return null
   }
+  return (
+    <div className='space-y-2'>
+      <div className='text-muted-foreground text-xs font-medium'>
+        {props.label}
+      </div>
+      <pre className='bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 text-xs'>
+        {text}
+      </pre>
+    </div>
+  )
+}
+
+function ResourceCheckboxList(props: {
+  description: string
+  emptyLabel: string
+  items: AgentPlatformItem[]
+  label: string
+  onChange: (ids: string[]) => void
+  selectedIds: string[]
+}) {
+  return (
+    <Field>
+      <FieldLabel>{props.label}</FieldLabel>
+      <FieldDescription>{props.description}</FieldDescription>
+      {props.items.length === 0 ? (
+        <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
+          {props.emptyLabel}
+        </div>
+      ) : (
+        <div className='grid max-h-48 gap-2 overflow-y-auto rounded-md border p-2 sm:grid-cols-2'>
+          {props.items.map((item) => {
+            const checked = props.selectedIds.includes(item.resource_id)
+            return (
+              <label
+                key={item.resource_id}
+                className='hover:bg-muted/40 flex cursor-pointer items-start gap-2 rounded-md px-2 py-2'
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(value) => {
+                    const enabled = value === true
+                    if (enabled) {
+                      props.onChange([...props.selectedIds, item.resource_id])
+                      return
+                    }
+                    props.onChange(
+                      props.selectedIds.filter((id) => id !== item.resource_id)
+                    )
+                  }}
+                />
+                <span className='min-w-0 space-y-0.5'>
+                  <span className='block truncate text-sm font-medium'>
+                    {item.display_name}
+                  </span>
+                  <span className='text-muted-foreground block truncate text-xs'>
+                    {item.resource_id}
+                  </span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </Field>
+  )
 }
 
 function ResourceEditorDialog(props: {
   form: ResourceFormState
+  knowledgeItems: AgentPlatformItem[]
+  mcpItems: AgentPlatformItem[]
   mode: 'create' | 'edit'
   onChange: (form: ResourceFormState) => void
   onClose: () => void
   onSubmit: () => void
   open: boolean
   pending: boolean
+  skillItems: AgentPlatformItem[]
 }) {
   const { t } = useTranslation()
   const Icon = resourceTypeIcon(props.form.type)
   const isEdit = props.mode === 'edit'
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const update = <TKey extends keyof ResourceFormState>(
+    key: TKey,
+    value: ResourceFormState[TKey]
+  ) => props.onChange({ ...props.form, [key]: value })
   const title = isEdit
     ? t('Edit {{type}} resource', {
         type: resourceTypeLabel(props.form.type, t),
@@ -642,399 +826,25 @@ function ResourceEditorDialog(props: {
     : t('Create {{type}} resource', {
         type: resourceTypeLabel(props.form.type, t),
       })
-
-  return (
-    <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
-      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-xl'>
-        <DialogHeader>
-          <DialogTitle className='flex items-center gap-2'>
-            <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
-              <Icon className='size-4' />
-            </span>
-            {title}
-          </DialogTitle>
-          <DialogDescription>
-            {isEdit
-              ? t('Update the resource display name.')
-              : t(
-                  'Create a control-plane resource shell before adding versions.'
-                )}
-          </DialogDescription>
-        </DialogHeader>
-
-        <FieldGroup>
-          <Field>
-            <FieldLabel>{t('Display name')}</FieldLabel>
-            <Input
-              value={props.form.displayName}
-              onChange={(event) =>
-                props.onChange({
-                  ...props.form,
-                  displayName: event.target.value,
-                })
-              }
-              placeholder={t('Resource display name')}
-            />
-          </Field>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <Field data-disabled={isEdit ? true : undefined}>
-              <FieldLabel>{t('Owner user ID')}</FieldLabel>
-              <Input
-                type='number'
-                min={1}
-                value={props.form.ownerUserId}
-                onChange={(event) =>
-                  props.onChange({
-                    ...props.form,
-                    ownerUserId: event.target.value,
-                  })
-                }
-                disabled={isEdit}
-                placeholder='1'
-              />
-              {isEdit ? (
-                <FieldDescription>
-                  {t('Owner is fixed after creation.')}
-                </FieldDescription>
-              ) : null}
-            </Field>
-            <Field data-disabled={isEdit ? true : undefined}>
-              <FieldLabel>{t('Tenant ID')}</FieldLabel>
-              <Input
-                type='number'
-                min={0}
-                value={props.form.tenantId}
-                onChange={(event) =>
-                  props.onChange({
-                    ...props.form,
-                    tenantId: event.target.value,
-                  })
-                }
-                disabled={isEdit}
-                placeholder={t('Global')}
-              />
-              {isEdit ? (
-                <FieldDescription>
-                  {t('Tenant is fixed after creation.')}
-                </FieldDescription>
-              ) : null}
-            </Field>
-          </div>
-        </FieldGroup>
-
-        <DialogFooter>
-          <Button variant='outline' onClick={props.onClose}>
-            {t('Cancel')}
-          </Button>
-          <Button onClick={props.onSubmit} disabled={props.pending}>
-            {isEdit ? <Save className='size-4' /> : <Plus className='size-4' />}
-            {isEdit ? t('Save changes') : t('Create resource')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function DetailField(props: { label: string; value: React.ReactNode }) {
-  return (
-    <div className='rounded-lg border px-3 py-2'>
-      <div className='text-muted-foreground text-xs'>{props.label}</div>
-      <div className='mt-1 min-h-5 text-sm font-medium break-all'>
-        {props.value}
-      </div>
-    </div>
-  )
-}
-
-function JsonPreviewBlock(props: { label: string; value: unknown }) {
-  const formatted = formatJsonPreview(props.value)
-  if (!formatted) {
-    return null
+  const handleAvatarFileChange = (file?: File) => {
+    if (!file) {
+      return
+    }
+    setAvatarUploading(true)
+    void uploadAgentPlatformAvatar(file)
+      .then((response) => {
+        if (!response.success || !response.data?.url) {
+          toast.error(response.message || t('Request failed'))
+          return
+        }
+        update('avatar', response.data.url)
+        toast.success(t('Avatar uploaded'))
+      })
+      .catch((error: unknown) => {
+        toast.error(getErrorMessage(error, t('Request failed')))
+      })
+      .finally(() => setAvatarUploading(false))
   }
-
-  return (
-    <div className='space-y-2'>
-      <div className='text-sm font-medium'>{props.label}</div>
-      <pre className='bg-muted/40 max-h-56 overflow-auto rounded-lg border p-3 text-xs leading-relaxed'>
-        {formatted}
-      </pre>
-    </div>
-  )
-}
-
-function ResourceDetailSheet(props: {
-  detailResponse?: Awaited<ReturnType<typeof getAgentPlatformResource>>
-  detailLoading: boolean
-  lifecyclePending: boolean
-  onClose: () => void
-  onLifecycle: (action: AgentPlatformLifecycleAction) => void
-  onOpenEdit: (item: AgentPlatformItem) => void
-  onOpenVersionForm: () => void
-  onRefreshDetail: () => void
-  onVersionLookup: () => void
-  open: boolean
-  selected: AgentPlatformItem | null
-  versionResponse?: Awaited<ReturnType<typeof getAgentPlatformResourceVersion>>
-  versionLoading: boolean
-}) {
-  const { t } = useTranslation()
-  const item = props.selected ?? props.detailResponse?.data
-  const Icon = item ? resourceTypeIcon(item.resource_type) : Boxes
-  const version = props.versionResponse?.success
-    ? props.versionResponse.data
-    : undefined
-
-  return (
-    <Sheet open={props.open} onOpenChange={(open) => !open && props.onClose()}>
-      <SheetContent className={sideDrawerContentClassName('sm:max-w-3xl')}>
-        <SheetHeader className={sideDrawerHeaderClassName()}>
-          <SheetTitle className='flex items-center gap-2 pr-8'>
-            <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
-              <Icon className='size-4' />
-            </span>
-            {item?.display_name ?? t('Resource details')}
-          </SheetTitle>
-          <SheetDescription className='pr-8 break-all'>
-            {item?.resource_id ?? t('Select a resource to inspect.')}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className='flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-4 sm:px-6'>
-          {item ? (
-            <>
-              <section className='space-y-3'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <div className='flex items-center gap-2'>
-                    <Badge variant='outline'>
-                      {resourceTypeLabel(item.resource_type, t)}
-                    </Badge>
-                    <StatusBadge
-                      label={formatStatusLabel(item.status, t)}
-                      variant={statusVariantFor(item.status)}
-                      copyable={false}
-                    />
-                  </div>
-                  <div className='flex flex-wrap gap-2'>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={props.onRefreshDetail}
-                      disabled={props.detailLoading}
-                    >
-                      <RefreshCw className='size-4' />
-                      {t('Refresh')}
-                    </Button>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => props.onOpenEdit(item)}
-                    >
-                      <Pencil className='size-4' />
-                      {t('Edit')}
-                    </Button>
-                  </div>
-                </div>
-                <div className='grid gap-3 sm:grid-cols-2'>
-                  <DetailField
-                    label={t('Resource ID')}
-                    value={item.resource_id}
-                  />
-                  <DetailField
-                    label={t('Latest version')}
-                    value={item.latest_version || t('Not versioned')}
-                  />
-                  <DetailField
-                    label={t('Owner user ID')}
-                    value={`#${item.owner_user_id}`}
-                  />
-                  <DetailField
-                    label={t('Tenant ID')}
-                    value={item.tenant_id || t('Global')}
-                  />
-                  <DetailField
-                    label={t('Created At')}
-                    value={formatTimestamp(item.created_at)}
-                  />
-                  <DetailField
-                    label={t('Updated At')}
-                    value={formatTimestamp(item.updated_at)}
-                  />
-                </div>
-              </section>
-
-              <section className='space-y-3 border-t pt-5'>
-                <div className='flex flex-wrap items-center justify-between gap-3'>
-                  <div>
-                    <h3 className='text-sm font-semibold'>{t('Version')}</h3>
-                    <p className='text-muted-foreground text-sm'>
-                      {t('Create and inspect typed contract versions.')}
-                    </p>
-                  </div>
-                  <div className='flex flex-wrap gap-2'>
-                    <Button size='sm' onClick={props.onOpenVersionForm}>
-                      <FileJson2 className='size-4' />
-                      {t('Create version')}
-                    </Button>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={props.onVersionLookup}
-                      disabled={!item.latest_version || props.versionLoading}
-                    >
-                      <PanelRightOpen className='size-4' />
-                      {t('Load latest version')}
-                    </Button>
-                  </div>
-                </div>
-                {version ? (
-                  <div className='space-y-4 rounded-lg border p-3'>
-                    <div className='flex flex-wrap items-center gap-2'>
-                      <Badge variant='outline'>{version.version}</Badge>
-                      <Badge variant='outline'>
-                        {version.contract_version}
-                      </Badge>
-                      <StatusBadge
-                        label={formatStatusLabel(version.status, t)}
-                        variant={statusVariantFor(version.status)}
-                        copyable={false}
-                      />
-                    </div>
-                    <div className='grid gap-3 sm:grid-cols-2'>
-                      <DetailField
-                        label={t('Created by')}
-                        value={`#${version.created_by}`}
-                      />
-                      <DetailField
-                        label={t('Published At')}
-                        value={
-                          version.published_at
-                            ? formatTimestamp(version.published_at)
-                            : t('Not published')
-                        }
-                      />
-                    </div>
-                    {version.summary ? (
-                      <p className='text-muted-foreground text-sm'>
-                        {version.summary}
-                      </p>
-                    ) : null}
-                    <JsonPreviewBlock
-                      label={t('Schema JSON')}
-                      value={version.schema}
-                    />
-                    <JsonPreviewBlock
-                      label={t('Typed detail JSON')}
-                      value={
-                        version.skill ??
-                        version.knowledge ??
-                        version.agent ??
-                        null
-                      }
-                    />
-                  </div>
-                ) : (
-                  <div className='text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm'>
-                    {props.versionLoading
-                      ? t('Loading version details...')
-                      : t('No version detail loaded.')}
-                  </div>
-                )}
-              </section>
-
-              <section className='space-y-3 border-t pt-5'>
-                <div>
-                  <h3 className='text-sm font-semibold'>{t('Lifecycle')}</h3>
-                  <p className='text-muted-foreground text-sm'>
-                    {t(
-                      'Publish or move the resource through governance states.'
-                    )}
-                  </p>
-                </div>
-                <div className='grid gap-2 sm:grid-cols-4'>
-                  <Button
-                    size='sm'
-                    onClick={() => props.onLifecycle('publish')}
-                    disabled={!item.latest_version || props.lifecyclePending}
-                  >
-                    <Rocket className='size-4' />
-                    {t('Publish')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => props.onLifecycle('disable')}
-                    disabled={props.lifecyclePending}
-                  >
-                    <CircleOff className='size-4' />
-                    {t('Disable')}
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => props.onLifecycle('offline')}
-                    disabled={props.lifecyclePending}
-                  >
-                    <Unplug className='size-4' />
-                    {t('Offline')}
-                  </Button>
-                  <Button
-                    variant='destructive'
-                    size='sm'
-                    onClick={() => props.onLifecycle('revoke')}
-                    disabled={props.lifecyclePending}
-                  >
-                    <ShieldOff className='size-4' />
-                    {t('Revoke')}
-                  </Button>
-                </div>
-              </section>
-            </>
-          ) : (
-            <ResourceTableSkeleton />
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function JsonTextareaField(props: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  rows?: number
-}) {
-  return (
-    <Field>
-      <FieldLabel>{props.label}</FieldLabel>
-      <Textarea
-        className='font-mono text-xs'
-        rows={props.rows ?? 5}
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
-    </Field>
-  )
-}
-
-function VersionFormDialog(props: {
-  form: VersionFormState
-  onChange: (form: VersionFormState) => void
-  onClose: () => void
-  onSubmit: () => void
-  open: boolean
-  pending: boolean
-  resource: AgentPlatformItem | null
-}) {
-  const { t } = useTranslation()
-  const resource = props.resource
-  const Icon = resource ? resourceTypeIcon(resource.resource_type) : FileJson2
-
-  const update = <K extends keyof VersionFormState>(
-    key: K,
-    value: VersionFormState[K]
-  ) => props.onChange({ ...props.form, [key]: value })
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
@@ -1044,188 +854,156 @@ function VersionFormDialog(props: {
             <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
               <Icon className='size-4' />
             </span>
-            {t('Create version')}
+            {title}
           </DialogTitle>
-          <DialogDescription className='break-all'>
-            {resource?.resource_id ?? t('No resource selected')}
+          <DialogDescription>
+            {props.form.type === 'agent'
+              ? t('Manage the Agent definition and dependency selection.')
+              : t('Manage the platform resource metadata and configuration.')}
           </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <Field>
-              <FieldLabel>{t('Version')}</FieldLabel>
-              <Input
-                value={props.form.version}
-                onChange={(event) => update('version', event.target.value)}
-                placeholder='1.0.0'
-              />
-            </Field>
-            <Field>
-              <FieldLabel>{t('Contract version')}</FieldLabel>
-              <Input
-                value={props.form.contractVersion}
-                onChange={(event) =>
-                  update('contractVersion', event.target.value)
-                }
-                placeholder={DEFAULT_CONTRACT_VERSION}
-              />
-            </Field>
-          </div>
           <Field>
-            <FieldLabel>{t('Summary')}</FieldLabel>
-            <Textarea
-              rows={3}
-              value={props.form.summary}
-              onChange={(event) => update('summary', event.target.value)}
-              placeholder={t('Version summary')}
+            <FieldLabel>{t('Display name')}</FieldLabel>
+            <Input
+              value={props.form.displayName}
+              onChange={(event) => update('displayName', event.target.value)}
+              placeholder={t('Resource display name')}
             />
           </Field>
-          <JsonTextareaField
-            label={t('Schema JSON')}
-            value={props.form.schemaJson}
-            onChange={(value) => update('schemaJson', value)}
-          />
 
-          {resource?.resource_type === 'skill' ? (
-            <div className='space-y-4 rounded-lg border p-3'>
-              <div className='text-sm font-semibold'>{t('Skill detail')}</div>
-              <div className='grid gap-4 sm:grid-cols-2'>
-                <Field>
-                  <FieldLabel>{t('Invoke mode')}</FieldLabel>
-                  <select
-                    className='border-input bg-background h-8 rounded-lg border px-2.5 text-sm'
-                    value={props.form.invokeMode}
-                    onChange={(event) =>
-                      update('invokeMode', event.target.value)
-                    }
-                  >
-                    <option value='sync'>{t('sync')}</option>
-                    <option value='async'>{t('async')}</option>
-                  </select>
-                </Field>
-                <Field>
-                  <FieldLabel>{t('Timeout seconds')}</FieldLabel>
-                  <Input
-                    type='number'
-                    min={1}
-                    value={props.form.timeoutSeconds}
-                    onChange={(event) =>
-                      update('timeoutSeconds', event.target.value)
-                    }
-                  />
-                </Field>
-              </div>
-              <JsonTextareaField
-                label={t('Invoke schema')}
-                value={props.form.invokeSchemaJson}
-                onChange={(value) => update('invokeSchemaJson', value)}
+          <Field>
+            <FieldLabel>{t('Description')}</FieldLabel>
+            <Textarea
+              value={props.form.description}
+              onChange={(event) => update('description', event.target.value)}
+              placeholder={t('Describe the resource purpose')}
+              rows={3}
+            />
+          </Field>
+
+          {props.form.type === 'mcp' ? (
+            <Field>
+              <FieldLabel>{t('MCP JSON configuration')}</FieldLabel>
+              <Textarea
+                value={props.form.mcpConfigJson}
+                onChange={(event) =>
+                  update('mcpConfigJson', event.target.value)
+                }
+                rows={12}
+                className='font-mono'
               />
-              <JsonTextareaField
-                label={t('Output schema')}
-                value={props.form.outputSchemaJson}
-                onChange={(value) => update('outputSchemaJson', value)}
-              />
-              <JsonTextareaField
-                label={t('Binding config')}
-                value={props.form.bindingConfigJson}
-                onChange={(value) => update('bindingConfigJson', value)}
-              />
-            </div>
+              <FieldDescription>
+                {t('Paste an opencode-compatible mcpServers JSON object.')}
+              </FieldDescription>
+            </Field>
           ) : null}
 
-          {resource?.resource_type === 'knowledge' ? (
-            <div className='space-y-4 rounded-lg border p-3'>
-              <div className='text-sm font-semibold'>
-                {t('Knowledge detail')}
-              </div>
-              <div className='grid gap-4 sm:grid-cols-3'>
-                <Field>
-                  <FieldLabel>{t('Knowledge mode')}</FieldLabel>
-                  <Input
-                    value={props.form.knowledgeMode}
-                    onChange={(event) =>
-                      update('knowledgeMode', event.target.value)
-                    }
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel>{t('Provider type')}</FieldLabel>
-                  <select
-                    className='border-input bg-background h-8 rounded-lg border px-2.5 text-sm'
-                    value={props.form.providerType}
-                    onChange={(event) =>
-                      update('providerType', event.target.value)
-                    }
-                  >
-                    <option value='http_retrieval'>
-                      {t('http_retrieval')}
-                    </option>
-                    <option value='native'>{t('native')}</option>
-                  </select>
-                </Field>
-                <Field>
-                  <FieldLabel>{t('Provider adapter key')}</FieldLabel>
-                  <Input
-                    value={props.form.providerAdapterKey}
-                    onChange={(event) =>
-                      update('providerAdapterKey', event.target.value)
-                    }
-                  />
-                </Field>
-              </div>
-              <JsonTextareaField
-                label={t('Provider config')}
-                value={props.form.providerConfigJson}
-                onChange={(value) => update('providerConfigJson', value)}
+          {props.form.type === 'skill' ? (
+            <Field>
+              <FieldLabel>{t('Skill zip package')}</FieldLabel>
+              <Input
+                type='file'
+                accept='.zip,application/zip'
+                onChange={(event) =>
+                  update('skillFile', event.target.files?.[0] ?? null)
+                }
               />
-              <JsonTextareaField
-                label={t('Query schema')}
-                value={props.form.querySchemaJson}
-                onChange={(value) => update('querySchemaJson', value)}
-              />
-              <JsonTextareaField
-                label={t('Citation schema')}
-                value={props.form.citationSchemaJson}
-                onChange={(value) => update('citationSchemaJson', value)}
-              />
-              <JsonTextareaField
-                label={t('Freshness rules')}
-                value={props.form.freshnessRulesJson}
-                onChange={(value) => update('freshnessRulesJson', value)}
-              />
-              <JsonTextareaField
-                label={t('Provider capabilities')}
-                value={props.form.providerCapabilitiesJson}
-                onChange={(value) => update('providerCapabilitiesJson', value)}
-              />
-            </div>
+              <FieldDescription>
+                {isEdit
+                  ? t('Uploading a file replaces the existing Skill package.')
+                  : t('Upload the Skill package stored by the platform.')}
+              </FieldDescription>
+            </Field>
           ) : null}
 
-          {resource?.resource_type === 'agent' ? (
-            <div className='space-y-4 rounded-lg border p-3'>
-              <div className='text-sm font-semibold'>{t('Agent detail')}</div>
-              <JsonTextareaField
-                label={t('Manifest')}
-                value={props.form.manifestJson}
-                onChange={(value) => update('manifestJson', value)}
+          {props.form.type === 'knowledge' ? (
+            <Field>
+              <FieldLabel>{t('Knowledge base ID')}</FieldLabel>
+              <Input
+                value={props.form.externalKnowledgeId}
+                onChange={(event) =>
+                  update('externalKnowledgeId', event.target.value)
+                }
+                placeholder={t('External knowledge base ID')}
               />
-              <JsonTextareaField
-                label={t('Dependencies')}
-                value={props.form.dependenciesJson}
-                onChange={(value) => update('dependenciesJson', value)}
+            </Field>
+          ) : null}
+
+          {props.form.type === 'agent' ? (
+            <>
+              <Field>
+                <FieldLabel>{t('Avatar')}</FieldLabel>
+                <div className='flex items-center gap-2'>
+                  <Button
+                    variant='outline'
+                    disabled={avatarUploading}
+                    render={
+                      <label className='inline-flex cursor-pointer items-center gap-2'>
+                        <Image className='size-4' />
+                        {avatarUploading ? t('Uploading') : t('Upload image')}
+                        <input
+                          type='file'
+                          accept='image/png,image/jpeg,image/gif,image/webp'
+                          className='hidden'
+                          onChange={(event) =>
+                            handleAvatarFileChange(event.target.files?.[0])
+                          }
+                        />
+                      </label>
+                    }
+                  />
+                  <AvatarPreview value={props.form.avatar} />
+                </div>
+                <Input
+                  value={props.form.avatar}
+                  onChange={(event) => update('avatar', event.target.value)}
+                  placeholder={t('Avatar emoji or image URL')}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>{t('Instructions')}</FieldLabel>
+                <Textarea
+                  value={props.form.instructions}
+                  onChange={(event) =>
+                    update('instructions', event.target.value)
+                  }
+                  rows={8}
+                  placeholder={t('Agent instructions')}
+                />
+              </Field>
+              <ResourceCheckboxList
+                label={t('MCP dependencies')}
+                description={t(
+                  'Selected MCP definitions will be written into project opencode.jsonc.'
+                )}
+                emptyLabel={t('No MCP resources are available.')}
+                items={props.mcpItems}
+                selectedIds={props.form.mcpIds}
+                onChange={(ids) => update('mcpIds', ids)}
               />
-              <JsonTextareaField
-                label={t('Prompt metadata')}
-                value={props.form.promptMetadataJson}
-                onChange={(value) => update('promptMetadataJson', value)}
+              <ResourceCheckboxList
+                label={t('Skill dependencies')}
+                description={t(
+                  'Selected Skill packages will be copied into project .opencode/skills.'
+                )}
+                emptyLabel={t('No Skill resources are available.')}
+                items={props.skillItems}
+                selectedIds={props.form.skillIds}
+                onChange={(ids) => update('skillIds', ids)}
               />
-              <JsonTextareaField
-                label={t('Compatibility metadata')}
-                value={props.form.compatibilityMetadataJson}
-                onChange={(value) => update('compatibilityMetadataJson', value)}
+              <ResourceCheckboxList
+                label={t('Knowledge dependencies')}
+                description={t(
+                  'Selected knowledge IDs are written into cherry-knowledge-search config.'
+                )}
+                emptyLabel={t('No Knowledge resources are available.')}
+                items={props.knowledgeItems}
+                selectedIds={props.form.knowledgeIds}
+                onChange={(ids) => update('knowledgeIds', ids)}
               />
-            </div>
+            </>
           ) : null}
         </FieldGroup>
 
@@ -1233,12 +1011,661 @@ function VersionFormDialog(props: {
           <Button variant='outline' onClick={props.onClose}>
             {t('Cancel')}
           </Button>
-          <Button
-            onClick={props.onSubmit}
-            disabled={props.pending || !resource}
+          <Button onClick={props.onSubmit} disabled={props.pending}>
+            <Save className='size-4' />
+            {isEdit ? t('Save changes') : t('Create resource')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ResourceDetailSheet(props: {
+  detailResponse?: {
+    success: boolean
+    message?: string
+    data?: AgentPlatformDetailItem
+  }
+  detailLoading: boolean
+  operationPending: boolean
+  onClose: () => void
+  onDelete: (item: AgentPlatformItem) => void
+  onOpenEdit: (item: AgentPlatformItem) => void
+  onOpenPublish: (item: AgentPlatformItem) => void
+  onRefreshDetail: () => void
+  onSetEnabled: (item: AgentPlatformItem, enabled: boolean) => void
+  open: boolean
+  selected: AgentPlatformItem | null
+}) {
+  const { t } = useTranslation()
+  const item = (props.detailResponse?.data ??
+    props.selected) as AgentPlatformDetailItem | null
+  const Icon = item ? resourceTypeIcon(item.resource_type) : Boxes
+  const isDisabled = item?.status.trim().toLowerCase() === 'disabled'
+  const detailFailed =
+    props.detailResponse != null && props.detailResponse.success === false
+  const [selectedVersion, setSelectedVersion] = useState('')
+  const versionsQuery = useQuery({
+    queryKey: ['agent-platform', item?.resource_id, 'versions'],
+    queryFn: async () => {
+      if (!item) {
+        throw new Error('No resource selected')
+      }
+      return getAgentPlatformAgentVersions(item.resource_id)
+    },
+    enabled: props.open && item?.resource_type === 'agent',
+  })
+  const versionItems = useMemo(
+    () => versionsQuery.data?.data?.items ?? [],
+    [versionsQuery.data?.data?.items]
+  )
+  useEffect(() => {
+    if (item?.resource_type !== 'agent') {
+      setSelectedVersion('')
+      return
+    }
+    const nextVersion = versionItems[0]?.version ?? item.latest_version ?? ''
+    const selectedExists = versionItems.some(
+      (version) => version.version === selectedVersion
+    )
+    if (nextVersion && (!selectedVersion || !selectedExists)) {
+      setSelectedVersion(nextVersion)
+    }
+  }, [item?.latest_version, item?.resource_type, selectedVersion, versionItems])
+  const grantsQuery = useQuery({
+    queryKey: ['agent-platform', item?.resource_id, selectedVersion, 'grants'],
+    queryFn: async () => {
+      if (!item || !selectedVersion) {
+        throw new Error('No version selected')
+      }
+      return getAgentPlatformAgentVersionGrants(
+        item.resource_id,
+        selectedVersion
+      )
+    },
+    enabled:
+      props.open && item?.resource_type === 'agent' && selectedVersion !== '',
+  })
+  const grantItems = grantsQuery.data?.data?.items ?? []
+
+  return (
+    <Sheet open={props.open} onOpenChange={(open) => !open && props.onClose()}>
+      <SheetContent
+        side='right'
+        className={sideDrawerContentClassName('overflow-y-auto sm:max-w-xl')}
+      >
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <SheetTitle className='flex items-center gap-2'>
+            <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
+              <Icon className='size-4' />
+            </span>
+            {item?.display_name ?? t('Resource details')}
+          </SheetTitle>
+          <SheetDescription>
+            {item
+              ? `${resourceTypeLabel(item.resource_type, t)} - ${item.resource_id}`
+              : t('Inspect resource details and lifecycle state.')}
+          </SheetDescription>
+        </SheetHeader>
+        <div className='space-y-5 p-4'>
+          {props.detailLoading && <ResourceTableSkeleton />}
+          {!props.detailLoading && detailFailed && (
+            <ErrorState
+              className='min-h-[220px]'
+              title={t('Failed to load data')}
+              description={props.detailResponse?.message ?? t('Request failed')}
+              onRetry={props.onRefreshDetail}
+            />
+          )}
+          {!props.detailLoading && !detailFailed && item && (
+            <>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={() => props.onOpenEdit(item)}
+                >
+                  <SquarePen className='size-4' />
+                  {t('Edit')}
+                </Button>
+                {item.resource_type !== 'agent' ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={props.operationPending}
+                    onClick={() => props.onSetEnabled(item, isDisabled)}
+                  >
+                    {isDisabled ? (
+                      <CheckCircle2 className='size-4' />
+                    ) : (
+                      <XCircle className='size-4' />
+                    )}
+                    {isDisabled ? t('Enable') : t('Disable')}
+                  </Button>
+                ) : null}
+                {item.resource_type === 'agent' ? (
+                  <Button
+                    size='sm'
+                    disabled={props.operationPending}
+                    onClick={() => props.onOpenPublish(item)}
+                  >
+                    <Rocket className='size-4' />
+                    {t('Publish')}
+                  </Button>
+                ) : null}
+                {item.resource_type === 'skill' ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    render={
+                      <a
+                        href={getAgentPlatformSkillPackageDownloadUrl(
+                          item.resource_id
+                        )}
+                      >
+                        <Download className='size-4' />
+                        {t('Download package')}
+                      </a>
+                    }
+                  />
+                ) : null}
+                <Button
+                  size='sm'
+                  variant='destructive'
+                  disabled={props.operationPending}
+                  onClick={() => props.onDelete(item)}
+                >
+                  <Trash2 className='size-4' />
+                  {t('Delete')}
+                </Button>
+              </div>
+
+              <div className='grid gap-4 rounded-lg border p-4 sm:grid-cols-2'>
+                <DetailField label={t('Status')} value={item.status} />
+                {item.resource_type === 'agent' ? (
+                  <DetailField
+                    label={t('Latest version')}
+                    value={item.latest_version || t('Not versioned')}
+                  />
+                ) : null}
+                <DetailField
+                  label={t('Owner')}
+                  value={item.owner_name || `#${item.owner_user_id}`}
+                />
+                <DetailField
+                  label={t('Tenant')}
+                  value={item.tenant_id || t('Global')}
+                />
+                <DetailField
+                  label={t('Created At')}
+                  value={formatTimestamp(item.created_at)}
+                />
+                <DetailField
+                  label={t('Updated At')}
+                  value={formatTimestamp(item.updated_at)}
+                />
+              </div>
+
+              {item.description ? (
+                <DetailField
+                  label={t('Description')}
+                  value={item.description}
+                />
+              ) : null}
+
+              {item.resource_type === 'mcp' ? (
+                <JsonPreviewBlock
+                  label={t('MCP JSON configuration')}
+                  value={item.config}
+                />
+              ) : null}
+
+              {item.resource_type === 'skill' && item.file_name ? (
+                <div className='grid gap-4 rounded-lg border p-4 sm:grid-cols-2'>
+                  <DetailField
+                    label={t('Package file')}
+                    value={item.file_name}
+                  />
+                  <DetailField
+                    label={t('Package SHA256')}
+                    value={item.sha256}
+                  />
+                  <DetailField
+                    label={t('Package size')}
+                    value={item.size_bytes ?? 0}
+                  />
+                </div>
+              ) : null}
+
+              {item.resource_type === 'knowledge' ? (
+                <DetailField
+                  label={t('Knowledge base ID')}
+                  value={item.external_knowledge_id || t('Not configured')}
+                />
+              ) : null}
+
+              {item.resource_type === 'agent' ? (
+                <>
+                  <DetailField
+                    label={t('CLI type')}
+                    value={item.cli_type || 'opencode'}
+                  />
+                  <DetailField
+                    label={t('Instructions')}
+                    value={
+                      <pre className='bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap'>
+                        {item.instructions || t('Not configured')}
+                      </pre>
+                    }
+                  />
+                  <JsonPreviewBlock
+                    label={t('Dependencies')}
+                    value={{
+                      mcp_ids: item.mcp_ids ?? [],
+                      skill_ids: item.skill_ids ?? [],
+                      knowledge_ids: item.knowledge_ids ?? [],
+                    }}
+                  />
+                  <AgentVersionPanel
+                    grants={grantItems}
+                    grantsLoading={grantsQuery.isFetching}
+                    onVersionChange={setSelectedVersion}
+                    selectedVersion={selectedVersion}
+                    versions={versionItems}
+                    versionsLoading={versionsQuery.isFetching}
+                  />
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function AgentVersionPanel(props: {
+  grants: AgentPlatformGrantRequest[]
+  grantsLoading: boolean
+  onVersionChange: (version: string) => void
+  selectedVersion: string
+  versions: AgentPlatformAgentVersion[]
+  versionsLoading: boolean
+}) {
+  const { t } = useTranslation()
+  const visibleVersions = props.versions.slice(0, 3)
+  let versionContent: ReactNode
+  if (props.versionsLoading) {
+    versionContent = <Skeleton className='h-24 w-full' />
+  } else if (visibleVersions.length === 0) {
+    versionContent = (
+      <div className='text-muted-foreground text-sm'>
+        {t('No published versions')}
+      </div>
+    )
+  } else {
+    versionContent = (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('Version')}</TableHead>
+            <TableHead>{t('Status')}</TableHead>
+            <TableHead>{t('Summary')}</TableHead>
+            <TableHead>{t('Published At')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visibleVersions.map((version) => (
+            <TableRow key={version.version}>
+              <TableCell className='font-medium'>{version.version}</TableCell>
+              <TableCell>
+                <StatusBadge
+                  label={formatStatusLabel(version.status, t)}
+                  variant={statusVariantFor(version.status)}
+                />
+              </TableCell>
+              <TableCell>{version.summary || '-'}</TableCell>
+              <TableCell>
+                {formatDateTimeText(version.published_at ?? version.created_at)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  let grantsContent: ReactNode
+  if (props.grantsLoading) {
+    grantsContent = <Skeleton className='h-14 w-full' />
+  } else if (props.grants.length === 0) {
+    grantsContent = (
+      <div className='text-muted-foreground text-sm'>
+        {t('No grants configured')}
+      </div>
+    )
+  } else {
+    grantsContent = (
+      <div className='flex flex-wrap gap-2'>
+        {props.grants.map((grant) => (
+          <Badge
+            key={`${grant.subject_type}:${grant.subject_id}`}
+            variant='secondary'
           >
-            <FileJson2 className='size-4' />
-            {t('Create version')}
+            {grant.subject_type === 'user' ? t('User') : t('Department')}{' '}
+            {grant.subject_name || `#${grant.subject_id}`}
+          </Badge>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className='space-y-3 rounded-lg border p-4'>
+      <div className='flex flex-wrap items-center justify-between gap-3'>
+        <div>
+          <div className='font-medium'>{t('Published versions')}</div>
+          <div className='text-muted-foreground text-sm'>
+            {t('View release records and active grants.')}
+          </div>
+        </div>
+        <NativeSelect
+          className='w-40'
+          value={props.selectedVersion}
+          onChange={(event) => props.onVersionChange(event.target.value)}
+        >
+          {visibleVersions.map((version) => (
+            <NativeSelectOption key={version.version} value={version.version}>
+              {version.version}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+
+      {versionContent}
+
+      <div className='space-y-2'>
+        <div className='font-medium'>{t('Version grants')}</div>
+        {grantsContent}
+      </div>
+    </div>
+  )
+}
+
+function GrantSubjectMultiSelect(props: {
+  emptyLabel: string
+  loading: boolean
+  onSearchChange: (value: string) => void
+  onSelectedIdsChange: (ids: string[]) => void
+  options: GrantSelectOption[]
+  placeholder: string
+  searchPlaceholder: string
+  searchValue: string
+  selectedIds: string[]
+  selectedOptions?: GrantSelectOption[]
+}) {
+  const { t } = useTranslation()
+  const selectedOptions = props.selectedIds.map((id) => {
+    const option =
+      props.options.find((item) => item.value === id) ??
+      props.selectedOptions?.find((item) => item.value === id)
+    return (
+      option ?? {
+        value: id,
+        label: `#${id}`,
+        description: `#${id}`,
+      }
+    )
+  })
+
+  const toggleValue = (value: string) => {
+    if (props.selectedIds.includes(value)) {
+      props.onSelectedIdsChange(props.selectedIds.filter((id) => id !== value))
+      return
+    }
+    props.onSelectedIdsChange([...props.selectedIds, value])
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant='outline'
+            className='h-auto min-h-9 w-full justify-between px-3 py-2'
+          >
+            <span className='flex min-w-0 flex-1 flex-wrap gap-1 text-left'>
+              {selectedOptions.length === 0 ? (
+                <span className='text-muted-foreground'>
+                  {props.placeholder}
+                </span>
+              ) : (
+                selectedOptions.map((option) => (
+                  <Badge
+                    key={option.value}
+                    variant='secondary'
+                    className='max-w-[180px] truncate rounded-md'
+                  >
+                    {option.label}
+                  </Badge>
+                ))
+              )}
+            </span>
+            <ChevronsUpDown className='text-muted-foreground ml-2 size-4 shrink-0' />
+          </Button>
+        }
+      />
+      <PopoverContent
+        className='w-[420px] max-w-[calc(100vw-3rem)] p-0'
+        align='start'
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={props.searchValue}
+            onValueChange={props.onSearchChange}
+            placeholder={props.searchPlaceholder}
+          />
+          <CommandList>
+            {props.loading ? (
+              <div className='text-muted-foreground px-3 py-6 text-center text-sm'>
+                {t('Loading')}
+              </div>
+            ) : (
+              <CommandEmpty>{props.emptyLabel}</CommandEmpty>
+            )}
+            <CommandGroup>
+              {props.options.map((option) => {
+                const selected = props.selectedIds.includes(option.value)
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={`${option.label} ${option.description}`}
+                    data-checked={selected}
+                    onSelect={() => toggleValue(option.value)}
+                  >
+                    <Checkbox checked={selected} />
+                    <span className='min-w-0 flex-1'>
+                      <span className='block truncate font-medium'>
+                        {option.label}
+                      </span>
+                      <span className='text-muted-foreground block truncate text-xs'>
+                        {option.description}
+                      </span>
+                    </span>
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function PublishAgentDialog(props: {
+  form: PublishFormState
+  onChange: (form: PublishFormState) => void
+  onClose: () => void
+  onSubmit: () => void
+  open: boolean
+  pending: boolean
+  resource: AgentPlatformItem | null
+}) {
+  const { t } = useTranslation()
+  const [userSearchValue, setUserSearchValue] = useState('')
+  const [departmentSearchValue, setDepartmentSearchValue] = useState('')
+  const usersQuery = useQuery({
+    queryKey: ['agent-platform', 'grant-users', userSearchValue],
+    queryFn: async () => {
+      const result = await searchUsers({
+        keyword: userSearchValue,
+        status: '1',
+        p: 1,
+        page_size: 20,
+      })
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return result.data?.items ?? []
+    },
+    enabled: props.open,
+  })
+  const departmentsQuery = useQuery({
+    queryKey: ['agent-platform', 'grant-departments'],
+    queryFn: async () => {
+      const result = await getDepartmentTree()
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return result.data ?? []
+    },
+    enabled: props.open,
+  })
+  const userOptions = useMemo(
+    () => (usersQuery.data ?? []).map(userGrantOption),
+    [usersQuery.data]
+  )
+  const departmentOptions = useMemo(
+    () =>
+      flattenDepartmentGrantOptions(
+        departmentsQuery.data ?? [],
+        departmentSearchValue
+      ),
+    [departmentsQuery.data, departmentSearchValue]
+  )
+  const mergeSelectedOptions = (
+    ids: string[],
+    options: GrantSelectOption[],
+    existingOptions: GrantSelectOption[]
+  ) =>
+    ids
+      .map(
+        (id) =>
+          options.find((option) => option.value === id) ??
+          existingOptions.find((option) => option.value === id)
+      )
+      .filter((option): option is GrantSelectOption => option != null)
+  return (
+    <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
+      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle className='flex items-center gap-2'>
+            <span className='bg-primary/10 text-primary inline-flex size-8 items-center justify-center rounded-lg'>
+              <Rocket className='size-4' />
+            </span>
+            {t('Publish Agent')}
+          </DialogTitle>
+          <DialogDescription>
+            {props.resource
+              ? t('Publish {{name}} and grant access by user or department.', {
+                  name: props.resource.display_name,
+                })
+              : t('Publish the Agent and grant access.')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <FieldGroup>
+          <Field>
+            <FieldLabel>{t('Release summary')}</FieldLabel>
+            <Textarea
+              value={props.form.summary}
+              onChange={(event) =>
+                props.onChange({ ...props.form, summary: event.target.value })
+              }
+              placeholder={t('Describe this Agent release')}
+              rows={3}
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel>{t('Access grants')}</FieldLabel>
+            <FieldDescription>
+              {t('Grant this published version to users and departments.')}
+            </FieldDescription>
+            <div className='grid gap-4'>
+              <div className='grid gap-2'>
+                <FieldLabel>{t('Users')}</FieldLabel>
+                <GrantSubjectMultiSelect
+                  emptyLabel={t('No users found')}
+                  loading={usersQuery.isFetching}
+                  onSearchChange={setUserSearchValue}
+                  onSelectedIdsChange={(ids) => {
+                    props.onChange({
+                      ...props.form,
+                      selectedUserIds: ids,
+                      selectedUserOptions: mergeSelectedOptions(
+                        ids,
+                        userOptions,
+                        props.form.selectedUserOptions
+                      ),
+                    })
+                  }}
+                  options={userOptions}
+                  placeholder={t('Select users')}
+                  searchPlaceholder={t('Search users by name or email')}
+                  searchValue={userSearchValue}
+                  selectedIds={props.form.selectedUserIds}
+                  selectedOptions={props.form.selectedUserOptions}
+                />
+              </div>
+              <div className='grid gap-2'>
+                <FieldLabel>{t('Departments')}</FieldLabel>
+                <GrantSubjectMultiSelect
+                  emptyLabel={t('No departments found')}
+                  loading={departmentsQuery.isFetching}
+                  onSearchChange={setDepartmentSearchValue}
+                  onSelectedIdsChange={(ids) =>
+                    props.onChange({
+                      ...props.form,
+                      selectedDepartmentIds: ids,
+                      selectedDepartmentOptions: mergeSelectedOptions(
+                        ids,
+                        departmentOptions,
+                        props.form.selectedDepartmentOptions
+                      ),
+                    })
+                  }
+                  options={departmentOptions}
+                  placeholder={t('Select departments')}
+                  searchPlaceholder={t('Search departments')}
+                  searchValue={departmentSearchValue}
+                  selectedIds={props.form.selectedDepartmentIds}
+                  selectedOptions={props.form.selectedDepartmentOptions}
+                />
+              </div>
+            </div>
+          </Field>
+        </FieldGroup>
+
+        <DialogFooter>
+          <Button variant='outline' onClick={props.onClose}>
+            {t('Cancel')}
+          </Button>
+          <Button onClick={props.onSubmit} disabled={props.pending}>
+            <Rocket className='size-4' />
+            {t('Publish')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1248,30 +1675,40 @@ function VersionFormDialog(props: {
 
 export function AgentPlatformShell() {
   const { t } = useTranslation()
-  const userRole = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const currentUser = useAuthStore((state) => state.auth.user)
+  const userRole = currentUser?.role ?? ROLE.GUEST
   const isSuperAdmin = userRole >= ROLE.SUPER_ADMIN
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<ResourceEditorState | null>(null)
   const [resourceForm, setResourceForm] = useState<ResourceFormState>(
-    defaultResourceFormState('skill')
+    defaultResourceFormState('mcp')
   )
   const [selectedResource, setSelectedResource] =
     useState<AgentPlatformItem | null>(null)
-  const [versionFormOpen, setVersionFormOpen] = useState(false)
-  const [versionForm, setVersionForm] = useState<VersionFormState>(
-    defaultVersionFormState()
-  )
+  const [publishResource, setPublishResource] =
+    useState<AgentPlatformItem | null>(null)
+  const [publishForm, setPublishForm] = useState<PublishFormState>({
+    summary: '',
+    selectedUserIds: [],
+    selectedDepartmentIds: [],
+    selectedUserOptions: [],
+    selectedDepartmentOptions: [],
+  })
 
+  const mcpsQuery = useQuery({
+    queryKey: RESOURCE_QUERY_KEYS.mcp,
+    queryFn: getAgentPlatformMcps,
+  })
   const skillsQuery = useQuery({
-    queryKey: ['agent-platform', 'skills', 'summary'],
+    queryKey: RESOURCE_QUERY_KEYS.skill,
     queryFn: getAgentPlatformSkills,
   })
   const knowledgeQuery = useQuery({
-    queryKey: ['agent-platform', 'knowledge', 'summary'],
+    queryKey: RESOURCE_QUERY_KEYS.knowledge,
     queryFn: getAgentPlatformKnowledge,
   })
   const agentsQuery = useQuery({
-    queryKey: ['agent-platform', 'agents', 'summary'],
+    queryKey: RESOURCE_QUERY_KEYS.agent,
     queryFn: getAgentPlatformAgents,
   })
   const detailQuery = useQuery({
@@ -1292,32 +1729,44 @@ export function AgentPlatformShell() {
     },
     enabled: selectedResource != null,
   })
-  const versionQuery = useQuery({
-    queryKey: [
-      'agent-platform',
-      selectedResource?.resource_id,
-      selectedResource?.latest_version,
-      'version',
-    ],
-    queryFn: () => {
-      if (!selectedResource?.latest_version) {
-        throw new Error('No version selected')
-      }
-      return getAgentPlatformResourceVersion(
-        selectedResource.resource_id,
-        selectedResource.latest_version
-      )
-    },
-    enabled: false,
-  })
 
   const invalidateResourceList = async (type: AgentPlatformResourceType) => {
-    await queryClient.invalidateQueries({ queryKey: CREATE_QUERY_KEYS[type] })
+    await queryClient.invalidateQueries({ queryKey: RESOURCE_QUERY_KEYS[type] })
   }
 
   const createMutation = useMutation({
-    mutationFn: (form: ResourceFormState) =>
-      createAgentPlatformResource(form.type, buildCreatePayload(form)),
+    mutationFn: (form: ResourceFormState) => {
+      const base = buildCreateOrUpdateBase(form)
+      switch (form.type) {
+        case 'mcp':
+          return createAgentPlatformMcp({
+            ...base,
+            config: parseJsonField(form.mcpConfigJson),
+          })
+        case 'skill':
+          if (!form.skillFile) {
+            throw new Error('agent_platform.validation.zip_required')
+          }
+          return createAgentPlatformSkill({
+            ...base,
+            file: form.skillFile,
+          })
+        case 'knowledge':
+          return createAgentPlatformKnowledge({
+            ...base,
+            external_knowledge_id: form.externalKnowledgeId.trim(),
+          })
+        case 'agent':
+          return createAgentPlatformAgent({
+            ...base,
+            avatar: form.avatar.trim(),
+            instructions: form.instructions,
+            mcp_ids: form.mcpIds,
+            skill_ids: form.skillIds,
+            knowledge_ids: form.knowledgeIds,
+          })
+      }
+    },
     onSuccess: async (response, form) => {
       if (!response.success) {
         toast.error(response.message || t('Request failed'))
@@ -1336,20 +1785,54 @@ export function AgentPlatformShell() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: { item: AgentPlatformItem; displayName: string }) =>
-      updateAgentPlatformResource(
-        input.item.resource_type,
-        input.item.resource_id,
-        { display_name: input.displayName.trim() }
-      ),
+    mutationFn: (input: {
+      item: AgentPlatformItem
+      form: ResourceFormState
+    }) => {
+      const base = buildCreateOrUpdateBase(input.form)
+      switch (input.item.resource_type) {
+        case 'mcp':
+          return updateAgentPlatformMcp(input.item.resource_id, {
+            ...base,
+            config: parseJsonField(input.form.mcpConfigJson),
+          })
+        case 'skill':
+          return updateAgentPlatformSkill(input.item.resource_id, base)
+        case 'knowledge':
+          return updateAgentPlatformKnowledge(input.item.resource_id, {
+            ...base,
+            external_knowledge_id: input.form.externalKnowledgeId.trim(),
+          })
+        case 'agent':
+          return updateAgentPlatformAgent(input.item.resource_id, {
+            ...base,
+            avatar: input.form.avatar.trim(),
+            instructions: input.form.instructions,
+            mcp_ids: input.form.mcpIds,
+            skill_ids: input.form.skillIds,
+            knowledge_ids: input.form.knowledgeIds,
+          })
+      }
+    },
     onSuccess: async (response, input) => {
       if (!response.success) {
         toast.error(response.message || t('Request failed'))
         return
       }
+      if (input.item.resource_type === 'skill' && input.form.skillFile) {
+        const uploadResponse = await uploadAgentPlatformSkillPackage(
+          input.item.resource_id,
+          input.form.skillFile
+        )
+        if (!uploadResponse.success) {
+          toast.error(uploadResponse.message || t('Request failed'))
+          return
+        }
+      }
       toast.success(t('Resource updated'))
       setEditor(null)
       await invalidateResourceList(input.item.resource_type)
+      await detailQuery.refetch()
       if (response.data) {
         setSelectedResource(response.data)
       }
@@ -1359,99 +1842,85 @@ export function AgentPlatformShell() {
     },
   })
 
-  const versionMutation = useMutation({
-    mutationFn: (input: {
-      resource: AgentPlatformItem
-      form: VersionFormState
-    }) =>
-      createAgentPlatformResourceVersion(
-        input.resource.resource_id,
-        buildVersionPayload(input.resource.resource_type, input.form)
-      ),
+  const enableMutation = useMutation({
+    mutationFn: (input: { item: AgentPlatformItem; enabled: boolean }) => {
+      if (input.item.resource_type === 'agent') {
+        throw new Error('Agent status is managed by publish')
+      }
+      return setAgentPlatformResourceEnabled(
+        input.item.resource_type,
+        input.item.resource_id,
+        input.enabled
+      )
+    },
     onSuccess: async (response, input) => {
       if (!response.success) {
         toast.error(response.message || t('Request failed'))
         return
       }
-      toast.success(t('Version created'))
-      setVersionFormOpen(false)
-      await invalidateResourceList(input.resource.resource_type)
-      if (response.data) {
-        setSelectedResource({
-          ...input.resource,
-          latest_version: response.data.version,
-        })
-        queryClient.setQueryData(
-          [
-            'agent-platform',
-            input.resource.resource_id,
-            response.data.version,
-            'version',
-          ],
-          response
-        )
-      }
+      toast.success(
+        input.enabled ? t('Resource enabled') : t('Resource disabled')
+      )
+      await invalidateResourceList(input.item.resource_type)
+      await detailQuery.refetch()
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, t('Request failed')))
     },
   })
 
-  const lifecycleMutation = useMutation({
+  const deleteMutation = useMutation({
+    mutationFn: (item: AgentPlatformItem) =>
+      deleteAgentPlatformResource(item.resource_type, item.resource_id),
+    onSuccess: async (response, item) => {
+      if (!response.success) {
+        toast.error(response.message || t('Request failed'))
+        return
+      }
+      toast.success(t('Resource deleted'))
+      setSelectedResource(null)
+      await invalidateResourceList(item.resource_type)
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, t('Request failed')))
+    },
+  })
+
+  const publishMutation = useMutation({
     mutationFn: (input: {
-      action: AgentPlatformLifecycleAction
-      resource: AgentPlatformItem
-    }) =>
-      runAgentPlatformLifecycleAction(
-        input.resource.resource_id,
-        input.action,
-        {
-          version:
-            input.action === 'publish'
-              ? input.resource.latest_version
-              : undefined,
-          request_id: `web-${Date.now()}`,
-        }
-      ),
+      item: AgentPlatformItem
+      form: PublishFormState
+    }) => {
+      if (
+        input.form.selectedUserIds.length === 0 &&
+        input.form.selectedDepartmentIds.length === 0
+      ) {
+        throw new Error('agent_platform.validation.grant_required')
+      }
+      return publishAgentPlatformAgent(input.item.resource_id, {
+        summary: input.form.summary.trim(),
+        grants: {
+          users: input.form.selectedUserIds,
+          departments: input.form.selectedDepartmentIds,
+        },
+      })
+    },
     onSuccess: async (response, input) => {
       if (!response.success) {
         toast.error(response.message || t('Request failed'))
         return
       }
-      toast.success(t('Lifecycle action queued'))
-      await invalidateResourceList(input.resource.resource_type)
-      if (response.data) {
-        queryClient.setQueryData(
-          [
-            'agent-platform',
-            input.resource.resource_id,
-            response.data.current_version || input.resource.latest_version,
-            'version',
-          ],
-          (
-            current: Awaited<ReturnType<typeof getAgentPlatformResourceVersion>>
-          ) =>
-            current?.success && current.data
-              ? {
-                  ...current,
-                  data: {
-                    ...current.data,
-                    status:
-                      response.data?.current_status ?? current.data.status,
-                  },
-                }
-              : current
-        )
-        setSelectedResource({
-          ...input.resource,
-          status: response.data.current_status,
-          latest_version:
-            response.data.current_version || input.resource.latest_version,
-        })
-      }
+      toast.success(t('Agent published'))
+      setPublishResource(null)
+      await invalidateResourceList('agent')
+      setSelectedResource({
+        ...input.item,
+        status: response.data?.status ?? 'published',
+        latest_version: response.data?.version ?? input.item.latest_version,
+      })
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error, t('Request failed')))
+      toast.error(translateFormError(error, t))
     },
   })
 
@@ -1461,8 +1930,28 @@ export function AgentPlatformShell() {
   }
 
   const openEditEditor = (item: AgentPlatformItem) => {
-    setEditor({ mode: 'edit', type: item.resource_type, item })
-    setResourceForm(defaultResourceFormState(item.resource_type, item))
+    void (async () => {
+      try {
+        const response = await queryClient.fetchQuery({
+          queryKey: [
+            'agent-platform',
+            item.resource_type,
+            item.resource_id,
+            'detail',
+          ],
+          queryFn: () =>
+            getAgentPlatformResource(item.resource_type, item.resource_id),
+        })
+        const detailItem =
+          response.success && response.data ? response.data : item
+        setEditor({ mode: 'edit', type: item.resource_type, item: detailItem })
+        setResourceForm(
+          defaultResourceFormState(item.resource_type, detailItem)
+        )
+      } catch (error) {
+        toast.error(getErrorMessage(error, t('Request failed')))
+      }
+    })()
   }
 
   const handleResourceSubmit = () => {
@@ -1474,7 +1963,7 @@ export function AgentPlatformShell() {
       if (editor?.mode === 'edit') {
         updateMutation.mutate({
           item: editor.item,
-          displayName: resourceForm.displayName,
+          form: resourceForm,
         })
       } else if (editor?.mode === 'create') {
         createMutation.mutate(resourceForm)
@@ -1484,73 +1973,98 @@ export function AgentPlatformShell() {
     }
   }
 
-  const openVersionForm = () => {
-    setVersionForm(defaultVersionFormState(selectedResource ?? undefined))
-    setVersionFormOpen(true)
+  const openPublishDialog = (item: AgentPlatformItem) => {
+    setPublishResource(item)
+    setPublishForm({
+      summary: '',
+      selectedUserIds: [],
+      selectedDepartmentIds: [],
+      selectedUserOptions: [],
+      selectedDepartmentOptions: [],
+    })
+    void (async () => {
+      try {
+        const response = await queryClient.fetchQuery({
+          queryKey: ['agent-platform', item.resource_id, 'publish-defaults'],
+          queryFn: () => getAgentPlatformPublishDefaults(item.resource_id),
+        })
+        const grants = response.success ? (response.data?.grants ?? []) : []
+        setPublishForm((current) => ({
+          ...current,
+          selectedUserIds: grants
+            .filter((grant) => grant.subject_type === 'user')
+            .map((grant) => grant.subject_id),
+          selectedDepartmentIds: grants
+            .filter((grant) => grant.subject_type === 'department')
+            .map((grant) => grant.subject_id),
+          selectedUserOptions: grants
+            .filter((grant) => grant.subject_type === 'user')
+            .map(grantOptionFromGrant),
+          selectedDepartmentOptions: grants
+            .filter((grant) => grant.subject_type === 'department')
+            .map(grantOptionFromGrant),
+        }))
+      } catch (error) {
+        toast.error(getErrorMessage(error, t('Request failed')))
+      }
+    })()
   }
 
-  const handleVersionSubmit = () => {
-    if (!selectedResource) {
+  const handlePublishSubmit = () => {
+    if (!publishResource) {
       return
     }
-    if (!versionForm.version.trim() || !versionForm.contractVersion.trim()) {
-      toast.error(t('Version and contract version are required'))
+    if (!publishForm.summary.trim()) {
+      toast.error(t('Release summary is required'))
       return
     }
     try {
-      versionMutation.mutate({
-        resource: selectedResource,
-        form: versionForm,
-      })
+      publishMutation.mutate({ item: publishResource, form: publishForm })
     } catch (error) {
       toast.error(translateFormError(error, t))
     }
   }
 
-  const handleLifecycle = (action: AgentPlatformLifecycleAction) => {
-    if (!selectedResource) {
-      return
-    }
-    if (action === 'publish' && !selectedResource.latest_version) {
-      toast.error(t('Create a version before publishing'))
-      return
-    }
-    lifecycleMutation.mutate({ action, resource: selectedResource })
+  const handleRefreshAll = () => {
+    void mcpsQuery.refetch()
+    void skillsQuery.refetch()
+    void knowledgeQuery.refetch()
+    void agentsQuery.refetch()
   }
 
+  const mcpItems = getItems(mcpsQuery.data)
   const skillItems = getItems(skillsQuery.data)
   const knowledgeItems = getItems(knowledgeQuery.data)
   const agentItems = getItems(agentsQuery.data)
-  const resourceSets = [skillItems, knowledgeItems, agentItems]
 
   const metrics: SummaryMetric[] = [
+    {
+      key: 'mcps',
+      label: t('MCP'),
+      value: mcpItems.length,
+      helper: t('Tool server definitions'),
+      icon: Unplug,
+    },
     {
       key: 'skills',
       label: t('Skills'),
       value: skillItems.length,
-      helper: t('Live control-plane entries'),
+      helper: t('Local zip packages'),
       icon: Puzzle,
     },
     {
       key: 'knowledge',
       label: t('Knowledge'),
       value: knowledgeItems.length,
-      helper: t('Provider-backed resources'),
+      helper: t('External knowledge IDs'),
       icon: BookOpen,
     },
     {
       key: 'agents',
-      label: t('Agents'),
-      value: agentItems.length,
-      helper: t('Definition templates'),
+      label: t('Published Agents'),
+      value: countResourcesByStatus([agentItems], 'published'),
+      helper: t('Granted to users or departments'),
       icon: Bot,
-    },
-    {
-      key: 'published',
-      label: t('Published resources'),
-      value: countResourcesByStatus(resourceSets, 'published'),
-      helper: t('Ready for open capability exposure'),
-      icon: Layers3,
     },
   ]
 
@@ -1563,12 +2077,9 @@ export function AgentPlatformShell() {
             <Button
               variant='outline'
               size='sm'
-              onClick={() => {
-                void skillsQuery.refetch()
-                void knowledgeQuery.refetch()
-                void agentsQuery.refetch()
-              }}
+              onClick={handleRefreshAll}
               disabled={
+                mcpsQuery.isFetching ||
                 skillsQuery.isFetching ||
                 knowledgeQuery.isFetching ||
                 agentsQuery.isFetching
@@ -1600,7 +2111,7 @@ export function AgentPlatformShell() {
                     <CardTitle>{t('Resource control plane')}</CardTitle>
                     <CardDescription>
                       {t(
-                        'Manage Skill, Knowledge, and Agent resources from the live Agent Platform control-plane endpoints.'
+                        'Manage MCP, Skill, Knowledge, and Agent resources for AionUi opencode configuration delivery.'
                       )}
                     </CardDescription>
                   </div>
@@ -1634,22 +2145,48 @@ export function AgentPlatformShell() {
               </CardContent>
             </Card>
 
-            <Tabs defaultValue='skills' className='space-y-6'>
-              <TabsList className='grid w-full grid-cols-3 md:w-[420px]'>
+            <Tabs defaultValue='mcps' className='space-y-6'>
+              <TabsList className='grid w-full grid-cols-4 md:w-[560px]'>
+                <TabsTrigger value='mcps'>{t('MCP')}</TabsTrigger>
                 <TabsTrigger value='skills'>{t('Skills')}</TabsTrigger>
                 <TabsTrigger value='knowledge'>{t('Knowledge')}</TabsTrigger>
                 <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
               </TabsList>
 
+              <TabsContent value='mcps'>
+                <ResourceListCard
+                  title={t('MCP management')}
+                  description={t(
+                    'Manage mcpServers JSON definitions used by Agent package generation.'
+                  )}
+                  badgeLabel={t('Tooling')}
+                  createLabel={t('New MCP')}
+                  icon={Unplug}
+                  showLatestVersion={false}
+                  typeLabel={resourceTypeLabel('mcp', t)}
+                  response={mcpsQuery.data}
+                  isError={mcpsQuery.isError}
+                  error={mcpsQuery.error}
+                  isLoading={mcpsQuery.isLoading}
+                  onCreate={() => openCreateEditor('mcp')}
+                  onOpenDetails={setSelectedResource}
+                  onOpenEdit={openEditEditor}
+                  onRetry={() => void mcpsQuery.refetch()}
+                  errorPrefix={t('MCP API request failed')}
+                  emptyDescription={t(
+                    'No MCP resources are currently available.'
+                  )}
+                />
+              </TabsContent>
+
               <TabsContent value='skills'>
                 <ResourceListCard
                   title={t('Skill management')}
-                  description={t(
-                    'Skill definitions exposed by the Agent Platform control plane.'
-                  )}
-                  badgeLabel={t('Epic 3 active')}
+                  description={t('Upload and manage local Skill zip packages.')}
+                  badgeLabel={t('Package')}
                   createLabel={t('New Skill')}
                   icon={Puzzle}
+                  showLatestVersion={false}
                   typeLabel={resourceTypeLabel('skill', t)}
                   response={skillsQuery.data}
                   isError={skillsQuery.isError}
@@ -1661,7 +2198,7 @@ export function AgentPlatformShell() {
                   onRetry={() => void skillsQuery.refetch()}
                   errorPrefix={t('Skill API request failed')}
                   emptyDescription={t(
-                    'No Skill resources are currently available in the control plane.'
+                    'No Skill resources are currently available.'
                   )}
                 />
               </TabsContent>
@@ -1670,11 +2207,12 @@ export function AgentPlatformShell() {
                 <ResourceListCard
                   title={t('Knowledge management')}
                   description={t(
-                    'Provider-backed retrieval resources managed by the Agent Platform control plane.'
+                    'Register external knowledge base IDs for Agent package generation.'
                   )}
-                  badgeLabel={t('Epic 4 active')}
+                  badgeLabel={t('Knowledge ID')}
                   createLabel={t('New Knowledge')}
                   icon={BookOpen}
+                  showLatestVersion={false}
                   typeLabel={resourceTypeLabel('knowledge', t)}
                   response={knowledgeQuery.data}
                   isError={knowledgeQuery.isError}
@@ -1686,7 +2224,7 @@ export function AgentPlatformShell() {
                   onRetry={() => void knowledgeQuery.refetch()}
                   errorPrefix={t('Knowledge API request failed')}
                   emptyDescription={t(
-                    'No Knowledge resources are currently available in the control plane.'
+                    'No Knowledge resources are currently available.'
                   )}
                 />
               </TabsContent>
@@ -1695,11 +2233,12 @@ export function AgentPlatformShell() {
                 <ResourceListCard
                   title={t('Agent definitions')}
                   description={t(
-                    'Agent definition templates managed by the control plane without implying server-side runtime ownership.'
+                    'Compose MCP, Skill, and Knowledge dependencies, then publish with user or department grants.'
                   )}
-                  badgeLabel={t('Epic 5 active')}
+                  badgeLabel={t('Release managed')}
                   createLabel={t('New Agent')}
                   icon={Bot}
+                  showLatestVersion
                   typeLabel={resourceTypeLabel('agent', t)}
                   response={agentsQuery.data}
                   isError={agentsQuery.isError}
@@ -1711,7 +2250,7 @@ export function AgentPlatformShell() {
                   onRetry={() => void agentsQuery.refetch()}
                   errorPrefix={t('Agent API request failed')}
                   emptyDescription={t(
-                    'No Agent definition resources are currently available in the control plane.'
+                    'No Agent definitions are currently available.'
                   )}
                 />
               </TabsContent>
@@ -1721,36 +2260,43 @@ export function AgentPlatformShell() {
       </SectionPageLayout>
       <ResourceEditorDialog
         form={resourceForm}
+        knowledgeItems={knowledgeItems}
+        mcpItems={mcpItems}
         mode={editor?.mode ?? 'create'}
         onChange={setResourceForm}
         onClose={() => setEditor(null)}
         onSubmit={handleResourceSubmit}
         open={editor != null}
         pending={createMutation.isPending || updateMutation.isPending}
+        skillItems={skillItems}
       />
       <ResourceDetailSheet
         detailResponse={detailQuery.data}
         detailLoading={detailQuery.isFetching}
-        lifecyclePending={lifecycleMutation.isPending}
+        operationPending={
+          enableMutation.isPending ||
+          deleteMutation.isPending ||
+          publishMutation.isPending
+        }
         onClose={() => setSelectedResource(null)}
-        onLifecycle={handleLifecycle}
+        onDelete={(item) => deleteMutation.mutate(item)}
         onOpenEdit={openEditEditor}
-        onOpenVersionForm={openVersionForm}
+        onOpenPublish={openPublishDialog}
         onRefreshDetail={() => void detailQuery.refetch()}
-        onVersionLookup={() => void versionQuery.refetch()}
+        onSetEnabled={(item, enabled) =>
+          enableMutation.mutate({ item, enabled })
+        }
         open={selectedResource != null}
         selected={selectedResource}
-        versionResponse={versionQuery.data}
-        versionLoading={versionQuery.isFetching}
       />
-      <VersionFormDialog
-        form={versionForm}
-        onChange={setVersionForm}
-        onClose={() => setVersionFormOpen(false)}
-        onSubmit={handleVersionSubmit}
-        open={versionFormOpen}
-        pending={versionMutation.isPending}
-        resource={selectedResource}
+      <PublishAgentDialog
+        form={publishForm}
+        onChange={setPublishForm}
+        onClose={() => setPublishResource(null)}
+        onSubmit={handlePublishSubmit}
+        open={publishResource != null}
+        pending={publishMutation.isPending}
+        resource={publishResource}
       />
     </>
   )

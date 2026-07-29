@@ -1,5 +1,6 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
+
 import { defineConfig } from '@rsbuild/core'
 import { pluginReact } from '@rsbuild/plugin-react'
 

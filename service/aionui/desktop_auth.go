@@ -1,6 +1,8 @@
 package aionui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"strings"
@@ -18,6 +20,7 @@ const (
 	DesktopLoopbackCallbackPath = "/new-api/callback"
 	desktopTokenTTL             = 90 * 24 * time.Hour
 	desktopCodeTTL              = 5 * time.Minute
+	desktopTokenRedisKeyPrefix  = "aionui:desktop:token:"
 )
 
 var (
@@ -27,6 +30,14 @@ var (
 	ErrInvalidToken       = errors.New("invalid or expired desktop token")
 	ErrEmailRequired      = errors.New("user email is required")
 	ErrUserUnavailable    = errors.New("user is disabled or unavailable")
+)
+
+var (
+	desktopRedisAvailable = func() bool {
+		return common.RedisEnabled && common.RDB != nil
+	}
+	desktopRedisSet = common.RedisSet
+	desktopRedisGet = common.RedisGet
 )
 
 type DesktopCodeGrant struct {
@@ -50,6 +61,16 @@ type DesktopTokenClaims struct {
 	ExpiresAt  time.Time
 	IssuedAt   time.Time
 	AppVersion string
+}
+
+type desktopTokenRedisPayload struct {
+	UserId     int    `json:"user_id"`
+	Username   string `json:"username"`
+	Email      string `json:"email"`
+	DeviceId   string `json:"device_id"`
+	ExpiresAt  int64  `json:"expires_at"`
+	IssuedAt   int64  `json:"issued_at"`
+	AppVersion string `json:"app_version"`
 }
 
 type DesktopAuthService struct {
@@ -202,6 +223,9 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	s.mu.Lock()
 	s.tokens[token] = claims
 	s.mu.Unlock()
+	if err := s.saveToken(claims); err != nil {
+		return dtoaionui.DesktopTokenResponse{}, err
+	}
 
 	return dtoaionui.DesktopTokenResponse{
 		AccessToken: token,
@@ -223,6 +247,30 @@ func desktopSecret(prefix string, length int) (string, error) {
 	return prefix + value, nil
 }
 
+func (s *DesktopAuthService) saveToken(claims DesktopTokenClaims) error {
+	if !desktopRedisAvailable() {
+		return nil
+	}
+	ttl := claims.ExpiresAt.Sub(s.now())
+	if ttl <= 0 {
+		return nil
+	}
+	payload := desktopTokenRedisPayload{
+		UserId:     claims.UserId,
+		Username:   claims.Username,
+		Email:      claims.Email,
+		DeviceId:   claims.DeviceId,
+		ExpiresAt:  claims.ExpiresAt.Unix(),
+		IssuedAt:   claims.IssuedAt.Unix(),
+		AppVersion: claims.AppVersion,
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return desktopRedisSet(desktopTokenRedisKey(claims.Token), string(data), ttl)
+}
+
 func (s *DesktopAuthService) ValidateAuthorization(header string) (DesktopTokenClaims, error) {
 	token := strings.TrimSpace(header)
 	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
@@ -240,9 +288,23 @@ func (s *DesktopAuthService) ValidateAuthorization(header string) (DesktopTokenC
 			delete(s.tokens, token)
 		}
 		s.mu.Unlock()
-		return DesktopTokenClaims{}, ErrInvalidToken
+		if ok {
+			return DesktopTokenClaims{}, ErrInvalidToken
+		}
+		var err error
+		claims, err = s.loadToken(token, now)
+		if err != nil {
+			return DesktopTokenClaims{}, err
+		}
+		if claims.Token == "" {
+			return DesktopTokenClaims{}, ErrInvalidToken
+		}
+		s.mu.Lock()
+		s.tokens[token] = claims
+		s.mu.Unlock()
+	} else {
+		s.mu.Unlock()
 	}
-	s.mu.Unlock()
 
 	user, err := model.GetUserById(claims.UserId, false)
 	if err != nil {
@@ -261,6 +323,43 @@ func (s *DesktopAuthService) ValidateAuthorization(header string) (DesktopTokenC
 	claims.Username = user.Username
 	claims.Email = email
 	return claims, nil
+}
+
+func (s *DesktopAuthService) loadToken(token string, now time.Time) (DesktopTokenClaims, error) {
+	if !desktopRedisAvailable() {
+		return DesktopTokenClaims{}, nil
+	}
+	data, err := desktopRedisGet(desktopTokenRedisKey(token))
+	if err != nil {
+		return DesktopTokenClaims{}, nil
+	}
+	var payload desktopTokenRedisPayload
+	if err := common.Unmarshal([]byte(data), &payload); err != nil {
+		return DesktopTokenClaims{}, err
+	}
+	expiresAt := time.Unix(payload.ExpiresAt, 0)
+	if now.After(expiresAt) {
+		return DesktopTokenClaims{}, nil
+	}
+	return DesktopTokenClaims{
+		Token:      token,
+		UserId:     payload.UserId,
+		Username:   payload.Username,
+		Email:      payload.Email,
+		DeviceId:   payload.DeviceId,
+		ExpiresAt:  expiresAt,
+		IssuedAt:   time.Unix(payload.IssuedAt, 0),
+		AppVersion: payload.AppVersion,
+	}, nil
+}
+
+func desktopTokenRedisKey(token string) string {
+	return desktopTokenRedisKeyPrefix + desktopTokenHash(token)
+}
+
+func desktopTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func BuildDesktopCallbackURL(redirectURI string, code string, state string) (string, error) {

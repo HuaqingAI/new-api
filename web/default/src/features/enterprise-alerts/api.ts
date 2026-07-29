@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   AlertDeliveriesResponse,
   AlertDeliveryResendResponse,
@@ -30,10 +31,26 @@ import type {
   EnterpriseAlertsSearch,
 } from './types'
 
-export const enterpriseAlertsQueryKey = ['enterprise', 'alerts', 'events'] as const
-export const enterpriseAlertOverviewQueryKey = ['enterprise', 'alerts', 'department-summary'] as const
-export const enterpriseAlertDeliveriesQueryKey = ['enterprise', 'alerts', 'deliveries'] as const
-export const enterpriseAlertRulesQueryKey = ['enterprise', 'alerts', 'rules'] as const
+export const enterpriseAlertsQueryKey = [
+  'enterprise',
+  'alerts',
+  'events',
+] as const
+export const enterpriseAlertOverviewQueryKey = [
+  'enterprise',
+  'alerts',
+  'department-summary',
+] as const
+export const enterpriseAlertDeliveriesQueryKey = [
+  'enterprise',
+  'alerts',
+  'deliveries',
+] as const
+export const enterpriseAlertRulesQueryKey = [
+  'enterprise',
+  'alerts',
+  'rules',
+] as const
 
 export function alertEventsListQueryKey(search: EnterpriseAlertsSearch) {
   return [...enterpriseAlertsQueryKey, search] as const
@@ -59,7 +76,9 @@ export async function getAlertEvents(
   const res = await api.get('/api/enterprise/alerts/events', {
     params: {
       ...(search.tab ? { tab: search.tab } : {}),
-      ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.tenant_id === undefined
+        ? {}
+        : { tenant_id: search.tenant_id }),
       ...(search.event_id === undefined ? {} : { event_id: search.event_id }),
       ...(search.department_id === undefined
         ? {}
@@ -74,7 +93,9 @@ export async function getAlertEvents(
       ...(search.from === undefined ? {} : { from: search.from }),
       ...(search.to === undefined ? {} : { to: search.to }),
       ...(search.page === undefined ? {} : { page: search.page }),
-      ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
+      ...(search.page_size === undefined
+        ? {}
+        : { page_size: search.page_size }),
     },
   })
   return res.data
@@ -85,7 +106,9 @@ export async function getDepartmentRiskSummary(
 ): Promise<ApiResponse<DepartmentRiskSummaryResponse>> {
   const res = await api.get('/api/enterprise/alerts/department-summary', {
     params: {
-      ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.tenant_id === undefined
+        ? {}
+        : { tenant_id: search.tenant_id }),
       ...(search.department_id === undefined
         ? {}
         : { department_id: search.department_id }),
@@ -121,7 +144,9 @@ export async function getAlertDeliveries(
 ): Promise<ApiResponse<AlertDeliveriesResponse>> {
   const res = await api.get('/api/enterprise/alerts/deliveries', {
     params: {
-      ...(search.tenant_id === undefined ? {} : { tenant_id: search.tenant_id }),
+      ...(search.tenant_id === undefined
+        ? {}
+        : { tenant_id: search.tenant_id }),
       ...(search.rule_id === undefined ? {} : { rule_id: search.rule_id }),
       ...(search.event_id === undefined ? {} : { event_id: search.event_id }),
       ...(search.manual_parent_id === undefined
@@ -133,7 +158,9 @@ export async function getAlertDeliveries(
         ? { trigger_source: search.trigger_source }
         : {}),
       ...(search.page === undefined ? {} : { page: search.page }),
-      ...(search.page_size === undefined ? {} : { page_size: search.page_size }),
+      ...(search.page_size === undefined
+        ? {}
+        : { page_size: search.page_size }),
     },
   })
   return res.data
@@ -143,11 +170,15 @@ export async function resendAlertDelivery(
   id: number,
   tenantId?: number
 ): Promise<ApiResponse<AlertDeliveryResendResponse>> {
-  const res = await api.post(`/api/enterprise/alerts/deliveries/${id}/resend`, null, {
-    params: {
-      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
-    },
-  })
+  const res = await api.post(
+    `/api/enterprise/alerts/deliveries/${id}/resend`,
+    null,
+    {
+      params: {
+        ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+      },
+    }
+  )
   return res.data
 }
 

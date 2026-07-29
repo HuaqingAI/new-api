@@ -16,9 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { z } from 'zod'
-import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
@@ -39,12 +36,14 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
-import { cn } from '@/lib/utils'
+import { z } from 'zod'
+
+import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -90,10 +89,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { SectionPageLayout } from '@/components/layout'
-import { StatusBadge } from '@/components/status-badge'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
+import { formatNumber, formatPercent, formatTimestamp } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   addDepartmentMember,
   budgetDelegationQueryKey,
@@ -899,7 +901,10 @@ function EnterpriseOrganizationEmptyState() {
       <EmptyContent>
         <div className='flex flex-wrap justify-center gap-2'>
           {canConfigureDingTalk ? (
-            <Button variant='outline' render={<Link to='/enterprise-dingtalk' />}>
+            <Button
+              variant='outline'
+              render={<Link to='/enterprise-dingtalk' />}
+            >
               <Settings className='size-4' />
               {t('Configure DingTalk sync')}
             </Button>

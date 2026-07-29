@@ -1,9 +1,12 @@
 package agentplatform
 
 import (
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/model"
+	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 	"github.com/gin-gonic/gin"
 )
@@ -53,14 +56,45 @@ func CreateSkill(c *gin.Context) {
 	}
 	item, err := skillService().Create(apservice.SkillCreateInput{
 		DisplayName: req.DisplayName,
-		OwnerUserId: req.OwnerUserId,
-		TenantId:    valueOrZero(req.TenantId),
+		Description: req.Description,
+		OwnerUserId: c.GetInt("id"),
+		TenantId:    0,
 	})
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
 	common.ApiSuccess(c, mapResourceItem(item.ResourceItem))
+}
+
+func CreateSkillMultipart(c *gin.Context) {
+	item, err := skillService().Create(apservice.SkillCreateInput{
+		DisplayName: c.PostForm("display_name"),
+		Description: c.PostForm("description"),
+		OwnerUserId: c.GetInt("id"),
+		TenantId:    0,
+	})
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		common.ApiSuccess(c, mapSkillDetailItem(item))
+		return
+	}
+	opened, err := file.Open()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	defer opened.Close()
+	item, err = skillService().SavePackage(item.ResourceId, file.Filename, opened)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapSkillDetailItem(item))
 }
 
 func UpdateSkill(c *gin.Context) {
@@ -71,6 +105,7 @@ func UpdateSkill(c *gin.Context) {
 	}
 	item, err := skillService().Update(c.Param("id"), apservice.SkillUpdateInput{
 		DisplayName: req.DisplayName,
+		Description: req.Description,
 	})
 	if err != nil {
 		writeResourceError(c, err)
@@ -79,6 +114,79 @@ func UpdateSkill(c *gin.Context) {
 	common.ApiSuccess(c, mapResourceItem(item.ResourceItem))
 }
 
+func UploadSkillPackage(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	opened, err := file.Open()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	defer opened.Close()
+	item, err := skillService().SavePackage(c.Param("id"), file.Filename, opened)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapSkillDetailItem(item))
+}
+
+func DownloadSkillPackage(c *gin.Context) {
+	path, err := skillService().PackagePath(c.Param("id"))
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	c.FileAttachment(path, "")
+}
+
+func EnableSkill(c *gin.Context) {
+	item, err := skillService().SetStatus(c.Param("id"), apmodel.ResourceStatusPublished)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapSkillDetailItem(item))
+}
+
+func DisableSkill(c *gin.Context) {
+	item, err := skillService().SetStatus(c.Param("id"), apmodel.ResourceStatusDisabled)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapSkillDetailItem(item))
+}
+
+func DeleteSkill(c *gin.Context) {
+	if err := skillService().Delete(c.Param("id")); err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"resource_id": c.Param("id")})
+}
+
 func skillService() *apservice.SkillService {
 	return apservice.NewSkillService(model.DB)
+}
+
+func CreateSkillEntry(c *gin.Context) {
+	contentType := strings.ToLower(c.GetHeader("Content-Type"))
+	if strings.Contains(contentType, "multipart/form-data") {
+		CreateSkillMultipart(c)
+		return
+	}
+	CreateSkill(c)
+}
+
+func mapSkillDetailItem(item apservice.SkillItem) dtoagentplatform.SkillDetailItem {
+	return dtoagentplatform.SkillDetailItem{
+		ResourceItem: mapResourceItem(item.ResourceItem),
+		FileName:     item.FileName,
+		Sha256:       item.Sha256,
+		SizeBytes:    item.SizeBytes,
+	}
 }

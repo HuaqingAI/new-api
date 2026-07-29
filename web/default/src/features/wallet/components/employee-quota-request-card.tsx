@@ -16,14 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
-import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useForm, type Resolver } from 'react-hook-form'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { Coins } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { z } from 'zod'
+
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -64,14 +70,13 @@ import {
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
 } from '@/features/enterprise-organization/api'
-import type {
-  UserDepartmentItem,
-} from '@/features/enterprise-organization/types'
+import { QuotaAmountInput } from '@/features/enterprise-organization/quota-amount-controls'
 import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from '@/features/enterprise-organization/quota-request-budget-display-components'
-import { QuotaAmountInput } from '@/features/enterprise-organization/quota-amount-controls'
+import type { UserDepartmentItem } from '@/features/enterprise-organization/types'
+
 import type { UserWalletData } from '../types'
 
 const activeMembershipStatus = 1
@@ -79,16 +84,25 @@ const activeMembershipStatus = 1
 function createWalletQuotaRequestSchema(t: (key: string) => string) {
   return z.object({
     tenant_id: z.coerce.number().int().nonnegative(),
-    department_id: z.coerce.number().int().positive({
-      message: t('Choose a target department'),
-    }),
-    department_budget_id: z.coerce.number().int().positive({
-      message: t('Choose a target budget pool'),
-    }),
+    department_id: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Choose a target department'),
+      }),
+    department_budget_id: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Choose a target budget pool'),
+      }),
     budget_mode: z.literal('department_budget'),
-    requested_quota: z.coerce.number().int().positive({
-      message: t('Requested quota must be greater than 0'),
-    }),
+    requested_quota: z.coerce
+      .number()
+      .int()
+      .positive({
+        message: t('Requested quota must be greater than 0'),
+      }),
     request_reason: z.string().trim().max(500).default(''),
   })
 }
@@ -121,11 +135,13 @@ export function EmployeeQuotaRequestCard({
   const queryClient = useQueryClient()
   const schema = createWalletQuotaRequestSchema(t)
   type QuotaRequestFormValues = z.infer<typeof schema>
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(
-    null
-  )
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<
+    number | null
+  >(null)
   const form = useForm<QuotaRequestFormValues>({
-    resolver: zodResolver(schema) as unknown as Resolver<QuotaRequestFormValues>,
+    resolver: zodResolver(
+      schema
+    ) as unknown as Resolver<QuotaRequestFormValues>,
     defaultValues: {
       tenant_id: 0,
       department_id: 0,
@@ -144,14 +160,17 @@ export function EmployeeQuotaRequestCard({
     queryFn: async () => {
       if (!user?.id) return []
       const result = await getUserDepartments(user.id)
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return getEmployeeQuotaRequestDepartmentOptions(result.data?.items ?? [])
     },
     enabled: Boolean(user?.id),
   })
   const departments = departmentsQuery.data ?? []
   const currentDepartment = useMemo(
-    () => departments.find((item) => item.department_id === selectedDepartmentId) ?? null,
+    () =>
+      departments.find((item) => item.department_id === selectedDepartmentId) ??
+      null,
     [departments, selectedDepartmentId]
   )
 
@@ -181,8 +200,11 @@ export function EmployeeQuotaRequestCard({
         selectedDepartmentId,
         tenantId || undefined
       )
-      if (!result.success) throw new Error(result.message || t('Request failed'))
-      return result.data ?? { can_submit: false, can_govern: false, budgets: [] }
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
+      return (
+        result.data ?? { can_submit: false, can_govern: false, budgets: [] }
+      )
     },
     enabled: Boolean(selectedDepartmentId),
   })
@@ -239,7 +261,9 @@ export function EmployeeQuotaRequestCard({
   const handleDepartmentChange = (value: string | null) => {
     if (!value) return
     const departmentId = Number(value)
-    const department = departments.find((item) => item.department_id === departmentId)
+    const department = departments.find(
+      (item) => item.department_id === departmentId
+    )
     setSelectedDepartmentId(departmentId)
     form.setValue('department_id', departmentId)
     form.setValue('tenant_id', department?.tenant_id ?? 0)
@@ -283,7 +307,9 @@ export function EmployeeQuotaRequestCard({
         <Form {...form}>
           <form
             className='grid gap-4 md:grid-cols-2'
-            onSubmit={form.handleSubmit((values) => submitMutation.mutate(values))}
+            onSubmit={form.handleSubmit((values) =>
+              submitMutation.mutate(values)
+            )}
           >
             <FormField
               control={form.control}
@@ -297,7 +323,9 @@ export function EmployeeQuotaRequestCard({
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={t('Choose a target department')} />
+                        <SelectValue
+                          placeholder={t('Choose a target department')}
+                        />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -327,7 +355,9 @@ export function EmployeeQuotaRequestCard({
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={t('Choose a target budget pool')} />
+                        <SelectValue
+                          placeholder={t('Choose a target budget pool')}
+                        />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

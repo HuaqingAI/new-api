@@ -1,52 +1,40 @@
 package aionui
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
+	"github.com/QuantumNous/new-api/model"
+	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 )
 
 const (
 	CliTypeOpenCode        = "opencode"
 	AgentConfigUrlTypeFile = "file"
-	defaultAgentVersion    = "1.0.0"
-	defaultAgentAvatar     = "🤖"
+	defaultAgentAvatar     = "\U0001f916"
 )
 
 var ErrUnsupportedCliType = errors.New("unsupported cli_type")
 
 type AgentConfigService struct {
-	agentsDir string
-	now       func() time.Time
+	now func() time.Time
 }
 
-func NewAgentConfigService(agentsDir string) *AgentConfigService {
-	return &AgentConfigService{
-		agentsDir: agentsDir,
-		now:       time.Now,
-	}
+func NewAgentConfigService(_ ...string) *AgentConfigService {
+	return &AgentConfigService{now: time.Now}
 }
 
 func NewDefaultAgentConfigService() *AgentConfigService {
-	return NewAgentConfigService(DefaultAgentConfigDir())
-}
-
-func DefaultAgentConfigDir() string {
-	if configured := strings.TrimSpace(os.Getenv("AIONUI_AGENT_CONFIG_DIR")); configured != "" {
-		return configured
-	}
-	return filepath.Join(".", "agents")
+	return NewAgentConfigService()
 }
 
 func ValidateAgentConfigRequest(cliType string) error {
@@ -57,171 +45,161 @@ func ValidateAgentConfigRequest(cliType string) error {
 }
 
 func (s *AgentConfigService) List(email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
+	return s.listPlatform(0, email, cliType)
+}
+
+func (s *AgentConfigService) ListForUser(userID int, email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
+	return s.listPlatform(userID, email, cliType)
+}
+
+func (s *AgentConfigService) listPlatform(userID int, email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
 	if strings.TrimSpace(cliType) == "" {
 		cliType = CliTypeOpenCode
 	}
 	if cliType != CliTypeOpenCode {
 		return dtoaionui.AgentConfigsResponse{}, ErrUnsupportedCliType
 	}
-
-	agents, err := s.scanZipAgents()
+	if model.DB == nil || userID <= 0 {
+		return dtoaionui.AgentConfigsResponse{
+			UserEmail: strings.TrimSpace(strings.ToLower(email)),
+			CliType:   CliTypeOpenCode,
+			Revision:  s.now().UTC().Format(time.RFC3339),
+			Agents:    []dtoaionui.AgentConfigItem{},
+		}, nil
+	}
+	subjects, err := platformGrantSubjects(userID)
 	if err != nil {
 		return dtoaionui.AgentConfigsResponse{}, err
 	}
+	if len(subjects) == 0 {
+		return dtoaionui.AgentConfigsResponse{
+			UserEmail: strings.TrimSpace(strings.ToLower(email)),
+			CliType:   CliTypeOpenCode,
+			Revision:  s.now().UTC().Format(time.RFC3339),
+			Agents:    []dtoaionui.AgentConfigItem{},
+		}, nil
+	}
 
+	var grants []apmodel.ResourceGrant
+	query := model.DB.Where("status = ?", apmodel.GrantStatusActive)
+	where, args := platformGrantSubjectWhere(subjects)
+	query = query.Where(where, args...)
+	if err := query.Find(&grants).Error; err != nil {
+		return dtoaionui.AgentConfigsResponse{}, err
+	}
+	items := make([]dtoaionui.AgentConfigItem, 0, len(grants))
+	seen := map[string]struct{}{}
+	for _, grant := range grants {
+		key := grant.ResourceId + ":" + grant.ResourceVersion
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		item, ok, err := platformAgentConfigItem(grant)
+		if err != nil {
+			return dtoaionui.AgentConfigsResponse{}, err
+		}
+		if ok {
+			items = append(items, item)
+		}
+	}
+	sort.Slice(items, func(i int, j int) bool {
+		return items[i].Id < items[j].Id
+	})
 	return dtoaionui.AgentConfigsResponse{
 		UserEmail: strings.TrimSpace(strings.ToLower(email)),
 		CliType:   CliTypeOpenCode,
 		Revision:  s.now().UTC().Format(time.RFC3339),
-		Agents:    agents,
+		Agents:    items,
 	}, nil
 }
 
-func (s *AgentConfigService) scanZipAgents() ([]dtoaionui.AgentConfigItem, error) {
-	entries, err := os.ReadDir(s.agentsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []dtoaionui.AgentConfigItem{}, nil
-		}
+type grantSubject struct {
+	Type string
+	Id   string
+}
+
+func platformGrantSubjects(userID int) ([]grantSubject, error) {
+	subjects := []grantSubject{{Type: apmodel.GrantSubjectTypeUser, Id: strconv.Itoa(userID)}}
+	var memberships []entmodel.UserDepartment
+	if err := model.DB.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
 		return nil, err
 	}
-
-	manifest, err := s.loadManifest()
-	if err != nil {
-		return nil, err
+	for _, membership := range memberships {
+		subjects = append(subjects, grantSubject{Type: apmodel.GrantSubjectTypeDepartment, Id: strconv.Itoa(membership.DepartmentId)})
 	}
-	items := make([]dtoaionui.AgentConfigItem, 0)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "~") || !strings.EqualFold(filepath.Ext(name), ".zip") {
-			continue
-		}
-		fullPath, err := filepath.Abs(filepath.Join(s.agentsDir, name))
-		if err != nil {
-			return nil, err
-		}
-		sum, err := fileSHA256(fullPath)
-		if err != nil {
-			return nil, err
-		}
-		defaultId := normalizeAgentConfigID(strings.TrimSuffix(name, filepath.Ext(name)))
-		meta := manifest[name]
-		id := strings.TrimSpace(meta.Id)
-		if id == "" {
-			id = defaultId
-		}
-		agentName := strings.TrimSpace(meta.Name)
-		if agentName == "" {
-			agentName = id
-		}
-		version := strings.TrimSpace(meta.Version)
-		if version == "" {
-			version = defaultAgentVersion
-		}
-		avatar := strings.TrimSpace(meta.Avatar)
-		if avatar == "" {
-			avatar = defaultAgentAvatar
-		}
-		description := strings.TrimSpace(meta.Description)
-		if description == "" {
-			description = "Synced from new-api"
-		}
-		items = append(items, dtoaionui.AgentConfigItem{
-			Id:          id,
-			Url:         fileURL(fullPath),
-			UrlType:     AgentConfigUrlTypeFile,
-			Version:     version,
-			Name:        agentName,
-			Description: description,
-			Avatar:      avatar,
-			Sha256:      sum,
-		})
-	}
-
-	sort.Slice(items, func(i int, j int) bool {
-		return items[i].Id < items[j].Id
-	})
-	return items, nil
+	return subjects, nil
 }
 
-type agentConfigManifest struct {
-	Agents []agentConfigManifestItem `json:"agents"`
+func platformGrantSubjectWhere(subjects []grantSubject) (string, []any) {
+	clauses := make([]string, 0, len(subjects))
+	args := make([]any, 0, len(subjects)*2)
+	for _, subject := range subjects {
+		clauses = append(clauses, "(subject_type = ? AND subject_id = ?)")
+		args = append(args, subject.Type, subject.Id)
+	}
+	return strings.Join(clauses, " OR "), args
 }
 
-type agentConfigManifestItem struct {
-	File        string `json:"file"`
-	Id          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Avatar      string `json:"avatar"`
-	Version     string `json:"version"`
+func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfigItem, bool, error) {
+	var resource apmodel.Resource
+	if err := model.DB.Where("resource_id = ? AND resource_type = ? AND status = ?", grant.ResourceId, apmodel.ResourceTypeAgent, apmodel.ResourceStatusPublished).First(&resource).Error; err != nil {
+		return dtoaionui.AgentConfigItem{}, false, nil
+	}
+	var version apmodel.ResourceVersion
+	if err := model.DB.Where("resource_id = ? AND version = ? AND status = ?", grant.ResourceId, grant.ResourceVersion, apmodel.ResourceStatusPublished).First(&version).Error; err != nil {
+		return dtoaionui.AgentConfigItem{}, false, nil
+	}
+	packagePath := strings.TrimSpace(version.PackagePath)
+	sha := strings.TrimSpace(version.PackageSha256)
+	var def apmodel.AgentDef
+	if err := model.DB.Where("resource_id = ? AND resource_version = ?", grant.ResourceId, grant.ResourceVersion).First(&def).Error; err != nil {
+		return dtoaionui.AgentConfigItem{}, false, nil
+	}
+	if packagePath == "" {
+		packagePath = strings.TrimSpace(def.PackagePath)
+	}
+	if sha == "" {
+		sha = strings.TrimSpace(def.PackageSha256)
+	}
+	if packagePath == "" {
+		return dtoaionui.AgentConfigItem{}, false, nil
+	}
+	name := strings.TrimSpace(def.Name)
+	if name == "" {
+		name = resource.DisplayName
+	}
+	description := strings.TrimSpace(def.Description)
+	if description == "" {
+		description = resource.Description
+	}
+	avatar := strings.TrimSpace(def.Avatar)
+	if avatar == "" {
+		avatar = resource.Avatar
+	}
+	if avatar == "" {
+		avatar = defaultAgentAvatar
+	}
+	return dtoaionui.AgentConfigItem{
+		Id:          resource.ResourceId,
+		Url:         fileURL(packagePath),
+		UrlType:     AgentConfigUrlTypeFile,
+		Version:     version.Version,
+		Name:        name,
+		Description: description,
+		Avatar:      avatar,
+		Sha256:      sha,
+	}, true, nil
 }
 
-func (s *AgentConfigService) loadManifest() (map[string]agentConfigManifestItem, error) {
-	path := filepath.Join(s.agentsDir, "manifest.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]agentConfigManifestItem{}, nil
-		}
-		return nil, err
+func fileURL(filePath string) string {
+	filePath = strings.TrimSpace(filePath)
+	if strings.HasPrefix(strings.ToLower(filePath), "file://") {
+		return filePath
 	}
-
-	var manifest agentConfigManifest
-	if err := common.Unmarshal(data, &manifest); err != nil {
-		return nil, err
+	if abs, err := filepath.Abs(filePath); err == nil {
+		filePath = abs
 	}
-	items := make(map[string]agentConfigManifestItem, len(manifest.Agents))
-	for _, agent := range manifest.Agents {
-		file := strings.TrimSpace(agent.File)
-		if file == "" {
-			continue
-		}
-		items[file] = agent
-	}
-	return items, nil
-}
-
-func normalizeAgentConfigID(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	builder := strings.Builder{}
-	lastDash := false
-	for _, r := range normalized {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			builder.WriteRune(r)
-			lastDash = false
-			continue
-		}
-		if !lastDash {
-			builder.WriteByte('-')
-			lastDash = true
-		}
-	}
-	id := strings.Trim(builder.String(), "-")
-	if id == "" {
-		return "agent"
-	}
-	return id
-}
-
-func fileURL(path string) string {
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(filePath)}
 	return u.String()
-}
-
-func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }

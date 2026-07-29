@@ -16,22 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useForm } from 'react-hook-form'
-import { isRedirect } from '@tanstack/react-router'
-import i18n from '@/i18n/config'
-import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { describe, test } from 'node:test'
+
+import { isRedirect } from '@tanstack/react-router'
 import type { ComponentProps } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { useForm } from 'react-hook-form'
 import { I18nextProvider } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+
+import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
+import { buildSearchParams } from '@/features/usage-logs/lib/filter'
+import i18n from '@/i18n/config'
 import { api } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
 import { ROLE } from '@/lib/roles'
-import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
-import { buildSearchParams } from '@/features/usage-logs/lib/filter'
+import { Route as EnterpriseUsageRoute } from '@/routes/_authenticated/enterprise-usage/index'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   departmentDetailQueryKey,
   departmentUsageReportQueryKey,
@@ -1274,9 +1277,7 @@ describe('Enterprise usage overview dashboard', () => {
 
   test('surfaces selected recent-log user context without leaving the analysis view', () => {
     const html = renderEnterpriseUsageContent({
-      items: [
-        departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' }),
-      ],
+      items: [departmentUsageItem({ dept_id: 1, dept_name: 'Engineering' })],
       selectedDepartmentId: 1,
       currentDepartmentName: 'Engineering',
       detail: detailUsageItem(),

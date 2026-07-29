@@ -1,9 +1,11 @@
-import { isRedirect } from '@tanstack/react-router'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { useAuthStore } from '@/stores/auth-store'
+
+import { isRedirect } from '@tanstack/react-router'
+
 import { ROLE } from '@/lib/roles'
 import { Route as SystemSettingsRoute } from '@/routes/_authenticated/system-settings/route'
+import { useAuthStore } from '@/stores/auth-store'
 
 describe('System settings route guard', () => {
   test('allows only super admins to enter system settings', () => {

@@ -1,10 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import i18n from '@/i18n/config'
-import { api } from '@/lib/api'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
+
 import {
   getQuotaRequestCapability,
   getUserDepartments,
@@ -14,33 +14,51 @@ import {
   submitQuotaRequest,
   userDepartmentsQueryKey,
 } from '@/features/enterprise-organization/api'
+import {
+  convertEnterpriseQuotaInputMode,
+  parseEnterpriseQuotaInput,
+} from '@/features/enterprise-organization/quota-amount-controls'
 import { getQuotaRequestBudgetDisplayText } from '@/features/enterprise-organization/quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from '@/features/enterprise-organization/quota-request-budget-display-components'
-import {
-  convertEnterpriseQuotaInputMode,
-  parseEnterpriseQuotaInput,
-} from '@/features/enterprise-organization/quota-amount-controls'
+import type { UserDepartmentItem } from '@/features/enterprise-organization/types'
+import type { QuotaRequestCapabilityBudgetItem } from '@/features/enterprise-organization/types'
+import i18n from '@/i18n/config'
+import { api } from '@/lib/api'
+
+import type { UserWalletData } from '../types'
 import {
   EmployeeQuotaRequestCard,
   getEmployeeQuotaRequestDepartmentOptions,
   invalidateQuotaRequestGovernanceQueries,
   resolveEmployeeQuotaRequestBudgetId,
 } from './employee-quota-request-card'
-import type { UserDepartmentItem } from '@/features/enterprise-organization/types'
-import type { QuotaRequestCapabilityBudgetItem } from '@/features/enterprise-organization/types'
-import type { UserWalletData } from '../types'
 
 i18n.changeLanguage('en')
 
 describe('Employee quota request wallet entry', () => {
   test('filters quota request departments to active memberships only', () => {
     const departments = getEmployeeQuotaRequestDepartmentOptions([
-      userDepartment({ id: 1, department_id: 11, department_name: 'Engineering', status: 1 }),
-      userDepartment({ id: 2, department_id: 12, department_name: 'Finance', status: 2 }),
-      userDepartment({ id: 3, department_id: 13, department_name: 'Platform', status: 1 }),
+      userDepartment({
+        id: 1,
+        department_id: 11,
+        department_name: 'Engineering',
+        status: 1,
+      }),
+      userDepartment({
+        id: 2,
+        department_id: 12,
+        department_name: 'Finance',
+        status: 2,
+      }),
+      userDepartment({
+        id: 3,
+        department_id: 13,
+        department_name: 'Platform',
+        status: 1,
+      }),
     ])
 
     assert.deepEqual(
@@ -220,7 +238,12 @@ describe('Employee quota request wallet entry', () => {
   })
 
   test('reuses enterprise quota request endpoints and query scope from the wallet entry', async () => {
-    const calls: Array<{ method: string; url: string; params?: unknown; data?: unknown }> = []
+    const calls: Array<{
+      method: string
+      url: string
+      params?: unknown
+      data?: unknown
+    }> = []
     const originalGet = api.get
     const originalPost = api.post
 
@@ -230,7 +253,15 @@ describe('Employee quota request wallet entry', () => {
         return {
           data: {
             success: true,
-            data: { items: [userDepartment({ id: 1, department_id: 11, department_name: 'Engineering' })] },
+            data: {
+              items: [
+                userDepartment({
+                  id: 1,
+                  department_id: 11,
+                  department_name: 'Engineering',
+                }),
+              ],
+            },
           },
         }
       }
@@ -292,8 +323,16 @@ describe('Employee quota request wallet entry', () => {
         0,
       ])
       assert.deepEqual(calls, [
-        { method: 'GET', url: '/api/enterprise/users/2001/departments', params: undefined },
-        { method: 'GET', url: '/api/enterprise/quota-requests/capability/11', params: { tenant_id: 0 } },
+        {
+          method: 'GET',
+          url: '/api/enterprise/users/2001/departments',
+          params: undefined,
+        },
+        {
+          method: 'GET',
+          url: '/api/enterprise/quota-requests/capability/11',
+          params: { tenant_id: 0 },
+        },
         {
           method: 'POST',
           url: '/api/enterprise/quota-requests',
@@ -329,7 +368,8 @@ describe('Employee quota request wallet entry', () => {
   test('invalidates governance timeline and notification caches after wallet submission', async () => {
     const queryClient = new QueryClient()
     const invalidated: unknown[] = []
-    const originalInvalidateQueries = queryClient.invalidateQueries.bind(queryClient)
+    const originalInvalidateQueries =
+      queryClient.invalidateQueries.bind(queryClient)
     queryClient.invalidateQueries = ((filters: { queryKey?: unknown }) => {
       invalidated.push(filters.queryKey)
       return Promise.resolve()
@@ -412,7 +452,8 @@ function quotaRequestBudget(
 }
 
 function userDepartment(
-  overrides: Partial<UserDepartmentItem> & Pick<UserDepartmentItem, 'id' | 'department_id' | 'department_name'>
+  overrides: Partial<UserDepartmentItem> &
+    Pick<UserDepartmentItem, 'id' | 'department_id' | 'department_name'>
 ): UserDepartmentItem {
   return {
     id: overrides.id,

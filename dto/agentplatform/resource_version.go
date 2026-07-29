@@ -22,10 +22,10 @@ type KnowledgeDetailRequest struct {
 }
 
 type AgentDetailRequest struct {
-	Manifest            json.RawMessage `json:"manifest,omitempty"`
-	Dependencies        json.RawMessage `json:"dependencies,omitempty"`
-	PromptMetadata      json.RawMessage `json:"prompt_metadata,omitempty"`
-	CompatibilityMeta   json.RawMessage `json:"compatibility_metadata,omitempty"`
+	Manifest          json.RawMessage `json:"manifest,omitempty"`
+	Dependencies      json.RawMessage `json:"dependencies,omitempty"`
+	PromptMetadata    json.RawMessage `json:"prompt_metadata,omitempty"`
+	CompatibilityMeta json.RawMessage `json:"compatibility_metadata,omitempty"`
 }
 
 type CreateResourceVersionRequest struct {

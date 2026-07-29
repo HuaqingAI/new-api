@@ -1,4 +1,6 @@
-import { useForm, type Resolver } from 'react-hook-form'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
+
 import { zodResolver } from '@hookform/resolvers/zod'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -8,14 +10,15 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import i18n, { resources } from '@/i18n/config'
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { useForm, type Resolver } from 'react-hook-form'
 import { I18nextProvider } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+
+import i18n, { resources } from '@/i18n/config'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   createQuotaAllocation,
   departmentMembersQueryKey,

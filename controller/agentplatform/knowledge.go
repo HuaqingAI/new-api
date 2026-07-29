@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/model"
+	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 	"github.com/gin-gonic/gin"
 )
@@ -24,9 +25,9 @@ func ListKnowledge(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	items := make([]dtoagentplatform.KnowledgeItem, 0, len(result.Items))
+	items := make([]dtoagentplatform.KnowledgeDetailItem, 0, len(result.Items))
 	for _, item := range result.Items {
-		items = append(items, mapResourceItem(item.ResourceItem))
+		items = append(items, mapKnowledgeDetailItem(item))
 	}
 	common.ApiSuccess(c, dtoagentplatform.KnowledgeListResponse{
 		Items:    items,
@@ -42,7 +43,7 @@ func GetKnowledge(c *gin.Context) {
 		writeResourceError(c, err)
 		return
 	}
-	common.ApiSuccess(c, mapResourceItem(item.ResourceItem))
+	common.ApiSuccess(c, mapKnowledgeDetailItem(item))
 }
 
 func CreateKnowledge(c *gin.Context) {
@@ -52,15 +53,17 @@ func CreateKnowledge(c *gin.Context) {
 		return
 	}
 	item, err := knowledgeService().Create(apservice.KnowledgeCreateInput{
-		DisplayName: req.DisplayName,
-		OwnerUserId: req.OwnerUserId,
-		TenantId:    valueOrZero(req.TenantId),
+		DisplayName:         req.DisplayName,
+		Description:         req.Description,
+		ExternalKnowledgeId: req.ExternalKnowledgeId,
+		OwnerUserId:         c.GetInt("id"),
+		TenantId:            0,
 	})
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	common.ApiSuccess(c, mapResourceItem(item.ResourceItem))
+	common.ApiSuccess(c, mapKnowledgeDetailItem(item))
 }
 
 func UpdateKnowledge(c *gin.Context) {
@@ -70,15 +73,50 @@ func UpdateKnowledge(c *gin.Context) {
 		return
 	}
 	item, err := knowledgeService().Update(c.Param("id"), apservice.KnowledgeUpdateInput{
-		DisplayName: req.DisplayName,
+		DisplayName:         req.DisplayName,
+		Description:         req.Description,
+		ExternalKnowledgeId: req.ExternalKnowledgeId,
 	})
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	common.ApiSuccess(c, mapResourceItem(item.ResourceItem))
+	common.ApiSuccess(c, mapKnowledgeDetailItem(item))
 }
 
 func knowledgeService() *apservice.KnowledgeService {
 	return apservice.NewKnowledgeService(model.DB)
+}
+
+func EnableKnowledge(c *gin.Context) {
+	item, err := knowledgeService().SetStatus(c.Param("id"), apmodel.ResourceStatusPublished)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapKnowledgeDetailItem(item))
+}
+
+func DisableKnowledge(c *gin.Context) {
+	item, err := knowledgeService().SetStatus(c.Param("id"), apmodel.ResourceStatusDisabled)
+	if err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, mapKnowledgeDetailItem(item))
+}
+
+func DeleteKnowledge(c *gin.Context) {
+	if err := knowledgeService().Delete(c.Param("id")); err != nil {
+		writeResourceError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"resource_id": c.Param("id")})
+}
+
+func mapKnowledgeDetailItem(item apservice.KnowledgeItem) dtoagentplatform.KnowledgeDetailItem {
+	return dtoagentplatform.KnowledgeDetailItem{
+		ResourceItem:        mapResourceItem(item.ResourceItem),
+		ExternalKnowledgeId: item.ExternalKnowledgeId,
+	}
 }

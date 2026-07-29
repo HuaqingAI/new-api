@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
+
 import { getQuotaRequestBudgetDisplayText } from './quota-request-budget-display'
 import type { DepartmentBudgetItem } from './types'
 
@@ -28,7 +29,7 @@ export function QuotaRequestBudgetOption({
   const { t } = useTranslation()
   const display = getQuotaRequestBudgetDisplayText(item, t)
   return (
-    <div className='min-w-0 space-y-1 whitespace-normal text-left'>
+    <div className='min-w-0 space-y-1 text-left whitespace-normal'>
       <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
         <span className='truncate font-medium'>{display.departmentName}</span>
         <span className='text-muted-foreground shrink-0 text-xs'>

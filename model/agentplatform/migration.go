@@ -9,9 +9,12 @@ func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&ResourceVersion{},
 		&Resource{},
+		&McpDef{},
 		&SkillDef{},
 		&KnowledgeDef{},
 		&AgentDef{},
+		&AgentDependency{},
+		&ResourceGrant{},
 		&Exposure{},
 		&AdminAction{},
 		&Client{},

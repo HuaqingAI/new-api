@@ -16,15 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { isRedirect } from '@tanstack/react-router'
-import i18n from '@/i18n/config'
-import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterprise-alerts/index'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+
+import { isRedirect } from '@tanstack/react-router'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+
+import i18n from '@/i18n/config'
 import { ROLE } from '@/lib/roles'
+import { Route as EnterpriseAlertsRoute } from '@/routes/_authenticated/enterprise-alerts/index'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   alertOverviewQueryKey,
   alertDeliveriesListQueryKey,

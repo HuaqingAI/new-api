@@ -16,9 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import z from 'zod'
-import { useForm, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
@@ -34,6 +31,8 @@ import {
   Rows3,
   Users,
 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm, type UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import {
   CartesianGrid,
@@ -43,10 +42,10 @@ import {
   YAxis,
 } from 'recharts'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import dayjs from '@/lib/dayjs'
-import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
+import z from 'zod'
+
+import { SectionPageLayout } from '@/components/layout'
+import { PageTransition } from '@/components/page-transition'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -89,8 +88,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { SectionPageLayout } from '@/components/layout'
-import { PageTransition } from '@/components/page-transition'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
 import { DepartmentTree } from '@/features/enterprise-organization/components/DepartmentTree'
 import { useDepartmentTree } from '@/features/enterprise-organization/hooks/use-department-tree'
@@ -105,6 +102,11 @@ import {
   formatEnterpriseUserSecondary,
 } from '@/features/enterprise-organization/lib/user-display'
 import type { DepartmentTreeNode } from '@/features/enterprise-organization/types'
+import dayjs from '@/lib/dayjs'
+import { formatDateStr, formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   departmentUsageReportQueryKey,
   exportDepartmentUsageCSV,
@@ -460,7 +462,8 @@ export function EnterpriseUsageOverview() {
     }
     navigate({
       to: '/enterprise-usage',
-      search: (prev) => resolveEnterpriseUsageSyncedSearch(prev, normalizedSearch),
+      search: (prev) =>
+        resolveEnterpriseUsageSyncedSearch(prev, normalizedSearch),
       replace: true,
     })
   }, [
@@ -1097,9 +1100,12 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   </div>
                   <div className='text-muted-foreground text-xs'>
                     {props.includeDescendants
-                      ? t('Current scope: {{department}} and all descendant departments', {
-                          department: scopeLabel,
-                        })
+                      ? t(
+                          'Current scope: {{department}} and all descendant departments',
+                          {
+                            department: scopeLabel,
+                          }
+                        )
                       : t('Current scope: {{department}} only', {
                           department: scopeLabel,
                         })}
@@ -1170,17 +1176,18 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
-                        <ReportStat
-                          label={t('Scope')}
-                          value={scopeLabel}
-                        />
+                        <ReportStat label={t('Scope')} value={scopeLabel} />
                         <ReportStat
                           label={t('Requests')}
-                          value={formatNumber(props.summaryScope?.request_count ?? 0)}
+                          value={formatNumber(
+                            props.summaryScope?.request_count ?? 0
+                          )}
                         />
                         <ReportStat
                           label={t('Users')}
-                          value={formatNumber(props.summaryScope?.user_count ?? 0)}
+                          value={formatNumber(
+                            props.summaryScope?.user_count ?? 0
+                          )}
                         />
                         <ReportStat
                           label={t('Quota')}

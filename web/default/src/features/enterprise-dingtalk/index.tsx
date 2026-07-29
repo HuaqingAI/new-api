@@ -16,9 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
-import * as z from 'zod'
-import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -33,18 +30,15 @@ import {
   TriangleAlert,
   Wifi,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
-import { cn } from '@/lib/utils'
+import * as z from 'zod'
+
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { SectionPageLayout } from '@/components/layout'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -75,6 +69,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   enterpriseDingTalkQueryKey,
   enterpriseDingTalkSyncConflictsQueryKey,
@@ -328,7 +326,8 @@ export function EnterpriseDingTalk() {
         conflict.id,
         conflict.candidate_user_id
       )
-      if (!result.success) throw new Error(result.message || t('Request failed'))
+      if (!result.success)
+        throw new Error(result.message || t('Request failed'))
       return result.data
     },
     onSuccess: async () => {
@@ -336,7 +335,9 @@ export function EnterpriseDingTalk() {
       await queryClient.invalidateQueries({
         queryKey: enterpriseDingTalkSyncConflictsQueryKey,
       })
-      await queryClient.invalidateQueries({ queryKey: enterpriseDingTalkSyncLogsQueryKey })
+      await queryClient.invalidateQueries({
+        queryKey: enterpriseDingTalkSyncLogsQueryKey,
+      })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
@@ -800,9 +801,11 @@ export function DingTalkSyncConflictList({
     <>
       <div className='rounded-md border'>
         <div className='flex items-center gap-2 border-b px-4 py-3'>
-          <TriangleAlert className='text-amber-600 size-4' />
+          <TriangleAlert className='size-4 text-amber-600' />
           <div className='min-w-0'>
-            <h3 className='text-sm font-medium'>{t('Pending Sync Conflicts')}</h3>
+            <h3 className='text-sm font-medium'>
+              {t('Pending Sync Conflicts')}
+            </h3>
             <p className='text-muted-foreground text-xs'>
               {t('Conflicting DingTalk members are not bound automatically.')}
             </p>
@@ -877,7 +880,8 @@ export function DingTalkSyncConflictList({
           if (!open) setBindingConflict(null)
         }}
         isLoading={
-          Boolean(bindingConflict) && resolvingConflictId === bindingConflict?.id
+          Boolean(bindingConflict) &&
+          resolvingConflictId === bindingConflict?.id
         }
         handleConfirm={() => {
           if (!bindingConflict || !onBindCandidate) return

@@ -20,6 +20,8 @@ func CreateResource(c *gin.Context) {
 	item, err := resourceService().Create(apservice.CreateResourceInput{
 		ResourceType: req.ResourceType,
 		DisplayName:  req.DisplayName,
+		Description:  req.Description,
+		Avatar:       req.Avatar,
 		OwnerUserId:  req.OwnerUserId,
 		TenantId:     valueOrZero(req.TenantId),
 	})
@@ -91,7 +93,10 @@ func mapResourceItem(item apservice.ResourceItem) dtoagentplatform.ResourceItem 
 		ResourceId:    item.ResourceId,
 		ResourceType:  item.ResourceType,
 		DisplayName:   item.DisplayName,
+		Description:   item.Description,
+		Avatar:        item.Avatar,
 		OwnerUserId:   item.OwnerUserId,
+		OwnerName:     item.OwnerName,
 		Status:        item.Status,
 		LatestVersion: item.LatestVersion,
 		TenantId:      item.TenantId,

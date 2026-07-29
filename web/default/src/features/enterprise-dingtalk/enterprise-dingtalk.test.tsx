@@ -1,12 +1,15 @@
-import i18n from '@/i18n/config'
-import { isRedirect } from '@tanstack/react-router'
-import { Route as EnterpriseDingTalkRoute } from '@/routes/_authenticated/enterprise-dingtalk/index'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+
+import { isRedirect } from '@tanstack/react-router'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+
+import i18n from '@/i18n/config'
 import { ROLE } from '@/lib/roles'
+import { Route as EnterpriseDingTalkRoute } from '@/routes/_authenticated/enterprise-dingtalk/index'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   EnterpriseDingTalkConnectivityResult,
   EnterpriseDingTalkSyncPanel,

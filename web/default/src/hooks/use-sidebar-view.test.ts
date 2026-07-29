@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+
 import type { NavGroup } from '@/components/layout/types'
+
 import { filterRootNavGroupsByRole } from './use-sidebar-view'
 
 const rootNavGroups: NavGroup[] = [

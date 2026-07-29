@@ -16,13 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
-import { z } from 'zod'
-import dayjs from 'dayjs'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import dayjs from 'dayjs'
 import {
   AlertTriangle,
   ArrowRight,
@@ -33,6 +30,8 @@ import {
   Search,
   Trash2,
 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import {
   CartesianGrid,
@@ -42,7 +41,9 @@ import {
   YAxis,
 } from 'recharts'
 import { toast } from 'sonner'
-import { formatTimestamp } from '@/lib/format'
+import { z } from 'zod'
+
+import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -95,11 +96,12 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { SectionPageLayout } from '@/components/layout'
 import {
   formatEnterpriseUserPrimary,
   formatEnterpriseUserSecondary,
 } from '@/features/enterprise-organization/lib/user-display'
+import { formatTimestamp } from '@/lib/format'
+
 import {
   alertEventsListQueryKey,
   alertDeliveriesListQueryKey,
@@ -469,13 +471,19 @@ export function DepartmentRiskOverviewTab(props: {
       <Card>
         <CardContent className='flex items-center justify-between px-6 py-4'>
           <div className='space-y-1'>
-            <div className='text-sm font-medium'>{t('Include descendants')}</div>
+            <div className='text-sm font-medium'>
+              {t('Include descendants')}
+            </div>
             <div className='text-muted-foreground text-xs'>
               {summary?.include_descendants
-                ? t('Current scope: {{department}} and all descendant departments', {
-                    department:
-                      summary?.scope_department_name || t('Current department'),
-                  })
+                ? t(
+                    'Current scope: {{department}} and all descendant departments',
+                    {
+                      department:
+                        summary?.scope_department_name ||
+                        t('Current department'),
+                    }
+                  )
                 : t('Current scope: {{department}} only', {
                     department:
                       summary?.scope_department_name || t('Current department'),

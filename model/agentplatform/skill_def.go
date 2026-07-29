@@ -14,6 +14,7 @@ var ErrInvalidSkillDefBody = errors.New("agent platform skill def body invalid")
 var allowedSkillInvokeModes = map[string]struct{}{
 	"sync":  {},
 	"async": {},
+	"file":  {},
 }
 
 type SkillDef struct {
@@ -25,6 +26,10 @@ type SkillDef struct {
 	InvokeMode        string    `json:"invoke_mode" gorm:"type:varchar(32);not null"`
 	TimeoutSeconds    int       `json:"timeout_seconds" gorm:"not null"`
 	BindingConfigJSON string    `json:"binding_config_json" gorm:"column:binding_config_json;type:text"`
+	FileName          string    `json:"file_name" gorm:"type:varchar(255)"`
+	FilePath          string    `json:"file_path" gorm:"type:text"`
+	Sha256            string    `json:"sha256" gorm:"type:varchar(64)"`
+	SizeBytes         int64     `json:"size_bytes" gorm:"not null;default:0"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -51,16 +56,25 @@ func (d *SkillDef) applyDefaultsAndValidate() error {
 	d.OutputSchemaJSON = strings.TrimSpace(d.OutputSchemaJSON)
 	d.InvokeMode = strings.TrimSpace(strings.ToLower(d.InvokeMode))
 	d.BindingConfigJSON = strings.TrimSpace(d.BindingConfigJSON)
+	d.FileName = strings.TrimSpace(d.FileName)
+	d.FilePath = strings.TrimSpace(d.FilePath)
+	d.Sha256 = strings.TrimSpace(d.Sha256)
 	if d.InvokeMode == "" {
-		d.InvokeMode = "sync"
+		d.InvokeMode = "file"
 	}
-	if d.ResourceId == "" || d.ResourceVersion == "" || d.InvokeSchemaJSON == "" || d.OutputSchemaJSON == "" || d.BindingConfigJSON == "" {
+	if d.ResourceId == "" {
 		return ErrInvalidSkillDefBody
 	}
 	if _, ok := allowedSkillInvokeModes[d.InvokeMode]; !ok {
 		return ErrInvalidSkillDefBody
 	}
-	if d.TimeoutSeconds <= 0 {
+	if d.InvokeMode == "file" {
+		if d.FilePath == "" || d.Sha256 == "" || d.SizeBytes <= 0 {
+			return ErrInvalidSkillDefBody
+		}
+		return nil
+	}
+	if d.ResourceVersion == "" || d.InvokeSchemaJSON == "" || d.OutputSchemaJSON == "" || d.BindingConfigJSON == "" || d.TimeoutSeconds <= 0 {
 		return ErrInvalidSkillDefBody
 	}
 	if !validSkillJSONShape(d.InvokeSchemaJSON) || !validSkillJSONShape(d.OutputSchemaJSON) || !validSkillBindingConfig(d.BindingConfigJSON) {

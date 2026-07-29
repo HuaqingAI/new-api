@@ -17,13 +17,13 @@ func newModelDiscoveryServiceForTest(t *testing.T, extensionsJSON string) (*Mode
 	require.NoError(t, apmodel.Migrate(db))
 
 	client := apmodel.Client{
-		Slug:            "model-discovery-client",
-		DisplayName:     "Model Discovery Client",
-		ClientType:      "desktop",
-		Status:          "active",
-		ContractVersion: "2026-06",
+		Slug:             "model-discovery-client",
+		DisplayName:      "Model Discovery Client",
+		ClientType:       "desktop",
+		Status:           "active",
+		ContractVersion:  "2026-06",
 		CapabilitiesJSON: `{"model_discovery":true}`,
-		ExtensionsJSON:  extensionsJSON,
+		ExtensionsJSON:   extensionsJSON,
 	}
 	require.NoError(t, db.Create(&client).Error)
 	return NewModelDiscoveryService(db), db, client.ClientId

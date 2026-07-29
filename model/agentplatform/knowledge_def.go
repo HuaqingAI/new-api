@@ -14,6 +14,7 @@ var ErrInvalidKnowledgeDefBody = errors.New("agent platform knowledge def body i
 var allowedKnowledgeProviderTypes = map[string]struct{}{
 	"native":         {},
 	"http_retrieval": {},
+	"external_id":    {},
 }
 
 type KnowledgeDef struct {
@@ -23,6 +24,7 @@ type KnowledgeDef struct {
 	KnowledgeMode            string    `json:"knowledge_mode" gorm:"type:varchar(32);not null"`
 	ProviderType             string    `json:"provider_type" gorm:"type:varchar(32);not null"`
 	ProviderAdapterKey       string    `json:"provider_adapter_key" gorm:"type:varchar(64);not null"`
+	ExternalKnowledgeId      string    `json:"external_knowledge_id" gorm:"type:varchar(128);index"`
 	ProviderConfigJSON       string    `json:"provider_config_json" gorm:"column:provider_config_json;type:text"`
 	QuerySchemaJSON          string    `json:"query_schema_json" gorm:"column:query_schema_json;type:text"`
 	CitationSchemaJSON       string    `json:"citation_schema_json" gorm:"column:citation_schema_json;type:text"`
@@ -53,21 +55,37 @@ func (d *KnowledgeDef) applyDefaultsAndValidate() error {
 	d.KnowledgeMode = strings.TrimSpace(strings.ToLower(d.KnowledgeMode))
 	d.ProviderType = strings.TrimSpace(strings.ToLower(d.ProviderType))
 	d.ProviderAdapterKey = strings.TrimSpace(d.ProviderAdapterKey)
+	d.ExternalKnowledgeId = strings.TrimSpace(d.ExternalKnowledgeId)
 	d.ProviderConfigJSON = strings.TrimSpace(d.ProviderConfigJSON)
 	d.QuerySchemaJSON = strings.TrimSpace(d.QuerySchemaJSON)
 	d.CitationSchemaJSON = strings.TrimSpace(d.CitationSchemaJSON)
 	d.FreshnessRulesJSON = strings.TrimSpace(d.FreshnessRulesJSON)
 	d.ProviderCapabilitiesJSON = strings.TrimSpace(d.ProviderCapabilitiesJSON)
 	if d.KnowledgeMode == "" {
-		d.KnowledgeMode = "retrieval"
+		d.KnowledgeMode = "reference"
 	}
-	if d.ResourceId == "" || d.ResourceVersion == "" || d.ProviderType == "" || d.ProviderAdapterKey == "" {
+	if d.ProviderType == "" {
+		d.ProviderType = "external_id"
+	}
+	if d.ProviderAdapterKey == "" {
+		d.ProviderAdapterKey = "new-api-knowledge"
+	}
+	if d.ResourceId == "" || d.ProviderType == "" || d.ProviderAdapterKey == "" {
 		return ErrInvalidKnowledgeDefBody
 	}
-	if d.KnowledgeMode != "retrieval" {
+	if d.KnowledgeMode != "retrieval" && d.KnowledgeMode != "reference" {
 		return ErrInvalidKnowledgeDefBody
 	}
 	if _, ok := allowedKnowledgeProviderTypes[d.ProviderType]; !ok {
+		return ErrInvalidKnowledgeDefBody
+	}
+	if d.ProviderType == "external_id" {
+		if d.ExternalKnowledgeId == "" {
+			return ErrInvalidKnowledgeDefBody
+		}
+		return nil
+	}
+	if d.ResourceVersion == "" {
 		return ErrInvalidKnowledgeDefBody
 	}
 	if !validKnowledgeJSONShape(d.ProviderConfigJSON) || !validKnowledgeJSONShape(d.QuerySchemaJSON) || !validKnowledgeJSONShape(d.CitationSchemaJSON) {

@@ -16,7 +16,7 @@ func GetAgentConfigs(c *gin.Context) {
 	}
 
 	email := c.GetString("aionui_email")
-	result, err := serviceaionui.NewDefaultAgentConfigService().List(email, cliType)
+	result, err := serviceaionui.NewDefaultAgentConfigService().ListForUser(c.GetInt("aionui_user_id"), email, cliType)
 	if err != nil {
 		if errors.Is(err, serviceaionui.ErrUnsupportedCliType) {
 			common.ApiErrorMsg(c, err.Error())

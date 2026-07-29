@@ -1,6 +1,7 @@
 package aionui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -60,6 +61,73 @@ func TestDesktopAuthServiceExchangesCodeOnceAndValidatesToken(t *testing.T) {
 	require.Equal(t, 100, claims.UserId)
 	require.Equal(t, "alice@example.com", claims.Email)
 	require.Equal(t, "device-1", claims.DeviceId)
+}
+
+func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {
+	db := newDesktopAuthTestDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	redisValues := map[string]string{}
+	oldRedisAvailable := desktopRedisAvailable
+	oldRedisSet := desktopRedisSet
+	oldRedisGet := desktopRedisGet
+	desktopRedisAvailable = func() bool {
+		return true
+	}
+	desktopRedisSet = func(key string, value string, _ time.Duration) error {
+		redisValues[key] = value
+		return nil
+	}
+	desktopRedisGet = func(key string) (string, error) {
+		value, ok := redisValues[key]
+		if !ok {
+			return "", errors.New("missing key")
+		}
+		return value, nil
+	}
+	t.Cleanup(func() {
+		desktopRedisAvailable = oldRedisAvailable
+		desktopRedisSet = oldRedisSet
+		desktopRedisGet = oldRedisGet
+	})
+	require.NoError(t, db.Create(&model.User{
+		Id:          101,
+		Username:    "bob",
+		DisplayName: "Bob",
+		Email:       "bob@example.com",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AffCode:     "bob",
+	}).Error)
+
+	now := time.Date(2026, 7, 29, 8, 0, 0, 0, time.UTC)
+	service := NewDesktopAuthService()
+	service.now = func() time.Time {
+		return now
+	}
+	code, err := service.IssueCode(
+		&model.User{Id: 101, Username: "bob", DisplayName: "Bob", Email: "bob@example.com", Status: common.UserStatusEnabled},
+		DesktopRedirectURI,
+		"state-1234567890",
+	)
+	require.NoError(t, err)
+	token, err := service.ExchangeCode(dtoaionui.DesktopTokenRequest{
+		Code:     code,
+		DeviceId: "device-2",
+	})
+	require.NoError(t, err)
+
+	restarted := NewDesktopAuthService()
+	restarted.now = func() time.Time {
+		return now.Add(time.Minute)
+	}
+	claims, err := restarted.ValidateAuthorization("Bearer " + token.AccessToken)
+
+	require.NoError(t, err)
+	require.Equal(t, 101, claims.UserId)
+	require.Equal(t, "bob@example.com", claims.Email)
+	require.Equal(t, "device-2", claims.DeviceId)
 }
 
 func TestDesktopAuthServiceRejectsUserWithoutEmail(t *testing.T) {

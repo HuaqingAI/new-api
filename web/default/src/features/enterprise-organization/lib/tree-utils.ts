@@ -105,7 +105,9 @@ export function getDefaultExpandedDepartmentIds(
   const lookup = createDepartmentLookup(nodes)
   const expanded = new Set<number>(lookup.rootIds)
   const selected =
-    departmentId && lookup.byId.has(departmentId) ? lookup.byId.get(departmentId)! : null
+    departmentId && lookup.byId.has(departmentId)
+      ? lookup.byId.get(departmentId)!
+      : null
 
   for (const ancestorId of getAncestorDepartmentIds(nodes, departmentId)) {
     expanded.add(ancestorId)

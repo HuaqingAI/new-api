@@ -1,0 +1,1 @@
+{"api":{"base_url":"http://127.0.0.1:23333","timeout_seconds":60},"auth":{"api_key":"cs-sk-e214c706-9918-4f2d-a2dd-75f6697e0b9b","authorization_header":"Authorization","authorization_scheme":"Bearer"},"defaults":{"document_count":5,"list_limit":100,"list_offset":0},"knowledge_base_ids":["NerA6P8MiXRS7geU7z9fy"]}

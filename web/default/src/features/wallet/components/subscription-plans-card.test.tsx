@@ -1,6 +1,8 @@
-import i18n, { resources } from '@/i18n/config'
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+
+import i18n, { resources } from '@/i18n/config'
+
 import {
   getBillingPreferenceLabel,
   getManagedSubscriptionNote,
@@ -310,7 +312,10 @@ describe('Subscription plans card enterprise wallet helpers', () => {
 
     assert.equal(status.label, 'Active')
     assert.equal(expiry.value, 'Never expires')
-    assert.equal(getSubscriptionSourceLabel(subscription.source, t), 'Enterprise allocation')
+    assert.equal(
+      getSubscriptionSourceLabel(subscription.source, t),
+      'Enterprise allocation'
+    )
   })
 
   test('keeps ordinary plans with non-positive end time expired while preserving No Reset plan wording', () => {

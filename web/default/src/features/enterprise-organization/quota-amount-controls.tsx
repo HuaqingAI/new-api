@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { Input } from '@/components/ui/input'
 import {
   formatNumber,

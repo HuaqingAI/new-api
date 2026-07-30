@@ -20,6 +20,8 @@ import { api } from '@/lib/api'
 
 import {
   getAgentPlatformAgents,
+  getAgentPlatformModelKeyModels,
+  getAgentPlatformModelKeys,
   getAgentPlatformMcps,
   getAgentPlatformSkills,
   createAgentPlatformMcp,
@@ -109,6 +111,41 @@ describe('Agent Platform shell', () => {
     assert.match(html, /Details/)
     assert.match(html, /Edit/)
     assert.match(html, /New MCP/)
+  })
+
+  test('model key helpers target agent platform model endpoints', async () => {
+    const originalGet = api.get
+    const calls: Array<{ url: string; params?: unknown }> = []
+
+    api.get = (async (url: string, config?: Record<string, unknown>) => {
+      calls.push({ url, params: config?.params })
+      return {
+        data: {
+          success: true,
+          data: {
+            items: [],
+          },
+        },
+      }
+    }) as typeof api.get
+
+    try {
+      await getAgentPlatformModelKeys('Bob')
+      await getAgentPlatformModelKeyModels(123)
+
+      assert.deepEqual(calls, [
+        {
+          url: '/api/agent-platform/model-keys',
+          params: { keyword: 'Bob' },
+        },
+        {
+          url: '/api/agent-platform/model-keys/123/models',
+          params: undefined,
+        },
+      ])
+    } finally {
+      api.get = originalGet
+    }
   })
 
   test('renders control-plane failure responses as error state', () => {

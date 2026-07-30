@@ -63,6 +63,12 @@ export type AgentPlatformKnowledgeItem = AgentPlatformItem & {
 export type AgentPlatformAgentItem = AgentPlatformItem & {
   cli_type?: string
   instructions?: string
+  model_token_id?: number
+  default_model?: string
+  model_token_user_id?: number
+  model_token_user_name?: string
+  model_token_name?: string
+  model_token_masked_key?: string
   mcp_ids?: string[]
   skill_ids?: string[]
   knowledge_ids?: string[]
@@ -137,6 +143,8 @@ export type CreateAgentPlatformAgentRequest = {
   description?: string
   avatar?: string
   instructions?: string
+  model_token_id?: number
+  default_model?: string
   mcp_ids?: string[]
   skill_ids?: string[]
   knowledge_ids?: string[]
@@ -223,6 +231,47 @@ export type PublishAgentPlatformAgentResponse = {
       subject_id: string
       subject_name?: string
     }>
+  }
+}
+
+export type AgentPlatformModelKey = {
+  id: number
+  user_id: number
+  user_name: string
+  name: string
+  masked_key: string
+  status: number
+  expired_time: number
+  remain_quota: number
+  unlimited_quota: boolean
+  group: string
+  model_limits_enabled: boolean
+  model_count: number
+  available: boolean
+  disabled_reason?: string
+}
+
+export type AgentPlatformModelItem = {
+  model: string
+  display_name: string
+  status: string
+  capabilities?: AgentPlatformJsonValue
+}
+
+export type AgentPlatformModelKeysResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: AgentPlatformModelKey[]
+  }
+}
+
+export type AgentPlatformModelKeyModelsResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    token_id: number
+    items: AgentPlatformModelItem[]
   }
 }
 
@@ -346,6 +395,24 @@ export async function getAgentPlatformKnowledge() {
 
 export async function getAgentPlatformAgents() {
   return fetchResourceList<AgentPlatformAgentItem>('agent')
+}
+
+export async function getAgentPlatformModelKeys(keyword?: string) {
+  const normalizedKeyword = keyword?.trim()
+  const res = await api.get<AgentPlatformModelKeysResponse>(
+    '/api/agent-platform/model-keys',
+    {
+      params: normalizedKeyword ? { keyword: normalizedKeyword } : undefined,
+    }
+  )
+  return res.data
+}
+
+export async function getAgentPlatformModelKeyModels(tokenId: number) {
+  const res = await api.get<AgentPlatformModelKeyModelsResponse>(
+    `/api/agent-platform/model-keys/${encodeURIComponent(String(tokenId))}/models`
+  )
+  return res.data
 }
 
 export async function createAgentPlatformMcp(

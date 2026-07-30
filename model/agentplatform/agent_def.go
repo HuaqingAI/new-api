@@ -20,6 +20,9 @@ type AgentDef struct {
 	Description           string    `json:"description" gorm:"type:text"`
 	Avatar                string    `json:"avatar" gorm:"type:varchar(64)"`
 	Instructions          string    `json:"instructions" gorm:"type:text"`
+	ModelTokenId          int       `json:"model_token_id" gorm:"not null;default:0"`
+	DefaultModel          string    `json:"default_model" gorm:"type:varchar(128);not null;default:''"`
+	ModelConfigJSON       string    `json:"model_config_json" gorm:"type:text"`
 	PackagePath           string    `json:"package_path" gorm:"type:text"`
 	PackageSha256         string    `json:"package_sha256" gorm:"type:varchar(64)"`
 	PackageSize           int64     `json:"package_size" gorm:"not null;default:0"`
@@ -54,6 +57,8 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 	d.Description = strings.TrimSpace(d.Description)
 	d.Avatar = strings.TrimSpace(d.Avatar)
 	d.Instructions = strings.TrimSpace(d.Instructions)
+	d.DefaultModel = strings.TrimSpace(d.DefaultModel)
+	d.ModelConfigJSON = strings.TrimSpace(d.ModelConfigJSON)
 	d.PackagePath = strings.TrimSpace(d.PackagePath)
 	d.PackageSha256 = strings.TrimSpace(d.PackageSha256)
 	d.ManifestJSON = strings.TrimSpace(d.ManifestJSON)

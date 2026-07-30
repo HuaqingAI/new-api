@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	appmodel "github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
+	token := seedAgentModelToken(t, db, 1, "gpt-5.5,gpt-4.1")
 
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Local MCP",
@@ -49,6 +51,8 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 		Description:  "Agent description",
 		Avatar:       "bot",
 		Instructions: "Follow team rules.",
+		ModelTokenId: token.Id,
+		DefaultModel: "gpt-5.5",
 		McpIds:       []string{mcp.ResourceId},
 		SkillIds:     []string{skill.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},
@@ -80,8 +84,16 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 
 	var projectConfig map[string]any
 	require.NoError(t, common.Unmarshal(files["project/opencode.jsonc"], &projectConfig))
-	require.Equal(t, "new-api/gpt-5.5", projectConfig["model"])
+	require.Equal(t, "hth/gpt-5.5", projectConfig["model"])
 	require.Equal(t, []any{"instructions.md", "user-context.md"}, projectConfig["instructions"])
+	provider := projectConfig["provider"].(map[string]any)
+	hthProvider := provider["hth"].(map[string]any)
+	require.Equal(t, "http://localhost:3000/v1", hthProvider["api"])
+	options := hthProvider["options"].(map[string]any)
+	require.Equal(t, token.Key, options["apiKey"])
+	models := hthProvider["models"].(map[string]any)
+	require.Contains(t, models, "gpt-5.5")
+	require.Contains(t, models, "gpt-4.1")
 	mcpConfig := projectConfig["mcp"].(map[string]any)
 	localServer := mcpConfig["demo-local"].(map[string]any)
 	require.Equal(t, "local", localServer["type"])
@@ -98,10 +110,13 @@ func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) 
 	db := newAgentPublishTestDB(t)
 	root := t.TempDir()
 	t.Setenv("AIONUI_AGENT_PACKAGE_DIR", filepath.Join(root, "agents"))
+	token := seedAgentModelToken(t, db, 1, "gpt-5.5")
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		DisplayName:  "Demo Agent",
 		Instructions: "Follow team rules.",
+		ModelTokenId: token.Id,
+		DefaultModel: "gpt-5.5",
 		OwnerUserId:  1,
 	})
 	require.NoError(t, err)
@@ -152,7 +167,26 @@ func newAgentPublishTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, apmodel.Migrate(db))
+	require.NoError(t, db.AutoMigrate(&appmodel.User{}, &appmodel.Token{}))
 	return db
+}
+
+func seedAgentModelToken(t *testing.T, db *gorm.DB, userID int, models string) appmodel.Token {
+	t.Helper()
+	token := appmodel.Token{
+		UserId:             userID,
+		Key:                "sk-agent-publish-test",
+		Status:             common.TokenStatusEnabled,
+		Name:               "Agent publish key",
+		CreatedTime:        common.GetTimestamp(),
+		AccessedTime:       common.GetTimestamp(),
+		ExpiredTime:        -1,
+		UnlimitedQuota:     true,
+		ModelLimitsEnabled: true,
+		ModelLimits:        models,
+	}
+	require.NoError(t, db.Create(&token).Error)
+	return token
 }
 
 func buildTestSkillZip(t *testing.T, name string, content string) []byte {

@@ -22,6 +22,8 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.POST("/assets/avatars", controlleragentplatform.UploadAgentAvatar)
 		agentPlatformRoute.POST("/resources", controlleragentplatform.CreateResource)
 		agentPlatformRoute.GET("/resources/:id", controlleragentplatform.GetResource)
+		agentPlatformRoute.GET("/model-keys", controlleragentplatform.ListAgentModelKeys)
+		agentPlatformRoute.GET("/model-keys/:token_id/models", controlleragentplatform.ListAgentModelKeyModels)
 		agentPlatformRoute.GET("/mcps", controlleragentplatform.ListMcps)
 		agentPlatformRoute.POST("/mcps", controlleragentplatform.CreateMcp)
 		agentPlatformRoute.GET("/mcps/:id", controlleragentplatform.GetMcp)

@@ -7,6 +7,8 @@ type CreateAgentRequest struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
+	ModelTokenId int      `json:"model_token_id,omitempty"`
+	DefaultModel string   `json:"default_model,omitempty"`
 	McpIds       []string `json:"mcp_ids,omitempty"`
 	SkillIds     []string `json:"skill_ids,omitempty"`
 	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
@@ -19,6 +21,8 @@ type UpdateAgentRequest struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
+	ModelTokenId int      `json:"model_token_id,omitempty"`
+	DefaultModel string   `json:"default_model,omitempty"`
 	McpIds       []string `json:"mcp_ids,omitempty"`
 	SkillIds     []string `json:"skill_ids,omitempty"`
 	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
@@ -35,11 +39,17 @@ type AgentItem = ResourceItem
 
 type AgentDetailItem struct {
 	ResourceItem
-	CliType      string   `json:"cli_type"`
-	Instructions string   `json:"instructions"`
-	McpIds       []string `json:"mcp_ids"`
-	SkillIds     []string `json:"skill_ids"`
-	KnowledgeIds []string `json:"knowledge_ids"`
+	CliType             string   `json:"cli_type"`
+	Instructions        string   `json:"instructions"`
+	ModelTokenId        int      `json:"model_token_id"`
+	DefaultModel        string   `json:"default_model"`
+	ModelTokenUserId    int      `json:"model_token_user_id,omitempty"`
+	ModelTokenUserName  string   `json:"model_token_user_name,omitempty"`
+	ModelTokenName      string   `json:"model_token_name,omitempty"`
+	ModelTokenMaskedKey string   `json:"model_token_masked_key,omitempty"`
+	McpIds              []string `json:"mcp_ids"`
+	SkillIds            []string `json:"skill_ids"`
+	KnowledgeIds        []string `json:"knowledge_ids"`
 }
 
 type AgentListResponse struct {
@@ -103,4 +113,28 @@ type PublishAgentResponse struct {
 	Status     string                `json:"status"`
 	Artifact   AgentArtifactResponse `json:"artifact"`
 	Grants     []AgentGrantResponse  `json:"grants"`
+}
+
+type AgentModelKeyResponse struct {
+	Id                 int    `json:"id"`
+	UserId             int    `json:"user_id"`
+	UserName           string `json:"user_name"`
+	Name               string `json:"name"`
+	MaskedKey          string `json:"masked_key"`
+	Status             int    `json:"status"`
+	ExpiredTime        int64  `json:"expired_time"`
+	RemainQuota        int    `json:"remain_quota"`
+	UnlimitedQuota     bool   `json:"unlimited_quota"`
+	Group              string `json:"group"`
+	ModelLimitsEnabled bool   `json:"model_limits_enabled"`
+	ModelCount         int    `json:"model_count"`
+	Available          bool   `json:"available"`
+	DisabledReason     string `json:"disabled_reason,omitempty"`
+}
+
+type AgentModelResponse struct {
+	Model        string         `json:"model"`
+	DisplayName  string         `json:"display_name"`
+	Status       string         `json:"status"`
+	Capabilities map[string]any `json:"capabilities"`
 }

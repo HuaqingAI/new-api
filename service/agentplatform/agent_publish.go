@@ -43,6 +43,13 @@ type PublishAgentArtifact struct {
 	Size    int64
 }
 
+type OpenCodeProviderConfigInput struct {
+	APIBase      string
+	APIKey       string
+	DefaultModel string
+	Models       map[string]any
+}
+
 type PublishAgentGrantResult struct {
 	GrantId     string
 	SubjectType string
@@ -116,6 +123,7 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 	var deps []apmodel.AgentDependency
 	var version string
 	var artifact PublishAgentArtifact
+	var modelConfigSnapshot string
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("resource_id = ? AND resource_type = ?", input.ResourceId, apmodel.ResourceTypeAgent).First(&resource).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -132,6 +140,20 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 		if err := tx.Where("agent_resource_id = ? AND resource_version = ?", input.ResourceId, "draft").Order("sort_order ASC, id ASC").Find(&deps).Error; err != nil {
 			return err
 		}
+		tokenModels, err := resolveTokenModels(tx, draft.ModelTokenId, draft.DefaultModel, true)
+		if err != nil {
+			return err
+		}
+		providerInput := OpenCodeProviderConfigInput{
+			APIBase:      openCodeAPIBase(),
+			APIKey:       tokenModels.Token.Key,
+			DefaultModel: draft.DefaultModel,
+			Models:       buildOpenCodeModels(tokenModels.Models),
+		}
+		modelConfigSnapshot, err = openCodeModelConfigSnapshot(providerInput, draft.ModelTokenId)
+		if err != nil {
+			return err
+		}
 		if err := validateAgentDependencyTargets(tx, idsByType(deps, apmodel.AgentDependencyTypeMCP), idsByType(deps, apmodel.AgentDependencyTypeSkill), idsByType(deps, apmodel.AgentDependencyTypeKnowledge)); err != nil {
 			return err
 		}
@@ -140,7 +162,7 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 			return err
 		}
 		version = nextPatchVersion(versions)
-		packagePath, sum, size, err := buildOpenCodeAgentPackage(tx, resource, draft, deps, version)
+		packagePath, sum, size, err := buildOpenCodeAgentPackage(tx, resource, draft, deps, version, providerInput)
 		if err != nil {
 			return err
 		}
@@ -167,6 +189,7 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 		publishedDef.PackagePath = packagePath
 		publishedDef.PackageSha256 = sum
 		publishedDef.PackageSize = size
+		publishedDef.ModelConfigJSON = modelConfigSnapshot
 		if err := tx.Create(&publishedDef).Error; err != nil {
 			return err
 		}
@@ -457,7 +480,7 @@ func parseSemver(value string) (int, int, int, bool) {
 	return major, minor, patch, true
 }
 
-func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apmodel.AgentDef, deps []apmodel.AgentDependency, version string) (string, string, int64, error) {
+func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apmodel.AgentDef, deps []apmodel.AgentDependency, version string, providerInput OpenCodeProviderConfigInput) (string, string, int64, error) {
 	root, err := os.MkdirTemp("", "new-api-agent-*")
 	if err != nil {
 		return "", "", 0, err
@@ -482,7 +505,7 @@ func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apm
 	if err != nil {
 		return "", "", 0, err
 	}
-	if err := writeJSONFile(filepath.Join(projectDir, "opencode.jsonc"), openCodeProjectConfig(mcpConfig)); err != nil {
+	if err := writeJSONFile(filepath.Join(projectDir, "opencode.jsonc"), openCodeProjectConfig(mcpConfig, providerInput)); err != nil {
 		return "", "", 0, err
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, "instructions.md"), []byte(draft.Instructions), 0o644); err != nil {
@@ -513,39 +536,48 @@ func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apm
 	return targetPath, sum, size, nil
 }
 
-func openCodeProjectConfig(mcp map[string]any) map[string]any {
+func openCodeProjectConfig(mcp map[string]any, providerInput OpenCodeProviderConfigInput) map[string]any {
 	return map[string]any{
 		"$schema":      "https://opencode.ai/config.json",
 		"instructions": []string{"instructions.md", "user-context.md"},
-		"model":        "new-api/gpt-5.5",
+		"model":        "hth/" + strings.TrimSpace(providerInput.DefaultModel),
 		"mcp":          mcp,
 		"provider": map[string]any{
-			"new-api": map[string]any{
-				"name": "New API",
+			"hth": map[string]any{
+				"name": "HTH",
 				"npm":  "@ai-sdk/openai-compatible",
-				"api":  "https://hth.huaqing.run/v1",
+				"api":  providerInput.APIBase,
 				"options": map[string]any{
-					"apiKey": "sk-FRy4easbEpIHMfFw0NmshwVWndJ0LC5oweNg3V2ePFIxdVpT",
+					"apiKey": providerInput.APIKey,
 				},
-				"models": map[string]any{
-					"gpt-5.5": map[string]any{
-						"name":      "GPT-5.5",
-						"tool_call": true,
-						"reasoning": true,
-						"limit": map[string]any{
-							"context": 400000,
-							"output":  128000,
-						},
-						"variants": map[string]any{
-							"low":    map[string]any{"reasoningEffort": "low"},
-							"medium": map[string]any{"reasoningEffort": "medium"},
-							"high":   map[string]any{"reasoningEffort": "high"},
-						},
-					},
-				},
+				"models": providerInput.Models,
 			},
 		},
 	}
+}
+
+func openCodeAPIBase() string {
+	value := strings.TrimSpace(os.Getenv("BACKEND_BASE_URL"))
+	if value == "" {
+		value = "http://localhost:3000/v1"
+	}
+	return strings.TrimRight(value, "/")
+}
+
+func openCodeModelConfigSnapshot(input OpenCodeProviderConfigInput, tokenID int) (string, error) {
+	payload := map[string]any{
+		"provider":      "hth",
+		"api_base":      input.APIBase,
+		"token_id":      tokenID,
+		"default_model": input.DefaultModel,
+		"model_count":   len(input.Models),
+		"models":        input.Models,
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
 }
 
 func buildOpenCodeMcpConfig(tx *gorm.DB, mcpIds []string) (map[string]any, error) {

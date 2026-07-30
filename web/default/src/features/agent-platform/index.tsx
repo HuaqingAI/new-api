@@ -745,7 +745,7 @@ function JsonPreviewBlock(props: { label: string; value: unknown }) {
 }
 
 function ResourceCheckboxList(props: {
-  description: string
+  description?: string
   emptyLabel: string
   items: AgentPlatformItem[]
   label: string
@@ -755,7 +755,9 @@ function ResourceCheckboxList(props: {
   return (
     <Field>
       <FieldLabel>{props.label}</FieldLabel>
-      <FieldDescription>{props.description}</FieldDescription>
+      {props.description ? (
+        <FieldDescription>{props.description}</FieldDescription>
+      ) : null}
       {props.items.length === 0 ? (
         <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
           {props.emptyLabel}
@@ -975,9 +977,6 @@ function ResourceEditorDialog(props: {
               </Field>
               <ResourceCheckboxList
                 label={t('MCP dependencies')}
-                description={t(
-                  'Selected MCP definitions will be written into project opencode.jsonc.'
-                )}
                 emptyLabel={t('No MCP resources are available.')}
                 items={props.mcpItems}
                 selectedIds={props.form.mcpIds}
@@ -985,9 +984,6 @@ function ResourceEditorDialog(props: {
               />
               <ResourceCheckboxList
                 label={t('Skill dependencies')}
-                description={t(
-                  'Selected Skill packages will be copied into project .opencode/skills.'
-                )}
                 emptyLabel={t('No Skill resources are available.')}
                 items={props.skillItems}
                 selectedIds={props.form.skillIds}
@@ -995,9 +991,6 @@ function ResourceEditorDialog(props: {
               />
               <ResourceCheckboxList
                 label={t('Knowledge dependencies')}
-                description={t(
-                  'Selected knowledge IDs are written into cherry-knowledge-search config.'
-                )}
                 emptyLabel={t('No Knowledge resources are available.')}
                 items={props.knowledgeItems}
                 selectedIds={props.form.knowledgeIds}
@@ -1445,9 +1438,30 @@ function GrantSubjectMultiSelect(props: {
                   <Badge
                     key={option.value}
                     variant='secondary'
-                    className='max-w-[180px] truncate rounded-md'
+                    className='max-w-[220px] gap-1 rounded-md'
                   >
-                    {option.label}
+                    <span className='truncate'>{option.label}</span>
+                    <span
+                      role='button'
+                      tabIndex={0}
+                      aria-label={t('Remove')}
+                      className='hover:bg-muted-foreground/20 inline-flex size-4 shrink-0 items-center justify-center rounded-full'
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        toggleValue(option.value)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') {
+                          return
+                        }
+                        event.preventDefault()
+                        event.stopPropagation()
+                        toggleValue(option.value)
+                      }}
+                    >
+                      <XCircle className='size-3' />
+                    </span>
                   </Badge>
                 ))
               )}

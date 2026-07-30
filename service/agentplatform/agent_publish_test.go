@@ -76,14 +76,18 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Contains(t, files, "project/.opencode/skills/custom-skill/SKILL.md")
 	require.Contains(t, files, "project/opencode.jsonc")
 	require.Equal(t, "Follow team rules.", string(files["project/instructions.md"]))
+	require.Equal(t, openCodeUserContextTemplate, string(files["project/user-context.md"]))
 
 	var projectConfig map[string]any
 	require.NoError(t, common.Unmarshal(files["project/opencode.jsonc"], &projectConfig))
 	require.Equal(t, "new-api/gpt-5.5", projectConfig["model"])
-	require.Equal(t, []any{"instructions.md"}, projectConfig["instructions"])
+	require.Equal(t, []any{"instructions.md", "user-context.md"}, projectConfig["instructions"])
 	mcpConfig := projectConfig["mcp"].(map[string]any)
 	localServer := mcpConfig["demo-local"].(map[string]any)
 	require.Equal(t, "local", localServer["type"])
+	require.Equal(t, []any{"npx", "-y", "demo"}, localServer["command"])
+	require.NotContains(t, localServer, "args")
+	require.NotContains(t, localServer, "enabled")
 
 	var knowledgeConfig map[string]any
 	require.NoError(t, common.Unmarshal(files["project/.opencode/skills/cherry-knowledge-search/config.json"], &knowledgeConfig))

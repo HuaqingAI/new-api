@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
 	"github.com/QuantumNous/new-api/model"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -28,6 +30,12 @@ func TestDesktopAuthServiceExchangesCodeOnceAndValidatesToken(t *testing.T) {
 		Status:      common.UserStatusEnabled,
 		Group:       "default",
 		AffCode:     "alice",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.Department{Id: 7, Name: "研发部"}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		UserId:       100,
+		DepartmentId: 7,
+		Status:       constant.EnterpriseMembershipStatusActive,
 	}).Error)
 
 	now := time.Date(2026, 7, 28, 13, 0, 0, 0, time.UTC)
@@ -51,6 +59,7 @@ func TestDesktopAuthServiceExchangesCodeOnceAndValidatesToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, token.AccessToken)
 	require.Equal(t, "alice@example.com", token.User.Email)
+	require.Equal(t, []string{"研发部"}, token.User.Departments)
 	require.Equal(t, now.Add(desktopTokenTTL).Unix(), token.ExpiresAt)
 
 	_, err = service.ExchangeCode(dtoaionui.DesktopTokenRequest{Code: code, DeviceId: "device-1"})
@@ -164,7 +173,7 @@ func newDesktopAuthTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &entmodel.Department{}, &entmodel.UserDepartment{}))
 
 	t.Cleanup(func() {
 		model.DB = oldDB

@@ -5,13 +5,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
 	"github.com/QuantumNous/new-api/model"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"gorm.io/gorm"
 )
 
@@ -226,6 +229,10 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	if err := s.saveToken(claims); err != nil {
 		return dtoaionui.DesktopTokenResponse{}, err
 	}
+	departments, err := desktopUserDepartmentNames(user.Id)
+	if err != nil {
+		return dtoaionui.DesktopTokenResponse{}, err
+	}
 
 	return dtoaionui.DesktopTokenResponse{
 		AccessToken: token,
@@ -235,8 +242,65 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 			Username:    user.Username,
 			Email:       email,
 			DisplayName: user.DisplayName,
+			Departments: departments,
 		},
 	}, nil
+}
+
+func desktopUserDepartmentNames(userID int) ([]string, error) {
+	var memberships []entmodel.UserDepartment
+	if err := model.DB.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
+		if isOptionalDesktopDepartmentLookupError(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	departmentIds := make([]int, 0, len(memberships))
+	seen := map[int]struct{}{}
+	for _, membership := range memberships {
+		if membership.DepartmentId <= 0 {
+			continue
+		}
+		if _, ok := seen[membership.DepartmentId]; ok {
+			continue
+		}
+		seen[membership.DepartmentId] = struct{}{}
+		departmentIds = append(departmentIds, membership.DepartmentId)
+	}
+	sort.Ints(departmentIds)
+	if len(departmentIds) == 0 {
+		return []string{}, nil
+	}
+	var departments []entmodel.Department
+	if err := model.DB.Select("id", "name").Where("id IN ?", departmentIds).Find(&departments).Error; err != nil {
+		if isOptionalDesktopDepartmentLookupError(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	nameById := map[int]string{}
+	for _, department := range departments {
+		nameById[department.Id] = strings.TrimSpace(department.Name)
+	}
+	names := make([]string, 0, len(departmentIds))
+	for _, id := range departmentIds {
+		if name := nameById[id]; name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+func isOptionalDesktopDepartmentLookupError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such table") ||
+		strings.Contains(message, "doesn't exist") ||
+		strings.Contains(message, "does not exist") ||
+		strings.Contains(message, "undefined table") ||
+		strings.Contains(message, "42p01")
 }
 
 func desktopSecret(prefix string, length int) (string, error) {

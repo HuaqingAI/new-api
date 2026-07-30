@@ -79,7 +79,6 @@ func (s *AgentConfigService) listPlatform(userID int, email string, cliType stri
 			Agents:    []dtoaionui.AgentConfigItem{},
 		}, nil
 	}
-
 	var grants []apmodel.ResourceGrant
 	query := model.DB.Where("status = ?", apmodel.GrantStatusActive)
 	where, args := platformGrantSubjectWhere(subjects)

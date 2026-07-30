@@ -7,10 +7,11 @@ type DesktopTokenRequest struct {
 }
 
 type DesktopUser struct {
-	Id          int    `json:"id"`
-	Username    string `json:"username"`
-	Email       string `json:"email"`
-	DisplayName string `json:"display_name"`
+	Id          int      `json:"id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	DisplayName string   `json:"display_name"`
+	Departments []string `json:"departments,omitempty"`
 }
 
 type DesktopTokenResponse struct {

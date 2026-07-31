@@ -153,13 +153,13 @@ func TestDesktopAuthServiceRejectsUserWithoutEmail(t *testing.T) {
 
 func TestValidateDesktopRedirectURIAllowsLoopbackCallback(t *testing.T) {
 	require.NoError(t, ValidateDesktopRedirectURI(DesktopRedirectURI))
-	require.NoError(t, ValidateDesktopRedirectURI("http://127.0.0.1:49152/new-api/callback"))
-	require.NoError(t, ValidateDesktopRedirectURI("http://localhost:49152/new-api/callback"))
+	require.NoError(t, ValidateDesktopRedirectURI("http://127.0.0.1:49152/hth/callback"))
+	require.NoError(t, ValidateDesktopRedirectURI("http://localhost:49152/hth/callback"))
 
-	require.ErrorIs(t, ValidateDesktopRedirectURI("http://127.0.0.1/new-api/callback"), ErrInvalidRedirectURI)
+	require.ErrorIs(t, ValidateDesktopRedirectURI("http://127.0.0.1/hth/callback"), ErrInvalidRedirectURI)
 	require.ErrorIs(t, ValidateDesktopRedirectURI("http://127.0.0.1:49152/other"), ErrInvalidRedirectURI)
-	require.ErrorIs(t, ValidateDesktopRedirectURI("http://example.com:49152/new-api/callback"), ErrInvalidRedirectURI)
-	require.ErrorIs(t, ValidateDesktopRedirectURI("https://127.0.0.1:49152/new-api/callback"), ErrInvalidRedirectURI)
+	require.ErrorIs(t, ValidateDesktopRedirectURI("http://example.com:49152/hth/callback"), ErrInvalidRedirectURI)
+	require.ErrorIs(t, ValidateDesktopRedirectURI("https://127.0.0.1:49152/hth/callback"), ErrInvalidRedirectURI)
 }
 
 func newDesktopAuthTestDB(t *testing.T) *gorm.DB {

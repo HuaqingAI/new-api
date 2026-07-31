@@ -24,7 +24,7 @@ func TestDesktopLoginRedirectsToCallbackWhenNewApiSessionExists(t *testing.T) {
 	serviceaionui.ResetDesktopAuthServiceForTest()
 	router := setupDesktopLoginSessionTestRouter(t)
 
-	target := "/api/aionui/desktop/login?redirect_uri=" + url.QueryEscape("http://127.0.0.1:49152/new-api/callback") + "&state=state-1234567890"
+	target := "/api/aionui/desktop/login?redirect_uri=" + url.QueryEscape("http://127.0.0.1:49152/hth/callback") + "&state=state-1234567890"
 	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3001"+target, nil)
 	recorder := httptest.NewRecorder()
 
@@ -36,7 +36,7 @@ func TestDesktopLoginRedirectsToCallbackWhenNewApiSessionExists(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http", parsed.Scheme)
 	require.Equal(t, "127.0.0.1:49152", parsed.Host)
-	require.Equal(t, "/new-api/callback", parsed.Path)
+	require.Equal(t, "/hth/callback", parsed.Path)
 	require.Equal(t, "state-1234567890", parsed.Query().Get("state"))
 	code := parsed.Query().Get("code")
 	require.NotEmpty(t, code)

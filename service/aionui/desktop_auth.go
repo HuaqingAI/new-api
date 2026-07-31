@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	DesktopRedirectURI          = "aionui://auth/new-api-callback"
-	DesktopLoopbackCallbackPath = "/new-api/callback"
+	DesktopRedirectURI          = "aionui://auth/hth-callback"
+	DesktopLoopbackCallbackPath = "/hth/callback"
 	desktopTokenTTL             = 90 * 24 * time.Hour
 	desktopCodeTTL              = 5 * time.Minute
 	desktopTokenRedisKeyPrefix  = "aionui:desktop:token:"

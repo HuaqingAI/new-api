@@ -47,6 +47,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.NoError(t, err)
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
+		CliType:      apmodel.AgentCliTypeOpenCode,
 		DisplayName:  "Demo Agent",
 		Description:  "Agent description",
 		Avatar:       "bot",
@@ -90,7 +91,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	hthProvider := provider["hth"].(map[string]any)
 	require.Equal(t, "http://localhost:3000/v1", hthProvider["api"])
 	options := hthProvider["options"].(map[string]any)
-	require.Equal(t, token.Key, options["apiKey"])
+	require.Equal(t, "sk-"+token.Key, options["apiKey"])
 	models := hthProvider["models"].(map[string]any)
 	require.Contains(t, models, "gpt-5.5")
 	require.Contains(t, models, "gpt-4.1")
@@ -106,6 +107,114 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Equal(t, []any{"kb-001"}, knowledgeConfig["knowledge_base_ids"])
 }
 
+func TestAgentPublishGeneratesCodexZip(t *testing.T) {
+	db := newAgentPublishTestDB(t)
+	root := t.TempDir()
+	t.Setenv("AIONUI_AGENT_PACKAGE_DIR", filepath.Join(root, "agents"))
+	t.Setenv("AIONUI_SKILL_PACKAGE_DIR", filepath.Join(root, "skills"))
+	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
+	t.Setenv("BACKEND_BASE_URL", "https://hth.huaqing.run/v1/")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
+	token := seedAgentModelToken(t, db, 1, "gpt-5.5,gpt-4.1")
+
+	mcp, err := NewMcpService(db).Create(McpCreateInput{
+		DisplayName: "Codex MCP",
+		Config:      []byte(`{"mcpServers":{"filesystem":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},"docs":{"type":"streamablehttp","url":"https://example.com/mcp","headers":{"X-Client":"codex"}}}}`),
+		OwnerUserId: 1,
+	})
+	require.NoError(t, err)
+
+	knowledge, err := NewKnowledgeService(db).Create(KnowledgeCreateInput{
+		DisplayName:         "Knowledge",
+		ExternalKnowledgeId: "kb-001",
+		OwnerUserId:         1,
+	})
+	require.NoError(t, err)
+
+	agent, err := NewAgentService(db).Create(AgentCreateInput{
+		CliType:      apmodel.AgentCliTypeCodex,
+		DisplayName:  "Codex Agent",
+		Instructions: "Follow Codex rules.",
+		ModelTokenId: token.Id,
+		DefaultModel: "gpt-5.5",
+		McpIds:       []string{mcp.ResourceId},
+		KnowledgeIds: []string{knowledge.ResourceId},
+		OwnerUserId:  1,
+	})
+	require.NoError(t, err)
+
+	result, err := NewAgentPublishService(db).Publish(PublishAgentInput{
+		ResourceId:  agent.ResourceId,
+		Summary:     "initial",
+		ActorUserId: 1,
+		Grants:      []PublishAgentGrantInput{{SubjectType: apmodel.GrantSubjectTypeUser, SubjectId: "42"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, apmodel.AgentCliTypeCodex, result.Artifact.CliType)
+	zipPath := filepath.Join(root, "agents", agent.ResourceId, "1.0.0", "codex.zip")
+	require.FileExists(t, zipPath)
+
+	files := readZipFiles(t, zipPath)
+	require.Contains(t, files, "global/config.toml")
+	require.Contains(t, files, "global/auth.json")
+	require.Contains(t, files, "project/.codex/config.toml")
+	require.Contains(t, files, "project/.codex/skills/cherry-knowledge-search/SKILL.md")
+	require.Contains(t, files, "project/.codex/skills/cherry-knowledge-search/config.json")
+	require.NotContains(t, files, "project/AGENTS.md")
+	require.NotContains(t, files, "project/user-context.md")
+
+	var authConfig map[string]string
+	require.NoError(t, common.Unmarshal(files["global/auth.json"], &authConfig))
+	require.Equal(t, "sk-"+token.Key, authConfig["OPENAI_API_KEY"])
+
+	globalConfig := string(files["global/config.toml"])
+	require.Contains(t, globalConfig, "model_provider = \"hth\"")
+	require.Contains(t, globalConfig, "model = \"gpt-5.5\"")
+	require.Contains(t, globalConfig, "base_url = \"https://hth.huaqing.run/v1\"")
+	require.NotContains(t, globalConfig, "[projects.")
+
+	projectConfig := string(files["project/.codex/config.toml"])
+	require.Contains(t, projectConfig, "model = \"gpt-5.5\"")
+	require.Contains(t, projectConfig, "model_reasoning_effort = \"high\"")
+	require.Contains(t, projectConfig, "developer_instructions = \"\"\"")
+	require.Contains(t, projectConfig, "Follow Codex rules.")
+	require.Contains(t, projectConfig, "姓名：<name>")
+	require.Contains(t, projectConfig, "[mcp_servers.filesystem]")
+	require.Contains(t, projectConfig, "command = \"npx\"")
+	require.Contains(t, projectConfig, "args = [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]")
+	require.Contains(t, projectConfig, "[mcp_servers.filesystem]\ncommand = \"npx\"\nargs = [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\ndefault_tools_approval_mode = \"approve\"")
+	require.Contains(t, projectConfig, "[mcp_servers.docs]")
+	require.Contains(t, projectConfig, "url = \"https://example.com/mcp\"")
+	require.Contains(t, projectConfig, "[mcp_servers.docs]\nurl = \"https://example.com/mcp\"\ndefault_tools_approval_mode = \"approve\"")
+	require.Contains(t, projectConfig, "[mcp_servers.docs.http_headers]")
+	require.Contains(t, projectConfig, "\"X-Client\" = \"codex\"")
+
+	var publishedDef apmodel.AgentDef
+	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)
+	require.Equal(t, apmodel.AgentCliTypeCodex, publishedDef.CliType)
+	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
+}
+
+func TestExportedAgentAPIKeyUsesOpenAIStylePrefix(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "bare key", key: "agent-key", want: "sk-agent-key"},
+		{name: "already prefixed", key: "sk-agent-key", want: "sk-agent-key"},
+		{name: "trim spaces", key: " agent-key ", want: "sk-agent-key"},
+		{name: "empty", key: "", want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, exportedAgentAPIKey(tc.key))
+		})
+	}
+}
+
 func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) {
 	db := newAgentPublishTestDB(t)
 	root := t.TempDir()
@@ -113,6 +222,7 @@ func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) 
 	token := seedAgentModelToken(t, db, 1, "gpt-5.5")
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
+		CliType:      apmodel.AgentCliTypeOpenCode,
 		DisplayName:  "Demo Agent",
 		Instructions: "Follow team rules.",
 		ModelTokenId: token.Id,
@@ -175,7 +285,7 @@ func seedAgentModelToken(t *testing.T, db *gorm.DB, userID int, models string) a
 	t.Helper()
 	token := appmodel.Token{
 		UserId:             userID,
-		Key:                "sk-agent-publish-test",
+		Key:                "agent-publish-test",
 		Status:             common.TokenStatusEnabled,
 		Name:               "Agent publish key",
 		CreatedTime:        common.GetTimestamp(),

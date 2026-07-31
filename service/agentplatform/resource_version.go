@@ -401,6 +401,7 @@ func createTypedDetail(tx *gorm.DB, resourceType string, resourceID string, inpu
 		err = tx.Create(&apmodel.AgentDef{
 			ResourceId:            resourceID,
 			ResourceVersion:       input.Version,
+			CliType:               apmodel.AgentCliTypeOpenCode,
 			ManifestJSON:          manifestJSON,
 			DependenciesJSON:      dependenciesJSON,
 			PromptMetadataJSON:    promptMetadataJSON,

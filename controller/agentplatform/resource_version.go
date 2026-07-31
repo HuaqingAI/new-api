@@ -49,7 +49,9 @@ func resourceVersionService() *apservice.ResourceVersionService {
 
 func writeResourceVersionError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, apservice.ErrInvalidResourceVersionInput), errors.Is(err, apservice.ErrSkillContractInvalid), errors.Is(err, apservice.ErrKnowledgeContractInvalid), errors.Is(err, apservice.ErrAgentDependencyInvalid):
+	case errors.Is(err, apservice.ErrAgentDependencyInvalid):
+		common.ApiErrorMsg(c, "Agent 依赖配置无效")
+	case errors.Is(err, apservice.ErrInvalidResourceInput), errors.Is(err, apservice.ErrInvalidResourceVersionInput), errors.Is(err, apservice.ErrSkillContractInvalid), errors.Is(err, apservice.ErrKnowledgeContractInvalid):
 		common.ApiErrorMsg(c, "invalid request params")
 	case errors.Is(err, apservice.ErrResourceNotFound), errors.Is(err, apservice.ErrResourceVersionNotFound):
 		common.ApiErrorMsg(c, "resource not found")

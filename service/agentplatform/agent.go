@@ -21,6 +21,7 @@ type AgentQuery struct {
 }
 
 type AgentCreateInput struct {
+	CliType      string
 	DisplayName  string
 	Description  string
 	Avatar       string
@@ -35,6 +36,7 @@ type AgentCreateInput struct {
 }
 
 type AgentUpdateInput struct {
+	CliType      string
 	DisplayName  string
 	Description  string
 	Avatar       string
@@ -158,7 +160,7 @@ func (s *AgentService) Create(input AgentCreateInput) (AgentItem, error) {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
 	input.normalize()
-	if input.DisplayName == "" || input.OwnerUserId <= 0 {
+	if input.DisplayName == "" || input.OwnerUserId <= 0 || !apmodel.ValidAgentCliType(input.CliType) {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
 	var resourceID string
@@ -186,7 +188,7 @@ func (s *AgentService) Create(input AgentCreateInput) (AgentItem, error) {
 		def := apmodel.AgentDef{
 			ResourceId:      resource.ResourceId,
 			ResourceVersion: "draft",
-			CliType:         "opencode",
+			CliType:         input.CliType,
 			Name:            input.DisplayName,
 			Description:     input.Description,
 			Avatar:          input.Avatar,
@@ -215,7 +217,7 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 	}
 	resourceID = strings.TrimSpace(resourceID)
 	input.normalize()
-	if resourceID == "" || input.DisplayName == "" {
+	if resourceID == "" || input.DisplayName == "" || !apmodel.ValidAgentCliType(input.CliType) {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
 
@@ -243,7 +245,7 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 			return err
 		}
 		defValues := map[string]any{
-			"cli_type":       "opencode",
+			"cli_type":       input.CliType,
 			"name":           input.DisplayName,
 			"description":    input.Description,
 			"avatar":         input.Avatar,
@@ -259,7 +261,7 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 			def := apmodel.AgentDef{
 				ResourceId:      resourceID,
 				ResourceVersion: "draft",
-				CliType:         "opencode",
+				CliType:         input.CliType,
 				Name:            input.DisplayName,
 				Description:     input.Description,
 				Avatar:          input.Avatar,
@@ -287,7 +289,7 @@ func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {
 	if item.ResourceType != apmodel.ResourceTypeAgent {
 		return AgentItem{}, ErrResourceNotFound
 	}
-	agent := AgentItem{ResourceItem: item, CliType: "opencode", McpIds: []string{}, SkillIds: []string{}, KnowledgeIds: []string{}}
+	agent := AgentItem{ResourceItem: item, McpIds: []string{}, SkillIds: []string{}, KnowledgeIds: []string{}}
 	var def apmodel.AgentDef
 	if err := s.db.Where("resource_id = ? AND resource_version = ?", item.ResourceId, "draft").First(&def).Error; err == nil {
 		agent.CliType = def.CliType
@@ -325,6 +327,7 @@ func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {
 }
 
 func (input *AgentCreateInput) normalize() {
+	input.CliType = strings.TrimSpace(strings.ToLower(input.CliType))
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Avatar = strings.TrimSpace(input.Avatar)
@@ -336,6 +339,7 @@ func (input *AgentCreateInput) normalize() {
 }
 
 func (input *AgentUpdateInput) normalize() {
+	input.CliType = strings.TrimSpace(strings.ToLower(input.CliType))
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Avatar = strings.TrimSpace(input.Avatar)

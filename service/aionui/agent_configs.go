@@ -1,8 +1,6 @@
 package aionui
 
 import (
-	"errors"
-	"fmt"
 	"net/url"
 	"path/filepath"
 	"sort"
@@ -19,17 +17,16 @@ import (
 
 const (
 	CliTypeOpenCode        = "opencode"
+	CliTypeCodex           = "codex"
 	AgentConfigUrlTypeFile = "file"
 	defaultAgentAvatar     = "\U0001f916"
 )
-
-var ErrUnsupportedCliType = errors.New("unsupported cli_type")
 
 type AgentConfigService struct {
 	now func() time.Time
 }
 
-func NewAgentConfigService(_ ...string) *AgentConfigService {
+func NewAgentConfigService() *AgentConfigService {
 	return &AgentConfigService{now: time.Now}
 }
 
@@ -37,32 +34,18 @@ func NewDefaultAgentConfigService() *AgentConfigService {
 	return NewAgentConfigService()
 }
 
-func ValidateAgentConfigRequest(cliType string) error {
-	if strings.TrimSpace(cliType) == "" || cliType == CliTypeOpenCode {
-		return nil
-	}
-	return fmt.Errorf("%w: %s", ErrUnsupportedCliType, cliType)
+func (s *AgentConfigService) List(email string) (dtoaionui.AgentConfigsResponse, error) {
+	return s.listPlatform(0, email)
 }
 
-func (s *AgentConfigService) List(email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
-	return s.listPlatform(0, email, cliType)
+func (s *AgentConfigService) ListForUser(userID int, email string) (dtoaionui.AgentConfigsResponse, error) {
+	return s.listPlatform(userID, email)
 }
 
-func (s *AgentConfigService) ListForUser(userID int, email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
-	return s.listPlatform(userID, email, cliType)
-}
-
-func (s *AgentConfigService) listPlatform(userID int, email string, cliType string) (dtoaionui.AgentConfigsResponse, error) {
-	if strings.TrimSpace(cliType) == "" {
-		cliType = CliTypeOpenCode
-	}
-	if cliType != CliTypeOpenCode {
-		return dtoaionui.AgentConfigsResponse{}, ErrUnsupportedCliType
-	}
+func (s *AgentConfigService) listPlatform(userID int, email string) (dtoaionui.AgentConfigsResponse, error) {
 	if model.DB == nil || userID <= 0 {
 		return dtoaionui.AgentConfigsResponse{
 			UserEmail: strings.TrimSpace(strings.ToLower(email)),
-			CliType:   CliTypeOpenCode,
 			Revision:  s.now().UTC().Format(time.RFC3339),
 			Agents:    []dtoaionui.AgentConfigItem{},
 		}, nil
@@ -74,7 +57,6 @@ func (s *AgentConfigService) listPlatform(userID int, email string, cliType stri
 	if len(subjects) == 0 {
 		return dtoaionui.AgentConfigsResponse{
 			UserEmail: strings.TrimSpace(strings.ToLower(email)),
-			CliType:   CliTypeOpenCode,
 			Revision:  s.now().UTC().Format(time.RFC3339),
 			Agents:    []dtoaionui.AgentConfigItem{},
 		}, nil
@@ -107,7 +89,6 @@ func (s *AgentConfigService) listPlatform(userID int, email string, cliType stri
 	})
 	return dtoaionui.AgentConfigsResponse{
 		UserEmail: strings.TrimSpace(strings.ToLower(email)),
-		CliType:   CliTypeOpenCode,
 		Revision:  s.now().UTC().Format(time.RFC3339),
 		Agents:    items,
 	}, nil
@@ -155,6 +136,10 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 	if err := model.DB.Where("resource_id = ? AND resource_version = ?", grant.ResourceId, grant.ResourceVersion).First(&def).Error; err != nil {
 		return dtoaionui.AgentConfigItem{}, false, nil
 	}
+	cliType := strings.TrimSpace(strings.ToLower(def.CliType))
+	if cliType != CliTypeOpenCode && cliType != CliTypeCodex {
+		return dtoaionui.AgentConfigItem{}, false, nil
+	}
 	if packagePath == "" {
 		packagePath = strings.TrimSpace(def.PackagePath)
 	}
@@ -181,6 +166,7 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 	}
 	return dtoaionui.AgentConfigItem{
 		Id:          resource.ResourceId,
+		CliType:     cliType,
 		Url:         fileURL(packagePath),
 		UrlType:     AgentConfigUrlTypeFile,
 		Version:     version.Version,

@@ -59,11 +59,11 @@ func validMcpConfigJSON(raw string) bool {
 		}
 		serverType := strings.TrimSpace(strings.ToLower(common.Interface2String(server["type"])))
 		switch serverType {
-		case "", "stdio":
+		case "", "stdio", "local":
 			if strings.TrimSpace(common.Interface2String(server["command"])) == "" {
 				return false
 			}
-		case "sse", "streamablehttp", "remote":
+		case "sse", "streamablehttp", "streamable_http", "http", "remote":
 			if strings.TrimSpace(common.Interface2String(server["url"])) == "" {
 				return false
 			}

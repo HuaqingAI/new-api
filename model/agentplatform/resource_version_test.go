@@ -125,6 +125,7 @@ func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) 
 	require.NoError(t, db.Create(&AgentDef{
 		ResourceId:            agent.ResourceId,
 		ResourceVersion:       "1.0.0",
+		CliType:               AgentCliTypeOpenCode,
 		ManifestJSON:          "{\"name\":\"agent\"}",
 		DependenciesJSON:      "[\"skill\",\"knowledge\"]",
 		PromptMetadataJSON:    "{\"template\":\"default\"}",

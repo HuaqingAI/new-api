@@ -21,6 +21,7 @@ import axios from 'axios'
 import { api } from '@/lib/api'
 
 export type AgentPlatformResourceType = 'mcp' | 'skill' | 'knowledge' | 'agent'
+export type AgentPlatformAgentCliType = 'opencode' | 'codex'
 
 export type AgentPlatformJsonValue =
   | null
@@ -61,7 +62,7 @@ export type AgentPlatformKnowledgeItem = AgentPlatformItem & {
 }
 
 export type AgentPlatformAgentItem = AgentPlatformItem & {
-  cli_type?: string
+  cli_type: AgentPlatformAgentCliType
   instructions?: string
   model_token_id?: number
   default_model?: string
@@ -139,6 +140,7 @@ export type UpdateAgentPlatformKnowledgeRequest = {
 }
 
 export type CreateAgentPlatformAgentRequest = {
+  cli_type: AgentPlatformAgentCliType
   display_name: string
   description?: string
   avatar?: string

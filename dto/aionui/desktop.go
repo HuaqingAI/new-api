@@ -22,6 +22,7 @@ type DesktopTokenResponse struct {
 
 type AgentConfigItem struct {
 	Id          string `json:"id,omitempty"`
+	CliType     string `json:"cli_type"`
 	Url         string `json:"url"`
 	UrlType     string `json:"url_type"`
 	Version     string `json:"version"`
@@ -33,7 +34,6 @@ type AgentConfigItem struct {
 
 type AgentConfigsResponse struct {
 	UserEmail string            `json:"user_email"`
-	CliType   string            `json:"cli_type"`
 	Revision  string            `json:"revision,omitempty"`
 	Agents    []AgentConfigItem `json:"agents"`
 }

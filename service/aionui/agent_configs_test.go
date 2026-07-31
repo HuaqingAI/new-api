@@ -16,12 +16,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestAgentConfigServiceRejectsUnsupportedCliType(t *testing.T) {
-	_, err := NewAgentConfigService().List("alice@example.com", "codex")
-
-	require.ErrorIs(t, err, ErrUnsupportedCliType)
-}
-
 func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	oldDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -45,6 +39,10 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(packagePath), 0o700))
 	require.NoError(t, os.WriteFile(packagePath, []byte("zip"), 0o600))
+	codexPackagePath := filepath.Join("agents", "codex.zip")
+	absCodexPackagePath, err := filepath.Abs(codexPackagePath)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(codexPackagePath, []byte("codex zip"), 0o600))
 	require.NoError(t, db.Create(&apmodel.Resource{
 		ResourceId:    "res_agent_1",
 		ResourceType:  apmodel.ResourceTypeAgent,
@@ -85,17 +83,49 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 		SubjectId:       "9",
 		GrantedBy:       1,
 	}).Error)
+	require.NoError(t, db.Create(&apmodel.Resource{
+		ResourceId:    "res_agent_2",
+		ResourceType:  apmodel.ResourceTypeAgent,
+		DisplayName:   "Agent Two",
+		OwnerUserId:   1,
+		Status:        apmodel.ResourceStatusPublished,
+		LatestVersion: "1.0.0",
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.ResourceVersion{
+		ResourceId:      "res_agent_2",
+		Version:         "1.0.0",
+		ContractVersion: "codex-agent-platform/v1",
+		Status:          apmodel.ResourceStatusPublished,
+		CreatedBy:       1,
+		PackagePath:     codexPackagePath,
+		PackageSha256:   "codex-sha",
+		PackageSize:     9,
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.AgentDef{
+		ResourceId:      "res_agent_2",
+		ResourceVersion: "1.0.0",
+		CliType:         "codex",
+		Name:            "Agent Def Two",
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.ResourceGrant{
+		ResourceId:      "res_agent_2",
+		ResourceVersion: "1.0.0",
+		SubjectType:     apmodel.GrantSubjectTypeUser,
+		SubjectId:       "101",
+		GrantedBy:       1,
+	}).Error)
 
 	service := NewAgentConfigService()
 	service.now = func() time.Time {
 		return time.Date(2026, 7, 29, 1, 2, 3, 0, time.UTC)
 	}
-	result, err := service.ListForUser(101, "User@Example.com", CliTypeOpenCode)
+	result, err := service.ListForUser(101, "User@Example.com")
 
 	require.NoError(t, err)
 	require.Equal(t, "user@example.com", result.UserEmail)
-	require.Len(t, result.Agents, 1)
+	require.Len(t, result.Agents, 2)
 	require.Equal(t, "res_agent_1", result.Agents[0].Id)
+	require.Equal(t, "opencode", result.Agents[0].CliType)
 	require.Equal(t, "Agent Def One", result.Agents[0].Name)
 	require.Equal(t, "from def", result.Agents[0].Description)
 	require.Equal(t, "D", result.Agents[0].Avatar)
@@ -103,4 +133,9 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	require.Equal(t, "sha", result.Agents[0].Sha256)
 	require.Equal(t, "file", result.Agents[0].UrlType)
 	require.Equal(t, (&url.URL{Scheme: "file", Path: filepath.ToSlash(absPackagePath)}).String(), result.Agents[0].Url)
+	require.Equal(t, "res_agent_2", result.Agents[1].Id)
+	require.Equal(t, "codex", result.Agents[1].CliType)
+	require.Equal(t, "Agent Def Two", result.Agents[1].Name)
+	require.Equal(t, "codex-sha", result.Agents[1].Sha256)
+	require.Equal(t, (&url.URL{Scheme: "file", Path: filepath.ToSlash(absCodexPackagePath)}).String(), result.Agents[1].Url)
 }

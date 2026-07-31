@@ -129,9 +129,11 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   type AgentPlatformAgentItem,
+  type AgentPlatformAgentCliType,
   type AgentPlatformAgentVersion,
   type AgentPlatformGrantRequest,
   type AgentPlatformItem,
+  type AgentPlatformItemResponse,
   type AgentPlatformJsonValue,
   type AgentPlatformListResponse,
   type AgentPlatformModelKey,
@@ -184,6 +186,7 @@ type ResourceListCardProps = {
 
 type ResourceFormState = {
   type: AgentPlatformResourceType
+  cliType: AgentPlatformAgentCliType
   displayName: string
   description: string
   avatar: string
@@ -217,7 +220,7 @@ type AgentPlatformDetailItem = AgentPlatformItem &
     sha256: string
     size_bytes: number
     external_knowledge_id: string
-    cli_type: string
+    cli_type: AgentPlatformAgentCliType
     instructions: string
     model_token_id: number
     default_model: string
@@ -259,11 +262,40 @@ const RESOURCE_QUERY_KEYS = {
   agent: ['agent-platform', 'agents', 'summary'] as const,
 }
 
-const DEFAULT_MCP_CONFIG_JSON =
-  '{\n  "mcpServers": {\n    "stdio-server-example": {\n      "command": "npx",\n      "args": ["-y", "mcp-server-example"]\n    }\n  }\n}'
+const MCP_CONFIG_JSON_PLACEHOLDER =
+  '// Example JSON (stdio):\n' +
+  '{\n' +
+  '  "mcpServers": {\n' +
+  '    "stdio-server-example": {\n' +
+  '      "command": "npx",\n' +
+  '      "args": ["-y", "mcp-server-example"]\n' +
+  '    }\n' +
+  '  }\n' +
+  '}\n\n' +
+  '// Example JSON (sse):\n' +
+  '{\n' +
+  '  "mcpServers": {\n' +
+  '    "sse-server-example": {\n' +
+  '      "type": "sse",\n' +
+  '      "url": "http://localhost:3000"\n' +
+  '    }\n' +
+  '  }\n' +
+  '}\n\n' +
+  '// Example JSON (streamableHttp):\n' +
+  '{\n' +
+  '  "mcpServers": {\n' +
+  '    "streamable-http-example": {\n' +
+  '      "type": "streamableHttp",\n' +
+  '      "url": "http://localhost:3001",\n' +
+  '      "headers": {\n' +
+  '        "Content-Type": "application/json",\n' +
+  '        "Authorization": "Bearer your-token"\n' +
+  '      }\n' +
+  '    }\n' +
+  '  }\n' +
+  '}'
 
-const DEFAULT_AGENT_INSTRUCTIONS =
-  'You are an assistant managed by the Agent Platform. Follow team conventions and answer with concise, actionable guidance.'
+const AGENT_INSTRUCTIONS_PLACEHOLDER = '你是一个有用的助手'
 
 function formatStatusLabel(
   status: string,
@@ -533,19 +565,18 @@ function defaultResourceFormState(
   const detail = item as AgentPlatformDetailItem | undefined
   const agent = item as AgentPlatformAgentItem | undefined
   const mcpConfig =
-    detail?.resource_type === 'mcp'
-      ? formatJsonPreview(detail.config)
-      : DEFAULT_MCP_CONFIG_JSON
+    detail?.resource_type === 'mcp' ? formatJsonPreview(detail.config) : ''
 
   return {
     type,
+    cliType: agent?.cli_type ?? 'opencode',
     displayName: item?.display_name ?? '',
     description: item?.description ?? '',
     avatar: item?.avatar ?? '',
-    mcpConfigJson: mcpConfig || DEFAULT_MCP_CONFIG_JSON,
+    mcpConfigJson: mcpConfig,
     skillFile: null,
     externalKnowledgeId: detail?.external_knowledge_id ?? '',
-    instructions: agent?.instructions ?? DEFAULT_AGENT_INSTRUCTIONS,
+    instructions: agent?.instructions ?? '',
     modelTokenId: agent?.model_token_id ?? 0,
     defaultModel: agent?.default_model ?? '',
     mcpIds: agent?.mcp_ids ?? [],
@@ -660,7 +691,9 @@ function ResourceTable(props: {
           <TableRow>
             <TableHead>{t('Resource')}</TableHead>
             <TableHead>{t('Type')}</TableHead>
-            <TableHead>{t('Status')}</TableHead>
+            {props.showLatestVersion ? (
+              <TableHead>{t('Status')}</TableHead>
+            ) : null}
             <TableHead>{t('Owner')}</TableHead>
             {props.showLatestVersion ? (
               <TableHead>{t('Latest version')}</TableHead>
@@ -729,13 +762,15 @@ function ResourceRow(props: {
       <TableCell>
         <Badge variant='outline'>{props.typeLabel}</Badge>
       </TableCell>
-      <TableCell>
-        <StatusBadge
-          label={formatStatusLabel(item.status, t)}
-          variant={statusVariantFor(item.status)}
-          copyable={false}
-        />
-      </TableCell>
+      {props.showLatestVersion ? (
+        <TableCell>
+          <StatusBadge
+            label={formatStatusLabel(item.status, t)}
+            variant={statusVariantFor(item.status)}
+            copyable={false}
+          />
+        </TableCell>
+      ) : null}
       <TableCell>{item.owner_name || `#${item.owner_user_id}`}</TableCell>
       {props.showLatestVersion ? (
         <TableCell>{item.latest_version || t('Not versioned')}</TableCell>
@@ -932,6 +967,12 @@ function ResourceEditorDialog(props: {
     })
     setModelKeyPopoverOpen(false)
   }
+  let defaultModelDescription = t('发布后的 OpenCode 将使用该默认模型。')
+  if (selectedModelTokenId > 0 && tokenModelItems.length === 0) {
+    defaultModelDescription = t('所选 API 密钥没有可用模型。')
+  } else if (props.form.cliType === 'codex') {
+    defaultModelDescription = t('发布后的 Codex 将使用该默认模型。')
+  }
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
@@ -980,10 +1021,8 @@ function ResourceEditorDialog(props: {
                 }
                 rows={12}
                 className='font-mono'
+                placeholder={MCP_CONFIG_JSON_PLACEHOLDER}
               />
-              <FieldDescription>
-                {t('Paste an opencode-compatible mcpServers JSON object.')}
-              </FieldDescription>
             </Field>
           ) : null}
 
@@ -1021,6 +1060,29 @@ function ResourceEditorDialog(props: {
           {props.form.type === 'agent' ? (
             <>
               <Field>
+                <FieldLabel>{t('Agent 类型')}</FieldLabel>
+                <NativeSelect
+                  className='w-full'
+                  value={props.form.cliType}
+                  onChange={(event) =>
+                    update(
+                      'cliType',
+                      event.target.value as AgentPlatformAgentCliType
+                    )
+                  }
+                >
+                  <NativeSelectOption value='opencode'>
+                    OpenCode
+                  </NativeSelectOption>
+                  <NativeSelectOption value='codex'>Codex</NativeSelectOption>
+                </NativeSelect>
+                <FieldDescription>
+                  {props.form.cliType === 'codex'
+                    ? t('发布后将生成 codex.zip。')
+                    : t('发布后将生成 opencode.zip。')}
+                </FieldDescription>
+              </Field>
+              <Field>
                 <FieldLabel>{t('Avatar')}</FieldLabel>
                 <div className='flex items-center gap-2'>
                   <Button
@@ -1057,7 +1119,7 @@ function ResourceEditorDialog(props: {
                     update('instructions', event.target.value)
                   }
                   rows={8}
-                  placeholder={t('Agent instructions')}
+                  placeholder={AGENT_INSTRUCTIONS_PLACEHOLDER}
                 />
               </Field>
               <Field>
@@ -1162,11 +1224,7 @@ function ResourceEditorDialog(props: {
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
-                <FieldDescription>
-                  {selectedModelTokenId > 0 && tokenModelItems.length === 0
-                    ? t('所选 API 密钥没有可用模型。')
-                    : t('发布后的 opencode 将使用该默认模型。')}
-                </FieldDescription>
+                <FieldDescription>{defaultModelDescription}</FieldDescription>
               </Field>
               <ResourceCheckboxList
                 label={t('MCP dependencies')}
@@ -1368,7 +1426,9 @@ function ResourceDetailSheet(props: {
               </div>
 
               <div className='grid gap-4 rounded-lg border p-4 sm:grid-cols-2'>
-                <DetailField label={t('Status')} value={item.status} />
+                {item.resource_type === 'agent' ? (
+                  <DetailField label={t('Status')} value={item.status} />
+                ) : null}
                 {item.resource_type === 'agent' ? (
                   <DetailField
                     label={t('Latest version')}
@@ -1434,8 +1494,8 @@ function ResourceDetailSheet(props: {
               {item.resource_type === 'agent' ? (
                 <>
                   <DetailField
-                    label={t('CLI type')}
-                    value={item.cli_type || 'opencode'}
+                    label={t('Agent 类型')}
+                    value={item.cli_type || t('未配置')}
                   />
                   <div className='grid gap-4 rounded-lg border p-4 sm:grid-cols-2'>
                     <DetailField
@@ -1955,7 +2015,11 @@ export function AgentPlatformShell() {
     await queryClient.invalidateQueries({ queryKey: RESOURCE_QUERY_KEYS[type] })
   }
 
-  const createMutation = useMutation({
+  const createMutation = useMutation<
+    AgentPlatformItemResponse,
+    Error,
+    ResourceFormState
+  >({
     mutationFn: (form: ResourceFormState) => {
       const base = buildCreateOrUpdateBase(form)
       switch (form.type) {
@@ -1980,6 +2044,7 @@ export function AgentPlatformShell() {
         case 'agent':
           return createAgentPlatformAgent({
             ...base,
+            cli_type: form.cliType,
             avatar: form.avatar.trim(),
             instructions: form.instructions,
             model_token_id: form.modelTokenId,
@@ -2007,7 +2072,14 @@ export function AgentPlatformShell() {
     },
   })
 
-  const updateMutation = useMutation({
+  const updateMutation = useMutation<
+    AgentPlatformItemResponse,
+    Error,
+    {
+      item: AgentPlatformItem
+      form: ResourceFormState
+    }
+  >({
     mutationFn: (input: {
       item: AgentPlatformItem
       form: ResourceFormState
@@ -2029,6 +2101,7 @@ export function AgentPlatformShell() {
         case 'agent':
           return updateAgentPlatformAgent(input.item.resource_id, {
             ...base,
+            cli_type: input.form.cliType,
             avatar: input.form.avatar.trim(),
             instructions: input.form.instructions,
             model_token_id: input.form.modelTokenId,

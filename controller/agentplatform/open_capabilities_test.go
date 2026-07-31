@@ -163,6 +163,7 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 	require.NoError(t, db.Create(&apmodel.AgentDef{
 		ResourceId:            agent.ResourceId,
 		ResourceVersion:       "1.0.0",
+		CliType:               apmodel.AgentCliTypeOpenCode,
 		ManifestJSON:          `{"name":"agent-template"}`,
 		DependenciesJSON:      `[{"resource_type":"skill","resource_id":"` + resource.ResourceId + `"},{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}]`,
 		PromptMetadataJSON:    `{"template":"default"}`,

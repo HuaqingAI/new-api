@@ -54,6 +54,7 @@ func CreateAgent(c *gin.Context) {
 		return
 	}
 	item, err := agentService().Create(apservice.AgentCreateInput{
+		CliType:      req.CliType,
 		DisplayName:  req.DisplayName,
 		Description:  req.Description,
 		Avatar:       req.Avatar,
@@ -80,6 +81,7 @@ func UpdateAgent(c *gin.Context) {
 		return
 	}
 	item, err := agentService().Update(c.Param("id"), apservice.AgentUpdateInput{
+		CliType:      req.CliType,
 		DisplayName:  req.DisplayName,
 		Description:  req.Description,
 		Avatar:       req.Avatar,

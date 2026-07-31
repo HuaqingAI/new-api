@@ -137,6 +137,10 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 			}
 			return err
 		}
+		draft.CliType = strings.TrimSpace(strings.ToLower(draft.CliType))
+		if !apmodel.ValidAgentCliType(draft.CliType) {
+			return ErrInvalidResourceInput
+		}
 		if err := tx.Where("agent_resource_id = ? AND resource_version = ?", input.ResourceId, "draft").Order("sort_order ASC, id ASC").Find(&deps).Error; err != nil {
 			return err
 		}
@@ -146,13 +150,9 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 		}
 		providerInput := OpenCodeProviderConfigInput{
 			APIBase:      openCodeAPIBase(),
-			APIKey:       tokenModels.Token.Key,
+			APIKey:       exportedAgentAPIKey(tokenModels.Token.Key),
 			DefaultModel: draft.DefaultModel,
 			Models:       buildOpenCodeModels(tokenModels.Models),
-		}
-		modelConfigSnapshot, err = openCodeModelConfigSnapshot(providerInput, draft.ModelTokenId)
-		if err != nil {
-			return err
 		}
 		if err := validateAgentDependencyTargets(tx, idsByType(deps, apmodel.AgentDependencyTypeMCP), idsByType(deps, apmodel.AgentDependencyTypeSkill), idsByType(deps, apmodel.AgentDependencyTypeKnowledge)); err != nil {
 			return err
@@ -162,16 +162,37 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 			return err
 		}
 		version = nextPatchVersion(versions)
-		packagePath, sum, size, err := buildOpenCodeAgentPackage(tx, resource, draft, deps, version, providerInput)
+		var packagePath string
+		var sum string
+		var size int64
+		var contractVersion string
+		switch draft.CliType {
+		case apmodel.AgentCliTypeOpenCode:
+			modelConfigSnapshot, err = openCodeModelConfigSnapshot(providerInput, draft.ModelTokenId)
+			if err != nil {
+				return err
+			}
+			packagePath, sum, size, err = buildOpenCodeAgentPackage(tx, resource, draft, deps, version, providerInput)
+			contractVersion = "opencode-agent-platform/v1"
+		case apmodel.AgentCliTypeCodex:
+			modelConfigSnapshot, err = codexModelConfigSnapshot(providerInput, draft.ModelTokenId)
+			if err != nil {
+				return err
+			}
+			packagePath, sum, size, err = buildCodexAgentPackage(tx, resource, draft, deps, version, providerInput)
+			contractVersion = "codex-agent-platform/v1"
+		default:
+			err = ErrInvalidResourceInput
+		}
 		if err != nil {
 			return err
 		}
-		artifact = PublishAgentArtifact{CliType: "opencode", Url: fileURL(packagePath), Sha256: sum, Size: size}
+		artifact = PublishAgentArtifact{CliType: draft.CliType, Url: fileURL(packagePath), Sha256: sum, Size: size}
 		now := time.Now().UTC()
 		versionRow := apmodel.ResourceVersion{
 			ResourceId:      resource.ResourceId,
 			Version:         version,
-			ContractVersion: "opencode-agent-platform/v1",
+			ContractVersion: contractVersion,
 			Summary:         input.Summary,
 			Status:          apmodel.ResourceStatusPublished,
 			CreatedBy:       input.ActorUserId,
@@ -536,6 +557,60 @@ func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apm
 	return targetPath, sum, size, nil
 }
 
+func buildCodexAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apmodel.AgentDef, deps []apmodel.AgentDependency, version string, providerInput OpenCodeProviderConfigInput) (string, string, int64, error) {
+	root, err := os.MkdirTemp("", "new-api-agent-*")
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer os.RemoveAll(root)
+
+	globalDir := filepath.Join(root, "global")
+	codexDir := filepath.Join(root, "project", ".codex")
+	skillsDir := filepath.Join(codexDir, "skills")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		return "", "", 0, err
+	}
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		return "", "", 0, err
+	}
+
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(codexGlobalConfig(providerInput)), 0o644); err != nil {
+		return "", "", 0, err
+	}
+	if err := writeJSONFile(filepath.Join(globalDir, "auth.json"), map[string]string{
+		"OPENAI_API_KEY": providerInput.APIKey,
+	}); err != nil {
+		return "", "", 0, err
+	}
+	mcpConfig, err := buildCodexMcpConfig(tx, idsByType(deps, apmodel.AgentDependencyTypeMCP))
+	if err != nil {
+		return "", "", 0, err
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "config.toml"), []byte(codexProjectConfig(draft, mcpConfig)), 0o644); err != nil {
+		return "", "", 0, err
+	}
+	if err := copySystemSkillsWithKnowledgeConfig(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeKnowledge)); err != nil {
+		return "", "", 0, err
+	}
+	if err := extractSelectedSkills(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeSkill)); err != nil {
+		return "", "", 0, err
+	}
+
+	targetDir := filepath.Join(defaultAgentPackageDir(), resource.ResourceId, version)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return "", "", 0, err
+	}
+	targetPath := filepath.Join(targetDir, "codex.zip")
+	if err := zipDirectory(root, targetPath); err != nil {
+		return "", "", 0, err
+	}
+	sum, size, err := fileSHA256AndSize(targetPath)
+	if err != nil {
+		return "", "", 0, err
+	}
+	return targetPath, sum, size, nil
+}
+
 func openCodeProjectConfig(mcp map[string]any, providerInput OpenCodeProviderConfigInput) map[string]any {
 	return map[string]any{
 		"$schema":      "https://opencode.ai/config.json",
@@ -556,6 +631,88 @@ func openCodeProjectConfig(mcp map[string]any, providerInput OpenCodeProviderCon
 	}
 }
 
+func codexGlobalConfig(providerInput OpenCodeProviderConfigInput) string {
+	var builder strings.Builder
+	builder.WriteString("model_provider = \"hth\"\n")
+	builder.WriteString("model = ")
+	builder.WriteString(tomlQuotedString(providerInput.DefaultModel))
+	builder.WriteString("\n\n")
+	builder.WriteString("personality = \"pragmatic\"\n\n")
+	builder.WriteString("[model_providers.hth]\n")
+	builder.WriteString("name = \"hth\"\n")
+	builder.WriteString("wire_api = \"responses\"\n")
+	builder.WriteString("requires_openai_auth = true\n")
+	builder.WriteString("base_url = ")
+	builder.WriteString(tomlQuotedString(providerInput.APIBase))
+	builder.WriteString("\n")
+	return builder.String()
+}
+
+type codexMcpServerConfig struct {
+	Name        string
+	Command     string
+	Args        []string
+	URL         string
+	HTTPHeaders map[string]string
+}
+
+func codexProjectConfig(draft apmodel.AgentDef, mcp []codexMcpServerConfig) string {
+	var builder strings.Builder
+	builder.WriteString("model = ")
+	builder.WriteString(tomlQuotedString(draft.DefaultModel))
+	builder.WriteString("\n")
+	builder.WriteString("model_reasoning_effort = \"high\"\n\n")
+	builder.WriteString("developer_instructions = \"\"\"\n")
+	builder.WriteString(tomlMultilineBasicStringContent(codexDeveloperInstructions(draft.Instructions)))
+	builder.WriteString("\n\"\"\"\n")
+	for _, server := range mcp {
+		tableKey := tomlTableKey(server.Name)
+		builder.WriteString("\n[mcp_servers.")
+		builder.WriteString(tableKey)
+		builder.WriteString("]\n")
+		if server.Command != "" {
+			builder.WriteString("command = ")
+			builder.WriteString(tomlQuotedString(server.Command))
+			builder.WriteString("\n")
+			builder.WriteString("args = ")
+			builder.WriteString(tomlStringArray(server.Args))
+			builder.WriteString("\n")
+			builder.WriteString("default_tools_approval_mode = \"approve\"\n")
+			continue
+		}
+		builder.WriteString("url = ")
+		builder.WriteString(tomlQuotedString(server.URL))
+		builder.WriteString("\n")
+		builder.WriteString("default_tools_approval_mode = \"approve\"\n")
+		if len(server.HTTPHeaders) > 0 {
+			builder.WriteString("\n[mcp_servers.")
+			builder.WriteString(tableKey)
+			builder.WriteString(".http_headers]\n")
+			keys := make([]string, 0, len(server.HTTPHeaders))
+			for key := range server.HTTPHeaders {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				builder.WriteString(tomlQuotedString(key))
+				builder.WriteString(" = ")
+				builder.WriteString(tomlQuotedString(server.HTTPHeaders[key]))
+				builder.WriteString("\n")
+			}
+		}
+	}
+	return builder.String()
+}
+
+func codexDeveloperInstructions(instructions string) string {
+	instructions = strings.TrimSpace(instructions)
+	context := strings.TrimSpace(openCodeUserContextTemplate)
+	if instructions == "" {
+		return context
+	}
+	return instructions + "\n\n" + context
+}
+
 func openCodeAPIBase() string {
 	value := strings.TrimSpace(os.Getenv("BACKEND_BASE_URL"))
 	if value == "" {
@@ -564,14 +721,39 @@ func openCodeAPIBase() string {
 	return strings.TrimRight(value, "/")
 }
 
+func exportedAgentAPIKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" || strings.HasPrefix(key, "sk-") {
+		return key
+	}
+	return "sk-" + key
+}
+
 func openCodeModelConfigSnapshot(input OpenCodeProviderConfigInput, tokenID int) (string, error) {
 	payload := map[string]any{
+		"cli_type":      apmodel.AgentCliTypeOpenCode,
 		"provider":      "hth",
 		"api_base":      input.APIBase,
 		"token_id":      tokenID,
 		"default_model": input.DefaultModel,
 		"model_count":   len(input.Models),
 		"models":        input.Models,
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func codexModelConfigSnapshot(input OpenCodeProviderConfigInput, tokenID int) (string, error) {
+	payload := map[string]any{
+		"cli_type":      apmodel.AgentCliTypeCodex,
+		"provider":      "hth",
+		"api_base":      input.APIBase,
+		"token_id":      tokenID,
+		"default_model": input.DefaultModel,
+		"model_count":   len(input.Models),
 	}
 	body, err := common.Marshal(payload)
 	if err != nil {
@@ -608,6 +790,81 @@ func buildOpenCodeMcpConfig(tx *gorm.DB, mcpIds []string) (map[string]any, error
 	return merged, nil
 }
 
+func buildCodexMcpConfig(tx *gorm.DB, mcpIds []string) ([]codexMcpServerConfig, error) {
+	merged := map[string]codexMcpServerConfig{}
+	for _, id := range mcpIds {
+		var def apmodel.McpDef
+		if err := tx.Where("resource_id = ?", id).First(&def).Error; err != nil {
+			return nil, err
+		}
+		var payload struct {
+			McpServers map[string]map[string]any `json:"mcpServers"`
+		}
+		if err := common.UnmarshalJsonStr(def.ConfigJSON, &payload); err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(payload.McpServers))
+		for name := range payload.McpServers {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if _, exists := merged[name]; exists {
+				return nil, ErrAgentDependencyInvalid
+			}
+			server, err := toCodexMcpServer(name, payload.McpServers[name])
+			if err != nil {
+				return nil, err
+			}
+			merged[name] = server
+		}
+	}
+	names := make([]string, 0, len(merged))
+	for name := range merged {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]codexMcpServerConfig, 0, len(names))
+	for _, name := range names {
+		out = append(out, merged[name])
+	}
+	return out, nil
+}
+
+func toCodexMcpServer(name string, input map[string]any) (codexMcpServerConfig, error) {
+	serverType := strings.TrimSpace(strings.ToLower(common.Interface2String(input["type"])))
+	out := codexMcpServerConfig{Name: name}
+	switch serverType {
+	case "", "stdio", "local":
+		command := strings.TrimSpace(common.Interface2String(input["command"]))
+		if command == "" {
+			if parts := openCodeLocalCommand(input["command"], input["args"]); len(parts) > 0 {
+				command = common.Interface2String(parts[0])
+			}
+		}
+		if command == "" {
+			return codexMcpServerConfig{}, ErrAgentDependencyInvalid
+		}
+		out.Command = command
+		out.Args = stringSliceFromAny(input["args"])
+	case "streamablehttp", "streamable_http", "http", "remote":
+		urlValue := strings.TrimSpace(common.Interface2String(input["url"]))
+		if !strings.HasPrefix(urlValue, "http://") && !strings.HasPrefix(urlValue, "https://") {
+			return codexMcpServerConfig{}, ErrAgentDependencyInvalid
+		}
+		out.URL = urlValue
+		out.HTTPHeaders = stringMapFromAny(input["http_headers"])
+		if len(out.HTTPHeaders) == 0 {
+			out.HTTPHeaders = stringMapFromAny(input["headers"])
+		}
+	case "sse":
+		return codexMcpServerConfig{}, ErrAgentDependencyInvalid
+	default:
+		return codexMcpServerConfig{}, ErrAgentDependencyInvalid
+	}
+	return out, nil
+}
+
 func toOpenCodeMcpServer(input map[string]any) map[string]any {
 	serverType := strings.TrimSpace(strings.ToLower(common.Interface2String(input["type"])))
 	out := map[string]any{}
@@ -626,6 +883,78 @@ func toOpenCodeMcpServer(input map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+func stringSliceFromAny(value any) []string {
+	switch items := value.(type) {
+	case []string:
+		return append([]string{}, items...)
+	case []any:
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			text := strings.TrimSpace(common.Interface2String(item))
+			if text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return []string{}
+	}
+}
+
+func stringMapFromAny(value any) map[string]string {
+	switch items := value.(type) {
+	case map[string]string:
+		out := make(map[string]string, len(items))
+		for key, item := range items {
+			out[key] = item
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]string, len(items))
+		for key, item := range items {
+			out[key] = common.Interface2String(item)
+		}
+		return out
+	default:
+		return map[string]string{}
+	}
+}
+
+func tomlQuotedString(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\b", "\\b", "\t", "\\t", "\n", "\\n", "\f", "\\f", "\r", "\\r")
+	return "\"" + replacer.Replace(value) + "\""
+}
+
+func tomlMultilineBasicStringContent(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "\"\"\"", "\\\"\\\"\\\"", "\r\n", "\n", "\r", "\n")
+	return replacer.Replace(value)
+}
+
+func tomlStringArray(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, tomlQuotedString(value))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func tomlTableKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return tomlQuotedString("server")
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return tomlQuotedString(value)
+	}
+	return value
 }
 
 func openCodeLocalCommand(command any, args any) []any {

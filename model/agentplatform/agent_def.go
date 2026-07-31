@@ -11,6 +11,11 @@ import (
 
 var ErrInvalidAgentDefBody = errors.New("agent platform agent def body invalid")
 
+const (
+	AgentCliTypeOpenCode = "opencode"
+	AgentCliTypeCodex    = "codex"
+)
+
 type AgentDef struct {
 	Id                    int       `json:"id" gorm:"primaryKey"`
 	ResourceId            string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
@@ -65,10 +70,7 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 	d.DependenciesJSON = strings.TrimSpace(d.DependenciesJSON)
 	d.PromptMetadataJSON = strings.TrimSpace(d.PromptMetadataJSON)
 	d.CompatibilityMetaJSON = strings.TrimSpace(d.CompatibilityMetaJSON)
-	if d.CliType == "" {
-		d.CliType = "opencode"
-	}
-	if d.ResourceId == "" || d.ResourceVersion == "" || d.CliType != "opencode" {
+	if d.ResourceId == "" || d.ResourceVersion == "" || !ValidAgentCliType(d.CliType) {
 		return ErrInvalidAgentDefBody
 	}
 	if d.ManifestJSON == "" && d.DependenciesJSON == "" && d.CompatibilityMetaJSON == "" {
@@ -84,6 +86,11 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 		return ErrInvalidAgentDefBody
 	}
 	return nil
+}
+
+func ValidAgentCliType(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return value == AgentCliTypeOpenCode || value == AgentCliTypeCodex
 }
 
 func validAgentJSONObject(raw string) bool {

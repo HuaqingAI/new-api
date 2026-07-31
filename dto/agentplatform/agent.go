@@ -3,6 +3,7 @@ package agentplatform
 import "time"
 
 type CreateAgentRequest struct {
+	CliType      string   `json:"cli_type" binding:"required"`
 	DisplayName  string   `json:"display_name" binding:"required"`
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
@@ -17,6 +18,7 @@ type CreateAgentRequest struct {
 }
 
 type UpdateAgentRequest struct {
+	CliType      string   `json:"cli_type" binding:"required"`
 	DisplayName  string   `json:"display_name" binding:"required"`
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`

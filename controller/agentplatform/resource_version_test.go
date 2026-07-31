@@ -235,7 +235,7 @@ func TestResourceVersionAPIRejectsInvalidAgentDependencies(t *testing.T) {
 	})
 	response := decodeResourceVersionAPIResponse(t, recorder)
 	require.False(t, response.Success)
-	require.Equal(t, "invalid request params", response.Message)
+	require.Equal(t, "Agent 依赖配置无效", response.Message)
 }
 
 func intPtr(v int) *int {

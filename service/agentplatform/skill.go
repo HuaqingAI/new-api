@@ -1,6 +1,7 @@
 package agentplatform
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -229,6 +230,26 @@ func (s *SkillService) PackagePath(resourceID string) (string, error) {
 	return def.FilePath, nil
 }
 
+func (s *SkillService) PackageDownloadURL(resourceID string) (string, error) {
+	def, err := s.getDef(resourceID)
+	if err != nil {
+		return "", err
+	}
+	ref, err := ParseArtifactURI(def.FilePath)
+	if err != nil {
+		return "", err
+	}
+	store, err := DefaultArtifactStore()
+	if err != nil {
+		return "", err
+	}
+	signed, err := store.PresignGet(context.Background(), ref, artifactPresignExpires())
+	if err != nil {
+		return "", err
+	}
+	return signed.URL, nil
+}
+
 func (s *SkillService) SetStatus(resourceID string, status string) (SkillItem, error) {
 	if err := setTypedResourceStatus(s.db, resourceID, apmodel.ResourceTypeSkill, status); err != nil {
 		return SkillItem{}, err
@@ -252,7 +273,11 @@ func (s *SkillService) getDef(resourceID string) (apmodel.SkillDef, error) {
 }
 
 func storeSkillPackage(resourceID string, fileName string, reader io.Reader) (string, string, int64, error) {
-	tmpDir := filepath.Join(defaultSkillPackageDir(), ".tmp")
+	tmpDir, err := os.MkdirTemp("", "new-api-skill-upload-*")
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer os.RemoveAll(tmpDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		return "", "", 0, err
 	}
@@ -277,20 +302,25 @@ func storeSkillPackage(resourceID string, fileName string, reader io.Reader) (st
 		return "", "", 0, ErrInvalidResourceInput
 	}
 	sum := hex.EncodeToString(hash.Sum(nil))
-	targetDir := filepath.Join(defaultSkillPackageDir(), resourceID)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	store, err := DefaultArtifactStore()
+	if err != nil {
 		return "", "", 0, err
 	}
-	targetPath := filepath.Join(targetDir, sum+".zip")
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	ref, err := store.PutFile(context.Background(), PutArtifactInput{
+		Kind:        ArtifactKindSkill,
+		BucketKey:   buildSkillObjectKey(resourceID, sum, fileName),
+		LocalPath:   tmpPath,
+		ContentType: "application/zip",
+		Sha256:      sum,
+		SizeBytes:   size,
+		Metadata: map[string]string{
+			"resource-id":   resourceID,
+			"sha256":        sum,
+			"artifact-kind": ArtifactKindSkill,
+		},
+	})
+	if err != nil {
 		return "", "", 0, err
 	}
-	return targetPath, sum, size, nil
-}
-
-func defaultSkillPackageDir() string {
-	if configured := strings.TrimSpace(os.Getenv("AIONUI_SKILL_PACKAGE_DIR")); configured != "" {
-		return configured
-	}
-	return filepath.Join(".", "skills")
+	return ref.URI, sum, size, nil
 }

@@ -72,5 +72,5 @@ func defaultAgentAvatarDir() string {
 	if configured := strings.TrimSpace(os.Getenv("AIONUI_AGENT_AVATAR_DIR")); configured != "" {
 		return configured
 	}
-	return filepath.Join(defaultAgentPackageDir(), "avatars")
+	return filepath.Join(".", "agent-avatars")
 }

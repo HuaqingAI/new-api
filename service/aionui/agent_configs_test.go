@@ -1,9 +1,7 @@
 package aionui
 
 import (
-	"net/url"
-	"os"
-	"path/filepath"
+	"context"
 	"testing"
 	"time"
 
@@ -11,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -31,18 +30,11 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	t.Cleanup(func() {
 		model.DB = oldDB
 	})
+	restore := apservice.SetArtifactStoreForTest(fakeAionUIArtifactStore{})
+	t.Cleanup(restore)
 
-	dir := t.TempDir()
-	t.Chdir(dir)
-	packagePath := filepath.Join("agents", "opencode.zip")
-	absPackagePath, err := filepath.Abs(packagePath)
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Dir(packagePath), 0o700))
-	require.NoError(t, os.WriteFile(packagePath, []byte("zip"), 0o600))
-	codexPackagePath := filepath.Join("agents", "codex.zip")
-	absCodexPackagePath, err := filepath.Abs(codexPackagePath)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(codexPackagePath, []byte("codex zip"), 0o600))
+	packagePath := "oss://test-bucket/agent-packages/opencode/res_agent_1/1.0.0/opencode.zip"
+	codexPackagePath := "oss://test-bucket/agent-packages/codex/res_agent_2/1.0.0/codex.zip"
 	require.NoError(t, db.Create(&apmodel.Resource{
 		ResourceId:    "res_agent_1",
 		ResourceType:  apmodel.ResourceTypeAgent,
@@ -131,11 +123,38 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	require.Equal(t, "D", result.Agents[0].Avatar)
 	require.Equal(t, "1.0.0", result.Agents[0].Version)
 	require.Equal(t, "sha", result.Agents[0].Sha256)
-	require.Equal(t, "file", result.Agents[0].UrlType)
-	require.Equal(t, (&url.URL{Scheme: "file", Path: filepath.ToSlash(absPackagePath)}).String(), result.Agents[0].Url)
+	require.Equal(t, "https", result.Agents[0].UrlType)
+	require.Equal(t, packagePath, result.Agents[0].ArtifactKey)
+	require.Equal(t, "https://oss.test/agent-packages/opencode/res_agent_1/1.0.0/opencode.zip", result.Agents[0].Url)
+	require.Equal(t, int64(1780000000), result.Agents[0].UrlExpiresAt)
+	require.Equal(t, int64(3), result.Agents[0].Size)
 	require.Equal(t, "res_agent_2", result.Agents[1].Id)
 	require.Equal(t, "codex", result.Agents[1].CliType)
 	require.Equal(t, "Agent Def Two", result.Agents[1].Name)
 	require.Equal(t, "codex-sha", result.Agents[1].Sha256)
-	require.Equal(t, (&url.URL{Scheme: "file", Path: filepath.ToSlash(absCodexPackagePath)}).String(), result.Agents[1].Url)
+	require.Equal(t, "https", result.Agents[1].UrlType)
+	require.Equal(t, codexPackagePath, result.Agents[1].ArtifactKey)
+	require.Equal(t, "https://oss.test/agent-packages/codex/res_agent_2/1.0.0/codex.zip", result.Agents[1].Url)
+}
+
+type fakeAionUIArtifactStore struct{}
+
+func (fakeAionUIArtifactStore) PutFile(context.Context, apservice.PutArtifactInput) (apservice.ArtifactRef, error) {
+	return apservice.ArtifactRef{}, nil
+}
+
+func (fakeAionUIArtifactStore) PresignGet(_ context.Context, ref apservice.ArtifactRef, _ time.Duration) (apservice.PresignedArtifact, error) {
+	return apservice.PresignedArtifact{
+		URL:       "https://oss.test/" + ref.Key,
+		URLType:   apservice.ArtifactURLTypeHTTPS,
+		ExpiresAt: 1780000000,
+	}, nil
+}
+
+func (fakeAionUIArtifactStore) DownloadToFile(context.Context, apservice.ArtifactRef, string) error {
+	return nil
+}
+
+func (fakeAionUIArtifactStore) Delete(context.Context, apservice.ArtifactRef) error {
+	return nil
 }

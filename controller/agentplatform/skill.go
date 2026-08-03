@@ -135,12 +135,12 @@ func UploadSkillPackage(c *gin.Context) {
 }
 
 func DownloadSkillPackage(c *gin.Context) {
-	path, err := skillService().PackagePath(c.Param("id"))
+	url, err := skillService().PackageDownloadURL(c.Param("id"))
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	c.FileAttachment(path, "")
+	c.Redirect(302, url)
 }
 
 func EnableSkill(c *gin.Context) {

@@ -77,10 +77,13 @@ type PublishAgentRequest struct {
 }
 
 type AgentArtifactResponse struct {
-	CliType string `json:"cli_type"`
-	Url     string `json:"url"`
-	Sha256  string `json:"sha256"`
-	Size    int64  `json:"size"`
+	CliType      string `json:"cli_type"`
+	ArtifactKey  string `json:"artifact_key"`
+	Url          string `json:"url"`
+	UrlType      string `json:"url_type"`
+	UrlExpiresAt int64  `json:"url_expires_at"`
+	Sha256       string `json:"sha256"`
+	Size         int64  `json:"size"`
 }
 
 type AgentGrantResponse struct {

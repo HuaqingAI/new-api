@@ -21,15 +21,18 @@ type DesktopTokenResponse struct {
 }
 
 type AgentConfigItem struct {
-	Id          string `json:"id,omitempty"`
-	CliType     string `json:"cli_type"`
-	Url         string `json:"url"`
-	UrlType     string `json:"url_type"`
-	Version     string `json:"version"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Avatar      string `json:"avatar,omitempty"`
-	Sha256      string `json:"sha256,omitempty"`
+	Id           string `json:"id,omitempty"`
+	CliType      string `json:"cli_type"`
+	ArtifactKey  string `json:"artifact_key"`
+	Url          string `json:"url"`
+	UrlType      string `json:"url_type"`
+	UrlExpiresAt int64  `json:"url_expires_at"`
+	Version      string `json:"version"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	Avatar       string `json:"avatar,omitempty"`
+	Sha256       string `json:"sha256,omitempty"`
+	Size         int64  `json:"size,omitempty"`
 }
 
 type AgentConfigsResponse struct {

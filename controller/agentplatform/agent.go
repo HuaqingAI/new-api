@@ -256,10 +256,13 @@ func mapPublishAgentResponse(result apservice.PublishAgentResult) dtoagentplatfo
 		Version:    result.Version,
 		Status:     result.Status,
 		Artifact: dtoagentplatform.AgentArtifactResponse{
-			CliType: result.Artifact.CliType,
-			Url:     result.Artifact.Url,
-			Sha256:  result.Artifact.Sha256,
-			Size:    result.Artifact.Size,
+			CliType:      result.Artifact.CliType,
+			ArtifactKey:  result.Artifact.ArtifactKey,
+			Url:          result.Artifact.Url,
+			UrlType:      result.Artifact.UrlType,
+			UrlExpiresAt: result.Artifact.UrlExpiresAt,
+			Sha256:       result.Artifact.Sha256,
+			Size:         result.Artifact.Size,
 		},
 		Grants: mapAgentGrantResponses(result.Grants),
 	}

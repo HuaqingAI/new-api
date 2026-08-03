@@ -3,10 +3,13 @@ package agentplatform
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	appmodel "github.com/QuantumNous/new-api/model"
@@ -19,8 +22,9 @@ import (
 func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	db := newAgentPublishTestDB(t)
 	root := t.TempDir()
-	t.Setenv("AIONUI_AGENT_PACKAGE_DIR", filepath.Join(root, "agents"))
-	t.Setenv("AIONUI_SKILL_PACKAGE_DIR", filepath.Join(root, "skills"))
+	store := newFakeArtifactStore()
+	restore := SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
@@ -69,10 +73,11 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "1.0.0", result.Version)
-	require.FileExists(t, filepath.Join(root, "agents", agent.ResourceId, "1.0.0", "opencode.zip"))
+	require.Equal(t, ArtifactURLTypeHTTPS, result.Artifact.UrlType)
+	require.True(t, strings.HasPrefix(result.Artifact.ArtifactKey, "oss://test-bucket/agent-packages/opencode/"+agent.ResourceId+"/1.0.0/opencode.zip"))
 
-	files := readZipFiles(t, filepath.Join(root, "agents", agent.ResourceId, "1.0.0", "opencode.zip"))
-	names := readZipEntryNames(t, filepath.Join(root, "agents", agent.ResourceId, "1.0.0", "opencode.zip"))
+	files := store.readZipFiles(t, result.Artifact.ArtifactKey)
+	names := store.readZipEntryNames(t, result.Artifact.ArtifactKey)
 	require.Contains(t, names, "global/")
 	require.NotContains(t, files, "global/opencode.jsonc")
 	require.NotContains(t, files, "global/skills/cherry-knowledge-search/SKILL.md")
@@ -110,8 +115,9 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	db := newAgentPublishTestDB(t)
 	root := t.TempDir()
-	t.Setenv("AIONUI_AGENT_PACKAGE_DIR", filepath.Join(root, "agents"))
-	t.Setenv("AIONUI_SKILL_PACKAGE_DIR", filepath.Join(root, "skills"))
+	store := newFakeArtifactStore()
+	restore := SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	t.Setenv("BACKEND_BASE_URL", "https://hth.huaqing.run/v1/")
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
@@ -152,10 +158,10 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, apmodel.AgentCliTypeCodex, result.Artifact.CliType)
-	zipPath := filepath.Join(root, "agents", agent.ResourceId, "1.0.0", "codex.zip")
-	require.FileExists(t, zipPath)
+	require.Equal(t, ArtifactURLTypeHTTPS, result.Artifact.UrlType)
+	require.True(t, strings.HasPrefix(result.Artifact.ArtifactKey, "oss://test-bucket/agent-packages/codex/"+agent.ResourceId+"/1.0.0/codex.zip"))
 
-	files := readZipFiles(t, zipPath)
+	files := store.readZipFiles(t, result.Artifact.ArtifactKey)
 	require.Contains(t, files, "global/config.toml")
 	require.Contains(t, files, "global/auth.json")
 	require.Contains(t, files, "project/.codex/config.toml")
@@ -193,6 +199,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	var publishedDef apmodel.AgentDef
 	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)
 	require.Equal(t, apmodel.AgentCliTypeCodex, publishedDef.CliType)
+	require.Equal(t, result.Artifact.ArtifactKey, publishedDef.PackagePath)
 	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
 }
 
@@ -217,8 +224,8 @@ func TestExportedAgentAPIKeyUsesOpenAIStylePrefix(t *testing.T) {
 
 func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) {
 	db := newAgentPublishTestDB(t)
-	root := t.TempDir()
-	t.Setenv("AIONUI_AGENT_PACKAGE_DIR", filepath.Join(root, "agents"))
+	restore := SetArtifactStoreForTest(newFakeArtifactStore())
+	t.Cleanup(restore)
 	token := seedAgentModelToken(t, db, 1, "gpt-5.5")
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
@@ -336,6 +343,101 @@ func readZipEntryNames(t *testing.T, path string) map[string]struct{} {
 	reader, err := zip.OpenReader(path)
 	require.NoError(t, err)
 	defer reader.Close()
+	names := map[string]struct{}{}
+	for _, file := range reader.File {
+		names[file.Name] = struct{}{}
+	}
+	return names
+}
+
+type fakeArtifactStore struct {
+	bucket string
+	files  map[string][]byte
+}
+
+func newFakeArtifactStore() *fakeArtifactStore {
+	return &fakeArtifactStore{bucket: "test-bucket", files: map[string][]byte{}}
+}
+
+func (s *fakeArtifactStore) PutFile(_ context.Context, input PutArtifactInput) (ArtifactRef, error) {
+	data, err := os.ReadFile(input.LocalPath)
+	if err != nil {
+		return ArtifactRef{}, err
+	}
+	key := strings.Trim(input.BucketKey, "/")
+	s.files[key] = append([]byte(nil), data...)
+	return ArtifactRef{
+		URI:    buildOSSURI(s.bucket, key),
+		Bucket: s.bucket,
+		Key:    key,
+		Sha256: input.Sha256,
+		Size:   input.SizeBytes,
+	}, nil
+}
+
+func (s *fakeArtifactStore) PresignGet(_ context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error) {
+	return PresignedArtifact{
+		URL:       "https://oss.test/" + ref.Key,
+		URLType:   ArtifactURLTypeHTTPS,
+		ExpiresAt: time.Now().Add(expires).Unix(),
+	}, nil
+}
+
+func (s *fakeArtifactStore) DownloadToFile(_ context.Context, ref ArtifactRef, targetPath string) error {
+	key := ref.Key
+	if key == "" {
+		parsed, err := ParseArtifactURI(ref.URI)
+		if err != nil {
+			return err
+		}
+		key = parsed.Key
+	}
+	data, ok := s.files[key]
+	if !ok {
+		return os.ErrNotExist
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(targetPath, data, 0o644)
+}
+
+func (s *fakeArtifactStore) Delete(_ context.Context, ref ArtifactRef) error {
+	delete(s.files, ref.Key)
+	return nil
+}
+
+func (s *fakeArtifactStore) readZipFiles(t *testing.T, uri string) map[string][]byte {
+	t.Helper()
+	ref, err := ParseArtifactURI(uri)
+	require.NoError(t, err)
+	data, ok := s.files[ref.Key]
+	require.True(t, ok)
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	require.NoError(t, err)
+	files := map[string][]byte{}
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		opened, err := file.Open()
+		require.NoError(t, err)
+		content, err := io.ReadAll(opened)
+		require.NoError(t, err)
+		require.NoError(t, opened.Close())
+		files[file.Name] = content
+	}
+	return files
+}
+
+func (s *fakeArtifactStore) readZipEntryNames(t *testing.T, uri string) map[string]struct{} {
+	t.Helper()
+	ref, err := ParseArtifactURI(uri)
+	require.NoError(t, err)
+	data, ok := s.files[ref.Key]
+	require.True(t, ok)
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	require.NoError(t, err)
 	names := map[string]struct{}{}
 	for _, file := range reader.File {
 		names[file.Name] = struct{}{}

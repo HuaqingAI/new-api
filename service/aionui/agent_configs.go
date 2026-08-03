@@ -1,8 +1,7 @@
 package aionui
 
 import (
-	"net/url"
-	"path/filepath"
+	"context"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,13 +12,13 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 )
 
 const (
-	CliTypeOpenCode        = "opencode"
-	CliTypeCodex           = "codex"
-	AgentConfigUrlTypeFile = "file"
-	defaultAgentAvatar     = "\U0001f916"
+	CliTypeOpenCode    = "opencode"
+	CliTypeCodex       = "codex"
+	defaultAgentAvatar = "\U0001f916"
 )
 
 type AgentConfigService struct {
@@ -149,6 +148,18 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 	if packagePath == "" {
 		return dtoaionui.AgentConfigItem{}, false, nil
 	}
+	ref, err := apservice.ParseArtifactURI(packagePath)
+	if err != nil {
+		return dtoaionui.AgentConfigItem{}, false, err
+	}
+	store, err := apservice.DefaultArtifactStore()
+	if err != nil {
+		return dtoaionui.AgentConfigItem{}, false, err
+	}
+	signed, err := store.PresignGet(context.Background(), ref, apservice.ArtifactPresignExpiresForAionUI())
+	if err != nil {
+		return dtoaionui.AgentConfigItem{}, false, err
+	}
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
 		name = resource.DisplayName
@@ -165,26 +176,17 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 		avatar = defaultAgentAvatar
 	}
 	return dtoaionui.AgentConfigItem{
-		Id:          resource.ResourceId,
-		CliType:     cliType,
-		Url:         fileURL(packagePath),
-		UrlType:     AgentConfigUrlTypeFile,
-		Version:     version.Version,
-		Name:        name,
-		Description: description,
-		Avatar:      avatar,
-		Sha256:      sha,
+		Id:           resource.ResourceId,
+		CliType:      cliType,
+		ArtifactKey:  ref.URI,
+		Url:          signed.URL,
+		UrlType:      signed.URLType,
+		UrlExpiresAt: signed.ExpiresAt,
+		Version:      version.Version,
+		Name:         name,
+		Description:  description,
+		Avatar:       avatar,
+		Sha256:       sha,
+		Size:         version.PackageSize,
 	}, true, nil
-}
-
-func fileURL(filePath string) string {
-	filePath = strings.TrimSpace(filePath)
-	if strings.HasPrefix(strings.ToLower(filePath), "file://") {
-		return filePath
-	}
-	if abs, err := filepath.Abs(filePath); err == nil {
-		filePath = abs
-	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(filePath)}
-	return u.String()
 }

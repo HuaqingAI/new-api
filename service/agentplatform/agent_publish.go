@@ -2,12 +2,12 @@ package agentplatform
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +19,8 @@ import (
 	appmodel "github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
+	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss/credentials"
 	"gorm.io/gorm"
 )
 
@@ -37,10 +39,13 @@ type PublishAgentGrantInput struct {
 }
 
 type PublishAgentArtifact struct {
-	CliType string
-	Url     string
-	Sha256  string
-	Size    int64
+	CliType      string
+	ArtifactKey  string
+	Url          string
+	UrlType      string
+	UrlExpiresAt int64
+	Sha256       string
+	Size         int64
 }
 
 type OpenCodeProviderConfigInput struct {
@@ -187,7 +192,48 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 		if err != nil {
 			return err
 		}
-		artifact = PublishAgentArtifact{CliType: draft.CliType, Url: fileURL(packagePath), Sha256: sum, Size: size}
+		defer os.Remove(packagePath)
+		store, err := DefaultArtifactStore()
+		if err != nil {
+			return err
+		}
+		objectKey := buildAgentObjectKey(draft.CliType, resource.ResourceId, version)
+		ref, err := store.PutFile(context.Background(), PutArtifactInput{
+			Kind:        ArtifactKindAgent,
+			BucketKey:   objectKey,
+			LocalPath:   packagePath,
+			ContentType: "application/zip",
+			Sha256:      sum,
+			SizeBytes:   size,
+			Metadata: map[string]string{
+				"resource-id":      resource.ResourceId,
+				"resource-version": version,
+				"cli-type":         draft.CliType,
+				"sha256":           sum,
+				"artifact-kind":    ArtifactKindAgent,
+				"contract-version": contractVersion,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		deleteUploadedArtifact := func() {
+			_ = store.Delete(context.Background(), ref)
+		}
+		signed, err := store.PresignGet(context.Background(), ref, artifactPresignExpires())
+		if err != nil {
+			deleteUploadedArtifact()
+			return err
+		}
+		artifact = PublishAgentArtifact{
+			CliType:      draft.CliType,
+			ArtifactKey:  ref.URI,
+			Url:          signed.URL,
+			UrlType:      signed.URLType,
+			UrlExpiresAt: signed.ExpiresAt,
+			Sha256:       sum,
+			Size:         size,
+		}
 		now := time.Now().UTC()
 		versionRow := apmodel.ResourceVersion{
 			ResourceId:      resource.ResourceId,
@@ -197,35 +243,40 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 			Status:          apmodel.ResourceStatusPublished,
 			CreatedBy:       input.ActorUserId,
 			PublishedAt:     &now,
-			PackagePath:     packagePath,
+			PackagePath:     ref.URI,
 			PackageSha256:   sum,
 			PackageSize:     size,
 		}
 		if err := tx.Create(&versionRow).Error; err != nil {
+			deleteUploadedArtifact()
 			return err
 		}
 		publishedDef := draft
 		publishedDef.Id = 0
 		publishedDef.ResourceVersion = version
-		publishedDef.PackagePath = packagePath
+		publishedDef.PackagePath = ref.URI
 		publishedDef.PackageSha256 = sum
 		publishedDef.PackageSize = size
 		publishedDef.ModelConfigJSON = modelConfigSnapshot
 		if err := tx.Create(&publishedDef).Error; err != nil {
+			deleteUploadedArtifact()
 			return err
 		}
 		if err := replaceAgentDependencies(tx, resource.ResourceId, version, idsByType(deps, apmodel.AgentDependencyTypeMCP), idsByType(deps, apmodel.AgentDependencyTypeSkill), idsByType(deps, apmodel.AgentDependencyTypeKnowledge), true); err != nil {
+			deleteUploadedArtifact()
 			return err
 		}
 		if err := tx.Model(&apmodel.Resource{}).Where("resource_id = ?", resource.ResourceId).Updates(map[string]any{
 			"status":         apmodel.ResourceStatusPublished,
 			"latest_version": version,
 		}).Error; err != nil {
+			deleteUploadedArtifact()
 			return err
 		}
 		if err := tx.Model(&apmodel.ResourceVersion{}).
 			Where("resource_id = ? AND version <> ? AND status = ?", resource.ResourceId, version, apmodel.ResourceStatusPublished).
 			Update("status", apmodel.ResourceStatusDeprecated).Error; err != nil {
+			deleteUploadedArtifact()
 			return err
 		}
 		return nil
@@ -542,16 +593,21 @@ func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apm
 		return "", "", 0, err
 	}
 
-	targetDir := filepath.Join(defaultAgentPackageDir(), resource.ResourceId, version)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	targetFile, err := os.CreateTemp("", "new-api-opencode-*.zip")
+	if err != nil {
 		return "", "", 0, err
 	}
-	targetPath := filepath.Join(targetDir, "opencode.zip")
+	targetPath := targetFile.Name()
+	if err := targetFile.Close(); err != nil {
+		return "", "", 0, err
+	}
 	if err := zipDirectory(root, targetPath); err != nil {
+		_ = os.Remove(targetPath)
 		return "", "", 0, err
 	}
 	sum, size, err := fileSHA256AndSize(targetPath)
 	if err != nil {
+		_ = os.Remove(targetPath)
 		return "", "", 0, err
 	}
 	return targetPath, sum, size, nil
@@ -596,16 +652,21 @@ func buildCodexAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apmode
 		return "", "", 0, err
 	}
 
-	targetDir := filepath.Join(defaultAgentPackageDir(), resource.ResourceId, version)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	targetFile, err := os.CreateTemp("", "new-api-codex-*.zip")
+	if err != nil {
 		return "", "", 0, err
 	}
-	targetPath := filepath.Join(targetDir, "codex.zip")
+	targetPath := targetFile.Name()
+	if err := targetFile.Close(); err != nil {
+		return "", "", 0, err
+	}
 	if err := zipDirectory(root, targetPath); err != nil {
+		_ = os.Remove(targetPath)
 		return "", "", 0, err
 	}
 	sum, size, err := fileSHA256AndSize(targetPath)
 	if err != nil {
+		_ = os.Remove(targetPath)
 		return "", "", 0, err
 	}
 	return targetPath, sum, size, nil
@@ -1052,6 +1113,10 @@ func externalKnowledgeIds(tx *gorm.DB, knowledgeIds []string) ([]string, error) 
 }
 
 func extractSelectedSkills(tx *gorm.DB, skillsDir string, skillIds []string) error {
+	store, err := DefaultArtifactStore()
+	if err != nil {
+		return err
+	}
 	for _, id := range skillIds {
 		var resource apmodel.Resource
 		if err := tx.Where("resource_id = ?", id).First(&resource).Error; err != nil {
@@ -1064,11 +1129,48 @@ func extractSelectedSkills(tx *gorm.DB, skillsDir string, skillIds []string) err
 		if strings.TrimSpace(def.FilePath) == "" {
 			return ErrAgentDependencyInvalid
 		}
-		if err := safeExtractSkillZip(def.FilePath, skillsDir, resource.DisplayName); err != nil {
+		localPath, cleanup, err := materializeSkillPackage(context.Background(), store, def.FilePath, def.Sha256)
+		if err != nil {
 			return err
 		}
+		if err := safeExtractSkillZip(localPath, skillsDir, resource.DisplayName); err != nil {
+			cleanup()
+			return err
+		}
+		cleanup()
 	}
 	return nil
+}
+
+func materializeSkillPackage(ctx context.Context, store ArtifactStore, uri string, expectedSha256 string) (string, func(), error) {
+	ref, err := ParseArtifactURI(uri)
+	if err != nil {
+		return "", func() {}, err
+	}
+	tmpDir, err := os.MkdirTemp("", "new-api-skill-*")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(tmpDir)
+	}
+	targetPath := filepath.Join(tmpDir, "skill.zip")
+	if err := store.DownloadToFile(ctx, ref, targetPath); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	if strings.TrimSpace(expectedSha256) != "" {
+		sum, _, err := fileSHA256AndSize(targetPath)
+		if err != nil {
+			cleanup()
+			return "", func() {}, err
+		}
+		if !strings.EqualFold(sum, strings.TrimSpace(expectedSha256)) {
+			cleanup()
+			return "", func() {}, ErrInvalidResourceInput
+		}
+	}
+	return targetPath, cleanup, nil
 }
 
 func safeExtractSkillZip(zipPath string, skillsDir string, fallbackName string) error {
@@ -1316,25 +1418,281 @@ func fileSHA256AndSize(path string) (string, int64, error) {
 	return hex.EncodeToString(hash.Sum(nil)), size, nil
 }
 
-func fileURL(path string) string {
-	abs, err := filepath.Abs(path)
-	if err == nil {
-		path = abs
-	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
-	return u.String()
-}
-
-func defaultAgentPackageDir() string {
-	if configured := strings.TrimSpace(os.Getenv("AIONUI_AGENT_PACKAGE_DIR")); configured != "" {
-		return configured
-	}
-	return filepath.Join(".", "agents")
-}
-
 func defaultSystemSkillsDir() string {
 	if configured := strings.TrimSpace(os.Getenv("AIONUI_SYS_SKILLS_DIR")); configured != "" {
 		return configured
 	}
 	return filepath.Join(".", "sys-skills")
+}
+
+const (
+	ArtifactKindAgent               = "agent"
+	ArtifactKindSkill               = "skill"
+	ArtifactURLTypeHTTPS            = "https"
+	defaultOSSAgentPrefix           = "agent-packages"
+	defaultOSSSkillPrefix           = "skill-packages"
+	defaultOSSPresignExpiresSeconds = 900
+)
+
+type ArtifactStore interface {
+	PutFile(ctx context.Context, input PutArtifactInput) (ArtifactRef, error)
+	PresignGet(ctx context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error)
+	DownloadToFile(ctx context.Context, ref ArtifactRef, targetPath string) error
+	Delete(ctx context.Context, ref ArtifactRef) error
+}
+
+type PutArtifactInput struct {
+	Kind        string
+	BucketKey   string
+	LocalPath   string
+	ContentType string
+	Sha256      string
+	SizeBytes   int64
+	Metadata    map[string]string
+}
+
+type ArtifactRef struct {
+	URI    string
+	Bucket string
+	Key    string
+	Sha256 string
+	Size   int64
+}
+
+type PresignedArtifact struct {
+	URL       string
+	URLType   string
+	ExpiresAt int64
+}
+
+type OSSArtifactStore struct {
+	client *oss.Client
+	bucket string
+}
+
+var artifactStoreForTest ArtifactStore
+
+func SetArtifactStoreForTest(store ArtifactStore) func() {
+	previous := artifactStoreForTest
+	artifactStoreForTest = store
+	return func() {
+		artifactStoreForTest = previous
+	}
+}
+
+func DefaultArtifactStore() (ArtifactStore, error) {
+	if artifactStoreForTest != nil {
+		return artifactStoreForTest, nil
+	}
+	return NewOSSArtifactStoreFromEnv()
+}
+
+func NewOSSArtifactStoreFromEnv() (*OSSArtifactStore, error) {
+	region := strings.TrimSpace(os.Getenv("OSS_REGION"))
+	bucket := strings.TrimSpace(os.Getenv("OSS_BUCKET"))
+	if region == "" || bucket == "" {
+		return nil, ErrInvalidResourceInput
+	}
+	cfg := oss.LoadDefaultConfig().
+		WithCredentialsProvider(credentials.NewEnvironmentVariableCredentialsProvider()).
+		WithRegion(region)
+	if endpoint := strings.TrimSpace(os.Getenv("OSS_ENDPOINT")); endpoint != "" {
+		cfg = cfg.WithEndpoint(endpoint)
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("OSS_USE_CNAME")), "true") {
+		cfg = cfg.WithUseCName(true)
+	}
+	return &OSSArtifactStore{client: oss.NewClient(cfg), bucket: bucket}, nil
+}
+
+func (s *OSSArtifactStore) PutFile(ctx context.Context, input PutArtifactInput) (ArtifactRef, error) {
+	if s == nil || s.client == nil || strings.TrimSpace(s.bucket) == "" {
+		return ArtifactRef{}, ErrInvalidResourceInput
+	}
+	key := strings.Trim(strings.TrimSpace(input.BucketKey), "/")
+	if key == "" || strings.TrimSpace(input.LocalPath) == "" {
+		return ArtifactRef{}, ErrInvalidResourceInput
+	}
+	file, err := os.Open(input.LocalPath)
+	if err != nil {
+		return ArtifactRef{}, err
+	}
+	defer file.Close()
+	request := &oss.PutObjectRequest{
+		Bucket:        oss.Ptr(s.bucket),
+		Key:           oss.Ptr(key),
+		Body:          file,
+		ContentLength: oss.Ptr(input.SizeBytes),
+		ContentType:   oss.Ptr(contentTypeOrDefault(input.ContentType)),
+		Metadata:      sanitizedOSSMetadata(input.Metadata),
+	}
+	if _, err := s.client.PutObject(ctx, request); err != nil {
+		return ArtifactRef{}, err
+	}
+	return ArtifactRef{
+		URI:    buildOSSURI(s.bucket, key),
+		Bucket: s.bucket,
+		Key:    key,
+		Sha256: strings.TrimSpace(input.Sha256),
+		Size:   input.SizeBytes,
+	}, nil
+}
+
+func (s *OSSArtifactStore) PresignGet(ctx context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error) {
+	if s == nil || s.client == nil {
+		return PresignedArtifact{}, ErrInvalidResourceInput
+	}
+	if ref.Bucket == "" || ref.Key == "" {
+		parsed, err := ParseArtifactURI(ref.URI)
+		if err != nil {
+			return PresignedArtifact{}, err
+		}
+		ref.Bucket = parsed.Bucket
+		ref.Key = parsed.Key
+	}
+	result, err := s.client.Presign(
+		ctx,
+		&oss.GetObjectRequest{
+			Bucket: oss.Ptr(ref.Bucket),
+			Key:    oss.Ptr(ref.Key),
+		},
+		oss.PresignExpires(expires),
+	)
+	if err != nil {
+		return PresignedArtifact{}, err
+	}
+	return PresignedArtifact{
+		URL:       result.URL,
+		URLType:   ArtifactURLTypeHTTPS,
+		ExpiresAt: result.Expiration.Unix(),
+	}, nil
+}
+
+func (s *OSSArtifactStore) DownloadToFile(ctx context.Context, ref ArtifactRef, targetPath string) error {
+	if s == nil || s.client == nil || strings.TrimSpace(targetPath) == "" {
+		return ErrInvalidResourceInput
+	}
+	if ref.Bucket == "" || ref.Key == "" {
+		parsed, err := ParseArtifactURI(ref.URI)
+		if err != nil {
+			return err
+		}
+		ref.Bucket = parsed.Bucket
+		ref.Key = parsed.Key
+	}
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	_, err := s.client.GetObjectToFile(ctx, &oss.GetObjectRequest{
+		Bucket: oss.Ptr(ref.Bucket),
+		Key:    oss.Ptr(ref.Key),
+	}, targetPath)
+	return err
+}
+
+func (s *OSSArtifactStore) Delete(ctx context.Context, ref ArtifactRef) error {
+	if s == nil || s.client == nil {
+		return ErrInvalidResourceInput
+	}
+	if ref.Bucket == "" || ref.Key == "" {
+		parsed, err := ParseArtifactURI(ref.URI)
+		if err != nil {
+			return err
+		}
+		ref.Bucket = parsed.Bucket
+		ref.Key = parsed.Key
+	}
+	_, err := s.client.DeleteObject(ctx, &oss.DeleteObjectRequest{
+		Bucket: oss.Ptr(ref.Bucket),
+		Key:    oss.Ptr(ref.Key),
+	})
+	return err
+}
+
+func ParseArtifactURI(value string) (ArtifactRef, error) {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "oss://") {
+		return ArtifactRef{}, ErrInvalidResourceInput
+	}
+	rest := strings.TrimPrefix(value, "oss://")
+	separator := strings.Index(rest, "/")
+	if separator <= 0 || separator == len(rest)-1 {
+		return ArtifactRef{}, ErrInvalidResourceInput
+	}
+	bucket := strings.TrimSpace(rest[:separator])
+	key := strings.Trim(strings.TrimSpace(rest[separator+1:]), "/")
+	if bucket == "" || key == "" {
+		return ArtifactRef{}, ErrInvalidResourceInput
+	}
+	return ArtifactRef{URI: buildOSSURI(bucket, key), Bucket: bucket, Key: key}, nil
+}
+
+func buildOSSURI(bucket string, key string) string {
+	return "oss://" + strings.TrimSpace(bucket) + "/" + strings.Trim(strings.TrimSpace(key), "/")
+}
+
+func buildAgentObjectKey(cliType string, resourceID string, version string) string {
+	fileName := "opencode.zip"
+	if cliType == apmodel.AgentCliTypeCodex {
+		fileName = "codex.zip"
+	}
+	return strings.Trim(defaultOSSAgentPackagePrefix(), "/") + "/" + strings.TrimSpace(cliType) + "/" + strings.TrimSpace(resourceID) + "/" + strings.TrimSpace(version) + "/" + fileName
+}
+
+func buildSkillObjectKey(resourceID string, sha string, fileName string) string {
+	return strings.Trim(defaultOSSSkillPackagePrefix(), "/") + "/" + strings.TrimSpace(resourceID) + "/" + strings.TrimSpace(sha) + "/" + filepath.Base(fileName)
+}
+
+func defaultOSSAgentPackagePrefix() string {
+	if configured := strings.TrimSpace(os.Getenv("OSS_AGENT_PREFIX")); configured != "" {
+		return configured
+	}
+	return defaultOSSAgentPrefix
+}
+
+func defaultOSSSkillPackagePrefix() string {
+	if configured := strings.TrimSpace(os.Getenv("OSS_SKILL_PREFIX")); configured != "" {
+		return configured
+	}
+	return defaultOSSSkillPrefix
+}
+
+func artifactPresignExpires() time.Duration {
+	value := strings.TrimSpace(os.Getenv("OSS_PRESIGN_EXPIRES_SECONDS"))
+	if value == "" {
+		return time.Duration(defaultOSSPresignExpiresSeconds) * time.Second
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds <= 0 {
+		return time.Duration(defaultOSSPresignExpiresSeconds) * time.Second
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func ArtifactPresignExpiresForAionUI() time.Duration {
+	return artifactPresignExpires()
+}
+
+func contentTypeOrDefault(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "application/octet-stream"
+	}
+	return value
+}
+
+func sanitizedOSSMetadata(values map[string]string) map[string]string {
+	metadata := map[string]string{}
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		metadata[key] = value
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }

@@ -10,7 +10,7 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 	agentPlatformRoute := apiRouter.Group("/agent-platform")
 	oauthRoute := agentPlatformRoute.Group("/oauth")
 	{
-		oauthRoute.GET("/authorize", controlleragentplatform.OAuthAuthorize)
+		oauthRoute.GET("/authorize", middleware.UserAuth(), controlleragentplatform.OAuthAuthorize)
 		oauthRoute.POST("/token", controlleragentplatform.OAuthToken)
 		oauthRoute.POST("/revoke", controlleragentplatform.OAuthRevoke)
 	}

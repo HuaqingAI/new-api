@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
+	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	serviceenterprise "github.com/QuantumNous/new-api/service/enterprise"
@@ -33,28 +34,24 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	_ "net/http/pprof"
 )
 
-//go:embed web/default/dist
+//go:embed web/dist
 var buildFS embed.FS
 
-//go:embed web/default/dist/index.html
+//go:embed web/dist/index.html
 var indexPage []byte
-
-//go:embed web/classic/dist
-var classicBuildFS embed.FS
-
-//go:embed web/classic/dist/index.html
-var classicIndexPage []byte
 
 func main() {
 	startTime := time.Now()
+	kitutil.SetLogging(common.SysLog, func(message string) {
+		logger.LogError(nil, message)
+	})
+	kitutil.SetSystemErrorLogging(common.SysError)
 
 	err := InitResources()
 	if err != nil {
@@ -69,6 +66,8 @@ func main() {
 	if common.DebugEnabled {
 		common.SysLog("running in debug mode")
 	}
+
+	kitutil.Debug.Store(common.DebugEnabled)
 
 	defer func() {
 		err := model.CloseDB()
@@ -175,6 +174,10 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
+	if err := middleware.ConfigureTrustedProxies(server); err != nil {
+		common.FatalLog("failed to configure trusted proxies: " + err.Error())
+		return
+	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -190,26 +193,13 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	// Initialize session store
-	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteStrictMode,
-	})
-	server.Use(sessions.Sessions("session", store))
-
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.ThemeAssets{
-		DefaultBuildFS:   buildFS,
-		DefaultIndexPage: indexPage,
-		ClassicBuildFS:   classicBuildFS,
-		ClassicIndexPage: classicIndexPage,
+	router.SetRouter(server, router.WebAssets{
+		BuildFS:   buildFS,
+		IndexPage: indexPage,
 	})
 	var port = os.Getenv("PORT")
 	if port == "" {
@@ -268,7 +258,6 @@ func InjectUmamiAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--umami-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InjectGoogleAnalytics() {
@@ -292,7 +281,6 @@ func InjectGoogleAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--Google Analytics-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InitResources() error {
@@ -331,6 +319,11 @@ func InitResources() error {
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
+	if common.IsMasterNode {
+		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+			common.SysError("failed to migrate retired frontend options: " + err.Error())
+		}
+	}
 	model.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
@@ -370,6 +363,8 @@ func InitResources() error {
 		common.SysError("failed to load custom OAuth providers: " + err.Error())
 		// Don't return error, custom OAuth is not critical
 	}
+
+	service.StartAuthArtifactCleanup()
 
 	return nil
 }

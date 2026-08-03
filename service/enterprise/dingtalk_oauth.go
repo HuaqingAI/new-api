@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
-	"github.com/gin-contrib/sessions"
 	"gorm.io/gorm"
 )
 
@@ -125,7 +124,7 @@ func logDingTalkOAuthProviderError(stage string, err error) {
 	common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed: %s", stage, err.Error()))
 }
 
-func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId int, identity DingTalkOAuthIdentity, session sessions.Session) (DingTalkOAuthResult, error) {
+func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId int, identity DingTalkOAuthIdentity, affiliateCode string) (DingTalkOAuthResult, error) {
 	config, err := s.getEnabledConfig(tenantId)
 	if err != nil {
 		return DingTalkOAuthResult{}, err
@@ -157,7 +156,7 @@ func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId i
 				return err
 			}
 		} else {
-			user, loginStatus, err = txSvc.findOrCreateUserForIdentity(identity, session)
+			user, loginStatus, err = txSvc.findOrCreateUserForIdentity(identity)
 			if err != nil {
 				return err
 			}
@@ -222,7 +221,11 @@ func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId i
 	}
 
 	if result.LoginStatus == DingTalkOAuthLoginStatusCreated && result.User != nil {
-		result.User.FinalizeOAuthUserCreation(inviterIdFromSession(session))
+		inviterId := 0
+		if strings.TrimSpace(affiliateCode) != "" {
+			inviterId, _ = model.GetUserIdByAffCode(strings.TrimSpace(affiliateCode))
+		}
+		result.User.FinalizeOAuthUserCreation(inviterId)
 	}
 	return result, nil
 }
@@ -328,7 +331,7 @@ func (s *DingTalkOAuthService) findIdentityBinding(tenantId int, identity DingTa
 	return binding, true, nil
 }
 
-func (s *DingTalkOAuthService) findOrCreateUserForIdentity(identity DingTalkOAuthIdentity, session sessions.Session) (*model.User, string, error) {
+func (s *DingTalkOAuthService) findOrCreateUserForIdentity(identity DingTalkOAuthIdentity) (*model.User, string, error) {
 	if identity.Email != "" {
 		user, found, err := s.findUniqueUserByEmail(identity.Email)
 		if err != nil {
@@ -349,8 +352,7 @@ func (s *DingTalkOAuthService) findOrCreateUserForIdentity(identity DingTalkOAut
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
 	}
-	inviterId := inviterIdFromSession(session)
-	if err := user.InsertWithTx(s.db, inviterId); err != nil {
+	if err := user.InsertWithTx(s.db, 0); err != nil {
 		return nil, "", err
 	}
 	return user, DingTalkOAuthLoginStatusCreated, nil
@@ -442,20 +444,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func inviterIdFromSession(session sessions.Session) int {
-	if session == nil {
-		return 0
-	}
-	affCode := session.Get("aff")
-	if affCode == nil {
-		return 0
-	}
-	code, ok := affCode.(string)
-	if !ok || strings.TrimSpace(code) == "" {
-		return 0
-	}
-	inviterId, _ := model.GetUserIdByAffCode(code)
-	return inviterId
 }

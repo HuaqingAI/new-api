@@ -12,8 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -55,13 +53,9 @@ func setupOAuthControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.Clie
 	}
 	require.NoError(t, db.Create(&client).Error)
 
-	store := cookie.NewStore([]byte("secret"))
 	router := gin.New()
-	router.Use(sessions.Sessions("test-session", store))
 	router.Use(func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", 999)
-		require.NoError(t, session.Save())
+		c.Set("id", 999)
 		c.Next()
 	})
 	router.GET("/api/agent-platform/oauth/authorize", OAuthAuthorize)

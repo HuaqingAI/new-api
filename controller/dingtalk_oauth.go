@@ -10,8 +10,8 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"github.com/QuantumNous/new-api/service"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,13 +21,48 @@ var newDingTalkOAuthService = func() dingTalkOAuthService {
 
 type dingTalkOAuthService interface {
 	ResolveIdentity(c context.Context, tenantId int, code string) (entservice.DingTalkOAuthIdentity, error)
-	LoginWithIdentity(c context.Context, tenantId int, identity entservice.DingTalkOAuthIdentity, session sessions.Session) (entservice.DingTalkOAuthResult, error)
+	LoginWithIdentity(c context.Context, tenantId int, identity entservice.DingTalkOAuthIdentity, affiliateCode string) (entservice.DingTalkOAuthResult, error)
 	BindIdentityToUser(c context.Context, tenantId int, userId int, identity entservice.DingTalkOAuthIdentity) (entmodel.DingTalkIdentity, error)
 }
 
 func HandleDingTalkOAuth(c *gin.Context) {
-	session := sessions.Default(c)
-	if !validateDingTalkOAuthState(c, session) {
+	state := c.Query("state")
+	pendingFlow, err := model.GetAuthFlow(state, model.AuthFlowMatch{
+		Purpose:  model.AuthFlowPurposeOAuth,
+		Provider: "dingtalk",
+	})
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": common.TranslateMessage(c, i18n.MsgOAuthStateInvalid),
+		})
+		return
+	}
+	consumeMatch := model.AuthFlowMatch{
+		Purpose:  model.AuthFlowPurposeOAuth,
+		Provider: "dingtalk",
+		Intent:   pendingFlow.Intent,
+	}
+	if pendingFlow.Intent == model.AuthFlowIntentBind {
+		if _, err := service.ValidateSessionReference(pendingFlow.UserId, pendingFlow.SessionId); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgOAuthStateInvalid),
+			})
+			return
+		}
+		consumeMatch.UserId = pendingFlow.UserId
+		consumeMatch.SessionId = pendingFlow.SessionId
+	} else if pendingFlow.Intent != model.AuthFlowIntentLogin {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if c.Query("error") != "" {
+		if _, err := model.ConsumeAuthFlow(state, consumeMatch); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgOAuthStateInvalid)})
+			return
+		}
+		common.ApiErrorMsg(c, c.Query("error_description"))
 		return
 	}
 
@@ -38,14 +73,14 @@ func HandleDingTalkOAuth(c *gin.Context) {
 		writeDingTalkOAuthError(c, err)
 		return
 	}
+	flow, err := model.ConsumeAuthFlow(state, consumeMatch)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgOAuthStateInvalid)})
+		return
+	}
 
-	if session.Get("username") != nil {
-		userId, ok := sessionInt(session.Get("id"))
-		if !ok {
-			common.ApiErrorI18n(c, i18n.MsgAuthUserInfoInvalid)
-			return
-		}
-		if _, err := oauthService.BindIdentityToUser(c.Request.Context(), tenantId, userId, identity); err != nil {
+	if flow.Intent == model.AuthFlowIntentBind {
+		if _, err := oauthService.BindIdentityToUser(c.Request.Context(), tenantId, flow.UserId, identity); err != nil {
 			writeDingTalkOAuthError(c, err)
 			return
 		}
@@ -53,30 +88,17 @@ func HandleDingTalkOAuth(c *gin.Context) {
 		return
 	}
 
-	result, err := oauthService.LoginWithIdentity(c.Request.Context(), tenantId, identity, session)
+	var payload oauthFlowPayload
+	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := oauthService.LoginWithIdentity(c.Request.Context(), tenantId, identity, payload.AffiliateCode)
 	if err != nil {
 		writeDingTalkOAuthError(c, err)
 		return
 	}
 	setupLogin(result.User, c)
-}
-
-func validateDingTalkOAuthState(c *gin.Context, session sessions.Session) bool {
-	state := c.Query("state")
-	expected := session.Get("oauth_state")
-	expectedState, ok := expected.(string)
-	if state == "" || !ok || state != expectedState {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": common.TranslateMessage(c, i18n.MsgOAuthStateInvalid),
-		})
-		return false
-	}
-	if c.Query("error") != "" {
-		common.ApiErrorMsg(c, c.Query("error_description"))
-		return false
-	}
-	return true
 }
 
 func parseDingTalkOAuthTenantId(c *gin.Context) int {
@@ -111,18 +133,5 @@ func writeDingTalkOAuthError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-	}
-}
-
-func sessionInt(value any) (int, bool) {
-	switch typed := value.(type) {
-	case int:
-		return typed, true
-	case int64:
-		return int(typed), true
-	case float64:
-		return int(typed), true
-	default:
-		return 0, false
 	}
 }

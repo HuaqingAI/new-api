@@ -420,8 +420,10 @@ func (f enterpriseDepartmentTreeAPIFixture) login(t *testing.T, role int, status
 	if status != common.UserStatusEnabled {
 		t.Fatalf("test fixture only supports enabled login sessions")
 	}
-	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 1001).Update("role", role).Error)
-	return []*http.Cookie{{Name: "test-access-token", Value: "enterprise-department-tree-api-test"}}
+	return []*http.Cookie{{
+		Name:  fmt.Sprintf("test-access-token-role-%d", role),
+		Value: "enterprise-department-tree-api-test",
+	}}
 }
 
 func (f enterpriseDepartmentTreeAPIFixture) performDepartmentTreeRequest(t *testing.T, cookies []*http.Cookie) *httptest.ResponseRecorder {
@@ -435,9 +437,7 @@ func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequest(t *testing.
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, nil)
-	if len(cookies) > 0 {
-		request.Header.Set("Authorization", "Bearer "+cookies[0].Value)
-	}
+	f.authenticateRequest(t, request, cookies)
 	f.engine.ServeHTTP(recorder, request)
 	return recorder
 }
@@ -450,11 +450,22 @@ func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequestWithBody(t *
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
-	if len(cookies) > 0 {
-		request.Header.Set("Authorization", "Bearer "+cookies[0].Value)
-	}
+	f.authenticateRequest(t, request, cookies)
 	f.engine.ServeHTTP(recorder, request)
 	return recorder
+}
+
+func (f enterpriseDepartmentTreeAPIFixture) authenticateRequest(t *testing.T, request *http.Request, cookies []*http.Cookie) {
+	t.Helper()
+	if len(cookies) == 0 {
+		return
+	}
+
+	var role int
+	_, err := fmt.Sscanf(cookies[0].Name, "test-access-token-role-%d", &role)
+	require.NoError(t, err)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 1001).Update("role", role).Error)
+	request.Header.Set("Authorization", "Bearer "+cookies[0].Value)
 }
 
 func decodeDepartmentTreeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) departmentTreeAPIResponse {

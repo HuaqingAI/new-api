@@ -1,5 +1,5 @@
+import { describe, test } from 'bun:test'
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 
 import { isRedirect } from '@tanstack/react-router'
 import { renderToStaticMarkup } from 'react-dom/server'

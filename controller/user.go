@@ -490,19 +490,12 @@ func GetAffCode(c *gin.Context) {
 
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	userRole := c.GetInt("role")
 	user, err := model.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	responseData := buildSelfUserData(user)
-	// The authenticated role is loaded from GetUserCache. It should equal the
-	// row role, but use it for capabilities so GetSelf and login/refresh remain
-	// consistent with the authorization decision made for this request.
-	permissions := calculateUserPermissions(id, userRole)
-	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
-	responseData["permissions"] = permissions
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

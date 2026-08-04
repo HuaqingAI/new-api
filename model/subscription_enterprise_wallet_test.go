@@ -679,6 +679,10 @@ func TestResetDueSubscriptionsResetsEnterpriseWalletConsumedAmount(t *testing.T)
 
 func TestEnsureUserSubscriptionTableSQLiteAddsEnterpriseWalletColumns(t *testing.T) {
 	truncateTables(t)
+	t.Cleanup(func() {
+		require.NoError(t, DB.Migrator().DropTable(&UserSubscription{}))
+		require.NoError(t, DB.AutoMigrate(&UserSubscription{}))
+	})
 
 	require.NoError(t, DB.Migrator().DropTable(&UserSubscription{}))
 	require.NoError(t, DB.Exec(`CREATE TABLE user_subscriptions (

@@ -16,8 +16,6 @@ type ResourceVersion struct {
 	Version         string     `json:"version" gorm:"column:version;type:varchar(64);uniqueIndex:idx_ap_resource_version;not null"`
 	ContractVersion string     `json:"contract_version" gorm:"type:varchar(64);not null"`
 	Summary         string     `json:"summary" gorm:"type:text"`
-	SchemaJSON      string     `json:"schema_json" gorm:"column:schema_json;type:text"`
-	DetailJSON      string     `json:"detail_json" gorm:"column:detail_json;type:text"`
 	PackagePath     string     `json:"package_path" gorm:"type:text"`
 	PackageSha256   string     `json:"package_sha256" gorm:"type:varchar(64)"`
 	PackageSize     int64      `json:"package_size" gorm:"not null;default:0"`
@@ -49,8 +47,6 @@ func (r *ResourceVersion) applyDefaultsAndValidate() error {
 	r.Version = strings.TrimSpace(r.Version)
 	r.ContractVersion = strings.TrimSpace(r.ContractVersion)
 	r.Summary = strings.TrimSpace(r.Summary)
-	r.SchemaJSON = strings.TrimSpace(r.SchemaJSON)
-	r.DetailJSON = strings.TrimSpace(r.DetailJSON)
 	r.PackagePath = strings.TrimSpace(r.PackagePath)
 	r.PackageSha256 = strings.TrimSpace(r.PackageSha256)
 	r.Status = strings.TrimSpace(strings.ToLower(r.Status))

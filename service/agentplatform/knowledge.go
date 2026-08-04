@@ -140,10 +140,6 @@ func (s *KnowledgeService) Create(input KnowledgeCreateInput) (KnowledgeItem, er
 		}
 		def := apmodel.KnowledgeDef{
 			ResourceId:          resource.ResourceId,
-			ResourceVersion:     "",
-			KnowledgeMode:       "reference",
-			ProviderType:        "external_id",
-			ProviderAdapterKey:  "new-api-knowledge",
 			ExternalKnowledgeId: input.ExternalKnowledgeId,
 		}
 		if err := tx.Create(&def).Error; err != nil {
@@ -197,10 +193,6 @@ func (s *KnowledgeService) Update(resourceID string, input KnowledgeUpdateInput)
 		if result.RowsAffected == 0 {
 			return tx.Create(&apmodel.KnowledgeDef{
 				ResourceId:          resourceID,
-				ResourceVersion:     "",
-				KnowledgeMode:       "reference",
-				ProviderType:        "external_id",
-				ProviderAdapterKey:  "new-api-knowledge",
 				ExternalKnowledgeId: input.ExternalKnowledgeId,
 			}).Error
 		}

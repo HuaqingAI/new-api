@@ -3,8 +3,6 @@ package agentplatform
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -47,22 +45,12 @@ func newKnowledgeQueryServiceForTest(t *testing.T) (*KnowledgeQueryService, *gor
 		ResourceId:      resource.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"knowledge":{"mode":"retrieval"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
 	require.NoError(t, db.Create(&apmodel.KnowledgeDef{
-		ResourceId:               resource.ResourceId,
-		ResourceVersion:          "1.0.0",
-		KnowledgeMode:            "retrieval",
-		ProviderType:             "http_retrieval",
-		ProviderAdapterKey:       "provider-a",
-		ProviderConfigJSON:       `{"url":"https://example.com/query","method":"POST"}`,
-		QuerySchemaJSON:          `{"type":"object"}`,
-		CitationSchemaJSON:       `{"items":{"type":"object"}}`,
-		FreshnessRulesJSON:       `{"ttl":300}`,
-		ProviderCapabilitiesJSON: `{"citations":true}`,
+		ResourceId:          resource.ResourceId,
+		ExternalKnowledgeId: "kb_demo",
 	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.Exposure{
@@ -79,11 +67,6 @@ func newKnowledgeQueryServiceForTest(t *testing.T) (*KnowledgeQueryService, *gor
 	return NewKnowledgeQueryService(db), db, client.ClientId, resource
 }
 
-type stubKnowledgeProvider struct {
-	validate func(ctx context.Context, binding KnowledgeProviderBinding) error
-	query    func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error)
-}
-
 type stubKnowledgeHTTPClient struct {
 	do func(req *http.Request) (*http.Response, error)
 }
@@ -92,71 +75,15 @@ func (s stubKnowledgeHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return s.do(req)
 }
 
-func (s stubKnowledgeProvider) ValidateBinding(ctx context.Context, binding KnowledgeProviderBinding) error {
-	if s.validate != nil {
-		return s.validate(ctx, binding)
-	}
-	return nil
-}
-
-func (s stubKnowledgeProvider) Query(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
-	if s.query != nil {
-		return s.query(ctx, binding, req)
-	}
-	return KnowledgeProviderQueryResponse{}, nil
-}
-
-func (s stubKnowledgeProvider) Refresh(ctx context.Context, binding KnowledgeProviderBinding) (KnowledgeProviderRefreshState, error) {
-	return KnowledgeProviderRefreshState{Status: "ready"}, nil
-}
-
-func (s stubKnowledgeProvider) Health(ctx context.Context, binding KnowledgeProviderBinding) (KnowledgeProviderHealthState, error) {
-	return KnowledgeProviderHealthState{Status: "healthy"}, nil
-}
-
-func TestKnowledgeQueryServiceReturnsStructuredRetrievalResult(t *testing.T) {
-	svc, _, clientID, resource := newKnowledgeQueryServiceForTest(t)
-	svc = svc.WithProvider(stubKnowledgeProvider{
-		query: func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
-			return KnowledgeProviderQueryResponse{
-				Items: []KnowledgeResultItem{
-					{
-						ID:      "doc-1",
-						Score:   0.92,
-						Snippet: "Result for " + req.Query,
-					},
-				},
-				Citations: []KnowledgeCitation{
-					{SourceID: "doc-1", Title: "Doc 1"},
-				},
-			}, nil
-		},
-	})
-
-	result, err := svc.Query(KnowledgeQueryInput{
-		ClientID:   clientID,
-		ResourceID: resource.ResourceId,
-		Payload:    []byte(`{"query":"how does it work?"}`),
-	})
-	require.NoError(t, err)
-	require.Equal(t, resource.ResourceId, result.ResourceID)
-	require.Len(t, result.Items, 1)
-	require.Len(t, result.Citations, 1)
-	require.Contains(t, result.Items[0].Snippet, "how does it work?")
-}
-
-func TestKnowledgeQueryServiceRejectsInvalidPayload(t *testing.T) {
+func TestKnowledgeQueryServiceReturnsContractInvalidWithoutProviderConfig(t *testing.T) {
 	svc, _, clientID, resource := newKnowledgeQueryServiceForTest(t)
 
 	_, err := svc.Query(KnowledgeQueryInput{
 		ClientID:   clientID,
 		ResourceID: resource.ResourceId,
-		Payload:    []byte(`{"query":""}`),
+		Payload:    []byte(`{"query":"how does it work?"}`),
 	})
 	require.ErrorIs(t, err, ErrOpenCapabilityContractInvalid)
-
-	var payload map[string]any
-	require.NoError(t, json.Unmarshal([]byte(`{"query":"ok"}`), &payload))
 }
 
 func TestHTTPRetrievalProviderMapsHTTPErrors(t *testing.T) {
@@ -188,20 +115,4 @@ func TestHTTPRetrievalProviderMapsHTTPErrors(t *testing.T) {
 		},
 	}, KnowledgeProviderQueryRequest{Query: "demo"})
 	require.ErrorIs(t, err, ErrSkillInvokeUpstreamFailed)
-}
-
-func TestKnowledgeQueryServiceMapsProviderFailures(t *testing.T) {
-	svc, _, clientID, resource := newKnowledgeQueryServiceForTest(t)
-	svc = svc.WithProvider(stubKnowledgeProvider{
-		query: func(ctx context.Context, binding KnowledgeProviderBinding, req KnowledgeProviderQueryRequest) (KnowledgeProviderQueryResponse, error) {
-			return KnowledgeProviderQueryResponse{}, errors.New("provider broke")
-		},
-	})
-
-	_, err := svc.Query(KnowledgeQueryInput{
-		ClientID:   clientID,
-		ResourceID: resource.ResourceId,
-		Payload:    []byte(`{"query":"demo"}`),
-	})
-	require.Error(t, err)
 }

@@ -1,8 +1,6 @@
 package agentplatform
 
 import (
-	"strconv"
-
 	"github.com/QuantumNous/new-api/common"
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/model"
@@ -59,8 +57,6 @@ func CreateAgent(c *gin.Context) {
 		Description:  req.Description,
 		Avatar:       req.Avatar,
 		Instructions: req.Instructions,
-		ModelTokenId: req.ModelTokenId,
-		DefaultModel: req.DefaultModel,
 		McpIds:       req.McpIds,
 		SkillIds:     req.SkillIds,
 		KnowledgeIds: req.KnowledgeIds,
@@ -86,8 +82,6 @@ func UpdateAgent(c *gin.Context) {
 		Description:  req.Description,
 		Avatar:       req.Avatar,
 		Instructions: req.Instructions,
-		ModelTokenId: req.ModelTokenId,
-		DefaultModel: req.DefaultModel,
 		McpIds:       req.McpIds,
 		SkillIds:     req.SkillIds,
 		KnowledgeIds: req.KnowledgeIds,
@@ -181,73 +175,13 @@ func GetAgentPublishDefaults(c *gin.Context) {
 
 func mapAgentDetailItem(item apservice.AgentItem) dtoagentplatform.AgentDetailItem {
 	return dtoagentplatform.AgentDetailItem{
-		ResourceItem:        mapResourceItem(item.ResourceItem),
-		CliType:             item.CliType,
-		Instructions:        item.Instructions,
-		McpIds:              item.McpIds,
-		SkillIds:            item.SkillIds,
-		KnowledgeIds:        item.KnowledgeIds,
-		ModelTokenId:        item.ModelTokenId,
-		DefaultModel:        item.DefaultModel,
-		ModelTokenUserId:    item.ModelTokenUserId,
-		ModelTokenUserName:  item.ModelTokenUserName,
-		ModelTokenName:      item.ModelTokenName,
-		ModelTokenMaskedKey: item.ModelTokenMaskedKey,
+		ResourceItem: mapResourceItem(item.ResourceItem),
+		CliType:      item.CliType,
+		Instructions: item.Instructions,
+		McpIds:       item.McpIds,
+		SkillIds:     item.SkillIds,
+		KnowledgeIds: item.KnowledgeIds,
 	}
-}
-
-func ListAgentModelKeys(c *gin.Context) {
-	items, err := agentService().ListModelKeys(c.Query("keyword"))
-	if err != nil {
-		writeResourceError(c, err)
-		return
-	}
-	responses := make([]dtoagentplatform.AgentModelKeyResponse, 0, len(items))
-	for _, item := range items {
-		responses = append(responses, dtoagentplatform.AgentModelKeyResponse{
-			Id:                 item.Id,
-			UserId:             item.UserId,
-			UserName:           item.UserName,
-			Name:               item.Name,
-			MaskedKey:          item.MaskedKey,
-			Status:             item.Status,
-			ExpiredTime:        item.ExpiredTime,
-			RemainQuota:        item.RemainQuota,
-			UnlimitedQuota:     item.UnlimitedQuota,
-			Group:              item.Group,
-			ModelLimitsEnabled: item.ModelLimitsEnabled,
-			ModelCount:         item.ModelCount,
-			Available:          item.Available,
-			DisabledReason:     item.DisabledReason,
-		})
-	}
-	common.ApiSuccess(c, gin.H{"items": responses})
-}
-
-func ListAgentModelKeyModels(c *gin.Context) {
-	tokenID, err := strconv.Atoi(c.Param("token_id"))
-	if err != nil {
-		common.ApiErrorMsg(c, "invalid request params")
-		return
-	}
-	result, err := agentService().ListTokenModels(tokenID)
-	if err != nil {
-		writeResourceError(c, err)
-		return
-	}
-	responses := make([]dtoagentplatform.AgentModelResponse, 0, len(result.Models))
-	for _, item := range result.Models {
-		responses = append(responses, dtoagentplatform.AgentModelResponse{
-			Model:        item.Model,
-			DisplayName:  item.DisplayName,
-			Status:       item.Status,
-			Capabilities: item.Capabilities,
-		})
-	}
-	common.ApiSuccess(c, gin.H{
-		"token_id": tokenID,
-		"items":    responses,
-	})
 }
 
 func mapPublishAgentResponse(result apservice.PublishAgentResult) dtoagentplatform.PublishAgentResponse {

@@ -1,34 +1,39 @@
 package agentplatform
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const maxAvatarBytes = 2 * 1024 * 1024
 
-func StoreAgentAvatar(fileName string, reader io.Reader) (string, error) {
+type StoredAgentAvatar struct {
+	URI          string
+	URL          string
+	URLType      string
+	URLExpiresAt int64
+}
+
+func StoreAgentAvatar(fileName string, reader io.Reader) (StoredAgentAvatar, error) {
 	fileName = filepath.Base(strings.TrimSpace(fileName))
 	if reader == nil || fileName == "" {
-		return "", ErrInvalidResourceInput
+		return StoredAgentAvatar{}, ErrInvalidResourceInput
 	}
 	ext := strings.ToLower(filepath.Ext(fileName))
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
 	default:
-		return "", ErrInvalidResourceInput
+		return StoredAgentAvatar{}, ErrInvalidResourceInput
 	}
-	dir := defaultAgentAvatarDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmpFile, err := os.CreateTemp(dir, "avatar-*.tmp")
+	tmpFile, err := os.CreateTemp("", "agent-avatar-*.tmp")
 	if err != nil {
-		return "", err
+		return StoredAgentAvatar{}, err
 	}
 	tmpPath := tmpFile.Name()
 	defer func() {
@@ -38,20 +43,65 @@ func StoreAgentAvatar(fileName string, reader io.Reader) (string, error) {
 	size, err := io.Copy(tmpFile, io.TeeReader(io.LimitReader(reader, maxAvatarBytes+1), hash))
 	closeErr := tmpFile.Close()
 	if err != nil {
-		return "", err
+		return StoredAgentAvatar{}, err
 	}
 	if closeErr != nil {
-		return "", closeErr
+		return StoredAgentAvatar{}, closeErr
 	}
 	if size <= 0 || size > maxAvatarBytes {
-		return "", ErrInvalidResourceInput
+		return StoredAgentAvatar{}, ErrInvalidResourceInput
 	}
-	targetName := hex.EncodeToString(hash.Sum(nil))[:32] + ext
-	targetPath := filepath.Join(dir, targetName)
-	if err := os.Rename(tmpPath, targetPath); err != nil {
+	sha := hex.EncodeToString(hash.Sum(nil))
+	targetName := sha[:32] + ext
+	store, err := DefaultArtifactStore()
+	if err != nil {
+		return StoredAgentAvatar{}, err
+	}
+	ref, err := store.PutFile(context.Background(), PutArtifactInput{
+		Kind:        ArtifactKindAvatar,
+		BucketKey:   buildAvatarObjectKey(targetName),
+		LocalPath:   tmpPath,
+		ContentType: avatarContentType(ext),
+		Sha256:      sha,
+		SizeBytes:   size,
+		Metadata: map[string]string{
+			"artifact-kind": ArtifactKindAvatar,
+			"sha256":        sha,
+		},
+	})
+	if err != nil {
+		return StoredAgentAvatar{}, err
+	}
+	signed, err := store.PresignGet(context.Background(), ref, artifactPresignExpires())
+	if err != nil {
+		return StoredAgentAvatar{}, err
+	}
+	return StoredAgentAvatar{
+		URI:          ref.URI,
+		URL:          signed.URL,
+		URLType:      signed.URLType,
+		URLExpiresAt: signed.ExpiresAt,
+	}, nil
+}
+
+func ResolveAgentAvatarURL(ctx context.Context, avatar string, expires time.Duration) (string, error) {
+	avatar = strings.TrimSpace(avatar)
+	if avatar == "" || !strings.HasPrefix(avatar, "oss://") {
+		return avatar, nil
+	}
+	ref, err := ParseArtifactURI(avatar)
+	if err != nil {
 		return "", err
 	}
-	return "/api/agent-platform/assets/avatars/" + targetName, nil
+	store, err := DefaultArtifactStore()
+	if err != nil {
+		return "", err
+	}
+	signed, err := store.PresignGet(ctx, ref, expires)
+	if err != nil {
+		return "", err
+	}
+	return signed.URL, nil
 }
 
 func AgentAvatarPath(fileName string) (string, error) {
@@ -73,4 +123,30 @@ func defaultAgentAvatarDir() string {
 		return configured
 	}
 	return filepath.Join(".", "agent-avatars")
+}
+
+func buildAvatarObjectKey(fileName string) string {
+	return strings.Trim(defaultOSSAvatarObjectPrefix(), "/") + "/" + filepath.Base(fileName)
+}
+
+func defaultOSSAvatarObjectPrefix() string {
+	if configured := strings.TrimSpace(os.Getenv("OSS_AVATAR_PREFIX")); configured != "" {
+		return configured
+	}
+	return defaultOSSAvatarPrefix
+}
+
+func avatarContentType(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "application/octet-stream"
+	}
 }

@@ -21,12 +21,17 @@ func UploadAgentAvatar(c *gin.Context) {
 		return
 	}
 	defer opened.Close()
-	url, err := apservice.StoreAgentAvatar(file.Filename, opened)
+	avatar, err := apservice.StoreAgentAvatar(file.Filename, opened)
 	if err != nil {
 		writeResourceError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"url": url})
+	common.ApiSuccess(c, gin.H{
+		"url":            avatar.URI,
+		"preview_url":    avatar.URL,
+		"url_type":       avatar.URLType,
+		"url_expires_at": avatar.URLExpiresAt,
+	})
 }
 
 func GetAgentAvatar(c *gin.Context) {

@@ -58,7 +58,7 @@ func TestResourceVersionResourceRelationUsesBelongsToDirection(t *testing.T) {
 	require.False(t, relation.References[0].OwnPrimaryKey)
 }
 
-func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) {
+func TestResourceVersionAndDefinitionsPersistRetainedFields(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, Migrate(db))
@@ -76,8 +76,6 @@ func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) 
 		ContractVersion: "2026-06",
 		Status:          ResourceStatusDraft,
 		CreatedBy:       1,
-		SchemaJSON:      "{\"in\":1}",
-		DetailJSON:      "{\"kind\":\"skill\"}",
 	}
 	knowledgeVersion := ResourceVersion{
 		ResourceId:      knowledge.ResourceId,
@@ -85,8 +83,6 @@ func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) 
 		ContractVersion: "2026-06",
 		Status:          ResourceStatusDraft,
 		CreatedBy:       1,
-		SchemaJSON:      "{\"query\":1}",
-		DetailJSON:      "{\"kind\":\"knowledge\"}",
 	}
 	agentVersion := ResourceVersion{
 		ResourceId:      agent.ResourceId,
@@ -94,51 +90,36 @@ func TestResourceVersionAndTypedDetailsPersistForEachResourceType(t *testing.T) 
 		ContractVersion: "2026-06",
 		Status:          ResourceStatusDraft,
 		CreatedBy:       1,
-		SchemaJSON:      "{\"agent\":1}",
-		DetailJSON:      "{\"kind\":\"agent\"}",
 	}
 	require.NoError(t, db.Create(&skillVersion).Error)
 	require.NoError(t, db.Create(&knowledgeVersion).Error)
 	require.NoError(t, db.Create(&agentVersion).Error)
 
 	require.NoError(t, db.Create(&SkillDef{
-		ResourceId:        skill.ResourceId,
-		ResourceVersion:   "1.0.0",
-		InvokeSchemaJSON:  "{\"type\":\"object\"}",
-		OutputSchemaJSON:  "{\"type\":\"object\"}",
-		InvokeMode:        "sync",
-		TimeoutSeconds:    30,
-		BindingConfigJSON: "{\"provider\":\"demo\"}",
+		ResourceId: skill.ResourceId,
+		FileName:   "skill.zip",
+		FilePath:   "oss://bucket/skill.zip",
+		Sha256:     strings.Repeat("a", 64),
+		SizeBytes:  10,
 	}).Error)
 	require.NoError(t, db.Create(&KnowledgeDef{
-		ResourceId:               knowledge.ResourceId,
-		ResourceVersion:          "1.0.0",
-		KnowledgeMode:            "retrieval",
-		ProviderType:             "http_retrieval",
-		ProviderAdapterKey:       "http_retrieval",
-		ProviderConfigJSON:       "{\"endpoint\":\"https://example.com\"}",
-		QuerySchemaJSON:          "{\"type\":\"object\"}",
-		CitationSchemaJSON:       "{\"type\":\"array\"}",
-		FreshnessRulesJSON:       "{\"ttl\":300}",
-		ProviderCapabilitiesJSON: "{\"freshness\":true}",
+		ResourceId:          knowledge.ResourceId,
+		ExternalKnowledgeId: "kb_demo",
 	}).Error)
 	require.NoError(t, db.Create(&AgentDef{
-		ResourceId:            agent.ResourceId,
-		ResourceVersion:       "1.0.0",
-		CliType:               AgentCliTypeOpenCode,
-		ManifestJSON:          "{\"name\":\"agent\"}",
-		DependenciesJSON:      "[\"skill\",\"knowledge\"]",
-		PromptMetadataJSON:    "{\"template\":\"default\"}",
-		CompatibilityMetaJSON: "{\"clients\":[\"demo\"]}",
+		ResourceId:      agent.ResourceId,
+		ResourceVersion: "1.0.0",
+		CliType:         AgentCliTypeOpenCode,
+		Name:            "Agent",
 	}).Error)
 
 	var skillDetail SkillDef
 	var knowledgeDetail KnowledgeDef
 	var agentDetail AgentDef
-	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", skill.ResourceId, "1.0.0").First(&skillDetail).Error)
-	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", knowledge.ResourceId, "1.0.0").First(&knowledgeDetail).Error)
+	require.NoError(t, db.Where("resource_id = ?", skill.ResourceId).First(&skillDetail).Error)
+	require.NoError(t, db.Where("resource_id = ?", knowledge.ResourceId).First(&knowledgeDetail).Error)
 	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&agentDetail).Error)
-	require.Equal(t, "sync", skillDetail.InvokeMode)
-	require.Equal(t, "retrieval", knowledgeDetail.KnowledgeMode)
-	require.Contains(t, agentDetail.DependenciesJSON, "skill")
+	require.Equal(t, "skill.zip", skillDetail.FileName)
+	require.Equal(t, "kb_demo", knowledgeDetail.ExternalKnowledgeId)
+	require.Equal(t, "Agent", agentDetail.Name)
 }

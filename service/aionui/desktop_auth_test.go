@@ -58,6 +58,10 @@ func TestDesktopAuthServiceExchangesCodeOnceAndValidatesToken(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, token.AccessToken)
+	require.Equal(t, DefaultPersonalAPIKeyName, token.PersonalAPIKey.Name)
+	require.True(t, strings.HasPrefix(token.PersonalAPIKey.Key, "sk-"))
+	require.NotEmpty(t, token.PersonalAPIKey.MaskedKey)
+	require.NotEmpty(t, token.QuotaApplyURL)
 	require.Equal(t, "alice@example.com", token.User.Email)
 	require.Equal(t, []string{"研发部"}, token.User.Departments)
 	require.Equal(t, now.Add(desktopTokenTTL).Unix(), token.ExpiresAt)
@@ -70,6 +74,51 @@ func TestDesktopAuthServiceExchangesCodeOnceAndValidatesToken(t *testing.T) {
 	require.Equal(t, 100, claims.UserId)
 	require.Equal(t, "alice@example.com", claims.Email)
 	require.Equal(t, "device-1", claims.DeviceId)
+
+	var personalTokens []model.Token
+	require.NoError(t, db.Where("user_id = ? AND name = ?", 100, DefaultPersonalAPIKeyName).Find(&personalTokens).Error)
+	require.Len(t, personalTokens, 1)
+	require.Equal(t, DefaultPersonalAPIKeyGroup, personalTokens[0].Group)
+}
+
+func TestDesktopAuthServiceReusesExistingPersonalAPIKey(t *testing.T) {
+	db := newDesktopAuthTestDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.Create(&model.User{
+		Id:          102,
+		Username:    "carol",
+		DisplayName: "Carol",
+		Email:       "carol@example.com",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AffCode:     "carol",
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		UserId:      102,
+		Name:        DefaultPersonalAPIKeyName,
+		Key:         "existing-personal-key",
+		Status:      common.TokenStatusEnabled,
+		CreatedTime: 1,
+		ExpiredTime: -1,
+	}).Error)
+
+	service := NewDesktopAuthService()
+	code, err := service.IssueCode(
+		&model.User{Id: 102, Username: "carol", DisplayName: "Carol", Email: "carol@example.com", Status: common.UserStatusEnabled},
+		DesktopRedirectURI,
+		"state-1234567890",
+	)
+	require.NoError(t, err)
+
+	token, err := service.ExchangeCode(dtoaionui.DesktopTokenRequest{Code: code, DeviceId: "device-3"})
+	require.NoError(t, err)
+	require.Equal(t, "sk-existing-personal-key", token.PersonalAPIKey.Key)
+
+	var count int64
+	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ? AND name = ?", 102, DefaultPersonalAPIKeyName).Count(&count).Error)
+	require.Equal(t, int64(1), count)
 }
 
 func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {
@@ -173,7 +222,7 @@ func newDesktopAuthTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &entmodel.Department{}, &entmodel.UserDepartment{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &entmodel.Department{}, &entmodel.UserDepartment{}))
 
 	t.Cleanup(func() {
 		model.DB = oldDB

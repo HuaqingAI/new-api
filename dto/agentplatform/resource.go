@@ -24,6 +24,7 @@ type ResourceItem struct {
 	DisplayName   string `json:"display_name"`
 	Description   string `json:"description"`
 	Avatar        string `json:"avatar"`
+	AvatarURL     string `json:"avatar_url,omitempty"`
 	OwnerUserId   int    `json:"owner_user_id"`
 	OwnerName     string `json:"owner_name"`
 	Status        string `json:"status"`

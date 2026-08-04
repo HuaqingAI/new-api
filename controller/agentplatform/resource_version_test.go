@@ -23,7 +23,7 @@ type resourceVersionAPIResponse struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-func setupAgentPlatformVersionControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.Resource, apmodel.Resource, apmodel.Resource) {
+func setupAgentPlatformVersionControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.Resource) {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -38,12 +38,8 @@ func setupAgentPlatformVersionControllerTest(t *testing.T) (*gin.Engine, *gorm.D
 	model.LOG_DB = db
 	require.NoError(t, apmodel.Migrate(db))
 
-	skill := apmodel.Resource{ResourceType: apmodel.ResourceTypeSkill, DisplayName: "Skill", OwnerUserId: 100}
-	knowledge := apmodel.Resource{ResourceType: apmodel.ResourceTypeKnowledge, DisplayName: "Knowledge", OwnerUserId: 100}
-	agent := apmodel.Resource{ResourceType: apmodel.ResourceTypeAgent, DisplayName: "Agent", OwnerUserId: 100}
-	require.NoError(t, db.Create(&skill).Error)
-	require.NoError(t, db.Create(&knowledge).Error)
-	require.NoError(t, db.Create(&agent).Error)
+	resource := apmodel.Resource{ResourceType: apmodel.ResourceTypeSkill, DisplayName: "Skill", OwnerUserId: 100}
+	require.NoError(t, db.Create(&resource).Error)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -54,7 +50,7 @@ func setupAgentPlatformVersionControllerTest(t *testing.T) (*gin.Engine, *gorm.D
 	router.POST("/api/agent-platform/resources/:id/versions", CreateResourceVersion)
 	router.GET("/api/agent-platform/resources/:id/versions/:version", GetResourceVersion)
 
-	return router, db, skill, knowledge, agent
+	return router, db, resource
 }
 
 func performResourceVersionRequest(t *testing.T, router *gin.Engine, method string, target string, body any) *httptest.ResponseRecorder {
@@ -93,151 +89,35 @@ func decodeResourceVersionData[T any](t *testing.T, response resourceVersionAPIR
 }
 
 func TestResourceVersionAPIWorkflow(t *testing.T) {
-	router, _, skill, knowledge, agent := setupAgentPlatformVersionControllerTest(t)
+	router, _, resource := setupAgentPlatformVersionControllerTest(t)
 
-	skillRecorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+skill.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
+	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+resource.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &dtoagentplatform.SkillDetailRequest{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
+		Summary:         "first release",
 	})
-	skillResponse := decodeResourceVersionAPIResponse(t, skillRecorder)
-	require.True(t, skillResponse.Success, skillResponse.Message)
-	skillVersion := decodeResourceVersionData[dtoagentplatform.ResourceVersionItem](t, skillResponse)
-	require.Equal(t, skill.ResourceId, skillVersion.ResourceId)
-	require.NotNil(t, skillVersion.Skill)
+	response := decodeResourceVersionAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	version := decodeResourceVersionData[dtoagentplatform.ResourceVersionItem](t, response)
+	require.Equal(t, resource.ResourceId, version.ResourceId)
+	require.Equal(t, "1.0.0", version.Version)
+	require.Equal(t, "first release", version.Summary)
 
-	knowledgeRecorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+knowledge.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &dtoagentplatform.KnowledgeDetailRequest{
-			KnowledgeMode:      "retrieval",
-			ProviderType:       "http_retrieval",
-			ProviderAdapterKey: "http_retrieval",
-			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:        json.RawMessage(`{"type":"object"}`),
-			CitationSchema:     json.RawMessage(`{"items":{"type":"object"}}`),
-		},
-	})
-	knowledgeResponse := decodeResourceVersionAPIResponse(t, knowledgeRecorder)
-	require.True(t, knowledgeResponse.Success, knowledgeResponse.Message)
-	knowledgeVersion := decodeResourceVersionData[dtoagentplatform.ResourceVersionItem](t, knowledgeResponse)
-	require.NotNil(t, knowledgeVersion.Knowledge)
-
-	agentRecorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+agent.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &dtoagentplatform.AgentDetailRequest{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
-				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-	})
-	agentResponse := decodeResourceVersionAPIResponse(t, agentRecorder)
-	require.True(t, agentResponse.Success, agentResponse.Message)
-	agentVersion := decodeResourceVersionData[dtoagentplatform.ResourceVersionItem](t, agentResponse)
-	require.NotNil(t, agentVersion.Agent)
-
-	getRecorder := performResourceVersionRequest(t, router, http.MethodGet, "/api/agent-platform/resources/"+skill.ResourceId+"/versions/1.0.0", nil)
+	getRecorder := performResourceVersionRequest(t, router, http.MethodGet, "/api/agent-platform/resources/"+resource.ResourceId+"/versions/1.0.0", nil)
 	getResponse := decodeResourceVersionAPIResponse(t, getRecorder)
 	require.True(t, getResponse.Success, getResponse.Message)
 	fetched := decodeResourceVersionData[dtoagentplatform.ResourceVersionItem](t, getResponse)
-	require.Equal(t, skill.ResourceId, fetched.ResourceId)
+	require.Equal(t, resource.ResourceId, fetched.ResourceId)
 	require.Equal(t, "1.0.0", fetched.Version)
 }
 
-func TestResourceVersionAPIRejectsMismatchedTypedDetail(t *testing.T) {
-	router, _, skill, _, _ := setupAgentPlatformVersionControllerTest(t)
+func TestResourceVersionAPIRejectsInvalidMetadata(t *testing.T) {
+	router, _, resource := setupAgentPlatformVersionControllerTest(t)
 
-	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+skill.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
+	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+resource.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
 		ContractVersion: "2026-06",
-		Knowledge: &dtoagentplatform.KnowledgeDetailRequest{
-			KnowledgeMode:      "retrieval",
-			ProviderType:       "http",
-			ProviderAdapterKey: "http_retrieval",
-		},
 	})
 	response := decodeResourceVersionAPIResponse(t, recorder)
 	require.False(t, response.Success)
 	require.Equal(t, "invalid request params", response.Message)
-}
-
-func TestResourceVersionAPIRejectsInvalidSkillContract(t *testing.T) {
-	router, _, skill, _, _ := setupAgentPlatformVersionControllerTest(t)
-
-	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+skill.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &dtoagentplatform.SkillDetailRequest{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "stream",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-	})
-	response := decodeResourceVersionAPIResponse(t, recorder)
-	require.False(t, response.Success)
-	require.Equal(t, "invalid request params", response.Message)
-}
-
-func TestResourceVersionAPIRejectsInvalidKnowledgeContract(t *testing.T) {
-	router, _, _, knowledge, _ := setupAgentPlatformVersionControllerTest(t)
-
-	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+knowledge.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &dtoagentplatform.KnowledgeDetailRequest{
-			KnowledgeMode:      "answer_generation",
-			ProviderType:       "lightrag",
-			ProviderAdapterKey: "lightrag",
-			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:        json.RawMessage(`{"type":"object"}`),
-			CitationSchema:     json.RawMessage(`{"type":"array"}`),
-		},
-	})
-	response := decodeResourceVersionAPIResponse(t, recorder)
-	require.False(t, response.Success)
-	require.Equal(t, "invalid request params", response.Message)
-}
-
-func TestResourceVersionAPIRejectsInvalidAgentDependencies(t *testing.T) {
-	router, _, skill, _, agent := setupAgentPlatformVersionControllerTest(t)
-
-	recorder := performResourceVersionRequest(t, router, http.MethodPost, "/api/agent-platform/resources/"+agent.ResourceId+"/versions", dtoagentplatform.CreateResourceVersionRequest{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &dtoagentplatform.AgentDetailRequest{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
-				{"resource_type":"knowledge","resource_id":"res_missing"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-	})
-	response := decodeResourceVersionAPIResponse(t, recorder)
-	require.False(t, response.Success)
-	require.Equal(t, "Agent 依赖配置无效", response.Message)
-}
-
-func intPtr(v int) *int {
-	return &v
 }

@@ -45,15 +45,7 @@ func setupLifecycleControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, apmodel.
 	_, err = versionService.Create(resource.ResourceId, apservice.CreateResourceVersionInput{
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &apservice.SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: lifecycleIntPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
+		CreatedBy:       100,
 	})
 	require.NoError(t, err)
 
@@ -143,8 +135,4 @@ func TestLifecycleAPIRejectsInvalidRollbackRequest(t *testing.T) {
 	response := decodeLifecycleAPIResponse(t, recorder)
 	require.False(t, response.Success)
 	require.Equal(t, "invalid request params", response.Message)
-}
-
-func lifecycleIntPtr(v int) *int {
-	return &v
 }

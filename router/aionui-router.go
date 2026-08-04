@@ -12,5 +12,6 @@ func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 		aionUiRoute.GET("/desktop/login", middleware.CriticalRateLimit(), controlleraionui.DesktopLogin)
 		aionUiRoute.POST("/desktop/token", middleware.CriticalRateLimit(), controlleraionui.DesktopToken)
 		aionUiRoute.GET("/agent-configs", middleware.AionUiDesktopAuth(), controlleraionui.GetAgentConfigs)
+		aionUiRoute.GET("/quota-summary", middleware.AionUiDesktopAuth(), controlleraionui.GetQuotaSummary)
 	}
 }

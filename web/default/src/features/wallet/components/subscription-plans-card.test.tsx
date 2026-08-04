@@ -12,6 +12,7 @@ import {
   getSubscriptionSourceLabel,
   getSubscriptionCardTitle,
   isActiveSubscriptionForBilling,
+  isUsableSubscriptionForDisplayFilter,
 } from './subscription-plans-card'
 
 describe('Subscription plans card enterprise wallet helpers', () => {
@@ -397,6 +398,62 @@ describe('Subscription plans card enterprise wallet helpers', () => {
     )
   })
 
+  test('filters usable subscriptions by active validity and remaining quota', () => {
+    const now = 1800000000
+    const base = {
+      id: 20,
+      user_id: 9001,
+      plan_id: 7,
+      status: 'active',
+      source: 'admin',
+      source_type: 'admin',
+      source_allocation_id: 0,
+      sort_order: 100,
+      is_primary: true,
+      start_time: 1700000000,
+      end_time: now + 86400,
+      amount_total: 500,
+      amount_used: 20,
+      next_reset_time: 0,
+    } as const
+
+    assert.equal(isUsableSubscriptionForDisplayFilter(base, now), true)
+    assert.equal(
+      isUsableSubscriptionForDisplayFilter(
+        {
+          ...base,
+          id: 21,
+          amount_used: 500,
+        },
+        now
+      ),
+      false
+    )
+    assert.equal(
+      isUsableSubscriptionForDisplayFilter(
+        {
+          ...base,
+          id: 22,
+          end_time: now - 1,
+        },
+        now
+      ),
+      false
+    )
+    assert.equal(
+      isUsableSubscriptionForDisplayFilter(
+        {
+          ...base,
+          id: 23,
+          amount_total: 0,
+          amount_used: 999,
+        },
+        now
+      ),
+      true
+    )
+  })
+
   test('enterprise wallet non-positive expiry semantics are translated in zh locale', async () => {
     const previousLanguage = i18n.language
     await i18n.changeLanguage('zhCN')
@@ -459,6 +516,8 @@ describe('Subscription plans card enterprise wallet helpers', () => {
       'Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.',
       'Never expires',
       'No expiry set',
+      'All subscriptions',
+      'Available subscriptions',
     ] as const
 
     for (const [language, resource] of Object.entries(resources)) {

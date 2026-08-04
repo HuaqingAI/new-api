@@ -172,6 +172,9 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 	if avatar == "" {
 		avatar = resource.Avatar
 	}
+	if resolvedAvatar, err := apservice.ResolveAgentAvatarURL(context.Background(), avatar, apservice.ArtifactPresignExpiresForAionUI()); err == nil && strings.TrimSpace(resolvedAvatar) != "" {
+		avatar = resolvedAvatar
+	}
 	if avatar == "" {
 		avatar = defaultAgentAvatar
 	}

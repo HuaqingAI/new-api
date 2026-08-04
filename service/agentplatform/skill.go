@@ -185,13 +185,11 @@ func (s *SkillService) SavePackage(resourceID string, fileName string, reader io
 		return SkillItem{}, err
 	}
 	def := apmodel.SkillDef{
-		ResourceId:      resourceID,
-		ResourceVersion: "",
-		InvokeMode:      "file",
-		FileName:        fileName,
-		FilePath:        packagePath,
-		Sha256:          sum,
-		SizeBytes:       size,
+		ResourceId: resourceID,
+		FileName:   fileName,
+		FilePath:   packagePath,
+		Sha256:     sum,
+		SizeBytes:  size,
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		var existing apmodel.SkillDef
@@ -202,12 +200,10 @@ func (s *SkillService) SavePackage(resourceID string, fileName string, reader io
 			return err
 		}
 		return tx.Model(&apmodel.SkillDef{}).Where("resource_id = ?", resourceID).Updates(map[string]any{
-			"resource_version": "",
-			"invoke_mode":      "file",
-			"file_name":        fileName,
-			"file_path":        packagePath,
-			"sha256":           sum,
-			"size_bytes":       size,
+			"file_name":  fileName,
+			"file_path":  packagePath,
+			"sha256":     sum,
+			"size_bytes": size,
 		}).Error
 	})
 	if err != nil {

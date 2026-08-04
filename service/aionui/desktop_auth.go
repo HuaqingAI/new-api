@@ -233,6 +233,10 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	if err != nil {
 		return dtoaionui.DesktopTokenResponse{}, err
 	}
+	personalAPIKey, err := EnsurePersonalAPIKey(user.Id)
+	if err != nil {
+		return dtoaionui.DesktopTokenResponse{}, err
+	}
 
 	return dtoaionui.DesktopTokenResponse{
 		AccessToken: token,
@@ -244,6 +248,12 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 			DisplayName: user.DisplayName,
 			Departments: departments,
 		},
+		PersonalAPIKey: dtoaionui.DesktopPersonalAPIKey{
+			Name:      personalAPIKey.Name,
+			Key:       personalAPIKey.Key,
+			MaskedKey: personalAPIKey.MaskedKey,
+		},
+		QuotaApplyURL: QuotaApplyURL(),
 	}, nil
 }
 

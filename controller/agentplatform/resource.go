@@ -1,6 +1,7 @@
 package agentplatform
 
 import (
+	"context"
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
@@ -88,6 +89,7 @@ func writeResourceError(c *gin.Context, err error) {
 }
 
 func mapResourceItem(item apservice.ResourceItem) dtoagentplatform.ResourceItem {
+	avatarURL, _ := apservice.ResolveAgentAvatarURL(context.Background(), item.Avatar, apservice.ArtifactPresignExpiresForAionUI())
 	return dtoagentplatform.ResourceItem{
 		Id:            item.Id,
 		ResourceId:    item.ResourceId,
@@ -95,6 +97,7 @@ func mapResourceItem(item apservice.ResourceItem) dtoagentplatform.ResourceItem 
 		DisplayName:   item.DisplayName,
 		Description:   item.Description,
 		Avatar:        item.Avatar,
+		AvatarURL:     avatarURL,
 		OwnerUserId:   item.OwnerUserId,
 		OwnerName:     item.OwnerName,
 		Status:        item.Status,

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -116,8 +114,6 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		ResourceId:      resource.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"skill":{"invoke_mode":"sync"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
@@ -125,8 +121,6 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		ResourceId:      knowledge.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"knowledge":{"mode":"retrieval"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
@@ -134,40 +128,40 @@ func setupOpenCapabilityControllerTest(t *testing.T) (*gin.Engine, *gorm.DB, str
 		ResourceId:      agent.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"agent":{"kind":"definition"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
 	require.NoError(t, db.Create(&apmodel.SkillDef{
-		ResourceId:        resource.ResourceId,
-		ResourceVersion:   "1.0.0",
-		InvokeSchemaJSON:  `{"type":"object"}`,
-		OutputSchemaJSON:  `{"type":"object"}`,
-		InvokeMode:        "sync",
-		TimeoutSeconds:    1,
-		BindingConfigJSON: `{"method":"POST","url":"https://example.com/invoke"}`,
+		ResourceId: resource.ResourceId,
+		FileName:   "skill.zip",
+		FilePath:   "oss://bucket/skill.zip",
+		Sha256:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		SizeBytes:  10,
 	}).Error)
 	require.NoError(t, db.Create(&apmodel.KnowledgeDef{
-		ResourceId:               knowledge.ResourceId,
-		ResourceVersion:          "1.0.0",
-		KnowledgeMode:            "retrieval",
-		ProviderType:             "http_retrieval",
-		ProviderAdapterKey:       "provider-a",
-		ProviderConfigJSON:       `{"endpoint":"https://example.com/query"}`,
-		QuerySchemaJSON:          `{"type":"object"}`,
-		CitationSchemaJSON:       `{"items":{"type":"object"}}`,
-		FreshnessRulesJSON:       `{"ttl":300}`,
-		ProviderCapabilitiesJSON: `{"citations":true}`,
+		ResourceId:          knowledge.ResourceId,
+		ExternalKnowledgeId: "kb_demo",
 	}).Error)
 	require.NoError(t, db.Create(&apmodel.AgentDef{
-		ResourceId:            agent.ResourceId,
-		ResourceVersion:       "1.0.0",
-		CliType:               apmodel.AgentCliTypeOpenCode,
-		ManifestJSON:          `{"name":"agent-template"}`,
-		DependenciesJSON:      `[{"resource_type":"skill","resource_id":"` + resource.ResourceId + `"},{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}]`,
-		PromptMetadataJSON:    `{"template":"default"}`,
-		CompatibilityMetaJSON: `{"clients":["cherry-studio"]}`,
+		ResourceId:      agent.ResourceId,
+		ResourceVersion: "1.0.0",
+		CliType:         apmodel.AgentCliTypeOpenCode,
+		Name:            "Discovery Agent",
+		Description:     "Agent description",
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.AgentDependency{
+		AgentResourceId:  agent.ResourceId,
+		ResourceVersion:  "1.0.0",
+		TargetType:       apmodel.AgentDependencyTypeSkill,
+		TargetResourceId: resource.ResourceId,
+		SortOrder:        0,
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.AgentDependency{
+		AgentResourceId:  agent.ResourceId,
+		ResourceVersion:  "1.0.0",
+		TargetType:       apmodel.AgentDependencyTypeKnowledge,
+		TargetResourceId: knowledge.ResourceId,
+		SortOrder:        1,
 	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.Exposure{
@@ -409,165 +403,26 @@ func TestOpenCapabilityReturnsStableErrorEnvelope(t *testing.T) {
 	require.Equal(t, "res_missing", errorPayload.ResourceID)
 }
 
-func TestOpenCapabilitySkillInvokeReturnsRealSuccessPayload(t *testing.T) {
+func TestOpenCapabilitySkillInvokeReturnsContractInvalidWithoutConfig(t *testing.T) {
 	router, _, token, resource, _, _ := setupOpenCapabilityControllerTest(t)
-
-	original := skillInvokeService
-	skillInvokeService = func() *apservice.SkillInvokeService {
-		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
-			do: func(req *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewBufferString(`{"ok":true}`)),
-				}, nil
-			},
-		})
-	}
-	defer func() { skillInvokeService = original }()
-
-	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
-		"input": "demo",
-	})
-	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
-	require.True(t, apiResponse.Success)
-
-	var data struct {
-		ResourceID      string         `json:"resource_id"`
-		ResourceVersion string         `json:"resource_version"`
-		ContractVersion string         `json:"contract_version"`
-		Output          map[string]any `json:"output"`
-	}
-	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
-	require.Equal(t, resource.ResourceId, data.ResourceID)
-	require.Equal(t, "1.0.0", data.ResourceVersion)
-	require.Equal(t, "2026-06", data.ContractVersion)
-	require.Equal(t, true, data.Output["ok"])
-}
-
-func TestOpenCapabilityKnowledgeQueryReturnsStructuredResult(t *testing.T) {
-	router, _, token, _, knowledge, _ := setupOpenCapabilityControllerTest(t)
-
-	original := knowledgeQueryService
-	knowledgeQueryService = func() *apservice.KnowledgeQueryService {
-		return apservice.NewKnowledgeQueryService(model.DB).WithProvider(stubOpenCapabilityKnowledgeProvider{
-			query: func(ctx context.Context, binding apservice.KnowledgeProviderBinding, req apservice.KnowledgeProviderQueryRequest) (apservice.KnowledgeProviderQueryResponse, error) {
-				return apservice.KnowledgeProviderQueryResponse{
-					Items: []apservice.KnowledgeResultItem{
-						{
-							ID:      "doc-1",
-							Score:   0.91,
-							Snippet: "Result for " + req.Query,
-						},
-					},
-					Citations: []apservice.KnowledgeCitation{
-						{SourceID: "doc-1", Title: "Doc 1"},
-					},
-				}, nil
-			},
-		})
-	}
-	defer func() { knowledgeQueryService = original }()
-
-	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/knowledge-bases/"+knowledge.ResourceId+"/query", token, map[string]any{
-		"query": "what is the answer?",
-	})
-	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
-	require.True(t, apiResponse.Success)
-
-	var data struct {
-		ResourceID      string           `json:"resource_id"`
-		ResourceVersion string           `json:"resource_version"`
-		ContractVersion string           `json:"contract_version"`
-		Items           []map[string]any `json:"items"`
-		Citations       []map[string]any `json:"citations"`
-	}
-	require.NoError(t, common.Unmarshal(apiResponse.Data, &data))
-	require.Equal(t, knowledge.ResourceId, data.ResourceID)
-	require.Equal(t, "1.0.0", data.ResourceVersion)
-	require.Equal(t, "2026-06", data.ContractVersion)
-	require.Len(t, data.Items, 1)
-	require.Len(t, data.Citations, 1)
-	require.NotContains(t, string(apiResponse.Data), "provider_config")
-}
-
-func TestOpenCapabilitySkillInvokeMapsUpstreamFailure(t *testing.T) {
-	router, _, token, resource, _, _ := setupOpenCapabilityControllerTest(t)
-
-	original := skillInvokeService
-	skillInvokeService = func() *apservice.SkillInvokeService {
-		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
-			do: func(req *http.Request) (*http.Response, error) {
-				return nil, errors.New("boom")
-			},
-		})
-	}
-	defer func() { skillInvokeService = original }()
 
 	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
 		"input": "demo",
 	})
 	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
 	require.False(t, apiResponse.Success)
-
-	var errorPayload struct {
-		Code string `json:"code"`
-	}
-	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
-	require.Equal(t, apservice.OpenCapabilityCodeUpstreamFailed, errorPayload.Code)
+	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodeContractInvalid)
 }
 
-func TestOpenCapabilitySkillInvokeMapsTimeout(t *testing.T) {
-	router, _, token, resource, _, _ := setupOpenCapabilityControllerTest(t)
-
-	original := skillInvokeService
-	skillInvokeService = func() *apservice.SkillInvokeService {
-		return apservice.NewSkillInvokeService(model.DB).WithHTTPClient(stubOpenCapabilityHTTPClient{
-			do: func(req *http.Request) (*http.Response, error) {
-				<-req.Context().Done()
-				return nil, req.Context().Err()
-			},
-		})
-	}
-	defer func() { skillInvokeService = original }()
-
-	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/skills/"+resource.ResourceId+"/invoke", token, map[string]any{
-		"input": "demo",
-	})
-	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
-	require.False(t, apiResponse.Success)
-
-	var errorPayload struct {
-		Code      string `json:"code"`
-		Retryable bool   `json:"retryable"`
-	}
-	require.NoError(t, common.Unmarshal(apiResponse.Error, &errorPayload))
-	require.Equal(t, apservice.OpenCapabilityCodeTimeout, errorPayload.Code)
-	require.True(t, errorPayload.Retryable)
-}
-
-func TestOpenCapabilityKnowledgeQueryMapsProviderFailureWithoutNativeLeakage(t *testing.T) {
+func TestOpenCapabilityKnowledgeQueryReturnsContractInvalidWithoutProviderConfig(t *testing.T) {
 	router, _, token, _, knowledge, _ := setupOpenCapabilityControllerTest(t)
-
-	original := knowledgeQueryService
-	knowledgeQueryService = func() *apservice.KnowledgeQueryService {
-		return apservice.NewKnowledgeQueryService(model.DB).WithProvider(stubOpenCapabilityKnowledgeProvider{
-			query: func(ctx context.Context, binding apservice.KnowledgeProviderBinding, req apservice.KnowledgeProviderQueryRequest) (apservice.KnowledgeProviderQueryResponse, error) {
-				return apservice.KnowledgeProviderQueryResponse{}, apservice.ErrSkillInvokeUpstreamFailed
-			},
-		})
-	}
-	defer func() { knowledgeQueryService = original }()
 
 	response := performOpenCapabilityRequest(t, router, http.MethodPost, "/api/open-capabilities/knowledge-bases/"+knowledge.ResourceId+"/query", token, map[string]any{
 		"query": "what is the answer?",
 	})
 	apiResponse := decodeOpenCapabilityAPIResponse(t, response)
 	require.False(t, apiResponse.Success)
-
-	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodeUpstreamFailed)
-	errorText := string(apiResponse.Error)
-	require.NotContains(t, errorText, "provider_config")
-	require.NotContains(t, errorText, "endpoint")
+	assertOpenCapabilityErrorCode(t, apiResponse, apservice.OpenCapabilityCodeContractInvalid)
 }
 
 func TestOpenCapabilityBearerRejectsMissingScope(t *testing.T) {

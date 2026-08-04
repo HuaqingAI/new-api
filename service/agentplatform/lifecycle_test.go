@@ -1,7 +1,6 @@
 package agentplatform
 
 import (
-	"encoding/json"
 	"testing"
 
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
@@ -24,29 +23,13 @@ func newLifecycleServiceForTest(t *testing.T) (*LifecycleService, *gorm.DB, apmo
 	_, err = versionService.Create(resource.ResourceId, CreateResourceVersionInput{
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
+		CreatedBy:       100,
 	})
 	require.NoError(t, err)
 	_, err = versionService.Create(resource.ResourceId, CreateResourceVersionInput{
 		Version:         "1.1.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(45),
-			BindingConfig:  json.RawMessage(`{"provider":"demo-v2"}`),
-		},
-		CreatedBy: 100,
+		CreatedBy:       100,
 	})
 	require.NoError(t, err)
 

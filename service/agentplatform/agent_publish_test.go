@@ -28,8 +28,6 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
-	token := seedAgentModelToken(t, db, 1, "gpt-5.5,gpt-4.1")
-
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Local MCP",
 		Config:      []byte(`{"mcpServers":{"demo-local":{"command":"npx","args":["-y","demo"]}}}`),
@@ -56,8 +54,6 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 		Description:  "Agent description",
 		Avatar:       "bot",
 		Instructions: "Follow team rules.",
-		ModelTokenId: token.Id,
-		DefaultModel: "gpt-5.5",
 		McpIds:       []string{mcp.ResourceId},
 		SkillIds:     []string{skill.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},
@@ -87,19 +83,24 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Contains(t, files, "project/opencode.jsonc")
 	require.Equal(t, "Follow team rules.", string(files["project/instructions.md"]))
 	require.Equal(t, openCodeUserContextTemplate, string(files["project/user-context.md"]))
+	require.Contains(t, string(files["project/opencode.jsonc"]), aionUIPersonalAPIKeyPlaceholder)
+	require.NotContains(t, string(files["project/opencode.jsonc"]), `\u003chth-personal-apikey\u003e`)
 
 	var projectConfig map[string]any
 	require.NoError(t, common.Unmarshal(files["project/opencode.jsonc"], &projectConfig))
-	require.Equal(t, "hth/gpt-5.5", projectConfig["model"])
+	require.Equal(t, "hth/gpt-5.6-terra", projectConfig["model"])
 	require.Equal(t, []any{"instructions.md", "user-context.md"}, projectConfig["instructions"])
 	provider := projectConfig["provider"].(map[string]any)
 	hthProvider := provider["hth"].(map[string]any)
 	require.Equal(t, "http://localhost:3000/v1", hthProvider["api"])
 	options := hthProvider["options"].(map[string]any)
-	require.Equal(t, "sk-"+token.Key, options["apiKey"])
+	require.Equal(t, aionUIPersonalAPIKeyPlaceholder, options["apiKey"])
 	models := hthProvider["models"].(map[string]any)
-	require.Contains(t, models, "gpt-5.5")
-	require.Contains(t, models, "gpt-4.1")
+	require.Contains(t, models, "gpt-5.3-codex")
+	require.Contains(t, models, "gpt-5.6-luna")
+	require.Contains(t, models, "gpt-5.6-sol")
+	require.Contains(t, models, "gpt-5.6-terra")
+	require.NotContains(t, models, "gpt-4.1")
 	mcpConfig := projectConfig["mcp"].(map[string]any)
 	localServer := mcpConfig["demo-local"].(map[string]any)
 	require.Equal(t, "local", localServer["type"])
@@ -122,8 +123,6 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	t.Setenv("BACKEND_BASE_URL", "https://hth.huaqing.run/v1/")
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
-	token := seedAgentModelToken(t, db, 1, "gpt-5.5,gpt-4.1")
-
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Codex MCP",
 		Config:      []byte(`{"mcpServers":{"filesystem":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},"docs":{"type":"streamablehttp","url":"https://example.com/mcp","headers":{"X-Client":"codex"}}}}`),
@@ -142,8 +141,6 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 		CliType:      apmodel.AgentCliTypeCodex,
 		DisplayName:  "Codex Agent",
 		Instructions: "Follow Codex rules.",
-		ModelTokenId: token.Id,
-		DefaultModel: "gpt-5.5",
 		McpIds:       []string{mcp.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},
 		OwnerUserId:  1,
@@ -172,16 +169,18 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 
 	var authConfig map[string]string
 	require.NoError(t, common.Unmarshal(files["global/auth.json"], &authConfig))
-	require.Equal(t, "sk-"+token.Key, authConfig["OPENAI_API_KEY"])
+	require.Equal(t, aionUIPersonalAPIKeyPlaceholder, authConfig["OPENAI_API_KEY"])
+	require.Contains(t, string(files["global/auth.json"]), aionUIPersonalAPIKeyPlaceholder)
+	require.NotContains(t, string(files["global/auth.json"]), `\u003chth-personal-apikey\u003e`)
 
 	globalConfig := string(files["global/config.toml"])
 	require.Contains(t, globalConfig, "model_provider = \"hth\"")
-	require.Contains(t, globalConfig, "model = \"gpt-5.5\"")
+	require.Contains(t, globalConfig, "model = \"gpt-5.6-terra\"")
 	require.Contains(t, globalConfig, "base_url = \"https://hth.huaqing.run/v1\"")
 	require.NotContains(t, globalConfig, "[projects.")
 
 	projectConfig := string(files["project/.codex/config.toml"])
-	require.Contains(t, projectConfig, "model = \"gpt-5.5\"")
+	require.Contains(t, projectConfig, "model = \"gpt-5.6-terra\"")
 	require.Contains(t, projectConfig, "model_reasoning_effort = \"high\"")
 	require.Contains(t, projectConfig, "developer_instructions = \"\"\"")
 	require.Contains(t, projectConfig, "Follow Codex rules.")
@@ -203,37 +202,15 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
 }
 
-func TestExportedAgentAPIKeyUsesOpenAIStylePrefix(t *testing.T) {
-	cases := []struct {
-		name string
-		key  string
-		want string
-	}{
-		{name: "bare key", key: "agent-key", want: "sk-agent-key"},
-		{name: "already prefixed", key: "sk-agent-key", want: "sk-agent-key"},
-		{name: "trim spaces", key: " agent-key ", want: "sk-agent-key"},
-		{name: "empty", key: "", want: ""},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, exportedAgentAPIKey(tc.key))
-		})
-	}
-}
-
 func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) {
 	db := newAgentPublishTestDB(t)
 	restore := SetArtifactStoreForTest(newFakeArtifactStore())
 	t.Cleanup(restore)
-	token := seedAgentModelToken(t, db, 1, "gpt-5.5")
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		CliType:      apmodel.AgentCliTypeOpenCode,
 		DisplayName:  "Demo Agent",
 		Instructions: "Follow team rules.",
-		ModelTokenId: token.Id,
-		DefaultModel: "gpt-5.5",
 		OwnerUserId:  1,
 	})
 	require.NoError(t, err)
@@ -277,6 +254,12 @@ func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) 
 	require.Equal(t, "1.0.1", secondDefaults.LatestVersion)
 	require.Equal(t, "1.0.2", secondDefaults.NextVersion)
 	require.Len(t, secondDefaults.Grants, 2)
+}
+
+func TestAllowedAionUIAgentModelsFiltersUnsupportedModels(t *testing.T) {
+	t.Setenv("HTH_AGENT_ALLOWED_MODELS", "gpt-4.1,gpt-5.6-terra,gpt-5.6-luna,gpt-4o,gpt-5.6-luna")
+
+	require.Equal(t, []string{"gpt-5.6-terra", "gpt-5.6-luna"}, allowedAionUIAgentModels())
 }
 
 func newAgentPublishTestDB(t *testing.T) *gorm.DB {

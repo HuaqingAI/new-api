@@ -1,11 +1,6 @@
 package agentplatform
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"io"
-	"net/http"
 	"testing"
 	"time"
 
@@ -14,14 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
-
-type stubSkillHTTPClient struct {
-	do func(req *http.Request) (*http.Response, error)
-}
-
-func (s stubSkillHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	return s.do(req)
-}
 
 func newSkillInvokeServiceForTest(t *testing.T) (*SkillInvokeService, *gorm.DB, string, apmodel.Resource) {
 	t.Helper()
@@ -50,24 +37,12 @@ func newSkillInvokeServiceForTest(t *testing.T) (*SkillInvokeService, *gorm.DB, 
 		LatestVersion: "1.0.0",
 	}
 	require.NoError(t, db.Create(&resource).Error)
-
 	require.NoError(t, db.Create(&apmodel.ResourceVersion{
 		ResourceId:      resource.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"skill":{"invoke_mode":"sync"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
-	}).Error)
-	require.NoError(t, db.Create(&apmodel.SkillDef{
-		ResourceId:        resource.ResourceId,
-		ResourceVersion:   "1.0.0",
-		InvokeSchemaJSON:  `{"type":"object"}`,
-		OutputSchemaJSON:  `{"type":"object"}`,
-		InvokeMode:        "sync",
-		TimeoutSeconds:    1,
-		BindingConfigJSON: `{"method":"POST","url":"https://example.com/invoke","headers":{"X-Test":"yes"}}`,
 	}).Error)
 	now := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.Exposure{
@@ -84,56 +59,13 @@ func newSkillInvokeServiceForTest(t *testing.T) (*SkillInvokeService, *gorm.DB, 
 	return NewSkillInvokeService(db), db, client.ClientId, resource
 }
 
-func TestSkillInvokeServiceInvokesConfiguredHTTPBinding(t *testing.T) {
-	svc, _, clientID, resource := newSkillInvokeServiceForTest(t)
-	svc = svc.WithHTTPClient(stubSkillHTTPClient{
-		do: func(req *http.Request) (*http.Response, error) {
-			require.Equal(t, "POST", req.Method)
-			require.Equal(t, "https://example.com/invoke", req.URL.String())
-			require.Equal(t, "yes", req.Header.Get("X-Test"))
-			body, err := io.ReadAll(req.Body)
-			require.NoError(t, err)
-			require.JSONEq(t, `{"input":"demo"}`, string(body))
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(bytes.NewBufferString(`{"ok":true}`)),
-			}, nil
-		},
-	})
-
-	result, err := svc.Invoke(SkillInvokeInput{
-		ClientID:   clientID,
-		ResourceID: resource.ResourceId,
-		Payload:    []byte(`{"input":"demo"}`),
-	})
-	require.NoError(t, err)
-	require.JSONEq(t, `{"ok":true}`, string(result.Output))
-}
-
-func TestSkillInvokeServiceMapsTimeoutAndUpstreamFailure(t *testing.T) {
+func TestSkillInvokeServiceReturnsContractInvalidWithoutInvokeConfig(t *testing.T) {
 	svc, _, clientID, resource := newSkillInvokeServiceForTest(t)
 
-	timeoutSvc := svc.WithHTTPClient(stubSkillHTTPClient{
-		do: func(req *http.Request) (*http.Response, error) {
-			return nil, context.DeadlineExceeded
-		},
-	})
-	_, err := timeoutSvc.Invoke(SkillInvokeInput{
+	_, err := svc.Invoke(SkillInvokeInput{
 		ClientID:   clientID,
 		ResourceID: resource.ResourceId,
 		Payload:    []byte(`{"input":"demo"}`),
 	})
-	require.ErrorIs(t, err, ErrSkillInvokeTimeout)
-
-	failSvc := svc.WithHTTPClient(stubSkillHTTPClient{
-		do: func(req *http.Request) (*http.Response, error) {
-			return nil, errors.New("boom")
-		},
-	})
-	_, err = failSvc.Invoke(SkillInvokeInput{
-		ClientID:   clientID,
-		ResourceID: resource.ResourceId,
-		Payload:    []byte(`{"input":"demo"}`),
-	})
-	require.ErrorIs(t, err, ErrSkillInvokeUpstreamFailed)
+	require.ErrorIs(t, err, ErrOpenCapabilityContractInvalid)
 }

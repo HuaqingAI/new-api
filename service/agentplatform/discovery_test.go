@@ -51,8 +51,6 @@ func newDiscoveryServiceForTest(t *testing.T) (*DiscoveryService, *gorm.DB, apmo
 		ResourceId:      skill.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"skill":{"invoke_mode":"sync"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)
@@ -60,8 +58,6 @@ func newDiscoveryServiceForTest(t *testing.T) (*DiscoveryService, *gorm.DB, apmo
 		ResourceId:      hidden.ResourceId,
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		SchemaJSON:      `{"type":"object"}`,
-		DetailJSON:      `{"knowledge":{"mode":"retrieval"}}`,
 		Status:          apmodel.ResourceStatusPublished,
 		CreatedBy:       100,
 	}).Error)

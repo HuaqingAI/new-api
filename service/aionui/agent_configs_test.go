@@ -35,6 +35,7 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 
 	packagePath := "oss://test-bucket/agent-packages/opencode/res_agent_1/1.0.0/opencode.zip"
 	codexPackagePath := "oss://test-bucket/agent-packages/codex/res_agent_2/1.0.0/codex.zip"
+	avatarPath := "oss://test-bucket/agent-avatars/avatar.png"
 	require.NoError(t, db.Create(&apmodel.Resource{
 		ResourceId:    "res_agent_1",
 		ResourceType:  apmodel.ResourceTypeAgent,
@@ -61,7 +62,7 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 		CliType:         "opencode",
 		Name:            "Agent Def One",
 		Description:     "from def",
-		Avatar:          "D",
+		Avatar:          avatarPath,
 	}).Error)
 	require.NoError(t, db.Create(&entmodel.UserDepartment{
 		UserId:       101,
@@ -120,7 +121,7 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 	require.Equal(t, "opencode", result.Agents[0].CliType)
 	require.Equal(t, "Agent Def One", result.Agents[0].Name)
 	require.Equal(t, "from def", result.Agents[0].Description)
-	require.Equal(t, "D", result.Agents[0].Avatar)
+	require.Equal(t, "https://oss.test/agent-avatars/avatar.png", result.Agents[0].Avatar)
 	require.Equal(t, "1.0.0", result.Agents[0].Version)
 	require.Equal(t, "sha", result.Agents[0].Sha256)
 	require.Equal(t, "https", result.Agents[0].UrlType)

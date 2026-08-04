@@ -1,12 +1,8 @@
 package agentplatform
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	"gorm.io/gorm"
 )
@@ -40,21 +36,14 @@ type KnowledgeCitation struct {
 }
 
 type KnowledgeQueryService struct {
-	db       *gorm.DB
-	provider KnowledgeProvider
+	db *gorm.DB
 }
 
 func NewKnowledgeQueryService(db *gorm.DB) *KnowledgeQueryService {
-	return &KnowledgeQueryService{
-		db:       db,
-		provider: NewHTTPRetrievalProvider(),
-	}
+	return &KnowledgeQueryService{db: db}
 }
 
-func (s *KnowledgeQueryService) WithProvider(provider KnowledgeProvider) *KnowledgeQueryService {
-	if provider != nil {
-		s.provider = provider
-	}
+func (s *KnowledgeQueryService) WithProvider(_ KnowledgeProvider) *KnowledgeQueryService {
 	return s
 }
 
@@ -76,52 +65,5 @@ func (s *KnowledgeQueryService) Query(input KnowledgeQueryInput) (KnowledgeQuery
 	if detail.ResourceType != apmodel.ResourceTypeKnowledge || detail.CallableState != apmodel.ExposureCallableEnabled {
 		return KnowledgeQueryResult{}, ErrOpenCapabilityPermissionDenied
 	}
-
-	var knowledgeDef apmodel.KnowledgeDef
-	if err := s.db.Where("resource_id = ? AND resource_version = ?", input.ResourceID, detail.ResourceVersion).First(&knowledgeDef).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-		}
-		return KnowledgeQueryResult{}, err
-	}
-	if knowledgeDef.KnowledgeMode != "retrieval" {
-		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-	}
-
-	var request struct {
-		Query string `json:"query"`
-	}
-	if err := json.Unmarshal(input.Payload, &request); err != nil {
-		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-	}
-	if strings.TrimSpace(request.Query) == "" {
-		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-	}
-	bindingConfig := map[string]any{}
-	if err := common.UnmarshalJsonStr(knowledgeDef.ProviderConfigJSON, &bindingConfig); err != nil {
-		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-	}
-	binding := KnowledgeProviderBinding{
-		ProviderType:       knowledgeDef.ProviderType,
-		ProviderAdapterKey: knowledgeDef.ProviderAdapterKey,
-		Config:             bindingConfig,
-	}
-	if err := s.provider.ValidateBinding(context.Background(), binding); err != nil {
-		return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
-	}
-	providerResponse, err := s.provider.Query(context.Background(), binding, KnowledgeProviderQueryRequest{
-		Query: strings.TrimSpace(request.Query),
-	})
-	if err != nil {
-		return KnowledgeQueryResult{}, err
-	}
-
-	result := KnowledgeQueryResult{
-		ResourceID:      detail.ResourceID,
-		ResourceVersion: detail.ResourceVersion,
-		ContractVersion: detail.ContractVersion,
-		Items:           providerResponse.Items,
-		Citations:       providerResponse.Citations,
-	}
-	return result, nil
+	return KnowledgeQueryResult{}, ErrOpenCapabilityContractInvalid
 }

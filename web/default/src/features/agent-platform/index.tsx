@@ -136,7 +136,6 @@ import {
   type AgentPlatformItemResponse,
   type AgentPlatformJsonValue,
   type AgentPlatformListResponse,
-  type AgentPlatformModelKey,
   type AgentPlatformResourceType,
   createAgentPlatformAgent,
   createAgentPlatformKnowledge,
@@ -147,8 +146,6 @@ import {
   getAgentPlatformAgentVersionGrants,
   getAgentPlatformAgentVersions,
   getAgentPlatformKnowledge,
-  getAgentPlatformModelKeyModels,
-  getAgentPlatformModelKeys,
   getAgentPlatformMcps,
   getAgentPlatformPublishDefaults,
   getAgentPlatformResource,
@@ -190,12 +187,11 @@ type ResourceFormState = {
   displayName: string
   description: string
   avatar: string
+  avatarPreviewUrl: string
   mcpConfigJson: string
   skillFile: File | null
   externalKnowledgeId: string
   instructions: string
-  modelTokenId: number
-  defaultModel: string
   mcpIds: string[]
   skillIds: string[]
   knowledgeIds: string[]
@@ -222,12 +218,6 @@ type AgentPlatformDetailItem = AgentPlatformItem &
     external_knowledge_id: string
     cli_type: AgentPlatformAgentCliType
     instructions: string
-    model_token_id: number
-    default_model: string
-    model_token_user_id: number
-    model_token_user_name: string
-    model_token_name: string
-    model_token_masked_key: string
     mcp_ids: string[]
     skill_ids: string[]
     knowledge_ids: string[]
@@ -414,43 +404,6 @@ function grantOptionFromGrant(grant: AgentPlatformGrantRequest) {
   }
 }
 
-function formatModelKeyLabel(
-  item: AgentPlatformModelKey,
-  t: ReturnType<typeof useTranslation>['t']
-) {
-  const owner = item.user_name?.trim() || `#${item.user_id}`
-  const name = item.name?.trim() || `#${item.id}`
-  return `${owner} - ${name} - ${item.masked_key || t('未配置')}`
-}
-
-function formatModelKeyDescription(
-  item: AgentPlatformModelKey,
-  t: ReturnType<typeof useTranslation>['t']
-) {
-  const parts = [
-    t('{{count}} 个模型', { count: item.model_count }),
-    item.group ? t('分组：{{group}}', { group: item.group }) : '',
-    item.available ? '' : modelKeyDisabledLabel(item.disabled_reason, t),
-  ].filter(Boolean)
-  return parts.join(' - ')
-}
-
-function modelKeyDisabledLabel(
-  reason: string | undefined,
-  t: ReturnType<typeof useTranslation>['t']
-) {
-  switch (reason) {
-    case 'disabled':
-      return t('密钥已禁用')
-    case 'expired':
-      return t('密钥已过期')
-    case 'exhausted':
-      return t('密钥额度已用尽')
-    default:
-      return t('不可用')
-  }
-}
-
 function flattenDepartmentGrantOptions(
   nodes: DepartmentTreeNode[],
   keyword: string
@@ -573,12 +526,11 @@ function defaultResourceFormState(
     displayName: item?.display_name ?? '',
     description: item?.description ?? '',
     avatar: item?.avatar ?? '',
+    avatarPreviewUrl: item?.avatar_url ?? item?.avatar ?? '',
     mcpConfigJson: mcpConfig,
     skillFile: null,
     externalKnowledgeId: detail?.external_knowledge_id ?? '',
     instructions: agent?.instructions ?? '',
-    modelTokenId: agent?.model_token_id ?? 0,
-    defaultModel: agent?.default_model ?? '',
     mcpIds: agent?.mcp_ids ?? [],
     skillIds: agent?.skill_ids ?? [],
     knowledgeIds: agent?.knowledge_ids ?? [],
@@ -746,7 +698,7 @@ function ResourceRow(props: {
       <TableCell>
         <div className='min-w-[220px] space-y-1'>
           <div className='flex items-center gap-2 font-medium'>
-            <AvatarPreview value={item.avatar} />
+            <AvatarPreview value={item.avatar_url || item.avatar} />
             {item.display_name}
           </div>
           <div className='text-muted-foreground text-xs'>
@@ -902,8 +854,6 @@ function ResourceEditorDialog(props: {
   const Icon = resourceTypeIcon(props.form.type)
   const isEdit = props.mode === 'edit'
   const [avatarUploading, setAvatarUploading] = useState(false)
-  const [modelKeySearch, setModelKeySearch] = useState('')
-  const [modelKeyPopoverOpen, setModelKeyPopoverOpen] = useState(false)
   const update = <TKey extends keyof ResourceFormState>(
     key: TKey,
     value: ResourceFormState[TKey]
@@ -926,52 +876,17 @@ function ResourceEditorDialog(props: {
           toast.error(response.message || t('Request failed'))
           return
         }
-        update('avatar', response.data.url)
+        props.onChange({
+          ...props.form,
+          avatar: response.data.url,
+          avatarPreviewUrl: response.data.preview_url || response.data.url,
+        })
         toast.success(t('Avatar uploaded'))
       })
       .catch((error: unknown) => {
         toast.error(getErrorMessage(error, t('Request failed')))
       })
       .finally(() => setAvatarUploading(false))
-  }
-  const modelKeysQuery = useQuery({
-    queryKey: ['agent-platform', 'model-keys', modelKeySearch],
-    queryFn: () => getAgentPlatformModelKeys(modelKeySearch),
-    enabled: props.open && props.form.type === 'agent',
-  })
-  const selectedModelTokenId = props.form.modelTokenId
-  const tokenModelsQuery = useQuery({
-    queryKey: ['agent-platform', 'model-keys', selectedModelTokenId, 'models'],
-    queryFn: () => getAgentPlatformModelKeyModels(selectedModelTokenId),
-    enabled:
-      props.open && props.form.type === 'agent' && selectedModelTokenId > 0,
-  })
-  const modelKeyItems = modelKeysQuery.data?.data?.items ?? []
-  const tokenModelItems = tokenModelsQuery.data?.data?.items ?? []
-  const selectedModelKey = modelKeyItems.find(
-    (item) => item.id === selectedModelTokenId
-  )
-  let selectedModelKeyLabel = t('选择 API 密钥')
-  if (selectedModelKey) {
-    selectedModelKeyLabel = formatModelKeyLabel(selectedModelKey, t)
-  } else if (props.form.modelTokenId > 0) {
-    selectedModelKeyLabel = t('已选择密钥 #{{id}}', {
-      id: props.form.modelTokenId,
-    })
-  }
-  const handleModelTokenChange = (tokenId: number) => {
-    props.onChange({
-      ...props.form,
-      modelTokenId: Number.isFinite(tokenId) ? tokenId : 0,
-      defaultModel: '',
-    })
-    setModelKeyPopoverOpen(false)
-  }
-  let defaultModelDescription = t('发布后的 OpenCode 将使用该默认模型。')
-  if (selectedModelTokenId > 0 && tokenModelItems.length === 0) {
-    defaultModelDescription = t('所选 API 密钥没有可用模型。')
-  } else if (props.form.cliType === 'codex') {
-    defaultModelDescription = t('发布后的 Codex 将使用该默认模型。')
   }
 
   return (
@@ -1103,13 +1018,10 @@ function ResourceEditorDialog(props: {
                       </label>
                     }
                   />
-                  <AvatarPreview value={props.form.avatar} />
+                  <AvatarPreview
+                    value={props.form.avatarPreviewUrl || props.form.avatar}
+                  />
                 </div>
-                <Input
-                  value={props.form.avatar}
-                  onChange={(event) => update('avatar', event.target.value)}
-                  placeholder={t('Avatar emoji or image URL')}
-                />
               </Field>
               <Field>
                 <FieldLabel>{t('Instructions')}</FieldLabel>
@@ -1121,110 +1033,6 @@ function ResourceEditorDialog(props: {
                   rows={8}
                   placeholder={AGENT_INSTRUCTIONS_PLACEHOLDER}
                 />
-              </Field>
-              <Field>
-                <FieldLabel>{t('API 密钥')}</FieldLabel>
-                <Popover
-                  open={modelKeyPopoverOpen}
-                  onOpenChange={setModelKeyPopoverOpen}
-                >
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        type='button'
-                        variant='outline'
-                        className='w-full justify-between'
-                        disabled={modelKeysQuery.isLoading}
-                      >
-                        <span className='min-w-0 truncate text-left'>
-                          {modelKeysQuery.isLoading
-                            ? t('正在加载 API 密钥')
-                            : selectedModelKeyLabel}
-                        </span>
-                        <ChevronsUpDown className='text-muted-foreground ml-2 size-4 shrink-0' />
-                      </Button>
-                    }
-                  />
-                  <PopoverContent
-                    className='w-[520px] max-w-[calc(100vw-3rem)] p-0'
-                    align='start'
-                  >
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        value={modelKeySearch}
-                        onValueChange={setModelKeySearch}
-                        placeholder={t('搜索姓名、密钥名称或密钥值')}
-                      />
-                      <CommandList>
-                        {modelKeysQuery.isLoading ? (
-                          <div className='text-muted-foreground px-3 py-6 text-center text-sm'>
-                            {t('正在加载')}
-                          </div>
-                        ) : (
-                          <CommandEmpty>{t('没有找到 API 密钥')}</CommandEmpty>
-                        )}
-                        <CommandGroup>
-                          {modelKeyItems.map((item) => {
-                            const selected = item.id === selectedModelTokenId
-                            return (
-                              <CommandItem
-                                key={item.id}
-                                value={`${item.user_name} ${item.name} ${item.masked_key}`}
-                                data-checked={selected}
-                                data-disabled={!item.available}
-                                onSelect={() => {
-                                  if (!item.available) {
-                                    return
-                                  }
-                                  handleModelTokenChange(item.id)
-                                }}
-                              >
-                                <span className='min-w-0 flex-1'>
-                                  <span className='block truncate font-medium'>
-                                    {formatModelKeyLabel(item, t)}
-                                  </span>
-                                  <span className='text-muted-foreground block truncate text-xs'>
-                                    {formatModelKeyDescription(item, t)}
-                                  </span>
-                                </span>
-                              </CommandItem>
-                            )
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                <FieldDescription>
-                  {selectedModelKey
-                    ? t('模型来自所选 API 密钥。')
-                    : t('请选择用于发布 Agent 的 API 密钥。')}
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel>{t('默认模型')}</FieldLabel>
-                <NativeSelect
-                  className='w-full'
-                  value={props.form.defaultModel}
-                  disabled={
-                    selectedModelTokenId <= 0 || tokenModelsQuery.isLoading
-                  }
-                  onChange={(event) =>
-                    update('defaultModel', event.target.value)
-                  }
-                >
-                  <NativeSelectOption value=''>
-                    {tokenModelsQuery.isLoading
-                      ? t('正在加载模型')
-                      : t('选择默认模型')}
-                  </NativeSelectOption>
-                  {tokenModelItems.map((item) => (
-                    <NativeSelectOption key={item.model} value={item.model}>
-                      {`${item.display_name || item.model} - ${item.model}`}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <FieldDescription>{defaultModelDescription}</FieldDescription>
               </Field>
               <ResourceCheckboxList
                 label={t('MCP dependencies')}
@@ -1497,20 +1305,6 @@ function ResourceDetailSheet(props: {
                     label={t('Agent 类型')}
                     value={item.cli_type || t('未配置')}
                   />
-                  <div className='grid gap-4 rounded-lg border p-4 sm:grid-cols-2'>
-                    <DetailField
-                      label={t('API 密钥')}
-                      value={
-                        item.model_token_name || item.model_token_masked_key
-                          ? `${item.model_token_user_name || `#${item.model_token_user_id}`} - ${item.model_token_name || `#${item.model_token_id}`} - ${item.model_token_masked_key}`
-                          : t('未配置')
-                      }
-                    />
-                    <DetailField
-                      label={t('默认模型')}
-                      value={item.default_model || t('未配置')}
-                    />
-                  </div>
                   <DetailField
                     label={t('Instructions')}
                     value={
@@ -2047,8 +1841,6 @@ export function AgentPlatformShell() {
             cli_type: form.cliType,
             avatar: form.avatar.trim(),
             instructions: form.instructions,
-            model_token_id: form.modelTokenId,
-            default_model: form.defaultModel.trim(),
             mcp_ids: form.mcpIds,
             skill_ids: form.skillIds,
             knowledge_ids: form.knowledgeIds,
@@ -2104,8 +1896,6 @@ export function AgentPlatformShell() {
             cli_type: input.form.cliType,
             avatar: input.form.avatar.trim(),
             instructions: input.form.instructions,
-            model_token_id: input.form.modelTokenId,
-            default_model: input.form.defaultModel.trim(),
             mcp_ids: input.form.mcpIds,
             skill_ids: input.form.skillIds,
             knowledge_ids: input.form.knowledgeIds,
@@ -2256,16 +2046,6 @@ export function AgentPlatformShell() {
     if (!resourceForm.displayName.trim()) {
       toast.error(t('Display name is required'))
       return
-    }
-    if (resourceForm.type === 'agent') {
-      if (resourceForm.modelTokenId <= 0) {
-        toast.error(t('请选择 API 密钥'))
-        return
-      }
-      if (!resourceForm.defaultModel.trim()) {
-        toast.error(t('请选择默认模型'))
-        return
-      }
     }
     try {
       if (editor?.mode === 'edit') {

@@ -14,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	"github.com/QuantumNous/new-api/router"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -38,12 +36,13 @@ func TestAgentPlatformClientsAPIRequiresAdminSession(t *testing.T) {
 
 	noSession := fixture.performRequest(t, http.MethodGet, "/api/agent-platform/clients", nil, nil)
 	require.Equal(t, http.StatusUnauthorized, noSession.Code)
-	require.Contains(t, noSession.Body.String(), "auth.not_logged_in")
+	require.Contains(t, noSession.Body.String(), `"code":"AUTH_UNAUTHORIZED"`)
+	require.Contains(t, noSession.Body.String(), "auth.access_token_invalid")
 
 	commonUser := fixture.performRequest(t, http.MethodGet, "/api/agent-platform/clients", fixture.login(t, common.RoleCommonUser), nil)
-	commonUserPayload := decodeAgentPlatformClientsAPIResponse(t, commonUser)
-	require.False(t, commonUserPayload.Success)
-	require.Contains(t, commonUserPayload.Message, "auth.insufficient_privilege")
+	require.Equal(t, http.StatusForbidden, commonUser.Code)
+	require.Contains(t, commonUser.Body.String(), `"code":"AUTH_INSUFFICIENT_PRIVILEGE"`)
+	require.Contains(t, commonUser.Body.String(), "auth.insufficient_privilege")
 }
 
 func TestAgentPlatformClientsAPICompletesMinimalOnboardingWorkflow(t *testing.T) {
@@ -211,33 +210,20 @@ func newAgentPlatformClientsAPIFixture(t *testing.T) agentPlatformClientsAPIFixt
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, apmodel.Migrate(db))
+	accessToken := "agent-platform-clients-api-test"
 	require.NoError(t, db.Create(&model.User{
-		Id:       1001,
-		Username: "agent-platform-admin",
-		Password: "password123",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
-		AffCode:  "agent-platform-admin-api",
+		Id:          1001,
+		Username:    "agent-platform-admin",
+		Password:    "password123",
+		Group:       "default",
+		Status:      common.UserStatusEnabled,
+		AffCode:     "agent-platform-admin-api",
+		AccessToken: &accessToken,
 	}).Error)
 	model.DB = db
 	model.LOG_DB = db
 
 	engine := gin.New()
-	engine.Use(sessions.Sessions("session", cookie.NewStore([]byte("agent-platform-clients-api-test"))))
-	engine.GET("/login/:role", func(c *gin.Context) {
-		role := common.RoleAdminUser
-		if c.Param("role") == "user" {
-			role = common.RoleCommonUser
-		}
-		session := sessions.Default(c)
-		session.Set("username", "agent-platform-admin")
-		session.Set("role", role)
-		session.Set("id", 1001)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
-	})
 	apiRouter := engine.Group("/api")
 	router.RegisterAgentPlatformRouter(apiRouter)
 
@@ -259,16 +245,8 @@ func newAgentPlatformClientsAPIFixture(t *testing.T) agentPlatformClientsAPIFixt
 
 func (f agentPlatformClientsAPIFixture) login(t *testing.T, role int) []*http.Cookie {
 	t.Helper()
-
-	path := "/login/admin"
-	if role == common.RoleCommonUser {
-		path = "/login/user"
-	}
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, path, nil)
-	f.engine.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusNoContent, recorder.Code)
-	return recorder.Result().Cookies()
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 1001).Update("role", role).Error)
+	return []*http.Cookie{{Name: "test-access-token", Value: "agent-platform-clients-api-test"}}
 }
 
 func (f agentPlatformClientsAPIFixture) performRequest(t *testing.T, method string, path string, cookies []*http.Cookie, body any) *httptest.ResponseRecorder {
@@ -288,10 +266,7 @@ func (f agentPlatformClientsAPIFixture) performRequest(t *testing.T, method stri
 		request.Header.Set("Content-Type", "application/json")
 	}
 	if len(cookies) > 0 {
-		request.Header.Set("New-Api-User", "1001")
-		for _, cookie := range cookies {
-			request.AddCookie(cookie)
-		}
+		request.Header.Set("Authorization", "Bearer "+cookies[0].Value)
 	}
 	f.engine.ServeHTTP(recorder, request)
 	return recorder

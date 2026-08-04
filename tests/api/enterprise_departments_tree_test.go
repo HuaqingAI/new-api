@@ -15,8 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/QuantumNous/new-api/router"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -46,7 +44,8 @@ func TestEnterpriseDepartmentTreeAPIRequiresBackendDepartmentPermission(t *testi
 
 	noSession := fixture.performDepartmentTreeRequest(t, nil)
 	require.Equal(t, http.StatusUnauthorized, noSession.Code)
-	require.Contains(t, noSession.Body.String(), "auth.not_logged_in")
+	require.Contains(t, noSession.Body.String(), `"code":"AUTH_UNAUTHORIZED"`)
+	require.Contains(t, noSession.Body.String(), "auth.access_token_invalid")
 
 	commonUserCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
 	commonUser := fixture.performDepartmentTreeRequest(t, commonUserCookies)
@@ -269,9 +268,9 @@ func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
 		"callback_url":  "https://example.com/api/oauth/dingtalk",
 		"login_enabled": true,
 	})
-	adminPayload := decodeAdminActionsAPIResponse(t, adminRecorder)
-	require.False(t, adminPayload.Success)
-	require.Contains(t, adminPayload.Message, "auth.insufficient_privilege")
+	require.Equal(t, http.StatusForbidden, adminRecorder.Code)
+	require.Contains(t, adminRecorder.Body.String(), `"code":"AUTH_INSUFFICIENT_PRIVILEGE"`)
+	require.Contains(t, adminRecorder.Body.String(), "auth.insufficient_privilege")
 	require.NotContains(t, adminRecorder.Body.String(), "plain-secret")
 
 	rootCookies := fixture.login(t, common.RoleRootUser, common.UserStatusEnabled)
@@ -288,10 +287,15 @@ func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
 	require.NotContains(t, rootRecorder.Body.String(), "plain-secret")
 	require.NotContains(t, rootRecorder.Body.String(), `"app_secret":`)
 
-	connectivityAdmin := fixture.performEnterpriseRequest(t, http.MethodPost, "/api/enterprise/dingtalk/connectivity-test", adminCookies)
-	connectivityAdminPayload := decodeAdminActionsAPIResponse(t, connectivityAdmin)
-	require.False(t, connectivityAdminPayload.Success)
-	require.Contains(t, connectivityAdminPayload.Message, "auth.insufficient_privilege")
+	connectivityAdmin := fixture.performEnterpriseRequest(
+		t,
+		http.MethodPost,
+		"/api/enterprise/dingtalk/connectivity-test",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+	)
+	require.Equal(t, http.StatusForbidden, connectivityAdmin.Code)
+	require.Contains(t, connectivityAdmin.Body.String(), `"code":"AUTH_INSUFFICIENT_PRIVILEGE"`)
+	require.Contains(t, connectivityAdmin.Body.String(), "auth.insufficient_privilege")
 }
 
 func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
@@ -376,6 +380,7 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}))
 	require.NoError(t, modelenterprise.Migrate(db))
+	accessToken := "enterprise-department-tree-api-test"
 	require.NoError(t, db.Create(&model.User{
 		Id:          1001,
 		Username:    "enterprise-admin",
@@ -385,28 +390,12 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 		AffCode:     "enterprise-admin-api-fixture",
 		Status:      common.UserStatusEnabled,
 		Role:        common.RoleAdminUser,
+		AccessToken: &accessToken,
 	}).Error)
 	model.DB = db
 	model.LOG_DB = db
 
 	engine := gin.New()
-	engine.Use(sessions.Sessions("session", cookie.NewStore([]byte("enterprise-department-tree-api-test"))))
-	engine.GET("/login/:role", func(c *gin.Context) {
-		role := common.RoleAdminUser
-		if c.Param("role") == "user" {
-			role = common.RoleCommonUser
-		} else if c.Param("role") == "root" {
-			role = common.RoleRootUser
-		}
-		session := sessions.Default(c)
-		session.Set("username", "enterprise-admin")
-		session.Set("role", role)
-		session.Set("id", 1001)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
-	})
 	apiRouter := engine.Group("/api")
 	router.RegisterEnterpriseRouter(apiRouter)
 
@@ -428,22 +417,13 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 
 func (f enterpriseDepartmentTreeAPIFixture) login(t *testing.T, role int, status int) []*http.Cookie {
 	t.Helper()
-
-	path := "/login/admin"
-	if role == common.RoleCommonUser {
-		path = "/login/user"
-	} else if role == common.RoleRootUser {
-		path = "/login/root"
-	}
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, path, nil)
-	f.engine.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusNoContent, recorder.Code)
-
 	if status != common.UserStatusEnabled {
 		t.Fatalf("test fixture only supports enabled login sessions")
 	}
-	return recorder.Result().Cookies()
+	return []*http.Cookie{{
+		Name:  fmt.Sprintf("test-access-token-role-%d", role),
+		Value: "enterprise-department-tree-api-test",
+	}}
 }
 
 func (f enterpriseDepartmentTreeAPIFixture) performDepartmentTreeRequest(t *testing.T, cookies []*http.Cookie) *httptest.ResponseRecorder {
@@ -457,12 +437,7 @@ func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequest(t *testing.
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, nil)
-	if len(cookies) > 0 {
-		request.Header.Set("New-Api-User", "1001")
-		for _, cookie := range cookies {
-			request.AddCookie(cookie)
-		}
-	}
+	f.authenticateRequest(t, request, cookies)
 	f.engine.ServeHTTP(recorder, request)
 	return recorder
 }
@@ -475,14 +450,22 @@ func (f enterpriseDepartmentTreeAPIFixture) performEnterpriseRequestWithBody(t *
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
-	if len(cookies) > 0 {
-		request.Header.Set("New-Api-User", "1001")
-		for _, cookie := range cookies {
-			request.AddCookie(cookie)
-		}
-	}
+	f.authenticateRequest(t, request, cookies)
 	f.engine.ServeHTTP(recorder, request)
 	return recorder
+}
+
+func (f enterpriseDepartmentTreeAPIFixture) authenticateRequest(t *testing.T, request *http.Request, cookies []*http.Cookie) {
+	t.Helper()
+	if len(cookies) == 0 {
+		return
+	}
+
+	var role int
+	_, err := fmt.Sscanf(cookies[0].Name, "test-access-token-role-%d", &role)
+	require.NoError(t, err)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 1001).Update("role", role).Error)
+	request.Header.Set("Authorization", "Bearer "+cookies[0].Value)
 }
 
 func decodeDepartmentTreeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) departmentTreeAPIResponse {

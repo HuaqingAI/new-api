@@ -8,7 +8,6 @@ import (
 	dtoagentplatform "github.com/QuantumNous/new-api/dto/agentplatform"
 	"github.com/QuantumNous/new-api/model"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -121,13 +120,8 @@ func writeOAuthError(c *gin.Context, err error) {
 }
 
 func sessionUserID(c *gin.Context) (int, bool) {
-	if id := c.GetInt("id"); id > 0 {
-		return id, true
-	}
-	session := sessions.Default(c)
-	raw := session.Get("id")
-	id, ok := raw.(int)
-	return id, ok
+	id := c.GetInt("id")
+	return id, id > 0
 }
 
 func currentActorID(c *gin.Context) int {

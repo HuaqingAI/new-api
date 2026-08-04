@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	coretypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -53,6 +55,7 @@ func TestMain(m *testing.M) {
 		&model.SubscriptionPreConsumeRecord{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
+		&entmodel.QuotaAllocation{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -76,6 +79,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
 		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
+		model.DB.Exec("DELETE FROM enterprise_quota_allocations")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})
@@ -149,7 +153,7 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 }
 
 func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
-	priceData := types.PriceData{}
+	priceData := coretypes.PriceData{}
 
 	priceData.AddOtherRatio("zero", 0)
 	priceData.AddOtherRatio("negative", -0.5)
@@ -173,7 +177,7 @@ func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
 }
 
 func TestPriceDataReplaceAndApplyOtherRatios(t *testing.T) {
-	priceData := types.PriceData{}
+	priceData := coretypes.PriceData{}
 
 	replaced := priceData.ReplaceOtherRatios(map[string]float64{
 		"zero":     0,
@@ -276,6 +280,13 @@ func getSubscriptionUsed(t *testing.T, id int) int64 {
 	return sub.AmountUsed
 }
 
+func getTaskQuota(t *testing.T, id int64) int {
+	t.Helper()
+	var task model.Task
+	require.NoError(t, model.DB.Select("quota").Where("id = ?", id).First(&task).Error)
+	return task.Quota
+}
+
 func getLastLog(t *testing.T) *model.Log {
 	t.Helper()
 	var log model.Log
@@ -310,8 +321,9 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	seedChannel(t, channelID)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	require.NoError(t, model.DB.Create(task).Error)
 
-	RefundTaskQuota(ctx, task, "task failed: upstream error")
+	assert.True(t, RefundTaskQuota(ctx, task, "task failed: upstream error"))
 
 	// User quota should increase by preConsumed
 	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
@@ -326,6 +338,8 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed, log.Quota)
 	assert.Equal(t, "test-model", log.ModelName)
+	assert.Zero(t, task.Quota)
+	assert.Zero(t, getTaskQuota(t, task.ID))
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {
@@ -343,8 +357,9 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	seedSubscription(t, subID, userID, subTotal, subUsed)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceSubscription, subID)
+	require.NoError(t, model.DB.Create(task).Error)
 
-	RefundTaskQuota(ctx, task, "subscription task failed")
+	assert.True(t, RefundTaskQuota(ctx, task, "subscription task failed"))
 
 	// Subscription used should decrease by preConsumed
 	assert.Equal(t, subUsed-int64(preConsumed), getSubscriptionUsed(t, subID))
@@ -355,6 +370,7 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Zero(t, getTaskQuota(t, task.ID))
 }
 
 func TestNewBillingSessionSubscriptionFirstHonorsReorderedEnterpriseWalletOrder(t *testing.T) {
@@ -365,6 +381,13 @@ func TestNewBillingSessionSubscriptionFirstHonorsReorderedEnterpriseWalletOrder(
 	seedToken(t, tokenID, userID, "sk-billing-order", 9000)
 
 	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&entmodel.QuotaAllocation{
+		Id:                311,
+		TargetUserId:      userID,
+		CommittedQuota:    600,
+		CycleTypeSnapshot: model.SubscriptionResetMonthly,
+		Status:            entmodel.QuotaAllocationStatusActive,
+	}).Error)
 	require.NoError(t, model.DB.Create(&model.UserSubscription{
 		Id:                 311,
 		UserId:             userID,
@@ -549,7 +572,7 @@ func TestNewBillingSessionSubscriptionFirstReturnsWalletInsufficient(t *testing.
 	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
 	require.Nil(t, session)
 	require.NotNil(t, apiErr)
-	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	assert.Equal(t, relaytypes.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
 	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
 	assert.Contains(t, apiErr.Error(), "预扣费额度失败")
 	assert.NotContains(t, apiErr.Error(), "订阅额度不足")
@@ -597,7 +620,7 @@ func TestNewBillingSessionSubscriptionOnlyDoesNotFallbackToWallet(t *testing.T) 
 	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
 	require.Nil(t, session)
 	require.NotNil(t, apiErr)
-	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	assert.Equal(t, relaytypes.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
 	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
 	assert.Contains(t, apiErr.Error(), "订阅额度不足")
 	assert.Equal(t, initialWalletQuota, getUserQuota(t, userID))
@@ -643,7 +666,7 @@ func TestNewBillingSessionSubscriptionFirstDoesNotFallbackOnNonQuotaError(t *tes
 	session, apiErr := NewBillingSession(ctx, relayInfo, preConsumedQuota)
 	require.Nil(t, session)
 	require.NotNil(t, apiErr)
-	assert.Equal(t, types.ErrorCodeUpdateDataError, apiErr.GetErrorCode())
+	assert.Equal(t, relaytypes.ErrorCodeUpdateDataError, apiErr.GetErrorCode())
 	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
 	assert.Equal(t, initialWalletQuota, getUserQuota(t, userID))
 	assert.Equal(t, int64(0), getSubscriptionUsed(t, subscriptionID))
@@ -658,7 +681,7 @@ func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 
 	task := makeTask(userID, 0, 0, 0, BillingSourceWallet, 0)
 
-	RefundTaskQuota(ctx, task, "zero quota task")
+	assert.True(t, RefundTaskQuota(ctx, task, "zero quota task"))
 
 	// No change to user quota
 	assert.Equal(t, 5000, getUserQuota(t, userID))
@@ -678,8 +701,9 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	seedChannel(t, channelID)
 
 	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0) // TokenId=0
+	require.NoError(t, model.DB.Create(task).Error)
 
-	RefundTaskQuota(ctx, task, "no token task failed")
+	assert.True(t, RefundTaskQuota(ctx, task, "no token task failed"))
 
 	// User quota refunded
 	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
@@ -688,6 +712,23 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Zero(t, getTaskQuota(t, task.ID))
+}
+
+func TestRefundTaskQuota_FundingFailureKeepsPendingMarker(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, preConsumed = 5, 1200
+	seedUser(t, userID, 5000)
+	task := makeTask(userID, 0, preConsumed, 0, BillingSourceSubscription, 9999)
+	task.Status = model.TaskStatusFailure
+	require.NoError(t, model.DB.Create(task).Error)
+
+	assert.False(t, RefundTaskQuota(ctx, task, "subscription missing"))
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, preConsumed, getTaskQuota(t, task.ID))
+	assert.Equal(t, int64(0), countLogs(t))
 }
 
 // ===========================================================================
@@ -906,6 +947,7 @@ func TestCASGuardedRefund_Win(t *testing.T) {
 	var reloaded model.Task
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	assert.Zero(t, reloaded.Quota)
 
 	// Refund should have happened
 	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))

@@ -57,7 +57,6 @@ func SetApiRouter(router *gin.Engine) {
 		RegisterAgentPlatformRouter(apiRouter)
 		RegisterAionUiRouter(apiRouter)
 		RegisterEnterpriseRouter(apiRouter)
-		RegisterOpenCapabilitiesRouter(apiRouter)
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)

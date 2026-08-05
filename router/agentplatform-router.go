@@ -9,12 +9,6 @@ import (
 func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 	agentPlatformRoute := apiRouter.Group("/agent-platform")
 	agentPlatformRoute.GET("/assets/avatars/:file", controlleragentplatform.GetAgentAvatar)
-	oauthRoute := agentPlatformRoute.Group("/oauth")
-	{
-		oauthRoute.GET("/authorize", controlleragentplatform.OAuthAuthorize)
-		oauthRoute.POST("/token", controlleragentplatform.OAuthToken)
-		oauthRoute.POST("/revoke", controlleragentplatform.OAuthRevoke)
-	}
 
 	agentPlatformRoute.Use(middleware.AdminAuth())
 	{
@@ -54,17 +48,8 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 		agentPlatformRoute.GET("/agents/:id/versions/:version/grants", controlleragentplatform.ListAgentVersionGrants)
 		agentPlatformRoute.GET("/agents/:id/publish-defaults", controlleragentplatform.GetAgentPublishDefaults)
 		agentPlatformRoute.POST("/agents/:id/publish", controlleragentplatform.PublishAgent)
-		agentPlatformRoute.GET("/clients", controlleragentplatform.ListClients)
-		agentPlatformRoute.POST("/clients", controlleragentplatform.CreateClient)
-		agentPlatformRoute.GET("/clients/:id", controlleragentplatform.GetClient)
-		agentPlatformRoute.PUT("/clients/:id", controlleragentplatform.UpdateClient)
 		agentPlatformRoute.POST("/resources/:id/versions", controlleragentplatform.CreateResourceVersion)
 		agentPlatformRoute.GET("/resources/:id/versions/:version", controlleragentplatform.GetResourceVersion)
-		agentPlatformRoute.GET("/resources/:id/exposures", controlleragentplatform.ListExposures)
-		agentPlatformRoute.POST("/resources/:id/exposures", controlleragentplatform.CreateExposure)
-		agentPlatformRoute.GET("/resources/:id/exposures/:target", controlleragentplatform.GetExposure)
-		agentPlatformRoute.PUT("/resources/:id/exposures/:target", controlleragentplatform.UpdateExposure)
-		agentPlatformRoute.POST("/resources/:id/exposures/:target/revoke", controlleragentplatform.RevokeExposure)
 		agentPlatformRoute.POST("/resources/:id/publish", controlleragentplatform.PublishResource)
 		agentPlatformRoute.POST("/resources/:id/disable", controlleragentplatform.DisableResource)
 		agentPlatformRoute.POST("/resources/:id/revoke", controlleragentplatform.RevokeResource)

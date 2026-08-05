@@ -32,6 +32,7 @@ const (
 	aionUIPersonalAPIKeyPlaceholder = "<hth-personal-apikey>"
 	aionUIDefaultAgentModel         = "gpt-5.6-terra"
 	defaultAionUIAllowedModels      = "gpt-5.3-codex,gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra"
+	cherryKnowledgeSearchSkillName  = "cherry-knowledge-search"
 )
 
 type PublishAgentInput struct {
@@ -593,7 +594,7 @@ func buildOpenCodeAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apm
 	if err := os.WriteFile(filepath.Join(projectDir, "user-context.md"), []byte(openCodeUserContextTemplate), 0o644); err != nil {
 		return "", "", 0, err
 	}
-	if err := copySystemSkillsWithKnowledgeConfig(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeKnowledge)); err != nil {
+	if err := copySystemSkillsForAgentPackage(skillsDir); err != nil {
 		return "", "", 0, err
 	}
 	if err := extractSelectedSkills(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeSkill)); err != nil {
@@ -652,7 +653,7 @@ func buildCodexAgentPackage(tx *gorm.DB, resource apmodel.Resource, draft apmode
 	if err := os.WriteFile(filepath.Join(codexDir, "config.toml"), []byte(codexProjectConfig(draft, mcpConfig, providerInput.DefaultModel)), 0o644); err != nil {
 		return "", "", 0, err
 	}
-	if err := copySystemSkillsWithKnowledgeConfig(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeKnowledge)); err != nil {
+	if err := copySystemSkillsForAgentPackage(skillsDir); err != nil {
 		return "", "", 0, err
 	}
 	if err := extractSelectedSkills(tx, skillsDir, idsByType(deps, apmodel.AgentDependencyTypeSkill)); err != nil {
@@ -1090,7 +1091,7 @@ func openCodeLocalCommand(command any, args any) []any {
 	return commandParts
 }
 
-func copySystemSkillsWithKnowledgeConfig(tx *gorm.DB, skillsDir string, knowledgeIds []string) error {
+func copySystemSkillsForAgentPackage(skillsDir string) error {
 	sourceRoot := defaultSystemSkillsDir()
 	entries, err := os.ReadDir(sourceRoot)
 	if err != nil {
@@ -1103,59 +1104,16 @@ func copySystemSkillsWithKnowledgeConfig(tx *gorm.DB, skillsDir string, knowledg
 		if !entry.IsDir() {
 			continue
 		}
+		if entry.Name() == cherryKnowledgeSearchSkillName {
+			continue
+		}
 		src := filepath.Join(sourceRoot, entry.Name())
 		dst := filepath.Join(skillsDir, entry.Name())
 		if err := copyDir(src, dst); err != nil {
 			return err
 		}
 	}
-	knowledgeBaseIds, err := externalKnowledgeIds(tx, knowledgeIds)
-	if err != nil {
-		return err
-	}
-	cherryConfig := map[string]any{
-		"api": map[string]any{
-			"base_url":        "http://127.0.0.1:23333",
-			"timeout_seconds": 60,
-		},
-		"auth": map[string]any{
-			"api_key":              "cs-sk-e214c706-9918-4f2d-a2dd-75f6697e0b9b",
-			"authorization_header": "Authorization",
-			"authorization_scheme": "Bearer",
-		},
-		"knowledge_base_ids": knowledgeBaseIds,
-		"defaults": map[string]any{
-			"document_count": 5,
-			"list_limit":     100,
-			"list_offset":    0,
-		},
-	}
-	cherryDir := filepath.Join(skillsDir, "cherry-knowledge-search")
-	if err := os.MkdirAll(cherryDir, 0o755); err != nil {
-		return err
-	}
-	return writeJSONFile(filepath.Join(cherryDir, "config.json"), cherryConfig)
-}
-
-func externalKnowledgeIds(tx *gorm.DB, knowledgeIds []string) ([]string, error) {
-	out := make([]string, 0, len(knowledgeIds))
-	seen := map[string]struct{}{}
-	for _, id := range knowledgeIds {
-		var def apmodel.KnowledgeDef
-		if err := tx.Where("resource_id = ?", id).First(&def).Error; err != nil {
-			return nil, err
-		}
-		value := strings.TrimSpace(def.ExternalKnowledgeId)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out, nil
+	return nil
 }
 
 func extractSelectedSkills(tx *gorm.DB, skillsDir string, skillIds []string) error {
@@ -1481,7 +1439,7 @@ const (
 	defaultOSSAgentPrefix           = "agent-packages"
 	defaultOSSSkillPrefix           = "skill-packages"
 	defaultOSSAvatarPrefix          = "agent-avatars"
-	defaultOSSPresignExpiresSeconds = 900
+	defaultOSSPresignExpiresSeconds = 86400
 )
 
 type ArtifactStore interface {

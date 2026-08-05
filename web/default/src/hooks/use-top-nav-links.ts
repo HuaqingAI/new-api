@@ -95,6 +95,8 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
+  links.push({ title: t('Client Downloads'), href: '/downloads' })
+
   // About
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: '/about' })

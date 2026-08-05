@@ -173,7 +173,7 @@ func (s *McpService) SetStatus(resourceID string, status string) (McpItem, error
 }
 
 func (s *McpService) Delete(resourceID string) error {
-	return setTypedResourceStatus(s.db, resourceID, apmodel.ResourceTypeMCP, apmodel.ResourceStatusRevoked)
+	return deleteTypedResource(s.db, resourceID, apmodel.ResourceTypeMCP)
 }
 
 func (s *McpService) getConfig(resourceID string) (string, error) {

@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
+import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as ConsoleTopupRouteImport } from './routes/console/topup'
@@ -53,6 +54,7 @@ import { Route as AuthenticatedEnterpriseDingtalkIndexRouteImport } from './rout
 import { Route as AuthenticatedEnterpriseAlertsIndexRouteImport } from './routes/_authenticated/enterprise-alerts/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
+import { Route as AuthenticatedAionuiClientPackagesIndexRouteImport } from './routes/_authenticated/aionui-client-packages/index'
 import { Route as AuthenticatedAgentPlatformIndexRouteImport } from './routes/_authenticated/agent-platform/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
@@ -111,6 +113,11 @@ const RankingsIndexRoute = RankingsIndexRouteImport.update({
 const PricingIndexRoute = PricingIndexRouteImport.update({
   id: '/pricing/',
   path: '/pricing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
+  id: '/downloads/',
+  path: '/downloads/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutIndexRoute = AboutIndexRouteImport.update({
@@ -309,6 +316,12 @@ const AuthenticatedChannelsIndexRoute =
     path: '/channels/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAionuiClientPackagesIndexRoute =
+  AuthenticatedAionuiClientPackagesIndexRouteImport.update({
+    id: '/aionui-client-packages/',
+    path: '/aionui-client-packages/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAgentPlatformIndexRoute =
   AuthenticatedAgentPlatformIndexRouteImport.update({
     id: '/agent-platform/',
@@ -456,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -466,6 +480,7 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/agent-platform/': typeof AuthenticatedAgentPlatformIndexRoute
+  '/aionui-client-packages/': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -520,6 +535,7 @@ export interface FileRoutesByTo {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
+  '/downloads': typeof DownloadsIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -530,6 +546,7 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/agent-platform': typeof AuthenticatedAgentPlatformIndexRoute
+  '/aionui-client-packages': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-alerts': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -588,6 +605,7 @@ export interface FileRoutesById {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/downloads/': typeof DownloadsIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -598,6 +616,7 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/agent-platform/': typeof AuthenticatedAgentPlatformIndexRoute
+  '/_authenticated/aionui-client-packages/': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -655,6 +674,7 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
+    | '/downloads/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -665,6 +685,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/agent-platform/'
+    | '/aionui-client-packages/'
     | '/channels/'
     | '/dashboard/'
     | '/enterprise-alerts/'
@@ -719,6 +740,7 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about'
+    | '/downloads'
     | '/pricing'
     | '/rankings'
     | '/setup'
@@ -729,6 +751,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/agent-platform'
+    | '/aionui-client-packages'
     | '/channels'
     | '/dashboard'
     | '/enterprise-alerts'
@@ -786,6 +809,7 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
+    | '/downloads/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -796,6 +820,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/agent-platform/'
+    | '/_authenticated/aionui-client-packages/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/enterprise-alerts/'
@@ -845,6 +870,7 @@ export interface RootRouteChildren {
   ConsoleTopupRoute: typeof ConsoleTopupRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
+  DownloadsIndexRoute: typeof DownloadsIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
@@ -907,6 +933,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing/'
       preLoaderRoute: typeof PricingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/downloads/': {
+      id: '/downloads/'
+      path: '/downloads'
+      fullPath: '/downloads/'
+      preLoaderRoute: typeof DownloadsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about/': {
@@ -1161,6 +1194,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/aionui-client-packages/': {
+      id: '/_authenticated/aionui-client-packages/'
+      path: '/aionui-client-packages'
+      fullPath: '/aionui-client-packages/'
+      preLoaderRoute: typeof AuthenticatedAionuiClientPackagesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/agent-platform/': {
       id: '/_authenticated/agent-platform/'
       path: '/agent-platform'
@@ -1403,6 +1443,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAgentPlatformIndexRoute: typeof AuthenticatedAgentPlatformIndexRoute
+  AuthenticatedAionuiClientPackagesIndexRoute: typeof AuthenticatedAionuiClientPackagesIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedEnterpriseAlertsIndexRoute: typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -1431,6 +1472,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAgentPlatformIndexRoute: AuthenticatedAgentPlatformIndexRoute,
+  AuthenticatedAionuiClientPackagesIndexRoute:
+    AuthenticatedAionuiClientPackagesIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedEnterpriseAlertsIndexRoute:
@@ -1472,6 +1515,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConsoleTopupRoute: ConsoleTopupRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
+  DownloadsIndexRoute: DownloadsIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,

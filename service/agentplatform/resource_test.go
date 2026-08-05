@@ -80,6 +80,39 @@ func TestResourceServiceListAndGetPreserveStableIdentity(t *testing.T) {
 	require.Equal(t, item.ResourceId, result.Items[0].ResourceId)
 }
 
+func TestResourceServiceListExcludesRevokedResources(t *testing.T) {
+	svc, db := newResourceServiceForTest(t)
+
+	visible, err := svc.Create(CreateResourceInput{
+		ResourceType: apmodel.ResourceTypeMCP,
+		DisplayName:  "Visible MCP",
+		OwnerUserId:  101,
+		Status:       apmodel.ResourceStatusPublished,
+	})
+	require.NoError(t, err)
+	revoked, err := svc.Create(CreateResourceInput{
+		ResourceType: apmodel.ResourceTypeMCP,
+		DisplayName:  "Deleted MCP",
+		OwnerUserId:  101,
+		Status:       apmodel.ResourceStatusPublished,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&apmodel.Resource{}).
+		Where("resource_id = ?", revoked.ResourceId).
+		Update("status", apmodel.ResourceStatusRevoked).Error)
+
+	result, err := svc.List(ListResourcesQuery{
+		ResourceType: apmodel.ResourceTypeMCP,
+		Page:         1,
+		PageSize:     20,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Total)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, visible.ResourceId, result.Items[0].ResourceId)
+}
+
 func TestResourceServiceRejectsInvalidListFilter(t *testing.T) {
 	svc, _ := newResourceServiceForTest(t)
 

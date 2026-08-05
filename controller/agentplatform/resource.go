@@ -81,6 +81,8 @@ func writeResourceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, apservice.ErrInvalidResourceInput):
 		common.ApiErrorMsg(c, "invalid request params")
+	case errors.Is(err, apservice.ErrResourceInUse):
+		common.ApiErrorMsg(c, "该资源已被 Agent 关联，请先在 Agent 中解除关联后再删除")
 	case errors.Is(err, apservice.ErrResourceNotFound):
 		common.ApiErrorMsg(c, "resource not found")
 	default:

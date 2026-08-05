@@ -30,6 +30,22 @@ func TestMigrateDropsRemovedColumns(t *testing.T) {
 	require.True(t, db.Migrator().HasColumn(&AgentDef{}, "resource_version"))
 }
 
+func TestMigrateDropsRemovedTables(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(removedAgentPlatformTables...))
+
+	for _, table := range removedAgentPlatformTables {
+		require.True(t, db.Migrator().HasTable(table))
+	}
+
+	require.NoError(t, Migrate(db))
+
+	for _, table := range removedAgentPlatformTables {
+		require.False(t, db.Migrator().HasTable(table))
+	}
+}
+
 func createLegacyAgentPlatformTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.AutoMigrate(

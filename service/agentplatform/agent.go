@@ -223,7 +223,7 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 }
 
 func (s *AgentService) Delete(resourceID string) error {
-	return setTypedResourceStatus(s.db, resourceID, apmodel.ResourceTypeAgent, apmodel.ResourceStatusRevoked)
+	return deleteTypedResource(s.db, resourceID, apmodel.ResourceTypeAgent)
 }
 
 func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {

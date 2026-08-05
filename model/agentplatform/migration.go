@@ -11,6 +11,13 @@ type removedColumnMigration struct {
 	columns []string
 }
 
+var removedAgentPlatformTables = []any{
+	&RefreshToken{},
+	&AuthorizationGrant{},
+	&Exposure{},
+	&Client{},
+}
+
 var removedAgentPlatformColumns = []removedColumnMigration{
 	{
 		table: AgentDef{}.TableName(),
@@ -68,15 +75,15 @@ func Migrate(db *gorm.DB) error {
 		&AgentDef{},
 		&AgentDependency{},
 		&ResourceGrant{},
-		&Exposure{},
 		&AdminAction{},
-		&Client{},
-		&AuthorizationGrant{},
-		&RefreshToken{},
+		&ClientPackage{},
 	); err != nil {
 		return err
 	}
-	return dropRemovedColumns(db, removedAgentPlatformColumns)
+	if err := dropRemovedColumns(db, removedAgentPlatformColumns); err != nil {
+		return err
+	}
+	return dropRemovedTables(db, removedAgentPlatformTables)
 }
 
 func AutoMigrate(db *gorm.DB) error {
@@ -95,6 +102,18 @@ func dropRemovedColumns(db *gorm.DB, migrations []removedColumnMigration) error 
 			if err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", migration.table, column)).Error; err != nil {
 				return fmt.Errorf("drop removed agent platform column %s: %w", column, err)
 			}
+		}
+	}
+	return nil
+}
+
+func dropRemovedTables(db *gorm.DB, tables []any) error {
+	for _, table := range tables {
+		if !db.Migrator().HasTable(table) {
+			continue
+		}
+		if err := db.Migrator().DropTable(table); err != nil {
+			return fmt.Errorf("drop removed agent platform table: %w", err)
 		}
 	}
 	return nil

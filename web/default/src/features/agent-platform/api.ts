@@ -468,7 +468,8 @@ export async function deleteAgentPlatformResource(
   resourceId: string
 ) {
   const res = await api.delete<{ success: boolean; message?: string }>(
-    `${resourceEndpoint(resourceType)}/${encodeURIComponent(resourceId)}`
+    `${resourceEndpoint(resourceType)}/${encodeURIComponent(resourceId)}`,
+    { skipBusinessError: true }
   )
   return res.data
 }

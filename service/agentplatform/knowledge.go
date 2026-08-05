@@ -212,7 +212,7 @@ func (s *KnowledgeService) SetStatus(resourceID string, status string) (Knowledg
 }
 
 func (s *KnowledgeService) Delete(resourceID string) error {
-	return setTypedResourceStatus(s.db, resourceID, apmodel.ResourceTypeKnowledge, apmodel.ResourceStatusRevoked)
+	return deleteTypedResource(s.db, resourceID, apmodel.ResourceTypeKnowledge)
 }
 
 func (s *KnowledgeService) getDef(resourceID string) (apmodel.KnowledgeDef, error) {

@@ -77,8 +77,8 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Contains(t, names, "global/")
 	require.NotContains(t, files, "global/opencode.jsonc")
 	require.NotContains(t, files, "global/skills/cherry-knowledge-search/SKILL.md")
-	require.Contains(t, files, "project/.opencode/skills/cherry-knowledge-search/SKILL.md")
-	require.Contains(t, files, "project/.opencode/skills/cherry-knowledge-search/config.json")
+	require.NotContains(t, files, "project/.opencode/skills/cherry-knowledge-search/SKILL.md")
+	require.NotContains(t, files, "project/.opencode/skills/cherry-knowledge-search/config.json")
 	require.Contains(t, files, "project/.opencode/skills/custom-skill/SKILL.md")
 	require.Contains(t, files, "project/opencode.jsonc")
 	require.Equal(t, "Follow team rules.", string(files["project/instructions.md"]))
@@ -107,10 +107,6 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Equal(t, []any{"npx", "-y", "demo"}, localServer["command"])
 	require.NotContains(t, localServer, "args")
 	require.NotContains(t, localServer, "enabled")
-
-	var knowledgeConfig map[string]any
-	require.NoError(t, common.Unmarshal(files["project/.opencode/skills/cherry-knowledge-search/config.json"], &knowledgeConfig))
-	require.Equal(t, []any{"kb-001"}, knowledgeConfig["knowledge_base_ids"])
 }
 
 func TestAgentPublishGeneratesCodexZip(t *testing.T) {
@@ -162,8 +158,8 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.Contains(t, files, "global/config.toml")
 	require.Contains(t, files, "global/auth.json")
 	require.Contains(t, files, "project/.codex/config.toml")
-	require.Contains(t, files, "project/.codex/skills/cherry-knowledge-search/SKILL.md")
-	require.Contains(t, files, "project/.codex/skills/cherry-knowledge-search/config.json")
+	require.NotContains(t, files, "project/.codex/skills/cherry-knowledge-search/SKILL.md")
+	require.NotContains(t, files, "project/.codex/skills/cherry-knowledge-search/config.json")
 	require.NotContains(t, files, "project/AGENTS.md")
 	require.NotContains(t, files, "project/user-context.md")
 

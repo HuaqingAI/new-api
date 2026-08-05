@@ -13,6 +13,7 @@ import (
 var (
 	ErrResourceNotFound     = errors.New("agent platform resource not found")
 	ErrInvalidResourceInput = errors.New("agent platform resource input invalid")
+	ErrResourceInUse        = errors.New("agent platform resource is referenced by agent")
 )
 
 type ResourceService struct {
@@ -140,6 +141,7 @@ func (s *ResourceService) List(query ListResourcesQuery) (ResourceListResult, er
 	}
 
 	db := s.db.Model(&apmodel.Resource{})
+	db = db.Where("status <> ?", apmodel.ResourceStatusRevoked)
 	if query.ResourceType != "" {
 		db = db.Where("resource_type = ?", query.ResourceType)
 	}
@@ -178,6 +180,82 @@ func (s *ResourceService) List(query ListResourcesQuery) (ResourceListResult, er
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+func deleteTypedResource(db *gorm.DB, resourceID string, resourceType string) error {
+	if db == nil {
+		return ErrInvalidResourceInput
+	}
+	resourceID = strings.TrimSpace(resourceID)
+	resourceType = strings.TrimSpace(strings.ToLower(resourceType))
+	if resourceID == "" || resourceType == "" {
+		return ErrInvalidResourceInput
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var resource apmodel.Resource
+		if err := tx.Where("resource_id = ? AND resource_type = ?", resourceID, resourceType).First(&resource).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrResourceNotFound
+			}
+			return err
+		}
+		if resourceType != apmodel.ResourceTypeAgent {
+			var count int64
+			dependencyTable := apmodel.AgentDependency{}.TableName()
+			resourceTable := apmodel.Resource{}.TableName()
+			if err := tx.Model(&apmodel.AgentDependency{}).
+				Joins("JOIN "+resourceTable+" ON "+resourceTable+".resource_id = "+dependencyTable+".agent_resource_id").
+				Where(dependencyTable+".target_resource_id = ? AND "+dependencyTable+".target_type = ?", resourceID, resourceType).
+				Where(dependencyTable+".resource_version = "+resourceTable+".latest_version").
+				Where(resourceTable+".resource_type = ? AND "+resourceTable+".latest_version <> ? AND "+resourceTable+".status <> ?", apmodel.ResourceTypeAgent, "", apmodel.ResourceStatusRevoked).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return ErrResourceInUse
+			}
+			if err := tx.Where("target_resource_id = ? AND target_type = ?", resourceID, resourceType).Delete(&apmodel.AgentDependency{}).Error; err != nil {
+				return err
+			}
+		}
+		switch resourceType {
+		case apmodel.ResourceTypeMCP:
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.McpDef{}).Error; err != nil {
+				return err
+			}
+		case apmodel.ResourceTypeSkill:
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.SkillDef{}).Error; err != nil {
+				return err
+			}
+		case apmodel.ResourceTypeKnowledge:
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.KnowledgeDef{}).Error; err != nil {
+				return err
+			}
+		case apmodel.ResourceTypeAgent:
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.AgentDef{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("agent_resource_id = ?", resourceID).Delete(&apmodel.AgentDependency{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.ResourceVersion{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("resource_id = ?", resourceID).Delete(&apmodel.ResourceGrant{}).Error; err != nil {
+				return err
+			}
+		default:
+			return ErrInvalidResourceInput
+		}
+		result := tx.Where("resource_id = ? AND resource_type = ?", resourceID, resourceType).Delete(&apmodel.Resource{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrResourceNotFound
+		}
+		return nil
+	})
 }
 
 func normalizeResourcePage(page int, pageSize int) (int, int) {

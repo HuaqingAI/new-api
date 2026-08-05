@@ -254,7 +254,7 @@ func (s *SkillService) SetStatus(resourceID string, status string) (SkillItem, e
 }
 
 func (s *SkillService) Delete(resourceID string) error {
-	return setTypedResourceStatus(s.db, resourceID, apmodel.ResourceTypeSkill, apmodel.ResourceStatusRevoked)
+	return deleteTypedResource(s.db, resourceID, apmodel.ResourceTypeSkill)
 }
 
 func (s *SkillService) getDef(resourceID string) (apmodel.SkillDef, error) {

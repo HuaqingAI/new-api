@@ -11,9 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -25,7 +24,10 @@ func TestDesktopLoginRedirectsToCallbackWhenNewApiSessionExists(t *testing.T) {
 	router := setupDesktopLoginSessionTestRouter(t)
 
 	target := "/api/aionui/desktop/login?redirect_uri=" + url.QueryEscape("http://127.0.0.1:49152/hth/callback") + "&state=state-1234567890"
+	bundle, err := service.CreateLoginSession(410, "password", "127.0.0.1", "desktop-login-test")
+	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3001"+target, nil)
+	request.AddCookie(&http.Cookie{Name: service.RefreshCookieName, Value: bundle.RefreshToken})
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -63,17 +65,10 @@ func setupDesktopLoginSessionTestRouter(t *testing.T) *gin.Engine {
 		Status:      common.UserStatusEnabled,
 		Group:       "default",
 		AffCode:     "su01",
+		AuthVersion: 1,
 	}).Error)
 
 	router := gin.New()
-	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("desktop-login-session-test"))))
-	router.Use(func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", 410)
-		session.Set("username", "session-user")
-		require.NoError(t, session.Save())
-		c.Next()
-	})
 	router.GET("/api/aionui/desktop/login", DesktopLogin)
 	return router
 }
@@ -84,7 +79,7 @@ func newDesktopLoginControllerDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.UserSession{}, &model.AuthFlow{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() {

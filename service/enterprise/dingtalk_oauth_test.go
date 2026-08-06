@@ -53,7 +53,7 @@ func TestDingTalkOAuthLoginUsesExistingBindingAndLocalSnapshot(t *testing.T) {
 		UnionId:        "union-1",
 		OpenId:         "open-updated",
 		ExternalUserId: "staff-1",
-	}, nil)
+	}, "")
 
 	require.NoError(t, err)
 	require.Equal(t, 200, result.User.Id)
@@ -76,7 +76,7 @@ func TestDingTalkOAuthLoginBindsUniqueExistingEmail(t *testing.T) {
 		ExternalUserId: "staff-email",
 		Name:           "Alice Ding",
 		Email:          "alice@example.com",
-	}, nil)
+	}, "")
 
 	require.NoError(t, err)
 	require.Equal(t, 201, result.User.Id)
@@ -97,7 +97,7 @@ func TestDingTalkOAuthLoginRejectsEmailConflict(t *testing.T) {
 		UnionId: "union-conflict",
 		OpenId:  "open-conflict",
 		Email:   "dup@example.com",
-	}, nil)
+	}, "")
 
 	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthBindingConflict)
 }
@@ -110,7 +110,7 @@ func TestDingTalkOAuthRejectsDisabledEmployeeAndDisabledBinding(t *testing.T) {
 		UnionId: "union-disabled",
 		OpenId:  "open-disabled",
 		Active:  &disabled,
-	}, nil)
+	}, "")
 	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthUserDisabled)
 
 	require.NoError(t, db.Create(&model.User{Id: 204, Username: "disabled-bind", Status: common.UserStatusEnabled, Group: "default", AffCode: "db01"}).Error)
@@ -125,7 +125,7 @@ func TestDingTalkOAuthRejectsDisabledEmployeeAndDisabledBinding(t *testing.T) {
 
 	_, err = svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
 		UnionId: "union-disabled-binding",
-	}, nil)
+	}, "")
 	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthUserDisabled)
 }
 
@@ -138,7 +138,7 @@ func TestDingTalkOAuthRejectsOutOfScopeWhenContactUserHasNoSnapshot(t *testing.T
 		OpenId:         "open-out",
 		ExternalUserId: "staff-out",
 		Email:          "out@example.com",
-	}, nil)
+	}, "")
 
 	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthOutOfScope)
 }
@@ -156,7 +156,7 @@ func TestDingTalkOAuthCreatesUserWhenRegistrationEnabledAndNoContactSnapshot(t *
 		OpenId:  "open-new",
 		Name:    "New Employee",
 		Email:   "new.employee@example.com",
-	}, nil)
+	}, "")
 
 	require.NoError(t, err)
 	require.Equal(t, entservice.DingTalkOAuthLoginStatusCreated, result.LoginStatus)

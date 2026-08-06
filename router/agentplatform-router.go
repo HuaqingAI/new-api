@@ -9,6 +9,12 @@ import (
 func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 	agentPlatformRoute := apiRouter.Group("/agent-platform")
 	agentPlatformRoute.GET("/assets/avatars/:file", controlleragentplatform.GetAgentAvatar)
+	oauthRoute := agentPlatformRoute.Group("/oauth")
+	{
+		oauthRoute.GET("/authorize", middleware.UserAuth(), controlleragentplatform.OAuthAuthorize)
+		oauthRoute.POST("/token", controlleragentplatform.OAuthToken)
+		oauthRoute.POST("/revoke", controlleragentplatform.OAuthRevoke)
+	}
 
 	agentPlatformRoute.Use(middleware.AdminAuth())
 	{

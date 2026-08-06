@@ -8,10 +8,8 @@ upload
 build
 *.db-journal
 logs
-web/default/dist
-web/classic/dist
-web/node_modules
 web/dist
+web/node_modules
 .env
 one-api
 new-api
@@ -48,3 +46,5 @@ __pycache__
 .local-tests/
 service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
+go.work
+go.work.sum

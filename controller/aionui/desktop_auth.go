@@ -5,20 +5,23 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"github.com/QuantumNous/new-api/service"
 	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	DesktopSessionRedirectURI = "aionui_desktop_redirect_uri"
-	DesktopSessionState       = "aionui_desktop_state"
-)
+const desktopOAuthFlowTTL = 10 * time.Minute
+
+type desktopOAuthFlowPayload struct {
+	DesktopRedirectURI string `json:"desktop_redirect_uri"`
+	DesktopState       string `json:"desktop_state"`
+}
 
 func DesktopLogin(c *gin.Context) {
 	redirectURI := strings.TrimSpace(c.Query("redirect_uri"))
@@ -32,8 +35,7 @@ func DesktopLogin(c *gin.Context) {
 		return
 	}
 
-	session := sessions.Default(c)
-	if user, err := currentDesktopSessionUser(session); err != nil {
+	if user, err := currentDesktopSessionUser(c); err != nil {
 		common.ApiError(c, err)
 		return
 	} else if user != nil {
@@ -47,15 +49,27 @@ func DesktopLogin(c *gin.Context) {
 		return
 	}
 
-	session.Set("oauth_state", state)
-	session.Set(DesktopSessionRedirectURI, redirectURI)
-	session.Set(DesktopSessionState, state)
-	if err := session.Save(); err != nil {
+	payload, err := common.Marshal(desktopOAuthFlowPayload{
+		DesktopRedirectURI: redirectURI,
+		DesktopState:       state,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	flowState, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose:   model.AuthFlowPurposeOAuth,
+		Provider:  "dingtalk",
+		Intent:    model.AuthFlowIntentLogin,
+		Payload:   string(payload),
+		ExpiresAt: time.Now().Add(desktopOAuthFlowTTL),
+	})
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	authURL, err := buildDingTalkAuthURL(status.AppKey, status.CallbackUrl, state)
+	authURL, err := buildDingTalkAuthURL(status.AppKey, status.CallbackUrl, flowState)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -63,28 +77,20 @@ func DesktopLogin(c *gin.Context) {
 	c.Redirect(http.StatusFound, authURL)
 }
 
-func currentDesktopSessionUser(session sessions.Session) (*model.User, error) {
-	if session.Get("username") == nil {
+func currentDesktopSessionUser(c *gin.Context) (*model.User, error) {
+	rawRefreshToken, err := c.Cookie(service.RefreshCookieName)
+	if err != nil || rawRefreshToken == "" {
 		return nil, nil
 	}
-	userId, ok := desktopSessionInt(session.Get("id"))
-	if !ok {
-		return nil, errors.New("new-api session user id is invalid")
+	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, "", c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		if errors.Is(err, service.ErrRefreshTokenInvalid) || errors.Is(err, service.ErrLoginSessionRevoked) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	return model.GetUserById(userId, false)
-}
-
-func desktopSessionInt(value any) (int, bool) {
-	switch typed := value.(type) {
-	case int:
-		return typed, true
-	case int64:
-		return int(typed), true
-	case float64:
-		return int(typed), true
-	default:
-		return 0, false
-	}
+	service.WriteRefreshCookie(c, bundle.RefreshToken)
+	return user, nil
 }
 
 func redirectToDesktopCallback(c *gin.Context, user *model.User, redirectURI string, state string) {

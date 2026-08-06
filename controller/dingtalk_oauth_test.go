@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -70,6 +73,49 @@ func TestDingTalkOAuthCallbackLogsInWithAuthFlow(t *testing.T) {
 	require.Equal(t, "invite-code", fake.affiliateCode)
 	_, err := model.GetAuthFlow(state, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 	require.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+}
+
+func TestDingTalkOAuthCallbackRedirectsForAionUiDesktopLogin(t *testing.T) {
+	serviceaionui.ResetDesktopAuthServiceForTest()
+	fake := &fakeDingTalkOAuthService{
+		identity: entservice.DingTalkOAuthIdentity{UnionId: "union-desktop"},
+		login: entservice.DingTalkOAuthResult{
+			User: &model.User{
+				Id: 300, Username: "ding-login", DisplayName: "Ding Login", Email: "ding@example.com",
+				Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
+			},
+		},
+	}
+	router, _ := setupDingTalkOAuthTestRouter(t, fake, model.AuthFlowIntentLogin)
+	payload, err := common.Marshal(oauthFlowPayload{
+		DesktopRedirectURI: serviceaionui.DesktopRedirectURI,
+		DesktopState:       "state-1234567890",
+	})
+	require.NoError(t, err)
+	state, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose:   model.AuthFlowPurposeOAuth,
+		Provider:  "dingtalk",
+		Intent:    model.AuthFlowIntentLogin,
+		Payload:   string(payload),
+		ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
+
+	recorder := performDingTalkOAuthCallback(router, "/api/oauth/dingtalk?code=ok&state="+state, nil)
+	require.Equal(t, http.StatusFound, recorder.Code)
+	parsed, err := url.Parse(recorder.Header().Get("Location"))
+	require.NoError(t, err)
+	require.Equal(t, "aionui", parsed.Scheme)
+	require.Equal(t, "auth", parsed.Host)
+	code := parsed.Query().Get("code")
+	require.NotEmpty(t, code)
+	require.Equal(t, "state-1234567890", parsed.Query().Get("state"))
+
+	token, err := serviceaionui.DefaultDesktopAuthService().ExchangeCode(dtoaionui.DesktopTokenRequest{
+		Code: code, DeviceId: "device-1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "ding@example.com", token.User.Email)
 }
 
 func TestDingTalkOAuthCallbackBindsLoggedInUser(t *testing.T) {
@@ -158,7 +204,7 @@ func newDingTalkOAuthControllerDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.UserSession{}, &model.AuthFlow{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() {

@@ -26,7 +26,9 @@ type oauthStateRequest struct {
 }
 
 type oauthFlowPayload struct {
-	AffiliateCode string `json:"affiliate_code,omitempty"`
+	AffiliateCode      string `json:"affiliate_code,omitempty"`
+	DesktopRedirectURI string `json:"desktop_redirect_uri,omitempty"`
+	DesktopState       string `json:"desktop_state,omitempty"`
 }
 
 // providerParams returns map with Provider key for i18n templates

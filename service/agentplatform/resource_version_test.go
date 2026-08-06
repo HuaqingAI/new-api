@@ -1,7 +1,6 @@
 package agentplatform
 
 import (
-	"encoding/json"
 	"testing"
 
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
@@ -10,273 +9,56 @@ import (
 	"gorm.io/gorm"
 )
 
-func newResourceVersionServiceForTest(t *testing.T) (*ResourceVersionService, *gorm.DB, apmodel.Resource, apmodel.Resource, apmodel.Resource) {
+func newResourceVersionServiceForTest(t *testing.T) (*ResourceVersionService, *gorm.DB, apmodel.Resource) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, apmodel.Migrate(db))
 
-	skill := apmodel.Resource{ResourceType: apmodel.ResourceTypeSkill, DisplayName: "Skill", OwnerUserId: 100}
-	knowledge := apmodel.Resource{ResourceType: apmodel.ResourceTypeKnowledge, DisplayName: "Knowledge", OwnerUserId: 100}
-	agent := apmodel.Resource{ResourceType: apmodel.ResourceTypeAgent, DisplayName: "Agent", OwnerUserId: 100}
-	require.NoError(t, db.Create(&skill).Error)
-	require.NoError(t, db.Create(&knowledge).Error)
-	require.NoError(t, db.Create(&agent).Error)
+	resource := apmodel.Resource{ResourceType: apmodel.ResourceTypeSkill, DisplayName: "Skill", OwnerUserId: 100}
+	require.NoError(t, db.Create(&resource).Error)
 
-	return NewResourceVersionService(db), db, skill, knowledge, agent
+	return NewResourceVersionService(db), db, resource
 }
 
-func TestResourceVersionServiceCreatesTypedDetailsForAllResourceTypes(t *testing.T) {
-	svc, _, skill, knowledge, agent := newResourceVersionServiceForTest(t)
+func TestResourceVersionServiceCreatesMetadataOnlyVersion(t *testing.T) {
+	svc, db, resource := newResourceVersionServiceForTest(t)
 
-	skillVersion, err := svc.Create(skill.ResourceId, CreateResourceVersionInput{
+	item, err := svc.Create(resource.ResourceId, CreateResourceVersionInput{
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
+		Summary:         "first release",
+		CreatedBy:       100,
 	})
 	require.NoError(t, err)
-	require.Equal(t, skill.ResourceId, skillVersion.ResourceId)
-	require.NotNil(t, skillVersion.Skill)
+	require.Equal(t, resource.ResourceId, item.ResourceId)
+	require.Equal(t, apmodel.ResourceTypeSkill, item.ResourceType)
+	require.Equal(t, "1.0.0", item.Version)
+	require.Equal(t, "first release", item.Summary)
+	require.Equal(t, apmodel.ResourceStatusDraft, item.Status)
 
-	knowledgeVersion, err := svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &KnowledgeDetailInput{
-			KnowledgeMode:        "retrieval",
-			ProviderType:         "http_retrieval",
-			ProviderAdapterKey:   "http_retrieval",
-			ProviderConfig:       json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:          json.RawMessage(`{"type":"object"}`),
-			CitationSchema:       json.RawMessage(`{"items":{"type":"object"}}`),
-			FreshnessRules:       json.RawMessage(`{"ttl":300}`),
-			ProviderCapabilities: json.RawMessage(`{"freshness":true}`),
-		},
-		CreatedBy: 100,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, knowledgeVersion.Knowledge)
-	require.Equal(t, "retrieval", knowledgeVersion.Knowledge.KnowledgeMode)
+	var persisted apmodel.Resource
+	require.NoError(t, db.Where("resource_id = ?", resource.ResourceId).First(&persisted).Error)
+	require.Equal(t, "1.0.0", persisted.LatestVersion)
 
-	agentVersion, err := svc.Create(agent.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &AgentDetailInput{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
-				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-		CreatedBy: 100,
-	})
+	fetched, err := svc.Get(resource.ResourceId, "1.0.0")
 	require.NoError(t, err)
-	require.NotNil(t, agentVersion.Agent)
+	require.Equal(t, item.Version, fetched.Version)
 }
 
-func TestResourceVersionServiceRejectsMismatchedOrMissingTypedDetails(t *testing.T) {
-	svc, _, skill, _, _ := newResourceVersionServiceForTest(t)
+func TestResourceVersionServiceRejectsInvalidMetadata(t *testing.T) {
+	svc, _, resource := newResourceVersionServiceForTest(t)
 
-	_, err := svc.Create(skill.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Knowledge: &KnowledgeDetailInput{
-			KnowledgeMode:      "retrieval",
-			ProviderType:       "http_retrieval",
-			ProviderAdapterKey: "http_retrieval",
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrInvalidResourceVersionInput)
-
-	_, err = svc.Create(skill.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.1",
+	_, err := svc.Create(resource.ResourceId, CreateResourceVersionInput{
 		ContractVersion: "2026-06",
 		CreatedBy:       100,
 	})
 	require.ErrorIs(t, err, ErrInvalidResourceVersionInput)
-}
 
-func TestResourceVersionServiceRejectsInvalidSkillContract(t *testing.T) {
-	svc, _, skill, _, _ := newResourceVersionServiceForTest(t)
-
-	_, err := svc.Create(skill.ResourceId, CreateResourceVersionInput{
+	_, err = svc.Create(resource.ResourceId, CreateResourceVersionInput{
 		Version:         "1.0.0",
 		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "stream",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
 	})
-	require.ErrorIs(t, err, ErrSkillContractInvalid)
-
-	_, err = svc.Create(skill.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.1",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			InvokeSchema:   json.RawMessage(`{"type":"object"}`),
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(0),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrSkillContractInvalid)
-
-	_, err = svc.Create(skill.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.2",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Skill: &SkillDetailInput{
-			OutputSchema:   json.RawMessage(`{"type":"object"}`),
-			InvokeMode:     "sync",
-			TimeoutSeconds: intPtr(30),
-			BindingConfig:  json.RawMessage(`{"provider":"demo"}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrSkillContractInvalid)
-}
-
-func TestResourceVersionServiceRejectsInvalidKnowledgeContract(t *testing.T) {
-	svc, _, _, knowledge, _ := newResourceVersionServiceForTest(t)
-
-	_, err := svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &KnowledgeDetailInput{
-			KnowledgeMode:      "answer_generation",
-			ProviderType:       "http_retrieval",
-			ProviderAdapterKey: "provider-a",
-			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:        json.RawMessage(`{"type":"object"}`),
-			CitationSchema:     json.RawMessage(`{"type":"array"}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
-
-	_, err = svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.1",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &KnowledgeDetailInput{
-			KnowledgeMode:      "retrieval",
-			ProviderType:       "lightrag",
-			ProviderAdapterKey: "lightrag",
-			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:        json.RawMessage(`{"type":"object"}`),
-			CitationSchema:     json.RawMessage(`{"type":"array"}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
-
-	_, err = svc.Create(knowledge.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.2",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Knowledge: &KnowledgeDetailInput{
-			KnowledgeMode:      "retrieval",
-			ProviderType:       "http_retrieval",
-			ProviderAdapterKey: "provider-a",
-			ProviderConfig:     json.RawMessage(`{"endpoint":"https://example.com"}`),
-			QuerySchema:        json.RawMessage(`{"type":"object"}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrKnowledgeContractInvalid)
-}
-
-func TestResourceVersionServiceRejectsInvalidAgentDependencies(t *testing.T) {
-	svc, _, skill, knowledge, agent := newResourceVersionServiceForTest(t)
-
-	_, err := svc.Create(agent.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.0",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &AgentDetailInput{
-			Manifest:          json.RawMessage(`{"name":"agent"}`),
-			Dependencies:      json.RawMessage(`[]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
-
-	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.1",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &AgentDetailInput{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"skill","resource_id":""},
-				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
-
-	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.2",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &AgentDetailInput{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"workflow","resource_id":"res_unknown"},
-				{"resource_type":"knowledge","resource_id":"` + knowledge.ResourceId + `"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
-
-	_, err = svc.Create(agent.ResourceId, CreateResourceVersionInput{
-		Version:         "1.0.3",
-		ContractVersion: "2026-06",
-		Schema:          json.RawMessage(`{"type":"object"}`),
-		Agent: &AgentDetailInput{
-			Manifest: json.RawMessage(`{"name":"agent"}`),
-			Dependencies: json.RawMessage(`[
-				{"resource_type":"skill","resource_id":"` + skill.ResourceId + `"},
-				{"resource_type":"knowledge","resource_id":"res_missing"}
-			]`),
-			PromptMetadata:    json.RawMessage(`{"template":"default"}`),
-			CompatibilityMeta: json.RawMessage(`{"clients":["demo"]}`),
-		},
-		CreatedBy: 100,
-	})
-	require.ErrorIs(t, err, ErrAgentDependencyInvalid)
-}
-
-func intPtr(v int) *int {
-	return &v
+	require.ErrorIs(t, err, ErrInvalidResourceVersionInput)
 }

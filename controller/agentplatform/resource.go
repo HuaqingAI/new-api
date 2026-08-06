@@ -1,6 +1,7 @@
 package agentplatform
 
 import (
+	"context"
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,6 +21,8 @@ func CreateResource(c *gin.Context) {
 	item, err := resourceService().Create(apservice.CreateResourceInput{
 		ResourceType: req.ResourceType,
 		DisplayName:  req.DisplayName,
+		Description:  req.Description,
+		Avatar:       req.Avatar,
 		OwnerUserId:  req.OwnerUserId,
 		TenantId:     valueOrZero(req.TenantId),
 	})
@@ -78,6 +81,8 @@ func writeResourceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, apservice.ErrInvalidResourceInput):
 		common.ApiErrorMsg(c, "invalid request params")
+	case errors.Is(err, apservice.ErrResourceInUse):
+		common.ApiErrorMsg(c, "该资源已被 Agent 关联，请先在 Agent 中解除关联后再删除")
 	case errors.Is(err, apservice.ErrResourceNotFound):
 		common.ApiErrorMsg(c, "resource not found")
 	default:
@@ -86,12 +91,17 @@ func writeResourceError(c *gin.Context, err error) {
 }
 
 func mapResourceItem(item apservice.ResourceItem) dtoagentplatform.ResourceItem {
+	avatarURL, _ := apservice.ResolveAgentAvatarURL(context.Background(), item.Avatar, apservice.ArtifactPresignExpiresForAionUI())
 	return dtoagentplatform.ResourceItem{
 		Id:            item.Id,
 		ResourceId:    item.ResourceId,
 		ResourceType:  item.ResourceType,
 		DisplayName:   item.DisplayName,
+		Description:   item.Description,
+		Avatar:        item.Avatar,
+		AvatarURL:     avatarURL,
 		OwnerUserId:   item.OwnerUserId,
+		OwnerName:     item.OwnerName,
 		Status:        item.Status,
 		LatestVersion: item.LatestVersion,
 		TenantId:      item.TenantId,

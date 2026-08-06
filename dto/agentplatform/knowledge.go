@@ -1,13 +1,17 @@
 package agentplatform
 
 type CreateKnowledgeRequest struct {
-	DisplayName string `json:"display_name" binding:"required"`
-	OwnerUserId int    `json:"owner_user_id" binding:"required"`
-	TenantId    *int   `json:"tenant_id,omitempty"`
+	DisplayName         string `json:"display_name" binding:"required"`
+	Description         string `json:"description,omitempty"`
+	ExternalKnowledgeId string `json:"external_knowledge_id,omitempty"`
+	OwnerUserId         int    `json:"owner_user_id,omitempty"`
+	TenantId            *int   `json:"tenant_id,omitempty"`
 }
 
 type UpdateKnowledgeRequest struct {
-	DisplayName string `json:"display_name" binding:"required"`
+	DisplayName         string `json:"display_name" binding:"required"`
+	Description         string `json:"description,omitempty"`
+	ExternalKnowledgeId string `json:"external_knowledge_id,omitempty"`
 }
 
 type KnowledgeQuery struct {
@@ -19,9 +23,14 @@ type KnowledgeQuery struct {
 
 type KnowledgeItem = ResourceItem
 
+type KnowledgeDetailItem struct {
+	ResourceItem
+	ExternalKnowledgeId string `json:"external_knowledge_id"`
+}
+
 type KnowledgeListResponse struct {
-	Items    []KnowledgeItem `json:"items"`
-	Total    int             `json:"total"`
-	Page     int             `json:"page"`
-	PageSize int             `json:"page_size"`
+	Items    []KnowledgeDetailItem `json:"items"`
+	Total    int                   `json:"total"`
+	Page     int                   `json:"page"`
+	PageSize int                   `json:"page_size"`
 }

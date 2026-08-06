@@ -187,14 +187,14 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 	}
 	supportedExtensions := extractExtensionNamespaces(exposure.ExtensionsJSON)
 	diagnostics := computeCapabilityDiagnostics(exposure, resource.Status, "", "", nil)
-	detailJSON := version.DetailJSON
+	detailJSON := ""
 	callableState := exposure.CallableState
 	if resource.ResourceType == apmodel.ResourceTypeAgent {
-		callableState, diagnostics, err = s.resolveAgentCallableState(clientID, resource.ResourceId, callableState, diagnostics)
+		callableState, diagnostics, err = s.resolveAgentCallableState(clientID, resource.ResourceId, version.Version, callableState, diagnostics)
 		if err != nil {
 			return CapabilityDetail{}, err
 		}
-		detailJSON, err = s.buildAgentDetailPayload(resource.ResourceId, version.Version, version.DetailJSON)
+		detailJSON, err = s.buildAgentDetailPayload(resource.ResourceId, version.Version)
 		if err != nil {
 			return CapabilityDetail{}, err
 		}
@@ -212,7 +212,7 @@ func (s *DiscoveryService) Detail(clientID string, resourceID string) (Capabilit
 		FreshnessTTLSeconds: exposure.FreshnessTTLSeconds,
 		Freshness:           capabilityFreshness(exposure, resource.Status),
 		ETag:                exposure.ETag,
-		SchemaJSON:          version.SchemaJSON,
+		SchemaJSON:          "",
 		DetailJSON:          detailJSON,
 		ExtensionsJSON:      exposure.ExtensionsJSON,
 		SupportedExtensions: supportedExtensions,
@@ -382,22 +382,14 @@ func extractExtensionNamespaces(raw string) []string {
 	return namespaces
 }
 
-func (s *DiscoveryService) resolveAgentCallableState(clientID string, resourceID string, current string, diagnostics CapabilityDiagnostics) (string, CapabilityDiagnostics, error) {
-	var agentDef apmodel.AgentDef
-	if err := s.db.Where("resource_id = ?", resourceID).Order("id DESC").First(&agentDef).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return current, diagnostics, ErrOpenCapabilityContractInvalid
-		}
+func (s *DiscoveryService) resolveAgentCallableState(clientID string, resourceID string, version string, current string, diagnostics CapabilityDiagnostics) (string, CapabilityDiagnostics, error) {
+	var dependencies []apmodel.AgentDependency
+	if err := s.db.Where("agent_resource_id = ? AND resource_version = ?", resourceID, version).Order("sort_order ASC, id ASC").Find(&dependencies).Error; err != nil {
 		return current, diagnostics, err
 	}
-
-	var dependencies []map[string]any
-	if err := common.UnmarshalJsonStr(agentDef.DependenciesJSON, &dependencies); err != nil {
-		return current, diagnostics, ErrOpenCapabilityContractInvalid
-	}
 	for _, dependency := range dependencies {
-		resourceType := strings.TrimSpace(strings.ToLower(common.Interface2String(dependency["resource_type"])))
-		dependencyID := strings.TrimSpace(common.Interface2String(dependency["resource_id"]))
+		resourceType := strings.TrimSpace(strings.ToLower(dependency.TargetType))
+		dependencyID := strings.TrimSpace(dependency.TargetResourceId)
 		if resourceType == "" || dependencyID == "" {
 			diagnostics.Reason = "contract_invalid_dependency"
 			diagnostics.Converged = false
@@ -418,19 +410,38 @@ func (s *DiscoveryService) resolveAgentCallableState(clientID string, resourceID
 	return current, diagnostics, nil
 }
 
-func (s *DiscoveryService) buildAgentDetailPayload(resourceID string, version string, fallback string) (string, error) {
+func (s *DiscoveryService) buildAgentDetailPayload(resourceID string, version string) (string, error) {
 	var agentDef apmodel.AgentDef
 	if err := s.db.Where("resource_id = ? AND resource_version = ?", resourceID, version).First(&agentDef).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fallback, nil
+			return "", nil
 		}
 		return "", err
 	}
+	var deps []apmodel.AgentDependency
+	if err := s.db.Where("agent_resource_id = ? AND resource_version = ?", resourceID, version).Order("sort_order ASC, id ASC").Find(&deps).Error; err != nil {
+		return "", err
+	}
+	dependencies := make([]map[string]any, 0, len(deps))
+	for _, dep := range deps {
+		dependencies = append(dependencies, map[string]any{
+			"resource_type": dep.TargetType,
+			"resource_id":   dep.TargetResourceId,
+			"snapshot":      jsonTextToMap(dep.SnapshotJSON),
+		})
+	}
 	payload := map[string]any{
-		"manifest":               jsonTextToMap(agentDef.ManifestJSON),
-		"dependencies":           jsonTextToSlice(agentDef.DependenciesJSON),
-		"prompt_metadata":        jsonTextToMap(agentDef.PromptMetadataJSON),
-		"compatibility_metadata": jsonTextToMap(agentDef.CompatibilityMetaJSON),
+		"cli_type":         agentDef.CliType,
+		"name":             agentDef.Name,
+		"description":      agentDef.Description,
+		"avatar":           agentDef.Avatar,
+		"instructions":     agentDef.Instructions,
+		"model_config":     jsonTextToMap(agentDef.ModelConfigJSON),
+		"package_path":     agentDef.PackagePath,
+		"package_sha256":   agentDef.PackageSha256,
+		"package_size":     agentDef.PackageSize,
+		"dependencies":     dependencies,
+		"resource_version": agentDef.ResourceVersion,
 	}
 	body, err := common.Marshal(payload)
 	if err != nil {
@@ -441,15 +452,6 @@ func (s *DiscoveryService) buildAgentDetailPayload(resourceID string, version st
 
 func jsonTextToMap(raw string) map[string]any {
 	result := map[string]any{}
-	if strings.TrimSpace(raw) == "" {
-		return result
-	}
-	_ = common.UnmarshalJsonStr(raw, &result)
-	return result
-}
-
-func jsonTextToSlice(raw string) []any {
-	result := []any{}
 	if strings.TrimSpace(raw) == "" {
 		return result
 	}

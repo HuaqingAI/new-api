@@ -1,6 +1,6 @@
-import { describe, test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { describe, test } from 'node:test'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -19,12 +19,13 @@ import i18n from '@/i18n/config'
 import { api } from '@/lib/api'
 
 import {
-  createAgentPlatformResource,
-  createAgentPlatformResourceVersion,
   getAgentPlatformAgents,
+  getAgentPlatformMcps,
   getAgentPlatformSkills,
-  runAgentPlatformLifecycleAction,
-  updateAgentPlatformResource,
+  createAgentPlatformMcp,
+  publishAgentPlatformAgent,
+  setAgentPlatformResourceEnabled,
+  updateAgentPlatformMcp,
 } from './api'
 import { AgentPlatformShell } from './index'
 
@@ -47,12 +48,23 @@ describe('Agent Platform shell', () => {
     queryClient.setQueryData(['agent-platform', 'skills', 'summary'], {
       success: true,
       data: {
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 100,
+      },
+    })
+    queryClient.setQueryData(['agent-platform', 'mcps', 'summary'], {
+      success: true,
+      data: {
         items: [
           {
             id: 1,
-            resource_id: 'skill_translate',
-            resource_type: 'skill',
-            display_name: 'Translate Skill',
+            resource_id: 'mcp_translate',
+            resource_type: 'mcp',
+            display_name: 'Translate MCP',
+            description: 'stdio mcp server',
+            avatar: '',
             owner_user_id: 7,
             status: 'published',
             latest_version: '1.0.0',
@@ -63,16 +75,16 @@ describe('Agent Platform shell', () => {
         ],
         total: 1,
         page: 1,
-        page_size: 12,
+        page_size: 100,
       },
     })
     queryClient.setQueryData(['agent-platform', 'knowledge', 'summary'], {
       success: true,
-      data: { items: [], total: 0, page: 1, page_size: 12 },
+      data: { items: [], total: 0, page: 1, page_size: 100 },
     })
     queryClient.setQueryData(['agent-platform', 'agents', 'summary'], {
       success: true,
-      data: { items: [], total: 0, page: 1, page_size: 12 },
+      data: { items: [], total: 0, page: 1, page_size: 100 },
     })
     const html = renderToStaticMarkup(
       <RouterContextProvider router={testRouter}>
@@ -86,31 +98,36 @@ describe('Agent Platform shell', () => {
 
     assert.match(html, /Agent Platform/)
     assert.match(html, /Resource control plane/)
+    assert.match(html, /MCP/)
     assert.match(html, /Skills/)
     assert.match(html, /Knowledge/)
     assert.match(html, /Agents/)
-    assert.match(html, /Published resources/)
-    assert.match(html, /Translate Skill/)
-    assert.match(html, /skill_translate/)
-    assert.match(html, /Latest version/)
+    assert.match(html, /Published Agents/)
+    assert.match(html, /Translate MCP/)
+    assert.match(html, /mcp_translate/)
+    assert.doesNotMatch(html, /Latest version/)
     assert.match(html, /Details/)
     assert.match(html, /Edit/)
-    assert.match(html, /New Skill/)
+    assert.match(html, /New MCP/)
   })
 
   test('renders control-plane failure responses as error state', () => {
     const queryClient = new QueryClient()
-    queryClient.setQueryData(['agent-platform', 'skills', 'summary'], {
+    queryClient.setQueryData(['agent-platform', 'mcps', 'summary'], {
       success: false,
       message: 'upstream unavailable',
     })
+    queryClient.setQueryData(['agent-platform', 'skills', 'summary'], {
+      success: true,
+      data: { items: [], total: 0, page: 1, page_size: 100 },
+    })
     queryClient.setQueryData(['agent-platform', 'knowledge', 'summary'], {
       success: true,
-      data: { items: [], total: 0, page: 1, page_size: 12 },
+      data: { items: [], total: 0, page: 1, page_size: 100 },
     })
     queryClient.setQueryData(['agent-platform', 'agents', 'summary'], {
       success: true,
-      data: { items: [], total: 0, page: 1, page_size: 12 },
+      data: { items: [], total: 0, page: 1, page_size: 100 },
     })
 
     const html = renderToStaticMarkup(
@@ -124,9 +141,9 @@ describe('Agent Platform shell', () => {
     )
 
     assert.match(html, /Failed to load data/)
-    assert.match(html, /Skill API request failed/)
+    assert.match(html, /MCP API request failed/)
     assert.match(html, /upstream unavailable/)
-    assert.doesNotMatch(html, /No Skill resources are currently available/)
+    assert.doesNotMatch(html, /No MCP resources are currently available/)
   })
 
   test('generated router contains the authenticated agent-platform route', async () => {
@@ -150,7 +167,7 @@ describe('Agent Platform shell', () => {
     assert.match(source, /New Skill/)
     assert.match(source, /New Knowledge/)
     assert.match(source, /New Agent/)
-    assert.match(source, /Create version/)
+    assert.match(source, /New MCP/)
     assert.match(source, /Publish/)
   })
 
@@ -162,7 +179,7 @@ describe('Agent Platform shell', () => {
 
     assert.match(
       source,
-      /<\/SectionPageLayout>\s*<ResourceEditorDialog[\s\S]*<ResourceDetailSheet[\s\S]*<VersionFormDialog/
+      /<\/SectionPageLayout>\s*<ResourceEditorDialog[\s\S]*<ResourceDetailSheet[\s\S]*<PublishAgentDialog/
     )
   })
 
@@ -211,7 +228,7 @@ describe('Agent Platform shell', () => {
     )
   })
 
-  test('loads skill data from dedicated control-plane endpoint first', async () => {
+  test('loads MCP data from dedicated control-plane endpoint first', async () => {
     const originalGet = api.get
     const calls: Array<{ url: string; params?: unknown }> = []
 
@@ -234,14 +251,14 @@ describe('Agent Platform shell', () => {
     }) as typeof api.get
 
     try {
-      await getAgentPlatformSkills()
+      await getAgentPlatformMcps()
 
       assert.deepEqual(calls, [
         {
-          url: '/api/agent-platform/skills',
+          url: '/api/agent-platform/mcps',
           params: {
             page: 1,
-            page_size: 12,
+            page_size: 100,
           },
         },
       ])
@@ -279,7 +296,7 @@ describe('Agent Platform shell', () => {
           url: '/api/agent-platform/skills',
           params: {
             page: 1,
-            page_size: 12,
+            page_size: 100,
           },
           skipErrorHandler: true,
         },
@@ -330,7 +347,7 @@ describe('Agent Platform shell', () => {
           url: '/api/agent-platform/agents',
           params: {
             page: 1,
-            page_size: 12,
+            page_size: 100,
           },
           skipErrorHandler: true,
         },
@@ -338,7 +355,7 @@ describe('Agent Platform shell', () => {
           url: '/api/agent-platform/resources',
           params: {
             page: 1,
-            page_size: 12,
+            page_size: 100,
             resource_type: 'agent',
           },
           skipErrorHandler: undefined,
@@ -400,28 +417,36 @@ describe('Agent Platform shell', () => {
     }) as typeof api.put
 
     try {
-      await createAgentPlatformResource('skill', {
-        display_name: 'Translate Skill',
+      await createAgentPlatformMcp({
+        display_name: 'Translate MCP',
+        description: 'stdio mcp server',
+        config: { mcpServers: {} },
         owner_user_id: 7,
       })
-      await updateAgentPlatformResource('skill', 'res_skill', {
-        display_name: 'Renamed Skill',
+      await updateAgentPlatformMcp('res_mcp', {
+        display_name: 'Renamed MCP',
+        description: 'updated mcp server',
+        config: { mcpServers: { renamed: {} } },
       })
 
       assert.deepEqual(calls, [
         {
           method: 'post',
-          url: '/api/agent-platform/skills',
+          url: '/api/agent-platform/mcps',
           payload: {
-            display_name: 'Translate Skill',
+            display_name: 'Translate MCP',
+            description: 'stdio mcp server',
+            config: { mcpServers: {} },
             owner_user_id: 7,
           },
         },
         {
           method: 'put',
-          url: '/api/agent-platform/skills/res_skill',
+          url: '/api/agent-platform/mcps/res_mcp',
           payload: {
-            display_name: 'Renamed Skill',
+            display_name: 'Renamed MCP',
+            description: 'updated mcp server',
+            config: { mcpServers: { renamed: {} } },
           },
         },
       ])
@@ -431,7 +456,7 @@ describe('Agent Platform shell', () => {
     }
   })
 
-  test('version and lifecycle helpers target shared resource operation endpoints', async () => {
+  test('agent publish and resource enablement helpers target phase two endpoints', async () => {
     const originalPost = api.post
     const calls: Array<{
       url: string
@@ -449,43 +474,23 @@ describe('Agent Platform shell', () => {
     }) as typeof api.post
 
     try {
-      await createAgentPlatformResourceVersion('res_skill', {
-        version: '1.0.0',
-        contract_version: '2026-06',
-        skill: {
-          invoke_mode: 'sync',
-          timeout_seconds: 30,
-          invoke_schema: {},
-          output_schema: {},
-          binding_config: {},
-        },
+      await publishAgentPlatformAgent('res_agent', {
+        summary: 'Initial release',
+        grants: { users: ['42'], departments: [] },
       })
-      await runAgentPlatformLifecycleAction('res_skill', 'publish', {
-        version: '1.0.0',
-        request_id: 'web-test',
-      })
+      await setAgentPlatformResourceEnabled('mcp', 'res_mcp', false)
 
       assert.deepEqual(calls, [
         {
-          url: '/api/agent-platform/resources/res_skill/versions',
+          url: '/api/agent-platform/agents/res_agent/publish',
           payload: {
-            version: '1.0.0',
-            contract_version: '2026-06',
-            skill: {
-              invoke_mode: 'sync',
-              timeout_seconds: 30,
-              invoke_schema: {},
-              output_schema: {},
-              binding_config: {},
-            },
+            summary: 'Initial release',
+            grants: { users: ['42'], departments: [] },
           },
         },
         {
-          url: '/api/agent-platform/resources/res_skill/publish',
-          payload: {
-            version: '1.0.0',
-            request_id: 'web-test',
-          },
+          url: '/api/agent-platform/mcps/res_mcp/disable',
+          payload: undefined,
         },
       ])
     } finally {

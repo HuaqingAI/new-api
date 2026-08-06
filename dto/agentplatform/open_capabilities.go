@@ -95,11 +95,11 @@ type OpenCapabilityKnowledgeCitation struct {
 }
 
 type OpenCapabilityKnowledgeQueryResponse struct {
-	ResourceId      string                            `json:"resource_id"`
-	ResourceVersion string                            `json:"resource_version"`
-	ContractVersion string                            `json:"contract_version"`
+	ResourceId      string                              `json:"resource_id"`
+	ResourceVersion string                              `json:"resource_version"`
+	ContractVersion string                              `json:"contract_version"`
 	Items           []OpenCapabilityKnowledgeResultItem `json:"items"`
-	Citations       []OpenCapabilityKnowledgeCitation `json:"citations"`
+	Citations       []OpenCapabilityKnowledgeCitation   `json:"citations"`
 }
 
 type OpenCapabilityModelDiscoveryItem struct {
@@ -115,10 +115,10 @@ type OpenCapabilityModelDiscoveryItem struct {
 }
 
 type OpenCapabilityModelDiscoveryResponse struct {
-	ContractVersion string                           `json:"contract_version"`
-	DefaultState    string                           `json:"default_state"`
+	ContractVersion string                             `json:"contract_version"`
+	DefaultState    string                             `json:"default_state"`
 	Items           []OpenCapabilityModelDiscoveryItem `json:"items"`
-	Total           int                              `json:"total"`
+	Total           int                                `json:"total"`
 }
 
 type OpenCapabilityDiagnostics struct {

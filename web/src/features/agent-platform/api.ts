@@ -20,49 +20,8 @@ import axios from 'axios'
 
 import { api } from '@/lib/api'
 
-export type AgentPlatformResourceType = 'skill' | 'knowledge' | 'agent'
-
-export type AgentPlatformItem = {
-  id: number
-  resource_id: string
-  resource_type: AgentPlatformResourceType
-  display_name: string
-  owner_user_id: number
-  status: string
-  latest_version: string
-  tenant_id: number
-  created_at: number
-  updated_at: number
-}
-
-export type AgentPlatformListPayload = {
-  items: AgentPlatformItem[]
-  total: number
-  page: number
-  page_size: number
-}
-
-export type AgentPlatformListResponse = {
-  success: boolean
-  message?: string
-  data?: AgentPlatformListPayload
-}
-
-export type AgentPlatformItemResponse = {
-  success: boolean
-  message?: string
-  data?: AgentPlatformItem
-}
-
-export type CreateAgentPlatformResourceRequest = {
-  display_name: string
-  owner_user_id: number
-  tenant_id?: number
-}
-
-export type UpdateAgentPlatformResourceRequest = {
-  display_name: string
-}
+export type AgentPlatformResourceType = 'mcp' | 'skill' | 'knowledge' | 'agent'
+export type AgentPlatformAgentCliType = 'opencode' | 'codex'
 
 export type AgentPlatformJsonValue =
   | null
@@ -72,118 +31,213 @@ export type AgentPlatformJsonValue =
   | AgentPlatformJsonValue[]
   | { [key: string]: AgentPlatformJsonValue }
 
-export type AgentPlatformSkillDetailRequest = {
-  invoke_schema?: AgentPlatformJsonValue
-  output_schema?: AgentPlatformJsonValue
-  invoke_mode?: string
-  timeout_seconds?: number
-  binding_config?: AgentPlatformJsonValue
-}
-
-export type AgentPlatformKnowledgeDetailRequest = {
-  knowledge_mode?: string
-  provider_type?: string
-  provider_adapter_key?: string
-  provider_config?: AgentPlatformJsonValue
-  query_schema?: AgentPlatformJsonValue
-  citation_schema?: AgentPlatformJsonValue
-  freshness_rules?: AgentPlatformJsonValue
-  provider_capabilities?: AgentPlatformJsonValue
-}
-
-export type AgentPlatformAgentDetailRequest = {
-  manifest?: AgentPlatformJsonValue
-  dependencies?: AgentPlatformJsonValue
-  prompt_metadata?: AgentPlatformJsonValue
-  compatibility_metadata?: AgentPlatformJsonValue
-}
-
-export type CreateAgentPlatformVersionRequest = {
-  version: string
-  contract_version: string
-  summary?: string
-  schema?: AgentPlatformJsonValue
-  skill?: AgentPlatformSkillDetailRequest
-  knowledge?: AgentPlatformKnowledgeDetailRequest
-  agent?: AgentPlatformAgentDetailRequest
-}
-
-export type AgentPlatformSkillDetail = {
-  invoke_schema?: AgentPlatformJsonValue
-  output_schema?: AgentPlatformJsonValue
-  invoke_mode: string
-  timeout_seconds: number
-  binding_config?: AgentPlatformJsonValue
-}
-
-export type AgentPlatformKnowledgeDetail = {
-  knowledge_mode: string
-  provider_type: string
-  provider_adapter_key: string
-  provider_config?: AgentPlatformJsonValue
-  query_schema?: AgentPlatformJsonValue
-  citation_schema?: AgentPlatformJsonValue
-  freshness_rules?: AgentPlatformJsonValue
-  provider_capabilities?: AgentPlatformJsonValue
-}
-
-export type AgentPlatformAgentDetail = {
-  manifest?: AgentPlatformJsonValue
-  dependencies?: AgentPlatformJsonValue
-  prompt_metadata?: AgentPlatformJsonValue
-  compatibility_metadata?: AgentPlatformJsonValue
-}
-
-export type AgentPlatformVersionItem = {
+export type AgentPlatformItem = {
+  id: number
   resource_id: string
   resource_type: AgentPlatformResourceType
-  version: string
-  contract_version: string
-  summary: string
-  schema?: AgentPlatformJsonValue
+  display_name: string
+  description: string
+  avatar: string
+  avatar_url?: string
+  owner_user_id: number
+  owner_name?: string
   status: string
-  created_by: number
-  published_at?: number
+  latest_version: string
+  tenant_id: number
   created_at: number
   updated_at: number
-  skill?: AgentPlatformSkillDetail
-  knowledge?: AgentPlatformKnowledgeDetail
-  agent?: AgentPlatformAgentDetail
 }
 
-export type AgentPlatformVersionResponse = {
+export type AgentPlatformMcpItem = AgentPlatformItem & {
+  config?: AgentPlatformJsonValue
+}
+
+export type AgentPlatformSkillItem = AgentPlatformItem & {
+  file_name?: string
+  sha256?: string
+  size_bytes?: number
+}
+
+export type AgentPlatformKnowledgeItem = AgentPlatformItem & {
+  external_knowledge_id?: string
+}
+
+export type AgentPlatformAgentItem = AgentPlatformItem & {
+  cli_type: AgentPlatformAgentCliType
+  instructions?: string
+  mcp_ids?: string[]
+  skill_ids?: string[]
+  knowledge_ids?: string[]
+}
+
+export type AgentPlatformListPayload<TItem extends AgentPlatformItem> = {
+  items: TItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type AgentPlatformListResponse<
+  TItem extends AgentPlatformItem = AgentPlatformItem,
+> = {
   success: boolean
   message?: string
-  data?: AgentPlatformVersionItem
+  data?: AgentPlatformListPayload<TItem>
 }
 
-export type AgentPlatformLifecycleAction =
-  | 'publish'
-  | 'disable'
-  | 'revoke'
-  | 'offline'
-
-export type AgentPlatformLifecycleRequest = {
-  version?: string
-  request_id?: string
+export type AgentPlatformItemResponse<
+  TItem extends AgentPlatformItem = AgentPlatformItem,
+> = {
+  success: boolean
+  message?: string
+  data?: TItem
 }
 
-export type AgentPlatformLifecycleResult = {
+export type CreateAgentPlatformMcpRequest = {
+  display_name: string
+  description?: string
+  config: AgentPlatformJsonValue
+  owner_user_id?: number
+  tenant_id?: number
+}
+
+export type UpdateAgentPlatformMcpRequest = {
+  display_name: string
+  description?: string
+  config: AgentPlatformJsonValue
+}
+
+export type CreateAgentPlatformSkillRequest = {
+  display_name: string
+  description?: string
+  owner_user_id?: number
+  tenant_id?: number
+  file?: File | null
+}
+
+export type UpdateAgentPlatformSkillRequest = {
+  display_name: string
+  description?: string
+}
+
+export type CreateAgentPlatformKnowledgeRequest = {
+  display_name: string
+  description?: string
+  external_knowledge_id?: string
+  owner_user_id?: number
+  tenant_id?: number
+}
+
+export type UpdateAgentPlatformKnowledgeRequest = {
+  display_name: string
+  description?: string
+  external_knowledge_id?: string
+}
+
+export type CreateAgentPlatformAgentRequest = {
+  cli_type: AgentPlatformAgentCliType
+  display_name: string
+  description?: string
+  avatar?: string
+  instructions?: string
+  mcp_ids?: string[]
+  skill_ids?: string[]
+  knowledge_ids?: string[]
+  owner_user_id?: number
+  tenant_id?: number
+}
+
+export type UpdateAgentPlatformAgentRequest = Omit<
+  CreateAgentPlatformAgentRequest,
+  'owner_user_id' | 'tenant_id'
+>
+
+export type AgentPlatformGrantSubjectType = 'user' | 'department'
+
+export type AgentPlatformGrantRequest = {
+  subject_type: AgentPlatformGrantSubjectType
+  subject_id: string
+  subject_name?: string
+}
+
+export type PublishAgentPlatformAgentRequest = {
+  summary: string
+  grants: {
+    users: string[]
+    departments: string[]
+  }
+}
+
+export type AgentPlatformAgentVersion = {
   resource_id: string
-  action: string
-  previous_status: string
-  current_status: string
-  previous_version: string
-  current_version: string
-  target_version: string
-  request_id: string
-  audit_action_id: number
+  version: string
+  summary: string
+  status: string
+  package_path: string
+  package_sha256: string
+  package_size: number
+  published_at?: string
+  created_at: string
 }
 
-export type AgentPlatformLifecycleResponse = {
+export type AgentPlatformAgentVersionsResponse = {
   success: boolean
   message?: string
-  data?: AgentPlatformLifecycleResult
+  data?: {
+    items: AgentPlatformAgentVersion[]
+  }
+}
+
+export type AgentPlatformAgentGrantsResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: AgentPlatformGrantRequest[]
+  }
+}
+
+export type PublishAgentPlatformDefaultsResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    resource_id: string
+    latest_version: string
+    next_version: string
+    grants: AgentPlatformGrantRequest[]
+  }
+}
+
+export type PublishAgentPlatformAgentResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    resource_id: string
+    version: string
+    status: string
+    artifact: {
+      cli_type: string
+      url: string
+      sha256: string
+      size: number
+    }
+    grants: Array<{
+      grant_id: string
+      subject_type: AgentPlatformGrantSubjectType
+      subject_id: string
+      subject_name?: string
+    }>
+  }
+}
+
+export type UploadAgentPlatformAvatarResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    url: string
+    preview_url?: string
+    url_type?: string
+    url_expires_at?: number
+  }
 }
 
 type ResourceEndpointConfig = {
@@ -195,6 +249,10 @@ const RESOURCE_ENDPOINTS: Record<
   AgentPlatformResourceType,
   ResourceEndpointConfig
 > = {
+  mcp: {
+    endpoint: '/api/agent-platform/mcps',
+    resourceType: 'mcp',
+  },
   skill: {
     endpoint: '/api/agent-platform/skills',
     resourceType: 'skill',
@@ -213,17 +271,20 @@ function isNotFoundError(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 404
 }
 
-async function fetchResourceList(
+async function fetchResourceList<TItem extends AgentPlatformItem>(
   resourceType: AgentPlatformResourceType
-): Promise<AgentPlatformListResponse> {
+): Promise<AgentPlatformListResponse<TItem>> {
   const config = RESOURCE_ENDPOINTS[resourceType]
-  const params = { page: 1, page_size: 12 }
+  const params = { page: 1, page_size: 100 }
 
   try {
-    const res = await api.get<AgentPlatformListResponse>(config.endpoint, {
-      params,
-      skipErrorHandler: true,
-    })
+    const res = await api.get<AgentPlatformListResponse<TItem>>(
+      config.endpoint,
+      {
+        params,
+        skipErrorHandler: true,
+      }
+    )
     return res.data
   } catch (error) {
     if (!isNotFoundError(error)) {
@@ -231,7 +292,7 @@ async function fetchResourceList(
     }
   }
 
-  const fallback = await api.get<AgentPlatformListResponse>(
+  const fallback = await api.get<AgentPlatformListResponse<TItem>>(
     '/api/agent-platform/resources',
     {
       params: {
@@ -247,80 +308,217 @@ function resourceEndpoint(resourceType: AgentPlatformResourceType) {
   return RESOURCE_ENDPOINTS[resourceType].endpoint
 }
 
-export async function getAgentPlatformResource(
-  resourceType: AgentPlatformResourceType,
-  resourceId: string
+function buildSkillFormData(
+  payload: CreateAgentPlatformSkillRequest,
+  file?: File | null
 ) {
-  const res = await api.get<AgentPlatformItemResponse>(
+  const formData = new FormData()
+  formData.set('display_name', payload.display_name)
+  if (payload.description) {
+    formData.set('description', payload.description)
+  }
+  if (payload.owner_user_id != null) {
+    formData.set('owner_user_id', String(payload.owner_user_id))
+  }
+  if (payload.tenant_id != null) {
+    formData.set('tenant_id', String(payload.tenant_id))
+  }
+  if (file) {
+    formData.set('file', file)
+  }
+  return formData
+}
+
+export async function getAgentPlatformResource<
+  TItem extends AgentPlatformItem = AgentPlatformItem,
+>(resourceType: AgentPlatformResourceType, resourceId: string) {
+  const res = await api.get<AgentPlatformItemResponse<TItem>>(
     `${resourceEndpoint(resourceType)}/${encodeURIComponent(resourceId)}`
   )
   return res.data
 }
 
-export async function createAgentPlatformResource(
-  resourceType: AgentPlatformResourceType,
-  payload: CreateAgentPlatformResourceRequest
+export async function getAgentPlatformMcps() {
+  return fetchResourceList<AgentPlatformMcpItem>('mcp')
+}
+
+export async function getAgentPlatformSkills() {
+  return fetchResourceList<AgentPlatformSkillItem>('skill')
+}
+
+export async function getAgentPlatformKnowledge() {
+  return fetchResourceList<AgentPlatformKnowledgeItem>('knowledge')
+}
+
+export async function getAgentPlatformAgents() {
+  return fetchResourceList<AgentPlatformAgentItem>('agent')
+}
+
+export async function createAgentPlatformMcp(
+  payload: CreateAgentPlatformMcpRequest
+) {
+  const res = await api.post<AgentPlatformItemResponse<AgentPlatformMcpItem>>(
+    RESOURCE_ENDPOINTS.mcp.endpoint,
+    payload
+  )
+  return res.data
+}
+
+export async function updateAgentPlatformMcp(
+  resourceId: string,
+  payload: UpdateAgentPlatformMcpRequest
+) {
+  const res = await api.put<AgentPlatformItemResponse<AgentPlatformMcpItem>>(
+    `${RESOURCE_ENDPOINTS.mcp.endpoint}/${encodeURIComponent(resourceId)}`,
+    payload
+  )
+  return res.data
+}
+
+export async function createAgentPlatformSkill(
+  payload: CreateAgentPlatformSkillRequest
+) {
+  const res = await api.post<AgentPlatformItemResponse<AgentPlatformSkillItem>>(
+    RESOURCE_ENDPOINTS.skill.endpoint,
+    buildSkillFormData(payload, payload.file)
+  )
+  return res.data
+}
+
+export async function updateAgentPlatformSkill(
+  resourceId: string,
+  payload: UpdateAgentPlatformSkillRequest
+) {
+  const res = await api.put<AgentPlatformItemResponse<AgentPlatformSkillItem>>(
+    `${RESOURCE_ENDPOINTS.skill.endpoint}/${encodeURIComponent(resourceId)}`,
+    payload
+  )
+  return res.data
+}
+
+export async function uploadAgentPlatformSkillPackage(
+  resourceId: string,
+  file: File
+) {
+  const formData = new FormData()
+  formData.set('file', file)
+  const res = await api.post<AgentPlatformItemResponse<AgentPlatformSkillItem>>(
+    `${RESOURCE_ENDPOINTS.skill.endpoint}/${encodeURIComponent(resourceId)}/package`,
+    formData
+  )
+  return res.data
+}
+
+export async function createAgentPlatformKnowledge(
+  payload: CreateAgentPlatformKnowledgeRequest
+) {
+  const res = await api.post<
+    AgentPlatformItemResponse<AgentPlatformKnowledgeItem>
+  >(RESOURCE_ENDPOINTS.knowledge.endpoint, payload)
+  return res.data
+}
+
+export async function updateAgentPlatformKnowledge(
+  resourceId: string,
+  payload: UpdateAgentPlatformKnowledgeRequest
+) {
+  const res = await api.put<
+    AgentPlatformItemResponse<AgentPlatformKnowledgeItem>
+  >(
+    `${RESOURCE_ENDPOINTS.knowledge.endpoint}/${encodeURIComponent(resourceId)}`,
+    payload
+  )
+  return res.data
+}
+
+export async function createAgentPlatformAgent(
+  payload: CreateAgentPlatformAgentRequest
+) {
+  const res = await api.post<AgentPlatformItemResponse<AgentPlatformAgentItem>>(
+    RESOURCE_ENDPOINTS.agent.endpoint,
+    payload
+  )
+  return res.data
+}
+
+export async function updateAgentPlatformAgent(
+  resourceId: string,
+  payload: UpdateAgentPlatformAgentRequest
+) {
+  const res = await api.put<AgentPlatformItemResponse<AgentPlatformAgentItem>>(
+    `${RESOURCE_ENDPOINTS.agent.endpoint}/${encodeURIComponent(resourceId)}`,
+    payload
+  )
+  return res.data
+}
+
+export async function setAgentPlatformResourceEnabled(
+  resourceType: Exclude<AgentPlatformResourceType, 'agent'>,
+  resourceId: string,
+  enabled: boolean
 ) {
   const res = await api.post<AgentPlatformItemResponse>(
-    resourceEndpoint(resourceType),
-    payload
+    `${resourceEndpoint(resourceType)}/${encodeURIComponent(resourceId)}/${enabled ? 'enable' : 'disable'}`
   )
   return res.data
 }
 
-export async function updateAgentPlatformResource(
+export async function deleteAgentPlatformResource(
   resourceType: AgentPlatformResourceType,
-  resourceId: string,
-  payload: UpdateAgentPlatformResourceRequest
+  resourceId: string
 ) {
-  const res = await api.put<AgentPlatformItemResponse>(
+  const res = await api.delete<{ success: boolean; message?: string }>(
     `${resourceEndpoint(resourceType)}/${encodeURIComponent(resourceId)}`,
-    payload
+    { skipBusinessError: true }
   )
   return res.data
 }
 
-export async function createAgentPlatformResourceVersion(
+export async function publishAgentPlatformAgent(
   resourceId: string,
-  payload: CreateAgentPlatformVersionRequest
+  payload: PublishAgentPlatformAgentRequest
 ) {
-  const res = await api.post<AgentPlatformVersionResponse>(
-    `/api/agent-platform/resources/${encodeURIComponent(resourceId)}/versions`,
+  const res = await api.post<PublishAgentPlatformAgentResponse>(
+    `${RESOURCE_ENDPOINTS.agent.endpoint}/${encodeURIComponent(resourceId)}/publish`,
     payload
   )
   return res.data
 }
 
-export async function getAgentPlatformResourceVersion(
+export async function uploadAgentPlatformAvatar(file: File) {
+  const formData = new FormData()
+  formData.set('file', file)
+  const res = await api.post<UploadAgentPlatformAvatarResponse>(
+    '/api/agent-platform/assets/avatars',
+    formData
+  )
+  return res.data
+}
+
+export async function getAgentPlatformAgentVersions(resourceId: string) {
+  const res = await api.get<AgentPlatformAgentVersionsResponse>(
+    `${RESOURCE_ENDPOINTS.agent.endpoint}/${encodeURIComponent(resourceId)}/versions`
+  )
+  return res.data
+}
+
+export async function getAgentPlatformAgentVersionGrants(
   resourceId: string,
   version: string
 ) {
-  const res = await api.get<AgentPlatformVersionResponse>(
-    `/api/agent-platform/resources/${encodeURIComponent(resourceId)}/versions/${encodeURIComponent(version)}`
+  const res = await api.get<AgentPlatformAgentGrantsResponse>(
+    `${RESOURCE_ENDPOINTS.agent.endpoint}/${encodeURIComponent(resourceId)}/versions/${encodeURIComponent(version)}/grants`
   )
   return res.data
 }
 
-export async function runAgentPlatformLifecycleAction(
-  resourceId: string,
-  action: AgentPlatformLifecycleAction,
-  payload: AgentPlatformLifecycleRequest = {}
-) {
-  const res = await api.post<AgentPlatformLifecycleResponse>(
-    `/api/agent-platform/resources/${encodeURIComponent(resourceId)}/${action}`,
-    payload
+export async function getAgentPlatformPublishDefaults(resourceId: string) {
+  const res = await api.get<PublishAgentPlatformDefaultsResponse>(
+    `${RESOURCE_ENDPOINTS.agent.endpoint}/${encodeURIComponent(resourceId)}/publish-defaults`
   )
   return res.data
 }
 
-export function getAgentPlatformSkills() {
-  return fetchResourceList('skill')
-}
-
-export function getAgentPlatformKnowledge() {
-  return fetchResourceList('knowledge')
-}
-
-export function getAgentPlatformAgents() {
-  return fetchResourceList('agent')
+export function getAgentPlatformSkillPackageDownloadUrl(resourceId: string) {
+  return `${RESOURCE_ENDPOINTS.skill.endpoint}/${encodeURIComponent(resourceId)}/package/download`
 }

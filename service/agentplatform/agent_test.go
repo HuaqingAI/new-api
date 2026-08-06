@@ -22,6 +22,7 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	svc, db := newAgentServiceForTest(t)
 
 	created, err := svc.Create(AgentCreateInput{
+		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "My Agent",
 		OwnerUserId: 101,
 		TenantId:    7,
@@ -41,7 +42,7 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	require.Len(t, list.Items, 1)
 	require.Equal(t, created.ResourceId, list.Items[0].ResourceId)
 
-	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{DisplayName: "My Agent V2"})
+	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{CliType: apmodel.AgentCliTypeOpenCode, DisplayName: "My Agent V2"})
 	require.NoError(t, err)
 	require.Equal(t, "My Agent V2", updated.DisplayName)
 }

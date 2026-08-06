@@ -56,8 +56,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.TryUserAuth(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 		RegisterAgentPlatformRouter(apiRouter)
+		RegisterAionUiRouter(apiRouter)
 		RegisterEnterpriseRouter(apiRouter)
-		RegisterOpenCapabilitiesRouter(apiRouter)
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)

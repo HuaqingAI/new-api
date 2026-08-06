@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ErrInvalidLifecycleInput = errors.New("agent platform lifecycle input invalid")
+	ErrInvalidLifecycleInput  = errors.New("agent platform lifecycle input invalid")
 	ErrRollbackVersionMissing = errors.New("agent platform rollback target version missing")
 )
 
@@ -171,16 +171,16 @@ func (s *LifecycleService) transition(resourceID string, action string, targetVe
 		}
 
 		auditID, err := s.createAdminAction(tx, createAdminActionInput{
-			ActorUserID:    actorUserID,
-			ActionType:     "agentplatform.resource." + action,
-			ObjectType:     "resource",
-			ObjectID:       resource.ResourceId,
-			BeforeStatus:   previousStatus,
-			AfterStatus:    result.CurrentStatus,
-			TargetVersion:  targetVersion,
-			RequestID:      requestID,
-			Result:         "success",
-			ErrorSummary:   "",
+			ActorUserID:     actorUserID,
+			ActionType:      "agentplatform.resource." + action,
+			ObjectType:      "resource",
+			ObjectID:        resource.ResourceId,
+			BeforeStatus:    previousStatus,
+			AfterStatus:     result.CurrentStatus,
+			TargetVersion:   targetVersion,
+			RequestID:       requestID,
+			Result:          "success",
+			ErrorSummary:    "",
 			PreviousVersion: previousVersion,
 			CurrentVersion:  result.CurrentVersion,
 		})

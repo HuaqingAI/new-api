@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* oxlint-disable react/only-export-components */
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -224,28 +225,22 @@ export function getSubscriptionExpiryDisplay(
   nowSeconds = Date.now() / 1000
 ): { label: string; value: string } {
   const status = getSubscriptionStatusDisplay(sub, t, nowSeconds)
+  let label = t('Until')
+  if (status.isCancelled) {
+    label = t('Cancelled at')
+  } else if (status.isExpired) {
+    label = t('Expired at')
+  }
+
   if (!hasPositiveTimestamp(sub.end_time)) {
     const isEnterpriseNoExpiry =
       isEnterpriseAllocationSubscription(sub) && status.isActive
-    const label = isEnterpriseNoExpiry
-      ? t('Until')
-      : status.isCancelled
-        ? t('Cancelled at')
-        : status.isExpired
-          ? t('Expired at')
-          : t('Until')
 
     return {
       label,
       value: isEnterpriseNoExpiry ? t('Never expires') : t('No expiry set'),
     }
   }
-
-  const label = status.isActive
-    ? t('Until')
-    : status.isCancelled
-      ? t('Cancelled at')
-      : t('Expired at')
 
   return {
     label,
@@ -261,6 +256,23 @@ export function isActiveSubscriptionForBilling(
     sub.status === 'active' && (sub.end_time === 0 || sub.end_time > nowSeconds)
   )
 }
+
+export function isUsableSubscriptionForDisplayFilter(
+  sub: UserSubscription,
+  nowSeconds = Date.now() / 1000
+): boolean {
+  if (!isActiveSubscriptionForBilling(sub, nowSeconds)) {
+    return false
+  }
+
+  const total = Number(sub.amount_total || 0)
+  if (total <= 0) {
+    return true
+  }
+  return Number(sub.amount_used || 0) < total
+}
+
+type SubscriptionDisplayFilter = 'all' | 'available'
 
 export function SubscriptionPlansCard({
   topupInfo,
@@ -281,6 +293,8 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [subscriptionFilter, setSubscriptionFilter] =
+    useState<SubscriptionDisplayFilter>('all')
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -398,6 +412,19 @@ export function SubscriptionPlansCard({
     billingPreference === 'subscription_only'
   const displayPref =
     disablePref && isSubPref ? 'wallet_first' : billingPreference
+  const displayedSubscriptions = useMemo(() => {
+    return allSubscriptions
+      .map((sub, index) => ({
+        record: sub,
+        priorityRank: index + 1,
+      }))
+      .filter((item) => {
+        if (subscriptionFilter === 'all') {
+          return true
+        }
+        return isUsableSubscriptionForDisplayFilter(item.record.subscription)
+      })
+  }, [allSubscriptions, subscriptionFilter])
 
   const planPurchaseCountMap = useMemo(() => {
     const map = new Map<number, number>()
@@ -501,6 +528,42 @@ export function SubscriptionPlansCard({
               <Select
                 items={[
                   {
+                    value: 'all',
+                    label: t('All subscriptions'),
+                  },
+                  {
+                    value: 'available',
+                    label: t('Available subscriptions'),
+                  },
+                ]}
+                value={subscriptionFilter}
+                onValueChange={(v) => {
+                  if (v === 'all' || v === 'available') {
+                    setSubscriptionFilter(v)
+                  }
+                }}
+              >
+                <SelectTrigger className='h-8 flex-1 text-xs sm:w-[128px] sm:flex-none'>
+                  <SelectValue>
+                    {subscriptionFilter === 'available'
+                      ? t('Available subscriptions')
+                      : t('All subscriptions')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value='all'>
+                      {t('All subscriptions')}
+                    </SelectItem>
+                    <SelectItem value='available'>
+                      {t('Available subscriptions')}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                items={[
+                  {
                     value: 'subscription_first',
                     label: (
                       <>
@@ -592,14 +655,19 @@ export function SubscriptionPlansCard({
             <>
               <Separator className='my-3' />
               <div className='max-h-64 space-y-3 overflow-y-auto pr-1'>
-                {allSubscriptions.map((sub, index) => {
+                {displayedSubscriptions.length === 0 && (
+                  <p className='text-muted-foreground py-6 text-center text-xs'>
+                    {t('No subscription records')}
+                  </p>
+                )}
+                {displayedSubscriptions.map((item) => {
+                  const sub = item.record
                   const subscription = sub.subscription
-                  const totalAmount = Number(subscription?.amount_total || 0)
-                  const usedAmount = Number(subscription?.amount_used || 0)
+                  const totalAmount = Number(subscription.amount_total || 0)
+                  const usedAmount = Number(subscription.amount_used || 0)
                   const remainAmount =
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
-                  const planTitle =
-                    planTitleMap.get(subscription?.plan_id) || ''
+                  const planTitle = planTitleMap.get(subscription.plan_id) || ''
                   const remainDays = getSubscriptionRemainingDays(subscription)
                   const usagePercent = getUsagePercent(sub)
                   const statusDisplay = getSubscriptionStatusDisplay(
@@ -614,14 +682,14 @@ export function SubscriptionPlansCard({
 
                   return (
                     <div
-                      key={subscription?.id}
+                      key={subscription.id}
                       className='bg-background rounded-md border p-3 text-xs'
                     >
                       <div className='flex items-center justify-between'>
                         <div className='flex items-center gap-2'>
                           <span className='font-medium'>
                             {getSubscriptionCardTitle(
-                              subscription!,
+                              subscription,
                               t,
                               planTitle
                             )}
@@ -656,11 +724,11 @@ export function SubscriptionPlansCard({
                           t
                         )}{' '}
                         · {t('Subscription Priority')}:{' '}
-                        {t('No. {{rank}}', { rank: index + 1 })}
+                        {t('No. {{rank}}', { rank: item.priorityRank })}
                       </div>
-                      {getManagedSubscriptionNote(subscription!, t) && (
+                      {getManagedSubscriptionNote(subscription, t) && (
                         <div className='text-muted-foreground mt-1'>
-                          {getManagedSubscriptionNote(subscription!, t)}
+                          {getManagedSubscriptionNote(subscription, t)}
                         </div>
                       )}
                       <div className='mt-2 flex flex-wrap gap-2'>
@@ -669,8 +737,8 @@ export function SubscriptionPlansCard({
                           size='sm'
                           onClick={() =>
                             handleSelfMove(
-                              subscription!.id,
-                              subscription?.sort_order ?? 0,
+                              subscription.id,
+                              subscription.sort_order ?? 0,
                               'up'
                             )
                           }
@@ -682,8 +750,8 @@ export function SubscriptionPlansCard({
                           size='sm'
                           onClick={() =>
                             handleSelfMove(
-                              subscription!.id,
-                              subscription?.sort_order ?? 0,
+                              subscription.id,
+                              subscription.sort_order ?? 0,
                               'down'
                             )
                           }

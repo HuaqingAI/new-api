@@ -35,6 +35,7 @@ import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedAgentPlatformIndexRouteImport } from './routes/_authenticated/agent-platform/index'
+import { Route as AuthenticatedAionuiClientPackagesIndexRouteImport } from './routes/_authenticated/aionui-client-packages/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
@@ -201,6 +202,12 @@ const AuthenticatedAgentPlatformIndexRoute =
   AuthenticatedAgentPlatformIndexRouteImport.update({
     id: '/agent-platform/',
     path: '/agent-platform/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAionuiClientPackagesIndexRoute =
+  AuthenticatedAionuiClientPackagesIndexRouteImport.update({
+    id: '/aionui-client-packages/',
+    path: '/aionui-client-packages/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedChannelsIndexRoute =
@@ -452,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/agent-platform/': typeof AuthenticatedAgentPlatformIndexRoute
+  '/aionui-client-packages/': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -514,6 +522,7 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/agent-platform': typeof AuthenticatedAgentPlatformIndexRoute
+  '/aionui-client-packages': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/enterprise-alerts': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -580,6 +589,7 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/agent-platform/': typeof AuthenticatedAgentPlatformIndexRoute
+  '/_authenticated/aionui-client-packages/': typeof AuthenticatedAionuiClientPackagesIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/enterprise-alerts/': typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -645,6 +655,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/agent-platform/'
+    | '/aionui-client-packages/'
     | '/channels/'
     | '/dashboard/'
     | '/enterprise-alerts/'
@@ -707,6 +718,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/agent-platform'
+    | '/aionui-client-packages'
     | '/channels'
     | '/dashboard'
     | '/enterprise-alerts'
@@ -772,6 +784,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/agent-platform/'
+    | '/_authenticated/aionui-client-packages/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/enterprise-alerts/'
@@ -1007,6 +1020,13 @@ declare module '@tanstack/react-router' {
       path: '/agent-platform'
       fullPath: '/agent-platform/'
       preLoaderRoute: typeof AuthenticatedAgentPlatformIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/aionui-client-packages/': {
+      id: '/_authenticated/aionui-client-packages/'
+      path: '/aionui-client-packages'
+      fullPath: '/aionui-client-packages/'
+      preLoaderRoute: typeof AuthenticatedAionuiClientPackagesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/channels/': {
@@ -1363,6 +1383,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAgentPlatformIndexRoute: typeof AuthenticatedAgentPlatformIndexRoute
+  AuthenticatedAionuiClientPackagesIndexRoute: typeof AuthenticatedAionuiClientPackagesIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedEnterpriseAlertsIndexRoute: typeof AuthenticatedEnterpriseAlertsIndexRoute
@@ -1391,6 +1412,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAgentPlatformIndexRoute: AuthenticatedAgentPlatformIndexRoute,
+  AuthenticatedAionuiClientPackagesIndexRoute:
+    AuthenticatedAionuiClientPackagesIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedEnterpriseAlertsIndexRoute:

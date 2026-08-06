@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	ResourceTypeMCP       = "mcp"
 	ResourceTypeSkill     = "skill"
 	ResourceTypeKnowledge = "knowledge"
 	ResourceTypeAgent     = "agent"
@@ -32,6 +33,7 @@ var (
 )
 
 var allowedResourceTypes = map[string]struct{}{
+	ResourceTypeMCP:       {},
 	ResourceTypeSkill:     {},
 	ResourceTypeKnowledge: {},
 	ResourceTypeAgent:     {},
@@ -51,6 +53,8 @@ type Resource struct {
 	ResourceId    string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_resource_id;not null"`
 	ResourceType  string    `json:"resource_type" gorm:"type:varchar(16);index:idx_ap_resource_type;not null"`
 	DisplayName   string    `json:"display_name" gorm:"type:varchar(255);not null"`
+	Description   string    `json:"description" gorm:"type:text"`
+	Avatar        string    `json:"avatar" gorm:"type:text"`
 	OwnerUserId   int       `json:"owner_user_id" gorm:"index:idx_ap_resource_owner;not null"`
 	Status        string    `json:"status" gorm:"type:varchar(16);index:idx_ap_resource_status;not null"`
 	LatestVersion string    `json:"latest_version" gorm:"type:varchar(64);not null"`
@@ -173,6 +177,8 @@ func validateIdentityUpdateMap(tx *gorm.DB) error {
 func (r *Resource) applyDefaultsAndValidate() error {
 	r.ResourceType = strings.TrimSpace(strings.ToLower(r.ResourceType))
 	r.DisplayName = strings.TrimSpace(r.DisplayName)
+	r.Description = strings.TrimSpace(r.Description)
+	r.Avatar = strings.TrimSpace(r.Avatar)
 	r.Status = strings.TrimSpace(strings.ToLower(r.Status))
 	r.ResourceId = strings.TrimSpace(r.ResourceId)
 	r.LatestVersion = strings.TrimSpace(r.LatestVersion)

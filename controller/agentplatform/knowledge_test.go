@@ -80,15 +80,17 @@ func TestKnowledgeAPIWorkflow(t *testing.T) {
 	router, _ := setupKnowledgeControllerTest(t)
 
 	create := performKnowledgeRequest(t, router, http.MethodPost, "/api/agent-platform/knowledge-bases", dtoagentplatform.CreateKnowledgeRequest{
-		DisplayName: "Knowledge A",
-		OwnerUserId: 100,
+		DisplayName:         "Knowledge A",
+		ExternalKnowledgeId: "kb-001",
+		OwnerUserId:         100,
 	})
 	createResp := decodeKnowledgeAPIResponse(t, create)
 	require.True(t, createResp.Success, createResp.Message)
 
-	var created dtoagentplatform.KnowledgeItem
+	var created dtoagentplatform.KnowledgeDetailItem
 	require.NoError(t, common.Unmarshal(createResp.Data, &created))
 	require.Equal(t, apmodel.ResourceTypeKnowledge, created.ResourceType)
+	require.Equal(t, "kb-001", created.ExternalKnowledgeId)
 
 	list := performKnowledgeRequest(t, router, http.MethodGet, "/api/agent-platform/knowledge-bases", nil)
 	listResp := decodeKnowledgeAPIResponse(t, list)
@@ -97,10 +99,23 @@ func TestKnowledgeAPIWorkflow(t *testing.T) {
 	var listData dtoagentplatform.KnowledgeListResponse
 	require.NoError(t, common.Unmarshal(listResp.Data, &listData))
 	require.Equal(t, 1, listData.Total)
+	require.Len(t, listData.Items, 1)
+	require.Equal(t, "kb-001", listData.Items[0].ExternalKnowledgeId)
+
+	get := performKnowledgeRequest(t, router, http.MethodGet, "/api/agent-platform/knowledge-bases/"+created.ResourceId, nil)
+	getResp := decodeKnowledgeAPIResponse(t, get)
+	require.True(t, getResp.Success, getResp.Message)
+	var detail dtoagentplatform.KnowledgeDetailItem
+	require.NoError(t, common.Unmarshal(getResp.Data, &detail))
+	require.Equal(t, "kb-001", detail.ExternalKnowledgeId)
 
 	update := performKnowledgeRequest(t, router, http.MethodPut, "/api/agent-platform/knowledge-bases/"+created.ResourceId, dtoagentplatform.UpdateKnowledgeRequest{
-		DisplayName: "Knowledge A V2",
+		DisplayName:         "Knowledge A V2",
+		ExternalKnowledgeId: "kb-002",
 	})
 	updateResp := decodeKnowledgeAPIResponse(t, update)
 	require.True(t, updateResp.Success, updateResp.Message)
+	var updated dtoagentplatform.KnowledgeDetailItem
+	require.NoError(t, common.Unmarshal(updateResp.Data, &updated))
+	require.Equal(t, "kb-002", updated.ExternalKnowledgeId)
 }

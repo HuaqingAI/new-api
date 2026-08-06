@@ -80,6 +80,7 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	router, _ := setupAgentControllerTest(t)
 
 	create := performAgentRequest(t, router, http.MethodPost, "/api/agent-platform/agents", dtoagentplatform.CreateAgentRequest{
+		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
 		OwnerUserId: 100,
 	})
@@ -99,6 +100,7 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	require.Equal(t, 1, listData.Total)
 
 	update := performAgentRequest(t, router, http.MethodPut, "/api/agent-platform/agents/"+created.ResourceId, dtoagentplatform.UpdateAgentRequest{
+		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A V2",
 	})
 	updateResp := decodeAgentAPIResponse(t, update)

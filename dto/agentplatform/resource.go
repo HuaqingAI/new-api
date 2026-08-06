@@ -3,6 +3,8 @@ package agentplatform
 type CreateResourceRequest struct {
 	ResourceType string `json:"resource_type" binding:"required"`
 	DisplayName  string `json:"display_name" binding:"required"`
+	Description  string `json:"description,omitempty"`
+	Avatar       string `json:"avatar,omitempty"`
 	OwnerUserId  int    `json:"owner_user_id" binding:"required"`
 	TenantId     *int   `json:"tenant_id,omitempty"`
 }
@@ -20,7 +22,11 @@ type ResourceItem struct {
 	ResourceId    string `json:"resource_id"`
 	ResourceType  string `json:"resource_type"`
 	DisplayName   string `json:"display_name"`
+	Description   string `json:"description"`
+	Avatar        string `json:"avatar"`
+	AvatarURL     string `json:"avatar_url,omitempty"`
 	OwnerUserId   int    `json:"owner_user_id"`
+	OwnerName     string `json:"owner_name"`
 	Status        string `json:"status"`
 	LatestVersion string `json:"latest_version"`
 	TenantId      int    `json:"tenant_id"`

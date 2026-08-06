@@ -104,8 +104,35 @@ func platformGrantSubjects(userID int) ([]grantSubject, error) {
 	if err := model.DB.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
 		return nil, err
 	}
+	departmentIDs := make(map[int]struct{}, len(memberships))
 	for _, membership := range memberships {
-		subjects = append(subjects, grantSubject{Type: apmodel.GrantSubjectTypeDepartment, Id: strconv.Itoa(membership.DepartmentId)})
+		if membership.DepartmentId > 0 {
+			departmentIDs[membership.DepartmentId] = struct{}{}
+		}
+	}
+	parentIDs := make([]int, 0, len(departmentIDs))
+	for departmentID := range departmentIDs {
+		parentIDs = append(parentIDs, departmentID)
+	}
+	for len(parentIDs) > 0 {
+		var departments []entmodel.Department
+		if err := model.DB.Select("id", "parent_id").Where("id IN ?", parentIDs).Find(&departments).Error; err != nil {
+			return nil, err
+		}
+		parentIDs = parentIDs[:0]
+		for _, department := range departments {
+			if department.ParentId == nil || *department.ParentId <= 0 {
+				continue
+			}
+			if _, exists := departmentIDs[*department.ParentId]; exists {
+				continue
+			}
+			departmentIDs[*department.ParentId] = struct{}{}
+			parentIDs = append(parentIDs, *department.ParentId)
+		}
+	}
+	for departmentID := range departmentIDs {
+		subjects = append(subjects, grantSubject{Type: apmodel.GrantSubjectTypeDepartment, Id: strconv.Itoa(departmentID)})
 	}
 	return subjects, nil
 }

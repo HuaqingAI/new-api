@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
+func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 	oldDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -24,6 +24,7 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 		&apmodel.ResourceVersion{},
 		&apmodel.AgentDef{},
 		&apmodel.ResourceGrant{},
+		&entmodel.Department{},
 		&entmodel.UserDepartment{},
 	))
 	model.DB = db
@@ -64,6 +65,11 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 		Description:     "from def",
 		Avatar:          avatarPath,
 	}).Error)
+	parentDepartmentID := 8
+	require.NoError(t, db.Create([]entmodel.Department{
+		{Id: parentDepartmentID, Name: "信息部"},
+		{Id: 9, Name: "AI 部", ParentId: &parentDepartmentID},
+	}).Error)
 	require.NoError(t, db.Create(&entmodel.UserDepartment{
 		UserId:       101,
 		DepartmentId: 9,
@@ -73,7 +79,7 @@ func TestAgentConfigServiceListsPlatformGrantedAgents(t *testing.T) {
 		ResourceId:      "res_agent_1",
 		ResourceVersion: "1.0.0",
 		SubjectType:     apmodel.GrantSubjectTypeDepartment,
-		SubjectId:       "9",
+		SubjectId:       "8",
 		GrantedBy:       1,
 	}).Error)
 	require.NoError(t, db.Create(&apmodel.Resource{

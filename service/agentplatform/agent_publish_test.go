@@ -101,6 +101,8 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Contains(t, models, "gpt-5.6-sol")
 	require.Contains(t, models, "gpt-5.6-terra")
 	require.NotContains(t, models, "gpt-4.1")
+	terraModel := models["gpt-5.6-terra"].(map[string]any)
+	require.Equal(t, "GPT-5.6-TERRA", terraModel["name"])
 	mcpConfig := projectConfig["mcp"].(map[string]any)
 	localServer := mcpConfig["demo-local"].(map[string]any)
 	require.Equal(t, "local", localServer["type"])

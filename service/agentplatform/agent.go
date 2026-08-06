@@ -279,7 +279,7 @@ func (input *AgentUpdateInput) normalize() {
 
 func buildOpenCodeModelConfig(modelName string) map[string]any {
 	return map[string]any{
-		"name":        modelName,
+		"name":        strings.ToUpper(modelName),
 		"temperature": false,
 		"reasoning":   true,
 		"tool_call":   true,

@@ -18,10 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-export type AionUiClientPlatform =
-  | 'windows_x64'
-  | 'mac_arm64'
-  | 'mac_x64'
+export type AionUiClientPlatform = 'windows_x64' | 'mac_arm64' | 'mac_x64'
 
 export type AionUiClientPackageStatus = 'draft' | 'published' | 'disabled'
 
@@ -80,6 +77,39 @@ export type UploadClientPackagePayload = {
   updateMetadataFile: File | null
 }
 
+type ClientPackageUploadKind = 'download' | 'update' | 'metadata'
+
+type ClientPackageUploadFile = {
+  kind: ClientPackageUploadKind
+  file_name: string
+  sha256: string
+  sha512: string
+  size: number
+}
+
+type ClientPackageUploadTarget = ClientPackageUploadFile & {
+  object_uri: string
+  object_key: string
+  upload_url: string
+  content_type: string
+  headers: Record<string, string>
+  expires_at: number
+}
+
+type ClientPackageUploadInitResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    files: ClientPackageUploadTarget[]
+  }
+}
+
+type ClientPackageUploadCompleteResponse = {
+  success: boolean
+  message?: string
+  data?: AionUiClientPackage
+}
+
 export async function getClientPackages(params: {
   platform?: string
   status?: string
@@ -106,25 +136,92 @@ export async function getLatestClientPackages() {
 }
 
 export async function uploadClientPackage(payload: UploadClientPackagePayload) {
-  const formData = new FormData()
-  formData.set('platform', payload.platform)
-  formData.set('version', payload.version)
-  formData.set('release_note', payload.releaseNote)
-  formData.set('publish', payload.publish ? 'true' : 'false')
-  if (payload.file) {
-    formData.set('file', payload.file)
+  if (!payload.file) {
+    throw new Error('Download installer is required')
   }
+
+  const files: Array<{ kind: ClientPackageUploadKind; file: File }> = [
+    { kind: 'download', file: payload.file },
+  ]
   if (payload.updateFile) {
-    formData.set('update_file', payload.updateFile)
+    files.push({ kind: 'update', file: payload.updateFile })
   }
   if (payload.updateMetadataFile) {
-    formData.set('update_metadata_file', payload.updateMetadataFile)
+    files.push({ kind: 'metadata', file: payload.updateMetadataFile })
   }
-  const res = await api.post<{ success: boolean; message?: string }>(
-    '/api/aionui/client-packages',
-    formData
+
+  const uploadFiles = await Promise.all(
+    files.map(async (item) => ({
+      kind: item.kind,
+      file_name: item.file.name,
+      sha256: await hashFile(item.file, 'SHA-256', 'hex'),
+      sha512: await hashFile(item.file, 'SHA-512', 'base64'),
+      size: item.file.size,
+    }))
   )
-  return res.data
+
+  const initRes = await api.post<ClientPackageUploadInitResponse>(
+    '/api/aionui/client-packages/uploads/init',
+    {
+      platform: payload.platform,
+      version: payload.version,
+      publish: payload.publish,
+      files: uploadFiles,
+    }
+  )
+  if (!initRes.data.success || !initRes.data.data) {
+    throw new Error(initRes.data.message || 'Failed to create upload')
+  }
+
+  for (const target of initRes.data.data.files) {
+    const source = files.find((item) => item.kind === target.kind)?.file
+    if (!source) {
+      throw new Error('Upload target does not match selected files')
+    }
+    const uploadRes = await fetch(target.upload_url, {
+      method: 'PUT',
+      headers: target.headers,
+      body: source,
+    })
+    if (!uploadRes.ok) {
+      throw new Error(`OSS upload failed: HTTP ${uploadRes.status}`)
+    }
+  }
+
+  const completeRes = await api.post<ClientPackageUploadCompleteResponse>(
+    '/api/aionui/client-packages/uploads/complete',
+    {
+      platform: payload.platform,
+      version: payload.version,
+      release_note: payload.releaseNote,
+      publish: payload.publish,
+      file: initRes.data.data.files.find((item) => item.kind === 'download'),
+      update_file: initRes.data.data.files.find(
+        (item) => item.kind === 'update'
+      ),
+      update_metadata_file: initRes.data.data.files.find(
+        (item) => item.kind === 'metadata'
+      ),
+    }
+  )
+  return completeRes.data
+}
+
+async function hashFile(
+  file: File,
+  algorithm: 'SHA-256' | 'SHA-512',
+  encoding: 'base64' | 'hex'
+) {
+  const digest = await crypto.subtle.digest(algorithm, await file.arrayBuffer())
+  const bytes = Array.from(new Uint8Array(digest))
+  if (encoding === 'hex') {
+    return bytes.map((item) => item.toString(16).padStart(2, '0')).join('')
+  }
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
 }
 
 export async function updateClientPackageStatus(

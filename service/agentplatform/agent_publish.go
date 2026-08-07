@@ -1451,6 +1451,7 @@ const (
 
 type ArtifactStore interface {
 	PutFile(ctx context.Context, input PutArtifactInput) (ArtifactRef, error)
+	PresignPut(ctx context.Context, input PutArtifactInput, expires time.Duration) (PresignedArtifact, ArtifactRef, error)
 	PresignGet(ctx context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error)
 	DownloadToFile(ctx context.Context, ref ArtifactRef, targetPath string) error
 	Delete(ctx context.Context, ref ArtifactRef) error
@@ -1551,6 +1552,39 @@ func (s *OSSArtifactStore) PutFile(ctx context.Context, input PutArtifactInput) 
 		Sha256: strings.TrimSpace(input.Sha256),
 		Size:   input.SizeBytes,
 	}, nil
+}
+
+func (s *OSSArtifactStore) PresignPut(ctx context.Context, input PutArtifactInput, expires time.Duration) (PresignedArtifact, ArtifactRef, error) {
+	if s == nil || s.client == nil || strings.TrimSpace(s.bucket) == "" {
+		return PresignedArtifact{}, ArtifactRef{}, ErrInvalidResourceInput
+	}
+	key := strings.Trim(strings.TrimSpace(input.BucketKey), "/")
+	if key == "" {
+		return PresignedArtifact{}, ArtifactRef{}, ErrInvalidResourceInput
+	}
+	result, err := s.client.Presign(
+		ctx,
+		&oss.PutObjectRequest{
+			Bucket:      oss.Ptr(s.bucket),
+			Key:         oss.Ptr(key),
+			ContentType: oss.Ptr(contentTypeOrDefault(input.ContentType)),
+		},
+		oss.PresignExpires(expires),
+	)
+	if err != nil {
+		return PresignedArtifact{}, ArtifactRef{}, err
+	}
+	return PresignedArtifact{
+			URL:       result.URL,
+			URLType:   ArtifactURLTypeHTTPS,
+			ExpiresAt: result.Expiration.Unix(),
+		}, ArtifactRef{
+			URI:    buildOSSURI(s.bucket, key),
+			Bucket: s.bucket,
+			Key:    key,
+			Sha256: strings.TrimSpace(input.Sha256),
+			Size:   input.SizeBytes,
+		}, nil
 }
 
 func (s *OSSArtifactStore) PresignGet(ctx context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error) {

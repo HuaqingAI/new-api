@@ -23,6 +23,8 @@ func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 		{
 			adminClientPackageRoute.GET("", controlleraionui.AdminListClientPackages)
 			adminClientPackageRoute.POST("", controlleraionui.AdminUploadClientPackage)
+			adminClientPackageRoute.POST("/uploads/init", controlleraionui.AdminCreateClientPackageUpload)
+			adminClientPackageRoute.POST("/uploads/complete", controlleraionui.AdminCompleteClientPackageUpload)
 			adminClientPackageRoute.PATCH("/:id/status", controlleraionui.AdminUpdateClientPackageStatus)
 			adminClientPackageRoute.DELETE("/:id", controlleraionui.AdminDeleteClientPackage)
 		}

@@ -29,6 +29,7 @@ const (
 	defaultClientPackagePrefix     = "client-packages/aionui"
 	defaultClientPackageMaxBytes   = 1 << 30
 	clientPackageDisplayTimeLayout = "2006-01-02 15:04:05"
+	clientPackageUploadExpires     = time.Hour
 )
 
 var (
@@ -52,6 +53,34 @@ type ClientPackageUploadInput struct {
 	UpdateMetadataFile     io.Reader
 	Publish                bool
 	ActorUserId            int
+}
+
+type ClientPackageDirectUploadInitInput struct {
+	Platform    string
+	Version     string
+	Publish     bool
+	Files       []ClientPackageDirectArtifactInput
+	ActorUserId int
+}
+
+type ClientPackageDirectUploadCompleteInput struct {
+	Platform           string
+	Version            string
+	ReleaseNote        string
+	Publish            bool
+	File               ClientPackageDirectArtifactInput
+	UpdateFile         ClientPackageDirectArtifactInput
+	UpdateMetadataFile ClientPackageDirectArtifactInput
+	ActorUserId        int
+}
+
+type ClientPackageDirectArtifactInput struct {
+	Kind      string
+	FileName  string
+	ObjectURI string
+	Sha256    string
+	Sha512    string
+	Size      int64
 }
 
 type ClientPackageQuery struct {
@@ -289,6 +318,172 @@ func (s *ClientPackageService) Upload(input ClientPackageUploadInput) (dtoaionui
 	return mapClientPackage(pkg), nil
 }
 
+func (s *ClientPackageService) CreateDirectUpload(input ClientPackageDirectUploadInitInput) (dtoaionui.ClientPackageDirectUploadInitResponse, error) {
+	input = normalizeClientPackageDirectUploadInitInput(input)
+	if err := validateClientPackageDirectUploadInitInput(input); err != nil {
+		return dtoaionui.ClientPackageDirectUploadInitResponse{}, err
+	}
+	if s == nil || s.db == nil {
+		return dtoaionui.ClientPackageDirectUploadInitResponse{}, ErrClientPackageInvalidInput
+	}
+	if err := s.ensureStore(); err != nil {
+		return dtoaionui.ClientPackageDirectUploadInitResponse{}, err
+	}
+	var count int64
+	if err := s.db.Model(&apmodel.ClientPackage{}).Where("platform = ? AND version = ?", input.Platform, input.Version).Count(&count).Error; err != nil {
+		return dtoaionui.ClientPackageDirectUploadInitResponse{}, err
+	}
+	if count > 0 {
+		return dtoaionui.ClientPackageDirectUploadInitResponse{}, ErrClientPackageDuplicateVersion
+	}
+
+	files := make([]dtoaionui.ClientPackageDirectUploadTarget, 0, len(input.Files))
+	for _, file := range input.Files {
+		contentType := clientPackageContentType(file.FileName)
+		key := buildClientPackageObjectKey(input.Platform, input.Version, file.Kind, file.Sha256, file.FileName)
+		signed, ref, err := s.store.PresignPut(context.Background(), apservice.PutArtifactInput{
+			Kind:        "aionui-client",
+			BucketKey:   key,
+			ContentType: contentType,
+			Sha256:      file.Sha256,
+			SizeBytes:   file.Size,
+			Metadata: map[string]string{
+				"platform": input.Platform,
+				"version":  input.Version,
+				"sha256":   file.Sha256,
+				"kind":     file.Kind,
+			},
+		}, clientPackageUploadExpires)
+		if err != nil {
+			return dtoaionui.ClientPackageDirectUploadInitResponse{}, err
+		}
+		files = append(files, dtoaionui.ClientPackageDirectUploadTarget{
+			Kind:        file.Kind,
+			FileName:    file.FileName,
+			ObjectURI:   ref.URI,
+			ObjectKey:   ref.Key,
+			UploadURL:   signed.URL,
+			ContentType: contentType,
+			Headers: map[string]string{
+				"Content-Type": contentType,
+			},
+			ExpiresAt: signed.ExpiresAt,
+			Sha256:    file.Sha256,
+			Sha512:    file.Sha512,
+			Size:      file.Size,
+		})
+	}
+	return dtoaionui.ClientPackageDirectUploadInitResponse{Files: files}, nil
+}
+
+func (s *ClientPackageService) CompleteDirectUpload(input ClientPackageDirectUploadCompleteInput) (dtoaionui.ClientPackageItem, error) {
+	input = normalizeClientPackageDirectUploadCompleteInput(input)
+	if err := validateClientPackageDirectUploadCompleteInput(input); err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	if s == nil || s.db == nil {
+		return dtoaionui.ClientPackageItem{}, ErrClientPackageInvalidInput
+	}
+	if err := s.ensureStore(); err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	var count int64
+	if err := s.db.Model(&apmodel.ClientPackage{}).Where("platform = ? AND version = ?", input.Platform, input.Version).Count(&count).Error; err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	if count > 0 {
+		return dtoaionui.ClientPackageItem{}, ErrClientPackageDuplicateVersion
+	}
+
+	uploaded := make([]apservice.ArtifactRef, 0, 3)
+	completed := false
+	defer func() {
+		if !completed {
+			s.deleteUploaded(uploaded)
+		}
+	}()
+
+	fileArtifact, err := s.directArtifact(input.Platform, input.Version, input.File)
+	if err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	uploaded = append(uploaded, apservice.ArtifactRef{URI: fileArtifact.Path})
+	updateArtifact := storedClientArtifact{}
+	if strings.TrimSpace(input.UpdateFile.FileName) != "" {
+		updateArtifact, err = s.directArtifact(input.Platform, input.Version, input.UpdateFile)
+		if err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		uploaded = append(uploaded, apservice.ArtifactRef{URI: updateArtifact.Path})
+	}
+
+	metadataArtifact := storedClientArtifact{}
+	var metadata updateMetadataFile
+	var metadataCleanup func()
+	if strings.TrimSpace(input.UpdateMetadataFile.FileName) != "" {
+		metadataArtifact, err = s.directArtifact(input.Platform, input.Version, input.UpdateMetadataFile)
+		if err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		uploaded = append(uploaded, apservice.ArtifactRef{URI: metadataArtifact.Path})
+		metadataArtifact.LocalPath, metadataCleanup, err = s.downloadStoredClientPackageFile(metadataArtifact.Path)
+		if err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		defer metadataCleanup()
+		actualSha256, _, _, err := hashClientPackageFile(metadataArtifact.LocalPath)
+		if err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		if actualSha256 != metadataArtifact.Sha256 {
+			return dtoaionui.ClientPackageItem{}, clientPackageValidationError(ErrClientPackageInvalidInput, "update metadata sha256 mismatch")
+		}
+		metadata, err = parseUpdateMetadata(metadataArtifact.LocalPath)
+		if err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		if err := applyUpdateMetadata(input.Platform, input.Version, metadata, &fileArtifact, &updateArtifact); err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+	}
+
+	pkg := apmodel.ClientPackage{
+		Platform:               input.Platform,
+		Version:                input.Version,
+		Status:                 apmodel.ClientPackageStatusDraft,
+		FileName:               fileArtifact.FileName,
+		FilePath:               fileArtifact.Path,
+		FileSha256:             fileArtifact.Sha256,
+		FileSha512:             fileArtifact.Sha512,
+		FileSize:               fileArtifact.Size,
+		ContentType:            fileArtifact.ContentType,
+		UpdateFileName:         updateArtifact.FileName,
+		UpdateFilePath:         updateArtifact.Path,
+		UpdateFileSha256:       updateArtifact.Sha256,
+		UpdateFileSha512:       updateArtifact.Sha512,
+		UpdateFileSize:         updateArtifact.Size,
+		UpdateContentType:      updateArtifact.ContentType,
+		UpdateMetadataFileName: metadataArtifact.FileName,
+		UpdateMetadataFilePath: metadataArtifact.Path,
+		UpdateMetadataSha256:   metadataArtifact.Sha256,
+		ReleaseNote:            strings.TrimSpace(input.ReleaseNote),
+		CreatedBy:              input.ActorUserId,
+	}
+	if input.Publish {
+		if err := validateClientPackagePublishable(pkg); err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
+		now := s.now().UTC()
+		pkg.Status = apmodel.ClientPackageStatusPublished
+		pkg.PublishedAt = &now
+	}
+	if err := s.db.Create(&pkg).Error; err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	completed = true
+	return mapClientPackage(pkg), nil
+}
+
 func (s *ClientPackageService) UpdateStatus(id int, status string) (dtoaionui.ClientPackageItem, error) {
 	if s == nil || s.db == nil || id <= 0 {
 		return dtoaionui.ClientPackageItem{}, ErrClientPackageInvalidInput
@@ -492,6 +687,25 @@ func (s *ClientPackageService) storeUploadArtifact(platform string, version stri
 	}, cleanup, nil
 }
 
+func (s *ClientPackageService) directArtifact(platform string, version string, input ClientPackageDirectArtifactInput) (storedClientArtifact, error) {
+	ref, err := apservice.ParseArtifactURI(input.ObjectURI)
+	if err != nil {
+		return storedClientArtifact{}, err
+	}
+	expectedKey := buildClientPackageObjectKey(platform, version, input.Kind, input.Sha256, input.FileName)
+	if ref.Key != expectedKey {
+		return storedClientArtifact{}, ErrClientPackageInvalidInput
+	}
+	return storedClientArtifact{
+		FileName:    input.FileName,
+		Path:        ref.URI,
+		Sha256:      input.Sha256,
+		Sha512:      input.Sha512,
+		Size:        input.Size,
+		ContentType: clientPackageContentType(input.FileName),
+	}, nil
+}
+
 func (s *ClientPackageService) presign(uri string) (string, error) {
 	if err := s.ensureStore(); err != nil {
 		return "", err
@@ -664,6 +878,105 @@ func validateClientPackageUploadInput(input ClientPackageUploadInput) error {
 	return nil
 }
 
+func validateClientPackageDirectUploadInitInput(input ClientPackageDirectUploadInitInput) error {
+	if !validClientPackagePlatform(input.Platform) {
+		return ErrClientPackageInvalidInput
+	}
+	if !validClientPackageVersion(input.Version) {
+		return ErrClientPackageInvalidInput
+	}
+	if input.ActorUserId <= 0 {
+		return ErrClientPackageInvalidInput
+	}
+	files := map[string]ClientPackageDirectArtifactInput{}
+	for _, file := range input.Files {
+		if err := validateClientPackageDirectArtifact(input.Platform, file, false); err != nil {
+			return err
+		}
+		if _, exists := files[file.Kind]; exists {
+			return ErrClientPackageInvalidInput
+		}
+		files[file.Kind] = file
+	}
+	if _, ok := files["download"]; !ok {
+		return clientPackageValidationError(ErrClientPackageInvalidInput, "client installer file is required")
+	}
+	if input.Publish {
+		if _, ok := files["metadata"]; !ok {
+			return ErrClientPackageMetadataRequired
+		}
+		if input.Platform != apmodel.ClientPackagePlatformWindowsX64 {
+			if _, ok := files["update"]; !ok {
+				return ErrClientPackageUpdateFileRequired
+			}
+		}
+	}
+	return nil
+}
+
+func validateClientPackageDirectUploadCompleteInput(input ClientPackageDirectUploadCompleteInput) error {
+	if !validClientPackagePlatform(input.Platform) {
+		return ErrClientPackageInvalidInput
+	}
+	if !validClientPackageVersion(input.Version) {
+		return ErrClientPackageInvalidInput
+	}
+	if input.ActorUserId <= 0 {
+		return ErrClientPackageInvalidInput
+	}
+	if err := validateClientPackageDirectArtifact(input.Platform, input.File, true); err != nil {
+		return err
+	}
+	if strings.TrimSpace(input.UpdateFile.FileName) != "" {
+		if err := validateClientPackageDirectArtifact(input.Platform, input.UpdateFile, true); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(input.UpdateMetadataFile.FileName) != "" {
+		if err := validateClientPackageDirectArtifact(input.Platform, input.UpdateMetadataFile, true); err != nil {
+			return err
+		}
+	}
+	if input.Publish {
+		if strings.TrimSpace(input.UpdateMetadataFile.FileName) == "" {
+			return ErrClientPackageMetadataRequired
+		}
+		if input.Platform != apmodel.ClientPackagePlatformWindowsX64 && strings.TrimSpace(input.UpdateFile.FileName) == "" {
+			return ErrClientPackageUpdateFileRequired
+		}
+	}
+	return nil
+}
+
+func validateClientPackageDirectArtifact(platform string, file ClientPackageDirectArtifactInput, requireObject bool) error {
+	switch file.Kind {
+	case "download":
+		if !validClientPackageFileExt(platform, file.FileName, false) {
+			return ErrClientPackageInvalidInput
+		}
+	case "update":
+		if !validClientPackageFileExt(platform, file.FileName, true) {
+			return ErrClientPackageInvalidInput
+		}
+	case "metadata":
+		if !validUpdateMetadataFileName(platform, file.FileName) {
+			return ErrClientPackageInvalidInput
+		}
+	default:
+		return ErrClientPackageInvalidInput
+	}
+	if file.Size <= 0 || file.Size > clientPackageMaxBytes() {
+		return ErrClientPackageInvalidInput
+	}
+	if !validClientPackageSha256(file.Sha256) || strings.TrimSpace(file.Sha512) == "" {
+		return ErrClientPackageInvalidInput
+	}
+	if requireObject && strings.TrimSpace(file.ObjectURI) == "" {
+		return ErrClientPackageInvalidInput
+	}
+	return nil
+}
+
 func normalizeClientPackageUploadInput(input ClientPackageUploadInput) ClientPackageUploadInput {
 	input.Platform = strings.TrimSpace(input.Platform)
 	input.Version = strings.TrimSpace(input.Version)
@@ -671,6 +984,34 @@ func normalizeClientPackageUploadInput(input ClientPackageUploadInput) ClientPac
 	input.FileName = safeClientPackageBaseName(input.FileName)
 	input.UpdateFileName = safeClientPackageBaseName(input.UpdateFileName)
 	input.UpdateMetadataFileName = safeClientPackageBaseName(input.UpdateMetadataFileName)
+	return input
+}
+
+func normalizeClientPackageDirectUploadInitInput(input ClientPackageDirectUploadInitInput) ClientPackageDirectUploadInitInput {
+	input.Platform = strings.TrimSpace(input.Platform)
+	input.Version = strings.TrimSpace(input.Version)
+	for i := range input.Files {
+		input.Files[i] = normalizeClientPackageDirectArtifactInput(input.Files[i])
+	}
+	return input
+}
+
+func normalizeClientPackageDirectUploadCompleteInput(input ClientPackageDirectUploadCompleteInput) ClientPackageDirectUploadCompleteInput {
+	input.Platform = strings.TrimSpace(input.Platform)
+	input.Version = strings.TrimSpace(input.Version)
+	input.ReleaseNote = strings.TrimSpace(input.ReleaseNote)
+	input.File = normalizeClientPackageDirectArtifactInput(input.File)
+	input.UpdateFile = normalizeClientPackageDirectArtifactInput(input.UpdateFile)
+	input.UpdateMetadataFile = normalizeClientPackageDirectArtifactInput(input.UpdateMetadataFile)
+	return input
+}
+
+func normalizeClientPackageDirectArtifactInput(input ClientPackageDirectArtifactInput) ClientPackageDirectArtifactInput {
+	input.Kind = strings.TrimSpace(strings.ToLower(input.Kind))
+	input.FileName = safeClientPackageBaseName(input.FileName)
+	input.ObjectURI = strings.TrimSpace(input.ObjectURI)
+	input.Sha256 = strings.TrimSpace(strings.ToLower(input.Sha256))
+	input.Sha512 = strings.TrimSpace(input.Sha512)
 	return input
 }
 
@@ -720,6 +1061,18 @@ func validClientPackageVersion(version string) bool {
 			return false
 		}
 		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func validClientPackageSha256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, item := range value {
+		if (item < '0' || item > '9') && (item < 'a' || item > 'f') {
 			return false
 		}
 	}

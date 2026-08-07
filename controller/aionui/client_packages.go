@@ -129,6 +129,59 @@ func AdminUploadClientPackage(c *gin.Context) {
 	common.ApiSuccess(c, result)
 }
 
+func AdminCreateClientPackageUpload(c *gin.Context) {
+	var req dtoaionui.ClientPackageDirectUploadInitRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	files := make([]serviceaionui.ClientPackageDirectArtifactInput, 0, len(req.Files))
+	for _, file := range req.Files {
+		files = append(files, serviceaionui.ClientPackageDirectArtifactInput{
+			Kind:     file.Kind,
+			FileName: file.FileName,
+			Sha256:   file.Sha256,
+			Sha512:   file.Sha512,
+			Size:     file.Size,
+		})
+	}
+	result, err := clientPackageService().CreateDirectUpload(serviceaionui.ClientPackageDirectUploadInitInput{
+		Platform:    req.Platform,
+		Version:     req.Version,
+		Publish:     req.Publish,
+		Files:       files,
+		ActorUserId: c.GetInt("id"),
+	})
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminCompleteClientPackageUpload(c *gin.Context) {
+	var req dtoaionui.ClientPackageDirectUploadCompleteRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	result, err := clientPackageService().CompleteDirectUpload(serviceaionui.ClientPackageDirectUploadCompleteInput{
+		Platform:           req.Platform,
+		Version:            req.Version,
+		ReleaseNote:        req.ReleaseNote,
+		Publish:            req.Publish,
+		File:               mapClientPackageUploadTarget(req.File),
+		UpdateFile:         mapClientPackageUploadTarget(req.UpdateFile),
+		UpdateMetadataFile: mapClientPackageUploadTarget(req.UpdateMetadataFile),
+		ActorUserId:        c.GetInt("id"),
+	})
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func AdminUpdateClientPackageStatus(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -216,4 +269,15 @@ func optionalFileName(file *multipart.FileHeader) string {
 		return ""
 	}
 	return file.Filename
+}
+
+func mapClientPackageUploadTarget(input dtoaionui.ClientPackageDirectUploadTarget) serviceaionui.ClientPackageDirectArtifactInput {
+	return serviceaionui.ClientPackageDirectArtifactInput{
+		Kind:      input.Kind,
+		FileName:  input.FileName,
+		ObjectURI: input.ObjectURI,
+		Sha256:    input.Sha256,
+		Sha512:    input.Sha512,
+		Size:      input.Size,
+	}
 }

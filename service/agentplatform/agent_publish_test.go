@@ -363,6 +363,21 @@ func (s *fakeArtifactStore) PutFile(_ context.Context, input PutArtifactInput) (
 	}, nil
 }
 
+func (s *fakeArtifactStore) PresignPut(_ context.Context, input PutArtifactInput, expires time.Duration) (PresignedArtifact, ArtifactRef, error) {
+	key := strings.Trim(input.BucketKey, "/")
+	return PresignedArtifact{
+			URL:       "https://oss.test/upload/" + key,
+			URLType:   ArtifactURLTypeHTTPS,
+			ExpiresAt: time.Now().Add(expires).Unix(),
+		}, ArtifactRef{
+			URI:    buildOSSURI(s.bucket, key),
+			Bucket: s.bucket,
+			Key:    key,
+			Sha256: input.Sha256,
+			Size:   input.SizeBytes,
+		}, nil
+}
+
 func (s *fakeArtifactStore) PresignGet(_ context.Context, ref ArtifactRef, expires time.Duration) (PresignedArtifact, error) {
 	return PresignedArtifact{
 		URL:       "https://oss.test/" + ref.Key,

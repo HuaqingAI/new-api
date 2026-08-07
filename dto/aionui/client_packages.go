@@ -11,6 +11,49 @@ type ClientPackageStatusRequest struct {
 	Status string `json:"status"`
 }
 
+type ClientPackageDirectUploadFileRequest struct {
+	Kind     string `json:"kind"`
+	FileName string `json:"file_name"`
+	Sha256   string `json:"sha256"`
+	Sha512   string `json:"sha512"`
+	Size     int64  `json:"size"`
+}
+
+type ClientPackageDirectUploadInitRequest struct {
+	Platform string                                 `json:"platform"`
+	Version  string                                 `json:"version"`
+	Publish  bool                                   `json:"publish"`
+	Files    []ClientPackageDirectUploadFileRequest `json:"files"`
+}
+
+type ClientPackageDirectUploadTarget struct {
+	Kind        string            `json:"kind"`
+	FileName    string            `json:"file_name"`
+	ObjectURI   string            `json:"object_uri"`
+	ObjectKey   string            `json:"object_key"`
+	UploadURL   string            `json:"upload_url"`
+	ContentType string            `json:"content_type"`
+	Headers     map[string]string `json:"headers"`
+	ExpiresAt   int64             `json:"expires_at"`
+	Sha256      string            `json:"sha256"`
+	Sha512      string            `json:"sha512"`
+	Size        int64             `json:"size"`
+}
+
+type ClientPackageDirectUploadInitResponse struct {
+	Files []ClientPackageDirectUploadTarget `json:"files"`
+}
+
+type ClientPackageDirectUploadCompleteRequest struct {
+	Platform           string                          `json:"platform"`
+	Version            string                          `json:"version"`
+	ReleaseNote        string                          `json:"release_note"`
+	Publish            bool                            `json:"publish"`
+	File               ClientPackageDirectUploadTarget `json:"file"`
+	UpdateFile         ClientPackageDirectUploadTarget `json:"update_file"`
+	UpdateMetadataFile ClientPackageDirectUploadTarget `json:"update_metadata_file"`
+}
+
 type ClientPackageItem struct {
 	Id                     int     `json:"id"`
 	Platform               string  `json:"platform"`

@@ -2,8 +2,10 @@ package aionui
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -226,6 +228,101 @@ releaseDate: '2026-08-05T10:00:00.000Z'
 	require.Empty(t, store.files)
 }
 
+func TestClientPackageDirectUploadPublishesWindowsPackage(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&apmodel.ClientPackage{}))
+	store := newFakeClientPackageStore()
+	restore := apservice.SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
+
+	installer := "windows installer"
+	installerSha256 := testClientPackageSha256(installer)
+	installerSha512 := testClientPackageSha512(installer)
+	metadata := fmt.Sprintf(`version: 2.1.42
+files:
+  - url: AionUi-2.1.42-win-x64.exe
+    sha512: %s
+    size: %d
+path: AionUi-2.1.42-win-x64.exe
+sha512: %s
+releaseDate: '2026-08-05T10:00:00.000Z'
+`, installerSha512, len(installer), installerSha512)
+	metadataSha256 := testClientPackageSha256(metadata)
+	metadataSha512 := testClientPackageSha512(metadata)
+	service := NewClientPackageService(db)
+	service.now = func() time.Time {
+		return time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
+	}
+
+	initResult, err := service.CreateDirectUpload(ClientPackageDirectUploadInitInput{
+		Platform: apmodel.ClientPackagePlatformWindowsX64,
+		Version:  "2.1.42",
+		Publish:  true,
+		Files: []ClientPackageDirectArtifactInput{
+			{
+				Kind:     "download",
+				FileName: "AionUi-2.1.42-win-x64.exe",
+				Sha256:   installerSha256,
+				Sha512:   installerSha512,
+				Size:     int64(len(installer)),
+			},
+			{
+				Kind:     "metadata",
+				FileName: "latest.yml",
+				Sha256:   metadataSha256,
+				Sha512:   metadataSha512,
+				Size:     int64(len(metadata)),
+			},
+		},
+		ActorUserId: 7,
+	})
+	require.NoError(t, err)
+	require.Len(t, initResult.Files, 2)
+	for _, file := range initResult.Files {
+		switch file.Kind {
+		case "download":
+			store.files[file.ObjectKey] = []byte(installer)
+		case "metadata":
+			store.files[file.ObjectKey] = []byte(metadata)
+		}
+	}
+
+	item, err := service.CompleteDirectUpload(ClientPackageDirectUploadCompleteInput{
+		Platform: apmodel.ClientPackagePlatformWindowsX64,
+		Version:  "2.1.42",
+		Publish:  true,
+		File: ClientPackageDirectArtifactInput{
+			Kind:      initResult.Files[0].Kind,
+			FileName:  initResult.Files[0].FileName,
+			ObjectURI: initResult.Files[0].ObjectURI,
+			Sha256:    initResult.Files[0].Sha256,
+			Sha512:    initResult.Files[0].Sha512,
+			Size:      initResult.Files[0].Size,
+		},
+		UpdateMetadataFile: ClientPackageDirectArtifactInput{
+			Kind:      initResult.Files[1].Kind,
+			FileName:  initResult.Files[1].FileName,
+			ObjectURI: initResult.Files[1].ObjectURI,
+			Sha256:    initResult.Files[1].Sha256,
+			Sha512:    initResult.Files[1].Sha512,
+			Size:      initResult.Files[1].Size,
+		},
+		ActorUserId: 7,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, apmodel.ClientPackageStatusPublished, item.Status)
+	require.Equal(t, installerSha256, item.FileSha256)
+	require.Equal(t, installerSha512, item.FileSha512)
+	require.Equal(t, metadataSha256, item.UpdateMetadataSha256)
+}
+
+func testClientPackageSha256(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
+
 func testClientPackageSha512(content string) string {
 	sum := sha512.Sum512([]byte(content))
 	return base64.StdEncoding.EncodeToString(sum[:])
@@ -254,6 +351,21 @@ func (s *fakeClientPackageStore) PutFile(_ context.Context, input apservice.PutA
 		Sha256: input.Sha256,
 		Size:   input.SizeBytes,
 	}, nil
+}
+
+func (s *fakeClientPackageStore) PresignPut(_ context.Context, input apservice.PutArtifactInput, expires time.Duration) (apservice.PresignedArtifact, apservice.ArtifactRef, error) {
+	key := strings.Trim(input.BucketKey, "/")
+	return apservice.PresignedArtifact{
+			URL:       "https://oss.test/upload/" + key,
+			URLType:   "https",
+			ExpiresAt: time.Now().Add(expires).Unix(),
+		}, apservice.ArtifactRef{
+			URI:    "oss://" + s.bucket + "/" + key,
+			Bucket: s.bucket,
+			Key:    key,
+			Sha256: input.Sha256,
+			Size:   input.SizeBytes,
+		}, nil
 }
 
 func (s *fakeClientPackageStore) PresignGet(_ context.Context, ref apservice.ArtifactRef, expires time.Duration) (apservice.PresignedArtifact, error) {

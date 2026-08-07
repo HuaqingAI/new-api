@@ -150,6 +150,20 @@ func (fakeAionUIArtifactStore) PutFile(context.Context, apservice.PutArtifactInp
 	return apservice.ArtifactRef{}, nil
 }
 
+func (fakeAionUIArtifactStore) PresignPut(_ context.Context, input apservice.PutArtifactInput, _ time.Duration) (apservice.PresignedArtifact, apservice.ArtifactRef, error) {
+	return apservice.PresignedArtifact{
+			URL:       "https://oss.test/upload/" + input.BucketKey,
+			URLType:   apservice.ArtifactURLTypeHTTPS,
+			ExpiresAt: 1780000000,
+		}, apservice.ArtifactRef{
+			URI:    "oss://test-bucket/" + input.BucketKey,
+			Bucket: "test-bucket",
+			Key:    input.BucketKey,
+			Sha256: input.Sha256,
+			Size:   input.SizeBytes,
+		}, nil
+}
+
 func (fakeAionUIArtifactStore) PresignGet(_ context.Context, ref apservice.ArtifactRef, _ time.Duration) (apservice.PresignedArtifact, error) {
 	return apservice.PresignedArtifact{
 		URL:       "https://oss.test/" + ref.Key,

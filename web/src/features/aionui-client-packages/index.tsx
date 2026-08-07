@@ -28,10 +28,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Table,
   TableBody,
@@ -109,9 +106,9 @@ export function AionUiClientPackages() {
   const [form, setForm] = useState<UploadFormState>(initialForm)
   const [uploadAction, setUploadAction] = useState<UploadAction | null>(null)
   const uploadToastId = useRef<string | number | null>(null)
-  const selectedPlatform = PLATFORM_OPTIONS.find(
-    (item) => item.value === form.platform
-  ) ?? PLATFORM_OPTIONS[0]
+  const selectedPlatform =
+    PLATFORM_OPTIONS.find((item) => item.value === form.platform) ??
+    PLATFORM_OPTIONS[0]
 
   const packagesQuery = useQuery({
     queryKey: ['aionui-client-packages'],
@@ -140,22 +137,23 @@ export function AionUiClientPackages() {
       const nextAction = publish ? 'publish' : 'draft'
       setUploadAction(nextAction)
       uploadToastId.current = toast.loading(
-        t(
-          publish
-            ? 'Uploading and publishing...'
-            : 'Saving draft...'
-        )
+        t(publish ? 'Uploading and publishing...' : 'Saving draft...')
       )
     },
     onSuccess: (res, publish) => {
       if (res.success) {
         dismissUploadToast()
         toast.success(
-          publish ? t('Client package uploaded and published') : t('Draft saved')
+          publish
+            ? t('Client package uploaded and published')
+            : t('Draft saved')
         )
         setForm(initialForm)
         queryClient.invalidateQueries({ queryKey: ['aionui-client-packages'] })
       }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Upload failed'))
     },
     onSettled: () => {
       dismissUploadToast()
@@ -187,9 +185,7 @@ export function AionUiClientPackages() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Client Version')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Client Version')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
           variant='outline'

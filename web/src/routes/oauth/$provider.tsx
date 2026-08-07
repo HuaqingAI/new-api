@@ -22,9 +22,9 @@ import {
   useParams,
   useSearch,
 } from '@tanstack/react-router'
-import type { AxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import i18next from 'i18next'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
 import { OAuthCallbackScreen } from '@/features/auth/components/oauth-callback-screen'
@@ -42,7 +42,12 @@ import {
   getOAuthSessionStorage,
   resolveOAuthCallbackMode,
 } from '@/features/auth/lib/oauth-callback-mode'
-import { api, applyAuthBundle, isAuthBundle } from '@/lib/api'
+import {
+  api,
+  applyAuthBundle,
+  isAuthBundle,
+  refreshAuthentication,
+} from '@/lib/api'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
@@ -57,8 +62,21 @@ interface OAuthBindingResult {
   message?: string
 }
 
+function isLikelyDesktopLoopbackRedirectError(
+  provider: string,
+  error: unknown
+): boolean {
+  return (
+    provider === 'dingtalk' &&
+    axios.isAxiosError(error) &&
+    !error.response &&
+    error.message === 'Network Error'
+  )
+}
+
 function OAuthCallback() {
   const navigate = useNavigate()
+  const handledLoginCallbackRef = useRef<string | null>(null)
   const { provider } = useParams({ from: '/oauth/$provider' }) as {
     provider: string
   }
@@ -186,6 +204,18 @@ function OAuthCallback() {
       return
     }
 
+    const loginCallbackKey = [
+      provider,
+      state,
+      code,
+      search.error ?? '',
+      search.error_description ?? '',
+    ].join(':')
+    if (handledLoginCallbackRef.current === loginCallbackKey) {
+      return
+    }
+    handledLoginCallbackRef.current = loginCallbackKey
+
     void (async () => {
       try {
         const config: OAuthRequestConfig = {
@@ -196,6 +226,7 @@ function OAuthCallback() {
             error_description: search.error_description,
           },
           skipBusinessError: true,
+          skipErrorHandler: true,
         }
         const response = await api.get(`/api/oauth/${provider}`, config)
         if (response.data?.success && isAuthBundle(response.data?.data)) {
@@ -211,6 +242,13 @@ function OAuthCallback() {
             : response.data?.message || i18next.t('OAuth failed')
         )
       } catch (error: unknown) {
+        if (isLikelyDesktopLoopbackRedirectError(provider, error)) {
+          const outcome = await refreshAuthentication()
+          if (outcome.kind === 'authenticated') {
+            safeNavigate(search.redirect)
+            return
+          }
+        }
         const messageKey = getServerErrorMessageKey(error)
         const responseMessage = (
           error as { response?: { data?: { message?: string } } }

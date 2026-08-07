@@ -272,7 +272,27 @@ export function isUsableSubscriptionForDisplayFilter(
   return Number(sub.amount_used || 0) < total
 }
 
-type SubscriptionDisplayFilter = 'all' | 'available'
+export type SubscriptionDisplayFilter = 'all' | 'available'
+
+export function getSubscriptionHeaderStatus(
+  filter: SubscriptionDisplayFilter,
+  activeCount: number,
+  availableCount: number
+): { count: number; labelKey: 'active' | 'Available'; showCount: boolean } {
+  if (filter === 'available') {
+    return {
+      count: availableCount,
+      labelKey: 'Available',
+      showCount: true,
+    }
+  }
+
+  return {
+    count: activeCount,
+    labelKey: 'active',
+    showCount: activeCount > 0,
+  }
+}
 
 export function SubscriptionPlansCard({
   topupInfo,
@@ -425,6 +445,11 @@ export function SubscriptionPlansCard({
         return isUsableSubscriptionForDisplayFilter(item.record.subscription)
       })
   }, [allSubscriptions, subscriptionFilter])
+  const subscriptionHeaderStatus = getSubscriptionHeaderStatus(
+    subscriptionFilter,
+    activeSubscriptions.length,
+    displayedSubscriptions.length
+  )
 
   const planPurchaseCountMap = useMemo(() => {
     const map = new Map<number, number>()
@@ -500,20 +525,30 @@ export function SubscriptionPlansCard({
                 <span
                   className={cn(
                     'size-1.5 shrink-0 rounded-full',
-                    hasActive ? dotColorMap.success : dotColorMap.neutral
+                    subscriptionHeaderStatus.count > 0
+                      ? dotColorMap.success
+                      : dotColorMap.neutral
                   )}
                   aria-hidden='true'
                 />
-                {hasActive ? (
-                  <span className={cn(textColorMap.success)}>
-                    {activeSubscriptions.length} {t('active')}
+                {subscriptionHeaderStatus.showCount ? (
+                  <span
+                    className={cn(
+                      subscriptionHeaderStatus.count > 0
+                        ? textColorMap.success
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {subscriptionHeaderStatus.count}{' '}
+                    {t(subscriptionHeaderStatus.labelKey)}
                   </span>
                 ) : (
                   <span className='text-muted-foreground'>
                     {t('No Active')}
                   </span>
                 )}
-                {allSubscriptions.length > activeSubscriptions.length && (
+                {subscriptionFilter === 'all' &&
+                  allSubscriptions.length > activeSubscriptions.length && (
                   <>
                     <span className='text-muted-foreground/30'>·</span>
                     <span className='text-muted-foreground'>

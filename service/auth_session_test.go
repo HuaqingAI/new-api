@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -353,6 +355,34 @@ func TestLoginSessionCreateRefreshAndRevoke(t *testing.T) {
 	require.NoError(t, RevokeByRefreshToken(refreshed.RefreshToken, refreshed.Session.SID, "logout"))
 	_, _, err = ValidateLoginSession(identity)
 	assert.True(t, errors.Is(err, ErrLoginSessionRevoked))
+}
+
+func TestRefreshCookieIsAvailableToAionUiDesktopLogin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	WriteRefreshCookie(c, "refresh-token")
+
+	cookies := recorder.Result().Cookies()
+	var refreshCookie *http.Cookie
+	var legacyClearCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name != RefreshCookieName {
+			continue
+		}
+		switch cookie.Path {
+		case refreshCookiePath:
+			refreshCookie = cookie
+		case legacyRefreshCookiePath:
+			legacyClearCookie = cookie
+		}
+	}
+	require.NotNil(t, refreshCookie)
+	assert.Equal(t, "refresh-token", refreshCookie.Value)
+	assert.Equal(t, refreshCookiePath, refreshCookie.Path)
+	assert.NotNil(t, legacyClearCookie)
+	assert.Equal(t, -1, legacyClearCookie.MaxAge)
 }
 
 func TestIndependentRedisSessionRevokeConvergesAfterCacheTTL(t *testing.T) {

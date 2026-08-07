@@ -12,7 +12,10 @@ type removedColumnMigration struct {
 }
 
 var removedAgentPlatformTables = []any{
+	&RefreshToken{},
+	&AuthorizationGrant{},
 	&Exposure{},
+	&Client{},
 }
 
 var removedAgentPlatformColumns = []removedColumnMigration{
@@ -74,9 +77,6 @@ func Migrate(db *gorm.DB) error {
 		&ResourceGrant{},
 		&AdminAction{},
 		&ClientPackage{},
-		&Client{},
-		&AuthorizationGrant{},
-		&RefreshToken{},
 	); err != nil {
 		return err
 	}

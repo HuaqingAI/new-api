@@ -11,6 +11,7 @@ import {
   getSubscriptionStatusDisplay,
   getSubscriptionSourceLabel,
   getSubscriptionCardTitle,
+  getSubscriptionHeaderStatus,
   isActiveSubscriptionForBilling,
 } from './subscription-plans-card'
 
@@ -395,6 +396,28 @@ describe('Subscription plans card enterprise wallet helpers', () => {
       ),
       false
     )
+  })
+
+  test('uses available subscription count when available filter is selected', () => {
+    assert.deepEqual(getSubscriptionHeaderStatus('available', 3, 1), {
+      count: 1,
+      labelKey: 'Available',
+      showCount: true,
+    })
+
+    assert.deepEqual(getSubscriptionHeaderStatus('available', 3, 0), {
+      count: 0,
+      labelKey: 'Available',
+      showCount: true,
+    })
+  })
+
+  test('keeps active subscription count when all filter is selected', () => {
+    assert.deepEqual(getSubscriptionHeaderStatus('all', 3, 1), {
+      count: 3,
+      labelKey: 'active',
+      showCount: true,
+    })
   })
 
   test('enterprise wallet non-positive expiry semantics are translated in zh locale', async () => {

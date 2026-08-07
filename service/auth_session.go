@@ -14,6 +14,8 @@ import (
 )
 
 const RefreshCookieName = "new_api_refresh"
+const refreshCookiePath = "/api"
+const legacyRefreshCookiePath = "/api/user/auth"
 
 var (
 	ErrLoginSessionInvalid  = errors.New("login session is invalid")
@@ -303,20 +305,26 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    rawToken,
-		Path:     "/api/user/auth",
+		Path:     refreshCookiePath,
 		MaxAge:   maxAge,
 		Expires:  expiresAt,
 		HttpOnly: true,
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
+	clearRefreshCookieAtPath(c, legacyRefreshCookiePath)
 }
 
 func ClearRefreshCookie(c *gin.Context) {
+	clearRefreshCookieAtPath(c, refreshCookiePath)
+	clearRefreshCookieAtPath(c, legacyRefreshCookiePath)
+}
+
+func clearRefreshCookieAtPath(c *gin.Context, path string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    "",
-		Path:     "/api/user/auth",
+		Path:     path,
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
 		HttpOnly: true,

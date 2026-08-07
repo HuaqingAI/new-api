@@ -24,10 +24,13 @@ import { QueryClient } from '@tanstack/react-query'
 import { useAuthStore, type AuthBundle } from '../stores/auth-store'
 import {
   applyAuthRotation,
+  beginExplicitSignOut,
   bootstrapAuthentication,
   clearAuthenticatedClientState,
   createRefreshRunner,
+  finishExplicitSignOut,
   isAuthBundle,
+  isExplicitSignOutInProgress,
   type AuthRefreshRuntime,
 } from './auth-session'
 
@@ -53,6 +56,7 @@ const bundle: AuthBundle = {
 }
 
 afterEach(() => {
+  finishExplicitSignOut()
   useAuthStore.getState().auth.reset('idle')
 })
 
@@ -324,5 +328,13 @@ describe('authentication session coordination', () => {
       queryClient.getQueryData(['account', bundle.user.id]),
       undefined
     )
+  })
+
+  test('explicit sign-out state is observable while logout is in flight', () => {
+    assert.equal(isExplicitSignOutInProgress(), false)
+    beginExplicitSignOut()
+    assert.equal(isExplicitSignOutInProgress(), true)
+    finishExplicitSignOut()
+    assert.equal(isExplicitSignOutInProgress(), false)
   })
 })

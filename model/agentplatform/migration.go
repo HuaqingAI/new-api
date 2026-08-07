@@ -7,6 +7,7 @@ import (
 )
 
 type removedColumnMigration struct {
+	model   any
 	table   string
 	columns []string
 }
@@ -20,6 +21,7 @@ var removedAgentPlatformTables = []any{
 
 var removedAgentPlatformColumns = []removedColumnMigration{
 	{
+		model: &AgentDef{},
 		table: AgentDef{}.TableName(),
 		columns: []string{
 			"manifest_json",
@@ -29,6 +31,7 @@ var removedAgentPlatformColumns = []removedColumnMigration{
 		},
 	},
 	{
+		model: &KnowledgeDef{},
 		table: KnowledgeDef{}.TableName(),
 		columns: []string{
 			"provider_config_json",
@@ -43,6 +46,7 @@ var removedAgentPlatformColumns = []removedColumnMigration{
 		},
 	},
 	{
+		model: &SkillDef{},
 		table: SkillDef{}.TableName(),
 		columns: []string{
 			"resource_version",
@@ -54,6 +58,7 @@ var removedAgentPlatformColumns = []removedColumnMigration{
 		},
 	},
 	{
+		model: &ResourceVersion{},
 		table: ResourceVersion{}.TableName(),
 		columns: []string{
 			"schema_json",
@@ -92,15 +97,15 @@ func AutoMigrate(db *gorm.DB) error {
 
 func dropRemovedColumns(db *gorm.DB, migrations []removedColumnMigration) error {
 	for _, migration := range migrations {
-		if !db.Migrator().HasTable(migration.table) {
+		if !db.Migrator().HasTable(migration.model) {
 			continue
 		}
 		for _, column := range migration.columns {
-			if !db.Migrator().HasColumn(migration.table, column) {
+			if !db.Migrator().HasColumn(migration.model, column) {
 				continue
 			}
-			if err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", migration.table, column)).Error; err != nil {
-				return fmt.Errorf("drop removed agent platform column %s: %w", column, err)
+			if err := db.Migrator().DropColumn(migration.model, column); err != nil {
+				return fmt.Errorf("drop removed agent platform column %s.%s: %w", migration.table, column, err)
 			}
 		}
 	}

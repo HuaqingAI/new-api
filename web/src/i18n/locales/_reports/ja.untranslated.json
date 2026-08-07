@@ -1,5 +1,9 @@
 {
   "Alert delivery resent": "Alert delivery resent",
+  "All subscriptions": "All subscriptions",
+  "Available subscriptions": "Available subscriptions",
+  "Avatar emoji or image URL": "Avatar emoji or image URL",
+  "Avatar uploaded": "Avatar uploaded",
   "Department admin granted": "Department admin granted",
   "Department admin revoked": "Department admin revoked",
   "Department owner denial revoked": "Department owner denial revoked",
@@ -11,6 +15,9 @@
   "DingTalk owner sync updated": "DingTalk owner sync updated",
   "DingTalk sync conflict candidate bound": "DingTalk sync conflict candidate bound",
   "footer.columns.related.links.midjourney": "Midjourney-Proxy",
+  "Grant this published version to users and departments.": "Grant this published version to users and departments.",
+  "macOS Apple Silicon": "macOS Apple Silicon",
+  "macOS Intel": "macOS Intel",
   "Membership added": "Membership added",
   "Membership disabled": "Membership disabled",
   "Membership renamed": "Membership renamed",
@@ -18,11 +25,6 @@
   "Membership restored": "Membership restored",
   "Midjourney": "Midjourney",
   "MidjourneyPlus": "MidjourneyPlus",
-  "Usage report configured": "Usage report configured",
-  "Webhook": "Webhook",
-  "Avatar emoji or image URL": "Avatar emoji or image URL",
-  "Avatar uploaded": "Avatar uploaded",
-  "Grant this published version to users and departments.": "Grant this published version to users and departments.",
   "No grants configured": "No grants configured",
   "No published versions": "No published versions",
   "Published versions": "Published versions",
@@ -30,6 +32,9 @@
   "Selected Skill packages will be copied into project .opencode/skills.": "Selected Skill packages will be copied into project .opencode/skills.",
   "Upload image": "Upload image",
   "Uploading": "Uploading",
+  "Usage report configured": "Usage report configured",
   "Version grants": "Version grants",
-  "View release records and active grants.": "View release records and active grants."
+  "View release records and active grants.": "View release records and active grants.",
+  "Webhook": "Webhook",
+  "Windows": "Windows"
 }

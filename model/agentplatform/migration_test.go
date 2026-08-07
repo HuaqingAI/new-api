@@ -15,7 +15,7 @@ func TestMigrateDropsRemovedColumns(t *testing.T) {
 
 	for _, migration := range removedAgentPlatformColumns {
 		for _, column := range migration.columns {
-			require.True(t, db.Migrator().HasColumn(migration.table, column), column)
+			require.True(t, db.Migrator().HasColumn(migration.model, column), column)
 		}
 	}
 	require.True(t, db.Migrator().HasColumn(&AgentDef{}, "resource_version"))
@@ -24,7 +24,7 @@ func TestMigrateDropsRemovedColumns(t *testing.T) {
 
 	for _, migration := range removedAgentPlatformColumns {
 		for _, column := range migration.columns {
-			require.False(t, db.Migrator().HasColumn(migration.table, column), column)
+			require.False(t, db.Migrator().HasColumn(migration.model, column), column)
 		}
 	}
 	require.True(t, db.Migrator().HasColumn(&AgentDef{}, "resource_version"))

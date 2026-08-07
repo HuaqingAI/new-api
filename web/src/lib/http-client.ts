@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import {
   applyAuthRotation,
   clearAuthentication,
+  isExplicitSignOutInProgress,
   refreshAuthentication,
 } from '@/lib/auth-session'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
@@ -77,6 +78,15 @@ function redirectToSignIn(): void {
   }
 }
 
+function hasAuthContext(): boolean {
+  const auth = useAuthStore.getState().auth
+  return Boolean(auth.accessToken || auth.session)
+}
+
+function notifySessionExpired(): void {
+  toast.error(t('Session expired!'), { id: 'auth-session-expired' })
+}
+
 api.interceptors.response.use(
   (response) => {
     if (response.config.acceptAuthRotation && response.data?.success === true) {
@@ -103,6 +113,12 @@ api.interceptors.response.use(
     const status = error?.response?.status
 
     if (status === 401) {
+      if (isExplicitSignOutInProgress()) {
+        throw error
+      }
+      if (!hasAuthContext()) {
+        throw error
+      }
       if (config && !config.skipAuthRefresh && !config.authRetry) {
         config.authRetry = true
         const outcome = await refreshAuthentication()
@@ -118,15 +134,15 @@ api.interceptors.response.use(
         }
 
         if (outcome.kind === 'anonymous' || outcome.kind === 'out_of_sync') {
-          if (!skipErrorHandler) toast.error(t('Session expired!'))
+          if (!skipErrorHandler) notifySessionExpired()
           redirectToSignIn()
         }
       } else if (config?.authRetry) {
         clearAuthentication(false)
-        if (!skipErrorHandler) toast.error(t('Session expired!'))
+        if (!skipErrorHandler) notifySessionExpired()
         redirectToSignIn()
       } else if (!skipErrorHandler) {
-        toast.error(t('Session expired!'))
+        notifySessionExpired()
       }
     } else if (!skipErrorHandler) {
       const messageKey = getServerErrorMessageKey(error)

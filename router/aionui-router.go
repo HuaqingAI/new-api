@@ -9,8 +9,6 @@ import (
 func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 	aionUiRoute := apiRouter.Group("/aionui")
 	{
-		aionUiRoute.GET("/desktop/login", middleware.CriticalRateLimit(), controlleraionui.DesktopLogin)
-		aionUiRoute.POST("/desktop/token", middleware.CriticalRateLimit(), controlleraionui.DesktopToken)
 		aionUiRoute.GET("/agent-configs", middleware.AionUiDesktopAuth(), controlleraionui.GetAgentConfigs)
 		aionUiRoute.GET("/quota-summary", middleware.AionUiDesktopAuth(), controlleraionui.GetQuotaSummary)
 		aionUiRoute.GET("/client-packages/latest", controlleraionui.ListLatestClientPackages)
@@ -28,5 +26,13 @@ func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 			adminClientPackageRoute.PATCH("/:id/status", controlleraionui.AdminUpdateClientPackageStatus)
 			adminClientPackageRoute.DELETE("/:id", controlleraionui.AdminDeleteClientPackage)
 		}
+	}
+}
+
+func RegisterAionUiDesktopAuthRouter(apiRouter *gin.RouterGroup) {
+	aionUiRoute := apiRouter.Group("/aionui")
+	{
+		aionUiRoute.GET("/desktop/login", controlleraionui.DesktopLogin)
+		aionUiRoute.POST("/desktop/token", controlleraionui.DesktopToken)
 	}
 }

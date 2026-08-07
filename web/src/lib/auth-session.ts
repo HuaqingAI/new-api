@@ -77,6 +77,7 @@ const authClient = axios.create({
 const refreshRaceDelays = [80, 200, 500] as const
 let refreshPromise: Promise<RefreshOutcome> | null = null
 let authEpoch = 0
+let explicitSignOutInProgress = false
 
 class AuthRefreshSupersededError extends Error {
   constructor() {
@@ -200,6 +201,19 @@ export function clearAuthenticatedClientState(
 ): void {
   queryClient.clear()
   clearAuthentication(synchronizeTabs)
+}
+
+export function beginExplicitSignOut(): void {
+  explicitSignOutInProgress = true
+  authEpoch += 1
+}
+
+export function finishExplicitSignOut(): void {
+  explicitSignOutInProgress = false
+}
+
+export function isExplicitSignOutInProgress(): boolean {
+  return explicitSignOutInProgress
 }
 
 function waitForRefreshRace(delay: number): Promise<void> {

@@ -38,6 +38,7 @@ COPY --from=builder2 /build/new-api /
 COPY --from=builder2 /build/sys-skills /opt/new-api/sys-skills
 COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
 ENV AIONUI_SYS_SKILLS_DIR=/opt/new-api/sys-skills
+ENV AIONUI_AGENT_API_BASE=https://hth.huaqing.run/v1
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/new-api"]

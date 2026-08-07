@@ -785,9 +785,16 @@ func codexDeveloperInstructions(instructions string) string {
 func openCodeAPIBase() string {
 	value := strings.TrimSpace(os.Getenv("BACKEND_BASE_URL"))
 	if value == "" {
-		value = "http://localhost:3000/v1"
+		value = strings.TrimSpace(os.Getenv("AIONUI_AGENT_API_BASE"))
 	}
-	return strings.TrimRight(value, "/")
+	if value == "" {
+		value = "http://localhost:3000"
+	}
+	value = strings.TrimRight(value, "/")
+	if strings.HasSuffix(value, "/v1") {
+		return value
+	}
+	return value + "/v1"
 }
 
 func allowedAionUIAgentModels() []string {

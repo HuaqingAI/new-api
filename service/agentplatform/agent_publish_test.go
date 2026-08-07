@@ -28,6 +28,8 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "ziniao-store"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "ziniao-store", "SKILL.md"), []byte("# ziniao store"), 0o644))
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Local MCP",
 		Config:      []byte(`{"mcpServers":{"demo-local":{"command":"npx","args":["-y","demo"]}}}`),
@@ -79,6 +81,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.NotContains(t, files, "global/skills/cherry-knowledge-search/SKILL.md")
 	require.NotContains(t, files, "project/.opencode/skills/cherry-knowledge-search/SKILL.md")
 	require.NotContains(t, files, "project/.opencode/skills/cherry-knowledge-search/config.json")
+	require.Contains(t, files, "project/.opencode/skills/ziniao-store/SKILL.md")
 	require.Contains(t, files, "project/.opencode/skills/custom-skill/SKILL.md")
 	require.Contains(t, files, "project/opencode.jsonc")
 	require.Equal(t, "Follow team rules.", string(files["project/instructions.md"]))
@@ -121,6 +124,8 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	t.Setenv("BACKEND_BASE_URL", "https://hth.huaqing.run/v1/")
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "ziniao-store"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "ziniao-store", "SKILL.md"), []byte("# ziniao store"), 0o644))
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Codex MCP",
 		Config:      []byte(`{"mcpServers":{"filesystem":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},"docs":{"type":"streamablehttp","url":"https://example.com/mcp","headers":{"X-Client":"codex"}}}}`),
@@ -162,6 +167,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.Contains(t, files, "project/.codex/config.toml")
 	require.NotContains(t, files, "project/.codex/skills/cherry-knowledge-search/SKILL.md")
 	require.NotContains(t, files, "project/.codex/skills/cherry-knowledge-search/config.json")
+	require.Contains(t, files, "project/.codex/skills/ziniao-store/SKILL.md")
 	require.NotContains(t, files, "project/AGENTS.md")
 	require.NotContains(t, files, "project/user-context.md")
 

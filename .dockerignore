@@ -1,6 +1,7 @@
 .github
 .git
 *.md
+!sys-skills/**
 .vscode
 .gitignore
 Makefile

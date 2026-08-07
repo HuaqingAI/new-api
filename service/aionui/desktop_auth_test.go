@@ -129,6 +129,7 @@ func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {
 	oldRedisAvailable := desktopRedisAvailable
 	oldRedisSet := desktopRedisSet
 	oldRedisGet := desktopRedisGet
+	oldRedisGetDel := desktopRedisGetDel
 	desktopRedisAvailable = func() bool {
 		return true
 	}
@@ -143,10 +144,19 @@ func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {
 		}
 		return value, nil
 	}
+	desktopRedisGetDel = func(key string) (string, error) {
+		value, ok := redisValues[key]
+		if !ok {
+			return "", errors.New("missing key")
+		}
+		delete(redisValues, key)
+		return value, nil
+	}
 	t.Cleanup(func() {
 		desktopRedisAvailable = oldRedisAvailable
 		desktopRedisSet = oldRedisSet
 		desktopRedisGet = oldRedisGet
+		desktopRedisGetDel = oldRedisGetDel
 	})
 	require.NoError(t, db.Create(&model.User{
 		Id:          101,
@@ -186,6 +196,79 @@ func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {
 	require.Equal(t, 101, claims.UserId)
 	require.Equal(t, "bob@example.com", claims.Email)
 	require.Equal(t, "device-2", claims.DeviceId)
+}
+
+func TestDesktopAuthServiceExchangesCodeAcrossInstancesWithRedis(t *testing.T) {
+	db := newDesktopAuthTestDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	redisValues := map[string]string{}
+	oldRedisAvailable := desktopRedisAvailable
+	oldRedisSet := desktopRedisSet
+	oldRedisGet := desktopRedisGet
+	oldRedisGetDel := desktopRedisGetDel
+	desktopRedisAvailable = func() bool {
+		return true
+	}
+	desktopRedisSet = func(key string, value string, _ time.Duration) error {
+		redisValues[key] = value
+		return nil
+	}
+	desktopRedisGet = func(key string) (string, error) {
+		value, ok := redisValues[key]
+		if !ok {
+			return "", errors.New("missing key")
+		}
+		return value, nil
+	}
+	desktopRedisGetDel = func(key string) (string, error) {
+		value, ok := redisValues[key]
+		if !ok {
+			return "", errors.New("missing key")
+		}
+		delete(redisValues, key)
+		return value, nil
+	}
+	t.Cleanup(func() {
+		desktopRedisAvailable = oldRedisAvailable
+		desktopRedisSet = oldRedisSet
+		desktopRedisGet = oldRedisGet
+		desktopRedisGetDel = oldRedisGetDel
+	})
+	require.NoError(t, db.Create(&model.User{
+		Id:          103,
+		Username:    "dave",
+		DisplayName: "Dave",
+		Email:       "dave@example.com",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AffCode:     "dave",
+	}).Error)
+
+	now := time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC)
+	issuer := NewDesktopAuthService()
+	issuer.now = func() time.Time {
+		return now
+	}
+	code, err := issuer.IssueCode(
+		&model.User{Id: 103, Username: "dave", DisplayName: "Dave", Email: "dave@example.com", Status: common.UserStatusEnabled},
+		DesktopRedirectURI,
+		"state-1234567890",
+	)
+	require.NoError(t, err)
+
+	exchanger := NewDesktopAuthService()
+	exchanger.now = func() time.Time {
+		return now.Add(time.Second)
+	}
+	token, err := exchanger.ExchangeCode(dtoaionui.DesktopTokenRequest{Code: code, DeviceId: "device-4"})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, token.AccessToken)
+	require.Equal(t, 103, token.User.Id)
+	_, err = issuer.ExchangeCode(dtoaionui.DesktopTokenRequest{Code: code, DeviceId: "device-4"})
+	require.ErrorIs(t, err, ErrInvalidCode)
 }
 
 func TestDesktopAuthServiceRejectsUserWithoutEmail(t *testing.T) {

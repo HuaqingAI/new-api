@@ -23,6 +23,7 @@ const (
 	DesktopLoopbackCallbackPath = "/hth/callback"
 	desktopTokenTTL             = 90 * 24 * time.Hour
 	desktopCodeTTL              = 5 * time.Minute
+	desktopCodeRedisKeyPrefix   = "aionui:desktop:code:"
 	desktopTokenRedisKeyPrefix  = "aionui:desktop:token:"
 )
 
@@ -39,8 +40,9 @@ var (
 	desktopRedisAvailable = func() bool {
 		return common.RedisEnabled && common.RDB != nil
 	}
-	desktopRedisSet = common.RedisSet
-	desktopRedisGet = common.RedisGet
+	desktopRedisSet    = common.RedisSet
+	desktopRedisGet    = common.RedisGet
+	desktopRedisGetDel = common.RedisGetDel
 )
 
 type DesktopCodeGrant struct {
@@ -74,6 +76,16 @@ type desktopTokenRedisPayload struct {
 	ExpiresAt  int64  `json:"expires_at"`
 	IssuedAt   int64  `json:"issued_at"`
 	AppVersion string `json:"app_version"`
+}
+
+type desktopCodeRedisPayload struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	State       string `json:"state"`
+	RedirectURI string `json:"redirect_uri"`
+	ExpiresAt   int64  `json:"expires_at"`
 }
 
 type DesktopAuthService struct {
@@ -169,8 +181,14 @@ func (s *DesktopAuthService) IssueCode(user *model.User, redirectURI string, sta
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.codes[code] = grant
+	s.mu.Unlock()
+	if err := s.saveCode(grant); err != nil {
+		s.mu.Lock()
+		delete(s.codes, code)
+		s.mu.Unlock()
+		return "", err
+	}
 	return code, nil
 }
 
@@ -182,15 +200,13 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	}
 
 	now := s.now()
-	s.mu.Lock()
-	grant, ok := s.codes[code]
-	if !ok || grant.Used || now.After(grant.ExpiresAt) {
-		s.mu.Unlock()
+	grant, ok, err := s.consumeCode(code, now)
+	if err != nil {
+		return dtoaionui.DesktopTokenResponse{}, err
+	}
+	if !ok {
 		return dtoaionui.DesktopTokenResponse{}, ErrInvalidCode
 	}
-	grant.Used = true
-	delete(s.codes, code)
-	s.mu.Unlock()
 
 	user, err := model.GetUserById(grant.UserId, false)
 	if err != nil {
@@ -257,6 +273,55 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	}, nil
 }
 
+func (s *DesktopAuthService) consumeCode(code string, now time.Time) (DesktopCodeGrant, bool, error) {
+	if desktopRedisAvailable() {
+		grant, ok, err := s.consumeCodeFromRedis(code, now)
+		if err != nil || !ok {
+			return grant, ok, err
+		}
+		s.mu.Lock()
+		delete(s.codes, code)
+		s.mu.Unlock()
+		return grant, true, nil
+	}
+
+	s.mu.Lock()
+	grant, ok := s.codes[code]
+	if !ok || grant.Used || now.After(grant.ExpiresAt) {
+		s.mu.Unlock()
+		return DesktopCodeGrant{}, false, nil
+	}
+	grant.Used = true
+	delete(s.codes, code)
+	s.mu.Unlock()
+	return grant, true, nil
+}
+
+func (s *DesktopAuthService) consumeCodeFromRedis(code string, now time.Time) (DesktopCodeGrant, bool, error) {
+	data, err := desktopRedisGetDel(desktopCodeRedisKey(code))
+	if err != nil {
+		return DesktopCodeGrant{}, false, nil
+	}
+	var payload desktopCodeRedisPayload
+	if err := common.Unmarshal([]byte(data), &payload); err != nil {
+		return DesktopCodeGrant{}, false, err
+	}
+	grant := DesktopCodeGrant{
+		Code:        code,
+		UserId:      payload.UserId,
+		Username:    payload.Username,
+		Email:       payload.Email,
+		DisplayName: payload.DisplayName,
+		State:       payload.State,
+		RedirectURI: payload.RedirectURI,
+		ExpiresAt:   time.Unix(payload.ExpiresAt, 0),
+	}
+	if now.After(grant.ExpiresAt) {
+		return DesktopCodeGrant{}, false, nil
+	}
+	return grant, true, nil
+}
+
 func desktopUserDepartmentNames(userID int) ([]string, error) {
 	var memberships []entmodel.UserDepartment
 	if err := model.DB.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
@@ -319,6 +384,30 @@ func desktopSecret(prefix string, length int) (string, error) {
 		return "", err
 	}
 	return prefix + value, nil
+}
+
+func (s *DesktopAuthService) saveCode(grant DesktopCodeGrant) error {
+	if !desktopRedisAvailable() {
+		return nil
+	}
+	ttl := grant.ExpiresAt.Sub(s.now())
+	if ttl <= 0 {
+		return nil
+	}
+	payload := desktopCodeRedisPayload{
+		UserId:      grant.UserId,
+		Username:    grant.Username,
+		Email:       grant.Email,
+		DisplayName: grant.DisplayName,
+		State:       grant.State,
+		RedirectURI: grant.RedirectURI,
+		ExpiresAt:   grant.ExpiresAt.Unix(),
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return desktopRedisSet(desktopCodeRedisKey(grant.Code), string(data), ttl)
 }
 
 func (s *DesktopAuthService) saveToken(claims DesktopTokenClaims) error {
@@ -429,6 +518,10 @@ func (s *DesktopAuthService) loadToken(token string, now time.Time) (DesktopToke
 
 func desktopTokenRedisKey(token string) string {
 	return desktopTokenRedisKeyPrefix + desktopTokenHash(token)
+}
+
+func desktopCodeRedisKey(code string) string {
+	return desktopCodeRedisKeyPrefix + desktopTokenHash(code)
 }
 
 func desktopTokenHash(token string) string {

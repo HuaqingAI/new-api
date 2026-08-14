@@ -31,7 +31,7 @@ const openCodeUserContextTemplate = "将下面<user-context></user-context>中�
 const (
 	aionUIPersonalAPIKeyPlaceholder = "<hth-personal-apikey>"
 	aionUIDefaultAgentModel         = "gpt-5.6-terra"
-	defaultAionUIAllowedModels      = "gpt-5.3-codex,gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra"
+	defaultAionUIAllowedModels      = "deepseek-v4-flash,deepseek-v4-pro,gpt-5.6-luna,gpt-5.6-terra,gpt-5.6-sol"
 	cherryKnowledgeSearchSkillName  = "cherry-knowledge-search"
 )
 
@@ -61,6 +61,7 @@ type OpenCodeProviderConfigInput struct {
 	APIBase      string
 	APIKey       string
 	DefaultModel string
+	ModelNames   []string
 	Models       map[string]any
 }
 
@@ -158,11 +159,13 @@ func (s *AgentPublishService) Publish(input PublishAgentInput) (PublishAgentResu
 		if err := tx.Where("agent_resource_id = ? AND resource_version = ?", input.ResourceId, "draft").Order("sort_order ASC, id ASC").Find(&deps).Error; err != nil {
 			return err
 		}
+		modelNames := allowedAionUIAgentModels()
 		providerInput := OpenCodeProviderConfigInput{
 			APIBase:      openCodeAPIBase(),
 			APIKey:       aionUIPersonalAPIKeyPlaceholder,
 			DefaultModel: aionUIDefaultAgentModel,
-			Models:       buildAllowedOpenCodeModels(allowedAionUIAgentModels()),
+			ModelNames:   modelNames,
+			Models:       buildAllowedOpenCodeModels(modelNames),
 		}
 		if len(providerInput.Models) == 0 {
 			return ErrInvalidResourceInput
@@ -694,10 +697,71 @@ func openCodeProjectConfig(mcp map[string]any, providerInput OpenCodeProviderCon
 				"options": map[string]any{
 					"apiKey": providerInput.APIKey,
 				},
-				"models": providerInput.Models,
+				"models": orderedOpenCodeModels{
+					names:  providerInput.ModelNames,
+					models: providerInput.Models,
+				},
 			},
 		},
 	}
+}
+
+type orderedOpenCodeModels struct {
+	names  []string
+	models map[string]any
+}
+
+func (models orderedOpenCodeModels) MarshalJSON() ([]byte, error) {
+	if len(models.models) == 0 {
+		return []byte("{}"), nil
+	}
+	var buffer bytes.Buffer
+	buffer.WriteByte('{')
+	written := map[string]struct{}{}
+	first := true
+	for _, name := range models.names {
+		config, ok := models.models[name]
+		if !ok {
+			continue
+		}
+		if err := writeOpenCodeModelJSONEntry(&buffer, name, config, &first); err != nil {
+			return nil, err
+		}
+		written[name] = struct{}{}
+	}
+	remaining := make([]string, 0, len(models.models)-len(written))
+	for name := range models.models {
+		if _, ok := written[name]; !ok {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+	for _, name := range remaining {
+		if err := writeOpenCodeModelJSONEntry(&buffer, name, models.models[name], &first); err != nil {
+			return nil, err
+		}
+	}
+	buffer.WriteByte('}')
+	return buffer.Bytes(), nil
+}
+
+func writeOpenCodeModelJSONEntry(buffer *bytes.Buffer, name string, config any, first *bool) error {
+	key, err := common.Marshal(name)
+	if err != nil {
+		return err
+	}
+	value, err := common.Marshal(config)
+	if err != nil {
+		return err
+	}
+	if !*first {
+		buffer.WriteByte(',')
+	}
+	*first = false
+	buffer.Write(key)
+	buffer.WriteByte(':')
+	buffer.Write(value)
+	return nil
 }
 
 func codexGlobalConfig(providerInput OpenCodeProviderConfigInput) string {
@@ -831,6 +895,8 @@ func allowedAionUIAgentModels() []string {
 
 func isSupportedAionUIAgentModel(modelName string) bool {
 	switch modelName {
+	case "deepseek-v4-flash", "deepseek-v4-pro":
+		return true
 	case "gpt-5.3-codex", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra":
 		return true
 	default:

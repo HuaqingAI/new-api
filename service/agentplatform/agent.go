@@ -278,8 +278,30 @@ func (input *AgentUpdateInput) normalize() {
 }
 
 func buildOpenCodeModelConfig(modelName string) map[string]any {
+	variants := map[string]any{
+		"low":    map[string]any{"reasoningEffort": "low"},
+		"medium": map[string]any{"reasoningEffort": "medium"},
+		"high":   map[string]any{"reasoningEffort": "high"},
+		"xhigh":  map[string]any{"reasoningEffort": "xhigh"},
+	}
+	if strings.HasPrefix(modelName, "deepseek-v4-") {
+		variants = map[string]any{
+			"none": map[string]any{
+				"reasoningEffort": "none",
+				"body": map[string]any{
+					"thinking": map[string]any{"type": "disabled"},
+				},
+			},
+			"max": map[string]any{
+				"reasoningEffort": "max",
+				"body": map[string]any{
+					"thinking": map[string]any{"type": "enabled"},
+				},
+			},
+		}
+	}
 	return map[string]any{
-		"name":        strings.ToUpper(modelName),
+		"name":        openCodeModelDisplayName(modelName),
 		"temperature": false,
 		"reasoning":   true,
 		"tool_call":   true,
@@ -292,12 +314,25 @@ func buildOpenCodeModelConfig(modelName string) map[string]any {
 			"input":   200000,
 			"output":  32000,
 		},
-		"variants": map[string]any{
-			"low":    map[string]any{"reasoningEffort": "low"},
-			"medium": map[string]any{"reasoningEffort": "medium"},
-			"high":   map[string]any{"reasoningEffort": "high"},
-			"xhigh":  map[string]any{"reasoningEffort": "xhigh"},
-		},
+		"variants": variants,
+	}
+}
+
+func openCodeModelDisplayName(modelName string) string {
+	displayName := strings.ToUpper(modelName)
+	switch modelName {
+	case "deepseek-v4-flash":
+		return displayName + " 1x"
+	case "deepseek-v4-pro":
+		return displayName + " 3x"
+	case "gpt-5.6-luna":
+		return displayName + " 16x"
+	case "gpt-5.6-terra":
+		return displayName + " 39x"
+	case "gpt-5.6-sol":
+		return displayName + " 78x"
+	default:
+		return displayName
 	}
 }
 

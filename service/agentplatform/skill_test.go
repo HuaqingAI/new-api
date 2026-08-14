@@ -1,6 +1,9 @@
 package agentplatform
 
 import (
+	"archive/zip"
+	"bytes"
+	"errors"
 	"testing"
 
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
@@ -58,4 +61,56 @@ func TestSkillServiceGetRejectsNonSkillResources(t *testing.T) {
 
 	_, err := svc.Get(resource.ResourceId)
 	require.ErrorIs(t, err, ErrResourceNotFound)
+}
+
+func TestSkillServiceSavePackageAcceptsSingleRootDirectoryIndependentOfDisplayName(t *testing.T) {
+	svc, _ := newSkillServiceForTest(t)
+	store := newFakeArtifactStore()
+	restore := SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
+	skill, err := svc.Create(SkillCreateInput{DisplayName: "1111", OwnerUserId: 100})
+	require.NoError(t, err)
+
+	skillZip := buildTestSkillZip(t, "refund-order-reconciler/SKILL.md", "# refund")
+	saved, err := svc.SavePackage(skill.ResourceId, "refund-order-reconciler.zip", bytes.NewReader(skillZip))
+	require.NoError(t, err)
+
+	require.Equal(t, "refund-order-reconciler.zip", saved.FileName)
+	require.NotEmpty(t, saved.FilePath)
+	require.Len(t, store.files, 1)
+}
+
+func TestSkillServiceSavePackageRejectsZipWithoutSingleRootDirectory(t *testing.T) {
+	for name, skillZip := range map[string][]byte{
+		"flat.zip":       buildTestSkillZip(t, "SKILL.md", "# invalid"),
+		"multi-root.zip": buildTestSkillZipWithFiles(t, map[string]string{"a/SKILL.md": "# a", "b/SKILL.md": "# b"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc, _ := newSkillServiceForTest(t)
+			restore := SetArtifactStoreForTest(newFakeArtifactStore())
+			t.Cleanup(restore)
+			skill, err := svc.Create(SkillCreateInput{DisplayName: "1111", OwnerUserId: 100})
+			require.NoError(t, err)
+
+			_, err = svc.SavePackage(skill.ResourceId, name, bytes.NewReader(skillZip))
+
+			require.ErrorIs(t, err, ErrInvalidResourceInput)
+			var def apmodel.SkillDef
+			require.True(t, errors.Is(svc.db.Where("resource_id = ?", skill.ResourceId).First(&def).Error, gorm.ErrRecordNotFound))
+		})
+	}
+}
+
+func buildTestSkillZipWithFiles(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	buffer := bytes.NewBuffer(nil)
+	writer := zip.NewWriter(buffer)
+	for name, content := range files {
+		file, err := writer.Create(name)
+		require.NoError(t, err)
+		_, err = file.Write([]byte(content))
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+	return buffer.Bytes()
 }

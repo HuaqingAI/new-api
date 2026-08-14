@@ -1,6 +1,7 @@
 package agentplatform
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -297,6 +298,9 @@ func storeSkillPackage(resourceID string, fileName string, reader io.Reader) (st
 	if size <= 0 {
 		return "", "", 0, ErrInvalidResourceInput
 	}
+	if err := validateSkillPackageZip(tmpPath); err != nil {
+		return "", "", 0, err
+	}
 	sum := hex.EncodeToString(hash.Sum(nil))
 	store, err := DefaultArtifactStore()
 	if err != nil {
@@ -319,4 +323,16 @@ func storeSkillPackage(resourceID string, fileName string, reader io.Reader) (st
 		return "", "", 0, err
 	}
 	return ref.URI, sum, size, nil
+}
+
+func validateSkillPackageZip(zipPath string) error {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return ErrInvalidResourceInput
+	}
+	defer reader.Close()
+	if singleRootDir(reader.File) == "" {
+		return ErrInvalidResourceInput
+	}
+	return nil
 }

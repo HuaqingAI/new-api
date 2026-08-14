@@ -1333,6 +1333,9 @@ func singleRootDir(files []*zip.File) string {
 		}
 		parts := strings.Split(name, "/")
 		if len(parts) == 1 {
+			if file.FileInfo().IsDir() {
+				continue
+			}
 			return ""
 		}
 		if root == "" {

@@ -328,6 +328,27 @@ func TestAllowedAionUIAgentModelsFiltersUnsupportedModels(t *testing.T) {
 	require.Equal(t, []string{"gpt-5.6-terra", "gpt-5.6-luna"}, allowedAionUIAgentModels())
 }
 
+func TestSafeExtractSkillZipUsesSingleRootDirectoryWhenZipHasDirectoryEntry(t *testing.T) {
+	root := t.TempDir()
+	zipPath := filepath.Join(root, "refund-order-reconciler.zip")
+	buffer := bytes.NewBuffer(nil)
+	writer := zip.NewWriter(buffer)
+	_, err := writer.Create("refund-order-reconciler/")
+	require.NoError(t, err)
+	file, err := writer.Create("refund-order-reconciler/SKILL.md")
+	require.NoError(t, err)
+	_, err = file.Write([]byte("# refund"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	require.NoError(t, os.WriteFile(zipPath, buffer.Bytes(), 0o644))
+
+	skillsDir := filepath.Join(root, "skills")
+	require.NoError(t, safeExtractSkillZip(zipPath, skillsDir, "1111"))
+
+	require.FileExists(t, filepath.Join(skillsDir, "refund-order-reconciler", "SKILL.md"))
+	require.NoFileExists(t, filepath.Join(skillsDir, "1111", "refund-order-reconciler", "SKILL.md"))
+}
+
 func newAgentPublishTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

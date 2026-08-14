@@ -278,6 +278,10 @@ func (input *AgentUpdateInput) normalize() {
 }
 
 func buildOpenCodeModelConfig(modelName string) map[string]any {
+	modalities := map[string]any{
+		"input":  []string{"text", "image"},
+		"output": []string{"text", "image"},
+	}
 	variants := map[string]any{
 		"low":    map[string]any{"reasoningEffort": "low"},
 		"medium": map[string]any{"reasoningEffort": "medium"},
@@ -285,6 +289,10 @@ func buildOpenCodeModelConfig(modelName string) map[string]any {
 		"xhigh":  map[string]any{"reasoningEffort": "xhigh"},
 	}
 	if strings.HasPrefix(modelName, "deepseek-v4-") {
+		modalities = map[string]any{
+			"input":  []string{"text"},
+			"output": []string{"text"},
+		}
 		variants = map[string]any{
 			"none": map[string]any{
 				"reasoningEffort": "none",
@@ -305,10 +313,7 @@ func buildOpenCodeModelConfig(modelName string) map[string]any {
 		"temperature": false,
 		"reasoning":   true,
 		"tool_call":   true,
-		"modalities": map[string]any{
-			"input":  []string{"text", "image"},
-			"output": []string{"text", "image"},
-		},
+		"modalities":  modalities,
 		"limit": map[string]any{
 			"context": 200000,
 			"input":   200000,

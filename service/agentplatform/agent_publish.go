@@ -689,6 +689,9 @@ func openCodeProjectConfig(mcp map[string]any, providerInput OpenCodeProviderCon
 		"instructions": []string{"instructions.md", "user-context.md"},
 		"model":        "hth/" + strings.TrimSpace(providerInput.DefaultModel),
 		"mcp":          mcp,
+		"permission": map[string]any{
+			"external_directory": "allow",
+		},
 		"provider": map[string]any{
 			"hth": map[string]any{
 				"name": "HTH",

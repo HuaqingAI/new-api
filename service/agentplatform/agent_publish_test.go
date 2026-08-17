@@ -109,6 +109,8 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.NoError(t, common.Unmarshal(files["project/opencode.jsonc"], &projectConfig))
 	require.Equal(t, "hth/gpt-5.6-terra", projectConfig["model"])
 	require.Equal(t, []any{"instructions.md", "user-context.md"}, projectConfig["instructions"])
+	permission := projectConfig["permission"].(map[string]any)
+	require.Equal(t, "allow", permission["external_directory"])
 	provider := projectConfig["provider"].(map[string]any)
 	hthProvider := provider["hth"].(map[string]any)
 	require.Equal(t, "https://hth.huaqing.run/v1", hthProvider["api"])

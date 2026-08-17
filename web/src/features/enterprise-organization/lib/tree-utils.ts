@@ -103,7 +103,7 @@ export function getDefaultExpandedDepartmentIds(
   departmentId: number | null | undefined
 ) {
   const lookup = createDepartmentLookup(nodes)
-  const expanded = new Set<number>(lookup.rootIds)
+  const expanded = new Set<number>()
   const selected =
     departmentId && lookup.byId.has(departmentId)
       ? lookup.byId.get(departmentId)!
@@ -118,6 +118,32 @@ export function getDefaultExpandedDepartmentIds(
   }
 
   return orderDepartmentIds(expanded, lookup.orderedIds)
+}
+
+export function getExpandableDepartmentIds(nodes: DepartmentTreeNode[]) {
+  const expandable = new Set<number>()
+  const orderedIds: number[] = []
+
+  const walk = (items: DepartmentTreeNode[]) => {
+    for (const item of items) {
+      orderedIds.push(item.id)
+      if (item.children.length > 0) {
+        expandable.add(item.id)
+        walk(item.children)
+      }
+    }
+  }
+
+  walk(nodes)
+
+  return orderDepartmentIds(expandable, orderedIds)
+}
+
+export function getCollapsedDepartmentIds(
+  nodes: DepartmentTreeNode[],
+  selectedDepartmentId: number | null | undefined
+) {
+  return getAncestorDepartmentIds(nodes, selectedDepartmentId)
 }
 
 export function resolveDepartmentSelection(

@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import {
-  EnterpriseOrganizationOverview,
-  enterpriseOrganizationSearchSchema,
+  EnterpriseOrganizationBudgetsPage,
+  enterpriseOrganizationTaskSearchSchema,
 } from '@/features/enterprise-organization'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute(
-  '/_authenticated/enterprise-organization/'
+  '/_authenticated/enterprise-organization/budgets'
 )({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
@@ -36,6 +36,6 @@ export const Route = createFileRoute(
       })
     }
   },
-  validateSearch: enterpriseOrganizationSearchSchema,
-  component: EnterpriseOrganizationOverview,
+  validateSearch: enterpriseOrganizationTaskSearchSchema,
+  component: EnterpriseOrganizationBudgetsPage,
 })

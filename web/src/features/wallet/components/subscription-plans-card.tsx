@@ -549,14 +549,14 @@ export function SubscriptionPlansCard({
                 )}
                 {subscriptionFilter === 'all' &&
                   allSubscriptions.length > activeSubscriptions.length && (
-                  <>
-                    <span className='text-muted-foreground/30'>·</span>
-                    <span className='text-muted-foreground'>
-                      {allSubscriptions.length - activeSubscriptions.length}{' '}
-                      {t('expired')}
-                    </span>
-                  </>
-                )}
+                    <>
+                      <span className='text-muted-foreground/30'>·</span>
+                      <span className='text-muted-foreground'>
+                        {allSubscriptions.length - activeSubscriptions.length}{' '}
+                        {t('expired')}
+                      </span>
+                    </>
+                  )}
               </span>
             </div>
             <div className='flex w-full items-center gap-2 sm:w-auto'>

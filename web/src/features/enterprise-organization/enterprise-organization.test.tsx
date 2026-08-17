@@ -14,6 +14,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { useForm, type Resolver } from 'react-hook-form'
 import { I18nextProvider } from 'react-i18next'
 
+import { Card, CardContent } from '@/components/ui/card'
 import i18n, { resources } from '@/i18n/config'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
@@ -42,9 +43,11 @@ import {
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
   DepartmentBudgetPanel,
+  enterpriseOrganizationTaskSearchSchema,
   enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
   EnterpriseOrganizationWorkspace,
+  DepartmentTreeBulkActions,
   DepartmentBudgetDetailTable,
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
@@ -65,7 +68,9 @@ import {
 } from './index'
 import {
   getAncestorDepartmentIds,
+  getCollapsedDepartmentIds,
   getDefaultExpandedDepartmentIds,
+  getExpandableDepartmentIds,
   resolveDepartmentSelection,
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
@@ -328,6 +333,45 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(expandedHtml, /bg-muted\/50/)
   })
 
+  test('renders department tree bulk expand and collapse actions', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DepartmentTreeBulkActions
+          onExpandAll={() => undefined}
+          onCollapse={() => undefined}
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /Expand All/)
+    assert.match(html, /Collapse All/)
+  })
+
+  test('keeps department tree panel height constrained for internal scrolling', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <Card className='h-full min-h-0 overflow-hidden'>
+          <CardContent className='min-h-0 flex-1 overflow-y-auto px-0 pb-0'>
+            <EnterpriseOrganizationContent
+              isLoading={false}
+              departments={[
+                departmentNode({
+                  id: 1,
+                  name: 'Headquarters',
+                  children: [departmentNode({ id: 2, name: 'Finance' })],
+                }),
+              ]}
+              expandedIds={[1]}
+            />
+          </CardContent>
+        </Card>
+      </I18nextProvider>
+    )
+
+    assert.match(html, /h-full min-h-0 overflow-hidden/)
+    assert.match(html, /min-h-0 flex-1 overflow-y-auto/)
+  })
+
   test('search schema accepts valid department and budget identifiers and drops invalid values', () => {
     const parsed = enterpriseOrganizationSearchSchema.parse({
       dept_id: '12',
@@ -342,6 +386,30 @@ describe('Enterprise organization department tree workflow', () => {
     })
     assert.equal(invalid.dept_id, undefined)
     assert.equal(invalid.budget_id, undefined)
+  })
+
+  test('task search schema keeps member context for split workspaces', () => {
+    const parsed = enterpriseOrganizationTaskSearchSchema.parse({
+      dept_id: '8',
+      budget_id: '12',
+      member_user_id: '2001',
+    })
+
+    assert.deepEqual(parsed, {
+      dept_id: 8,
+      budget_id: 12,
+      member_user_id: 2001,
+    })
+
+    const invalid = enterpriseOrganizationTaskSearchSchema.parse({
+      dept_id: 'x',
+      budget_id: '-1',
+      member_user_id: '0',
+    })
+
+    assert.equal(invalid.dept_id, undefined)
+    assert.equal(invalid.budget_id, undefined)
+    assert.equal(invalid.member_user_id, undefined)
   })
 
   test('budget list card exposes descendant scope toggle and department labels', () => {
@@ -465,6 +533,29 @@ describe('Enterprise organization department tree workflow', () => {
     }
   })
 
+  test('budget pool type select displays the translated label instead of raw value', () => {
+    const { auth } = useAuthStore.getState()
+    const previousUser = auth.user
+
+    try {
+      auth.setUser({
+        id: 1002,
+        username: 'enterprise-admin',
+        role: ROLE.ADMIN,
+      })
+      const html = renderWorkspace(
+        departmentNode({ id: 7, name: 'Security' }),
+        null
+      )
+
+      assert.match(html, /Budget Type/)
+      assert.match(html, /Balance Budget/)
+      assert.doesNotMatch(html, />balance</)
+    } finally {
+      auth.setUser(previousUser)
+    }
+  })
+
   test('normalizes stale search state for empty trees and invalid department ids', () => {
     assert.deepEqual(
       normalizeEnterpriseOrganizationSearch({
@@ -553,17 +644,20 @@ describe('Enterprise organization department tree workflow', () => {
     ]
 
     assert.deepEqual(getAncestorDepartmentIds(tree, 3), [1, 2])
-    assert.deepEqual(getDefaultExpandedDepartmentIds(tree, 3), [1, 2, 4])
+    assert.deepEqual(getDefaultExpandedDepartmentIds(tree, 3), [1, 2])
+    assert.deepEqual(getExpandableDepartmentIds(tree), [1, 2])
+    assert.deepEqual(getCollapsedDepartmentIds(tree, 3), [1, 2])
+    assert.deepEqual(getCollapsedDepartmentIds(tree, 1), [])
 
     const resolved = resolveDepartmentSelection(tree, 3)
     assert.equal(resolved.selectedDepartmentId, 3)
     assert.equal(resolved.normalizedDepartmentId, 3)
-    assert.deepEqual(resolved.requiredExpandedIds, [1, 2, 4])
+    assert.deepEqual(resolved.requiredExpandedIds, [1, 2])
 
     const fallback = resolveDepartmentSelection(tree, 999)
     assert.equal(fallback.selectedDepartmentId, 1)
     assert.equal(fallback.normalizedDepartmentId, 1)
-    assert.deepEqual(fallback.requiredExpandedIds, [1, 4])
+    assert.deepEqual(fallback.requiredExpandedIds, [1])
   })
 
   test('syncs and toggles expanded department state without dropping required ancestors', () => {
@@ -588,6 +682,38 @@ describe('Enterprise organization department tree workflow', () => {
     assert.deepEqual(synced, [1, 2])
     assert.deepEqual(toggleExpandedDepartmentId(synced, 2), [1])
     assert.deepEqual(toggleExpandedDepartmentId([1], 2), [1, 2])
+  })
+
+  test('selecting a child department does not expand unrelated departments', () => {
+    const tree = [
+      departmentNode({
+        id: 1,
+        name: 'Headquarters',
+        children: [
+          departmentNode({
+            id: 2,
+            parent_id: 1,
+            name: 'Engineering',
+            children: [
+              departmentNode({ id: 3, parent_id: 2, name: 'Platform' }),
+            ],
+          }),
+        ],
+      }),
+      departmentNode({
+        id: 4,
+        name: 'Operations',
+        children: [departmentNode({ id: 5, parent_id: 4, name: 'Finance' })],
+      }),
+    ]
+
+    const nextExpandedIds = syncExpandedDepartmentIds(
+      [],
+      tree,
+      getDefaultExpandedDepartmentIds(tree, 3)
+    )
+
+    assert.deepEqual(nextExpandedIds, [1, 2])
   })
 
   test('resolves budget selection within current department context only', () => {
@@ -649,6 +775,8 @@ describe('Enterprise organization department tree workflow', () => {
     assert.match(html, />#22</)
     assert.match(html, /Balance Budget/)
     assert.match(html, /Subscription Budget/)
+    assert.match(html, /Usage Ratio/)
+    assert.match(html, /Descending/)
     assert.match(html, /Engineering/)
   })
 
@@ -841,6 +969,7 @@ describe('Enterprise organization department tree workflow', () => {
       'Department Owners',
       'No effective owner',
       'Admin fallback',
+      'Budget Pool List',
       'Budget Pool Overview',
       'Current Member Governance',
       'Current Member Wallet Allocation',
@@ -848,6 +977,9 @@ describe('Enterprise organization department tree workflow', () => {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
 
+    assert.ok(
+      html.indexOf('Budget Pool List') < html.indexOf('Budget Pool Overview')
+    )
     assert.doesNotMatch(html, /Create Budget Pool/)
     assert.doesNotMatch(html, /Membership Lookup/)
   })
@@ -2514,6 +2646,24 @@ describe('Enterprise organization department tree workflow', () => {
     assert.doesNotMatch(html, /Membership Lookup/)
   })
 
+  test('allocation workspace splits subordinate budget and member wallet flows into tabs', () => {
+    const html = renderDepartmentBudgetPanel({
+      departmentId: 7,
+      departmentName: 'Security',
+      selectedMember: null,
+      mode: 'allocations',
+    })
+
+    assert.match(html, /role="tablist"/)
+    assert.match(html, /role="tab"/)
+    assert.match(html, /Allocate Budget To Subordinate Department/)
+    assert.match(html, /Current Member Wallet Allocation/)
+    assert.ok(
+      html.indexOf('Allocate Budget To Subordinate Department') <
+        html.indexOf('Current Member Wallet Allocation')
+    )
+  })
+
   test('wallet allocation form inherits the selected department member context', () => {
     const html = renderDepartmentBudgetPanel({
       departmentId: 7,
@@ -2583,10 +2733,12 @@ function renderDepartmentBudgetPanel({
   departmentId,
   departmentName,
   selectedMember,
+  mode = 'all',
 }: {
   departmentId: number
   departmentName: string
   selectedMember: DepartmentMemberItem | null
+  mode?: 'budgets' | 'allocations' | 'requests' | 'governance' | 'all'
 }) {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
@@ -2598,6 +2750,7 @@ function renderDepartmentBudgetPanel({
           selectedBudgetId={null}
           onSelectedBudgetIdChange={() => undefined}
           selectedMember={selectedMember}
+          mode={mode}
         />
       </I18nextProvider>
     </QueryClientProvider>
@@ -2869,5 +3022,5 @@ function walletDetail(
 }
 
 function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

@@ -30,7 +30,14 @@ import { useSidebarData } from './use-sidebar-data'
 
 /** Sentinel key used for the root navigation in animation `key=` props */
 const ROOT_VIEW_KEY = '__root'
-const DEPARTMENT_GOVERNANCE_URLS = new Set(['/enterprise-organization'])
+const DEPARTMENT_GOVERNANCE_URLS = new Set([
+  '/enterprise-organization',
+  '/enterprise-organization/members',
+  '/enterprise-organization/budgets',
+  '/enterprise-organization/allocations',
+  '/enterprise-organization/requests',
+  '/enterprise-organization/governance',
+])
 
 function userCanSeeRootNavItem(
   item: NavGroup['items'][number],

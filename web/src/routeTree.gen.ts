@@ -44,6 +44,11 @@ import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedEnterpriseAlertsIndexRouteImport } from './routes/_authenticated/enterprise-alerts/index'
 import { Route as AuthenticatedEnterpriseDingtalkIndexRouteImport } from './routes/_authenticated/enterprise-dingtalk/index'
 import { Route as AuthenticatedEnterpriseOrganizationIndexRouteImport } from './routes/_authenticated/enterprise-organization/index'
+import { Route as AuthenticatedEnterpriseOrganizationAllocationsRouteImport } from './routes/_authenticated/enterprise-organization/allocations'
+import { Route as AuthenticatedEnterpriseOrganizationBudgetsRouteImport } from './routes/_authenticated/enterprise-organization/budgets'
+import { Route as AuthenticatedEnterpriseOrganizationGovernanceRouteImport } from './routes/_authenticated/enterprise-organization/governance'
+import { Route as AuthenticatedEnterpriseOrganizationMembersRouteImport } from './routes/_authenticated/enterprise-organization/members'
+import { Route as AuthenticatedEnterpriseOrganizationRequestsRouteImport } from './routes/_authenticated/enterprise-organization/requests'
 import { Route as AuthenticatedEnterpriseUsageIndexRouteImport } from './routes/_authenticated/enterprise-usage/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
@@ -257,6 +262,36 @@ const AuthenticatedEnterpriseOrganizationIndexRoute =
     path: '/enterprise-organization/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedEnterpriseOrganizationAllocationsRoute =
+  AuthenticatedEnterpriseOrganizationAllocationsRouteImport.update({
+    id: '/enterprise-organization/allocations',
+    path: '/enterprise-organization/allocations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedEnterpriseOrganizationBudgetsRoute =
+  AuthenticatedEnterpriseOrganizationBudgetsRouteImport.update({
+    id: '/enterprise-organization/budgets',
+    path: '/enterprise-organization/budgets',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedEnterpriseOrganizationGovernanceRoute =
+  AuthenticatedEnterpriseOrganizationGovernanceRouteImport.update({
+    id: '/enterprise-organization/governance',
+    path: '/enterprise-organization/governance',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedEnterpriseOrganizationMembersRoute =
+  AuthenticatedEnterpriseOrganizationMembersRouteImport.update({
+    id: '/enterprise-organization/members',
+    path: '/enterprise-organization/members',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedEnterpriseOrganizationRequestsRoute =
+  AuthenticatedEnterpriseOrganizationRequestsRouteImport.update({
+    id: '/enterprise-organization/requests',
+    path: '/enterprise-organization/requests',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedEnterpriseUsageIndexRoute =
   AuthenticatedEnterpriseUsageIndexRouteImport.update({
     id: '/enterprise-usage/',
@@ -462,6 +497,11 @@ export interface FileRoutesByFullPath {
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
+  '/enterprise-organization/allocations': typeof AuthenticatedEnterpriseOrganizationAllocationsRoute
+  '/enterprise-organization/budgets': typeof AuthenticatedEnterpriseOrganizationBudgetsRoute
+  '/enterprise-organization/governance': typeof AuthenticatedEnterpriseOrganizationGovernanceRoute
+  '/enterprise-organization/members': typeof AuthenticatedEnterpriseOrganizationMembersRoute
+  '/enterprise-organization/requests': typeof AuthenticatedEnterpriseOrganizationRequestsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -526,6 +566,11 @@ export interface FileRoutesByTo {
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
+  '/enterprise-organization/allocations': typeof AuthenticatedEnterpriseOrganizationAllocationsRoute
+  '/enterprise-organization/budgets': typeof AuthenticatedEnterpriseOrganizationBudgetsRoute
+  '/enterprise-organization/governance': typeof AuthenticatedEnterpriseOrganizationGovernanceRoute
+  '/enterprise-organization/members': typeof AuthenticatedEnterpriseOrganizationMembersRoute
+  '/enterprise-organization/requests': typeof AuthenticatedEnterpriseOrganizationRequestsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -594,6 +639,11 @@ export interface FileRoutesById {
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
+  '/_authenticated/enterprise-organization/allocations': typeof AuthenticatedEnterpriseOrganizationAllocationsRoute
+  '/_authenticated/enterprise-organization/budgets': typeof AuthenticatedEnterpriseOrganizationBudgetsRoute
+  '/_authenticated/enterprise-organization/governance': typeof AuthenticatedEnterpriseOrganizationGovernanceRoute
+  '/_authenticated/enterprise-organization/members': typeof AuthenticatedEnterpriseOrganizationMembersRoute
+  '/_authenticated/enterprise-organization/requests': typeof AuthenticatedEnterpriseOrganizationRequestsRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -661,6 +711,11 @@ export interface FileRouteTypes {
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
+    | '/enterprise-organization/allocations'
+    | '/enterprise-organization/budgets'
+    | '/enterprise-organization/governance'
+    | '/enterprise-organization/members'
+    | '/enterprise-organization/requests'
     | '/errors/$error'
     | '/models/$section'
     | '/usage-logs/$section'
@@ -725,6 +780,11 @@ export interface FileRouteTypes {
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
+    | '/enterprise-organization/allocations'
+    | '/enterprise-organization/budgets'
+    | '/enterprise-organization/governance'
+    | '/enterprise-organization/members'
+    | '/enterprise-organization/requests'
     | '/errors/$error'
     | '/models/$section'
     | '/usage-logs/$section'
@@ -792,6 +852,11 @@ export interface FileRouteTypes {
     | '/(auth)/user/reset'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
+    | '/_authenticated/enterprise-organization/allocations'
+    | '/_authenticated/enterprise-organization/budgets'
+    | '/_authenticated/enterprise-organization/governance'
+    | '/_authenticated/enterprise-organization/members'
+    | '/_authenticated/enterprise-organization/requests'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
@@ -1098,6 +1163,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/enterprise-organization/allocations': {
+      id: '/_authenticated/enterprise-organization/allocations'
+      path: '/enterprise-organization/allocations'
+      fullPath: '/enterprise-organization/allocations'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationAllocationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/enterprise-organization/budgets': {
+      id: '/_authenticated/enterprise-organization/budgets'
+      path: '/enterprise-organization/budgets'
+      fullPath: '/enterprise-organization/budgets'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationBudgetsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/enterprise-organization/governance': {
+      id: '/_authenticated/enterprise-organization/governance'
+      path: '/enterprise-organization/governance'
+      fullPath: '/enterprise-organization/governance'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationGovernanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/enterprise-organization/members': {
+      id: '/_authenticated/enterprise-organization/members'
+      path: '/enterprise-organization/members'
+      fullPath: '/enterprise-organization/members'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationMembersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/enterprise-organization/requests': {
+      id: '/_authenticated/enterprise-organization/requests'
+      path: '/enterprise-organization/requests'
+      fullPath: '/enterprise-organization/requests'
+      preLoaderRoute: typeof AuthenticatedEnterpriseOrganizationRequestsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/enterprise-usage/': {
       id: '/_authenticated/enterprise-usage/'
       path: '/enterprise-usage'
@@ -1399,6 +1499,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
+  AuthenticatedEnterpriseOrganizationAllocationsRoute: typeof AuthenticatedEnterpriseOrganizationAllocationsRoute
+  AuthenticatedEnterpriseOrganizationBudgetsRoute: typeof AuthenticatedEnterpriseOrganizationBudgetsRoute
+  AuthenticatedEnterpriseOrganizationGovernanceRoute: typeof AuthenticatedEnterpriseOrganizationGovernanceRoute
+  AuthenticatedEnterpriseOrganizationMembersRoute: typeof AuthenticatedEnterpriseOrganizationMembersRoute
+  AuthenticatedEnterpriseOrganizationRequestsRoute: typeof AuthenticatedEnterpriseOrganizationRequestsRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
@@ -1428,6 +1533,16 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
+  AuthenticatedEnterpriseOrganizationAllocationsRoute:
+    AuthenticatedEnterpriseOrganizationAllocationsRoute,
+  AuthenticatedEnterpriseOrganizationBudgetsRoute:
+    AuthenticatedEnterpriseOrganizationBudgetsRoute,
+  AuthenticatedEnterpriseOrganizationGovernanceRoute:
+    AuthenticatedEnterpriseOrganizationGovernanceRoute,
+  AuthenticatedEnterpriseOrganizationMembersRoute:
+    AuthenticatedEnterpriseOrganizationMembersRoute,
+  AuthenticatedEnterpriseOrganizationRequestsRoute:
+    AuthenticatedEnterpriseOrganizationRequestsRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,

@@ -22,9 +22,12 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Building2,
   CalendarClock,
+  ChevronDown,
+  ChevronRight,
   Coins,
   CreditCard,
   History,
+  Landmark,
   PauseCircle,
   PlayCircle,
   Send,
@@ -88,6 +91,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
@@ -151,6 +155,8 @@ import { DepartmentTree } from './components/DepartmentTree'
 import { useDepartmentTree } from './hooks/use-department-tree'
 import {
   findDepartmentNode,
+  getCollapsedDepartmentIds,
+  getExpandableDepartmentIds,
   resolveDepartmentSelection,
   syncExpandedDepartmentIds,
   toggleExpandedDepartmentId,
@@ -207,9 +213,30 @@ export const enterpriseOrganizationSearchSchema = z.object({
   budget_id: z.coerce.number().int().positive().optional().catch(undefined),
 })
 
+export const enterpriseOrganizationTaskSearchSchema =
+  enterpriseOrganizationSearchSchema.extend({
+    member_user_id: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .catch(undefined),
+  })
+
 export type EnterpriseOrganizationSearch = z.infer<
   typeof enterpriseOrganizationSearchSchema
 >
+
+export type EnterpriseOrganizationTaskSearch = z.infer<
+  typeof enterpriseOrganizationTaskSearchSchema
+>
+
+type EnterpriseOrganizationTaskMode =
+  | 'budgets'
+  | 'allocations'
+  | 'requests'
+  | 'governance'
+  | 'all'
 
 export function normalizeMemberSelection(params: {
   members: DepartmentMemberItem[]
@@ -694,9 +721,20 @@ export function EnterpriseOrganization() {
       replace: true,
     })
   }
+  const handleExpandAllDepartments = () => {
+    setExpandedIds(getExpandableDepartmentIds(departments))
+  }
+  const handleCollapseDepartments = () => {
+    setExpandedIds(
+      getCollapsedDepartmentIds(
+        departments,
+        resolvedSelection.selectedDepartmentId
+      )
+    )
+  }
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
         {t('Enterprise Organization')}
       </SectionPageLayout.Title>
@@ -718,17 +756,25 @@ export function EnterpriseOrganization() {
             departments={departments}
           />
         ) : (
-          <div className='grid gap-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]'>
-            <Card className='overflow-hidden'>
+          <div className='grid h-full min-h-0 grid-rows-[minmax(0,45%)_minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)] xl:grid-rows-1'>
+            <Card className='h-full min-h-0 overflow-hidden'>
               <CardHeader>
-                <CardTitle>{t('Department Tree')}</CardTitle>
-                <CardDescription>
-                  {t(
-                    'Select a department from the tree to drive the governance workspace on the right.'
-                  )}
-                </CardDescription>
+                <div className='flex flex-wrap items-start justify-between gap-3'>
+                  <div>
+                    <CardTitle>{t('Department Tree')}</CardTitle>
+                    <CardDescription>
+                      {t(
+                        'Select a department from the tree to drive the governance workspace on the right.'
+                      )}
+                    </CardDescription>
+                  </div>
+                  <DepartmentTreeBulkActions
+                    onExpandAll={handleExpandAllDepartments}
+                    onCollapse={handleCollapseDepartments}
+                  />
+                </div>
               </CardHeader>
-              <CardContent className='px-0 pb-0'>
+              <CardContent className='min-h-0 flex-1 overflow-y-auto px-0 pb-0'>
                 <EnterpriseOrganizationContent
                   isLoading={false}
                   departments={departments}
@@ -743,16 +789,767 @@ export function EnterpriseOrganization() {
                 />
               </CardContent>
             </Card>
-            <EnterpriseOrganizationWorkspace
-              currentDepartment={currentDepartment}
-              parentDepartment={parentDepartment}
-              selectedBudgetId={search.budget_id ?? null}
-              onSelectedBudgetIdChange={handleSelectedBudgetChange}
-            />
+            <div className='min-h-0 overflow-y-auto pr-1'>
+              <EnterpriseOrganizationWorkspace
+                currentDepartment={currentDepartment}
+                parentDepartment={parentDepartment}
+                selectedBudgetId={search.budget_id ?? null}
+                onSelectedBudgetIdChange={handleSelectedBudgetChange}
+              />
+            </div>
           </div>
         )}
       </SectionPageLayout.Content>
     </SectionPageLayout>
+  )
+}
+
+export function EnterpriseOrganizationOverview() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const search = useSearch({
+    from: enterpriseOrganizationRoute,
+  }) as EnterpriseOrganizationSearch
+  const {
+    data: departments = [],
+    isLoading,
+    isFetching,
+    refetch,
+  } = useDepartmentTree()
+  const resolvedSelection = useMemo(
+    () => resolveDepartmentSelection(departments, search.dept_id),
+    [departments, search.dept_id]
+  )
+  const currentDepartment = useMemo(
+    () =>
+      findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    [departments, resolvedSelection.selectedDepartmentId]
+  )
+  const parentDepartment = useMemo(() => {
+    if (!currentDepartment?.parent_id) return null
+    return findDepartmentNode(departments, currentDepartment.parent_id)
+  }, [currentDepartment, departments])
+  const normalizedSearch = useMemo(
+    () =>
+      normalizeEnterpriseOrganizationSearch({
+        departments,
+        search,
+        treeLoaded: !isLoading,
+      }),
+    [departments, isLoading, search]
+  )
+  const [expandedIds, setExpandedIds] = useState<number[]>([])
+
+  useEffect(() => {
+    setExpandedIds((current) =>
+      syncExpandedDepartmentIds(
+        current,
+        departments,
+        resolvedSelection.requiredExpandedIds
+      )
+    )
+  }, [departments, resolvedSelection.requiredExpandedIds])
+
+  useEffect(() => {
+    if (
+      search.dept_id === normalizedSearch.dept_id &&
+      search.budget_id === normalizedSearch.budget_id
+    ) {
+      return
+    }
+    navigate({
+      to: '/enterprise-organization',
+      search: (prev) => ({
+        ...prev,
+        dept_id: normalizedSearch.dept_id,
+        budget_id: normalizedSearch.budget_id,
+      }),
+      replace: true,
+    })
+  }, [
+    navigate,
+    normalizedSearch.budget_id,
+    normalizedSearch.dept_id,
+    search.budget_id,
+    search.dept_id,
+  ])
+
+  const handleSelectDepartment = (departmentId: number) => {
+    navigate({
+      to: '/enterprise-organization',
+      search: (prev) => ({
+        ...prev,
+        dept_id: departmentId,
+        budget_id: undefined,
+      }),
+    })
+  }
+  const handleExpandAllDepartments = () => {
+    setExpandedIds(getExpandableDepartmentIds(departments))
+  }
+  const handleCollapseDepartments = () => {
+    setExpandedIds(
+      getCollapsedDepartmentIds(
+        departments,
+        resolvedSelection.selectedDepartmentId
+      )
+    )
+  }
+
+  return (
+    <SectionPageLayout fixedContent>
+      <SectionPageLayout.Title>
+        {t('Enterprise Organization')}
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw className='size-4' />
+          {t('Refresh')}
+        </Button>
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        {isLoading || departments.length === 0 ? (
+          <EnterpriseOrganizationContent
+            isLoading={isLoading}
+            departments={departments}
+          />
+        ) : (
+          <div className='grid h-full min-h-0 grid-rows-[minmax(0,45%)_minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] xl:grid-rows-1'>
+            <Card className='h-full min-h-0 overflow-hidden'>
+              <CardHeader>
+                <div className='flex flex-wrap items-start justify-between gap-3'>
+                  <div>
+                    <CardTitle>{t('Department Tree')}</CardTitle>
+                    <CardDescription>
+                      {t(
+                        'Select a department first, then choose the task workspace you need.'
+                      )}
+                    </CardDescription>
+                  </div>
+                  <DepartmentTreeBulkActions
+                    onExpandAll={handleExpandAllDepartments}
+                    onCollapse={handleCollapseDepartments}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className='min-h-0 flex-1 overflow-y-auto px-0 pb-0'>
+                <EnterpriseOrganizationContent
+                  isLoading={false}
+                  departments={departments}
+                  expandedIds={expandedIds}
+                  selectedDepartmentId={currentDepartment?.id ?? null}
+                  onToggleExpand={(departmentId) =>
+                    setExpandedIds((current) =>
+                      toggleExpandedDepartmentId(current, departmentId)
+                    )
+                  }
+                  onSelectDepartment={handleSelectDepartment}
+                />
+              </CardContent>
+            </Card>
+            <div className='min-h-0 space-y-4 overflow-y-auto pr-1'>
+              {currentDepartment ? (
+                <>
+                  <DepartmentSummaryCard
+                    department={currentDepartment}
+                    parentDepartment={parentDepartment}
+                  />
+                  <EnterpriseOrganizationTaskCards
+                    departmentId={currentDepartment.id}
+                    budgetId={search.budget_id ?? undefined}
+                  />
+                </>
+              ) : (
+                <EnterpriseOrganizationEmptyState />
+              )}
+            </div>
+          </div>
+        )}
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}
+
+function EnterpriseOrganizationTaskCards(props: {
+  departmentId: number
+  budgetId?: number
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Department Task Workspaces')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Open one focused workspace at a time for members, budgets, allocations, requests, or governance records.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+          <EnterpriseOrganizationTaskCard
+            title={t('Members and Permissions')}
+            description={t(
+              'Manage department members, current member context, and Department Owner facts.'
+            )}
+            icon={<Users className='size-4' />}
+            to='/enterprise-organization/members'
+            search={{ dept_id: props.departmentId }}
+          />
+          <EnterpriseOrganizationTaskCard
+            title={t('Budget Pools')}
+            description={t(
+              'Create, inspect, pause, resume, and resize department budget pools.'
+            )}
+            icon={<Landmark className='size-4' />}
+            to='/enterprise-organization/budgets'
+            search={{
+              dept_id: props.departmentId,
+              budget_id: props.budgetId,
+            }}
+          />
+          <EnterpriseOrganizationTaskCard
+            title={t('Quota Allocations')}
+            description={t(
+              'Allocate quota to member wallets or delegate budget to subordinate departments.'
+            )}
+            icon={<CreditCard className='size-4' />}
+            to='/enterprise-organization/allocations'
+            search={{
+              dept_id: props.departmentId,
+              budget_id: props.budgetId,
+            }}
+          />
+          <EnterpriseOrganizationTaskCard
+            title={t('Quota Requests')}
+            description={t(
+              'Submit quota requests and review pending approval decisions.'
+            )}
+            icon={<Coins className='size-4' />}
+            to='/enterprise-organization/requests'
+            search={{ dept_id: props.departmentId }}
+          />
+          <EnterpriseOrganizationTaskCard
+            title={t('Governance Records')}
+            description={t(
+              'Trace governance actions, delivery status, and failed notification resend.'
+            )}
+            icon={<History className='size-4' />}
+            to='/enterprise-organization/governance'
+            search={{ dept_id: props.departmentId }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EnterpriseOrganizationTaskCard(props: {
+  title: string
+  description: string
+  icon: ReactNode
+  to:
+    | '/enterprise-organization/members'
+    | '/enterprise-organization/budgets'
+    | '/enterprise-organization/allocations'
+    | '/enterprise-organization/requests'
+    | '/enterprise-organization/governance'
+  search: EnterpriseOrganizationSearch
+}) {
+  return (
+    <Button
+      variant='outline'
+      className='h-auto justify-start p-4 text-left'
+      render={<Link to={props.to} search={props.search} />}
+    >
+      <span className='bg-muted flex size-9 shrink-0 items-center justify-center rounded-md'>
+        {props.icon}
+      </span>
+      <span className='min-w-0'>
+        <span className='block font-medium'>{props.title}</span>
+        <span className='text-muted-foreground mt-1 block text-xs font-normal whitespace-normal'>
+          {props.description}
+        </span>
+      </span>
+    </Button>
+  )
+}
+
+export function EnterpriseOrganizationMembersPage() {
+  return <EnterpriseOrganizationTaskPage mode='members' />
+}
+
+export function EnterpriseOrganizationBudgetsPage() {
+  return <EnterpriseOrganizationTaskPage mode='budgets' />
+}
+
+export function EnterpriseOrganizationAllocationsPage() {
+  return <EnterpriseOrganizationTaskPage mode='allocations' />
+}
+
+export function EnterpriseOrganizationRequestsPage() {
+  return <EnterpriseOrganizationTaskPage mode='requests' />
+}
+
+export function EnterpriseOrganizationGovernancePage() {
+  return <EnterpriseOrganizationTaskPage mode='governance' />
+}
+
+function EnterpriseOrganizationTaskPage(props: {
+  mode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance'
+}) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const search = useSearch({
+    strict: false,
+  }) as EnterpriseOrganizationTaskSearch
+  const {
+    data: departments = [],
+    isLoading,
+    isFetching,
+    refetch,
+  } = useDepartmentTree()
+  const normalizedSearch = useMemo(
+    () =>
+      normalizeEnterpriseOrganizationSearch({
+        departments,
+        search,
+        treeLoaded: !isLoading,
+      }),
+    [departments, isLoading, search]
+  )
+  const resolvedSelection = useMemo(
+    () => resolveDepartmentSelection(departments, normalizedSearch.dept_id),
+    [departments, normalizedSearch.dept_id]
+  )
+  const currentDepartment = useMemo(
+    () =>
+      findDepartmentNode(departments, resolvedSelection.selectedDepartmentId),
+    [departments, resolvedSelection.selectedDepartmentId]
+  )
+  const parentDepartment = useMemo(() => {
+    if (!currentDepartment?.parent_id) return null
+    return findDepartmentNode(departments, currentDepartment.parent_id)
+  }, [currentDepartment, departments])
+  const [departmentMembers, setDepartmentMembers] = useState<
+    DepartmentMemberItem[]
+  >([])
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState<
+    number | null
+  >(search.member_user_id ?? null)
+  const selectedMember = useMemo(
+    () =>
+      departmentMembers.find((item) => item.user_id === selectedMemberUserId) ??
+      null,
+    [departmentMembers, selectedMemberUserId]
+  )
+  const selectedMemberMembershipsQuery = useQuery({
+    queryKey: userDepartmentsQueryKey(selectedMember?.user_id ?? null),
+    queryFn: async () => {
+      if (!selectedMember?.user_id) {
+        return []
+      }
+      const result = await getUserDepartments(selectedMember.user_id)
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return result.data?.items ?? []
+    },
+    enabled: Boolean(selectedMember?.user_id),
+  })
+  const routePath = enterpriseOrganizationTaskPath(props.mode)
+
+  useEffect(() => {
+    if (
+      search.dept_id === normalizedSearch.dept_id &&
+      search.budget_id === normalizedSearch.budget_id
+    ) {
+      return
+    }
+    navigate({
+      to: routePath,
+      search: {
+        dept_id: normalizedSearch.dept_id,
+        budget_id: normalizedSearch.budget_id,
+        member_user_id: search.member_user_id,
+      },
+      replace: true,
+    })
+  }, [
+    navigate,
+    normalizedSearch.budget_id,
+    normalizedSearch.dept_id,
+    search.budget_id,
+    search.dept_id,
+    search.member_user_id,
+    routePath,
+  ])
+
+  useEffect(() => {
+    setSelectedMemberUserId((current) =>
+      resolveDepartmentMemberSelection(departmentMembers, current)
+    )
+  }, [departmentMembers])
+
+  const handleSelectedBudgetChange = (budgetId: number | null) => {
+    const nextBudgetId = budgetId ?? undefined
+    if (search.budget_id === nextBudgetId) return
+    navigate({
+      to: routePath,
+      search: {
+        dept_id: normalizedSearch.dept_id,
+        budget_id: nextBudgetId,
+        member_user_id: search.member_user_id,
+      },
+      replace: true,
+    })
+  }
+
+  const handleSelectedMemberChange = (userId: number | null) => {
+    setSelectedMemberUserId(userId)
+    navigate({
+      to: routePath,
+      search: {
+        dept_id: normalizedSearch.dept_id,
+        budget_id: search.budget_id,
+        member_user_id: userId ?? undefined,
+      },
+      replace: true,
+    })
+  }
+
+  return (
+    <SectionPageLayout>
+      <SectionPageLayout.Title>
+        {enterpriseOrganizationTaskTitle(props.mode, t)}
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button
+          variant='outline'
+          size='sm'
+          render={
+            <Link
+              to='/enterprise-organization'
+              search={{ dept_id: normalizedSearch.dept_id }}
+            />
+          }
+        >
+          <Building2 className='size-4' />
+          {t('Organization Overview')}
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw className='size-4' />
+          {t('Refresh')}
+        </Button>
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <EnterpriseOrganizationTaskPageContent
+          isLoading={isLoading}
+          currentDepartment={currentDepartment}
+          parentDepartment={parentDepartment}
+          search={search}
+          mode={props.mode}
+          selectedMemberUserId={selectedMemberUserId}
+          selectedMember={selectedMember}
+          departmentMembers={departmentMembers}
+          selectedMemberMemberships={selectedMemberMembershipsQuery.data ?? []}
+          selectedMemberMembershipsLoading={
+            selectedMemberMembershipsQuery.isLoading
+          }
+          onSelectedMemberChange={handleSelectedMemberChange}
+          onMembersChange={setDepartmentMembers}
+          onSelectedBudgetIdChange={handleSelectedBudgetChange}
+        />
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}
+
+function EnterpriseOrganizationTaskPageContent(props: {
+  isLoading: boolean
+  currentDepartment: DepartmentTreeNode | null
+  parentDepartment: DepartmentTreeNode | null
+  search: EnterpriseOrganizationTaskSearch
+  mode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance'
+  selectedMemberUserId: number | null
+  selectedMember: DepartmentMemberItem | null
+  departmentMembers: DepartmentMemberItem[]
+  selectedMemberMemberships: UserDepartmentItem[]
+  selectedMemberMembershipsLoading: boolean
+  onSelectedMemberChange: (userId: number | null) => void
+  onMembersChange: (items: DepartmentMemberItem[]) => void
+  onSelectedBudgetIdChange: (budgetId: number | null) => void
+}) {
+  if (props.isLoading) {
+    return <DepartmentTreeSkeleton />
+  }
+  if (!props.currentDepartment) {
+    return <EnterpriseOrganizationEmptyState />
+  }
+
+  return (
+    <div className='space-y-4'>
+      <EnterpriseOrganizationTaskNav
+        departmentId={props.currentDepartment.id}
+        budgetId={props.search.budget_id}
+        activeMode={props.mode}
+      />
+      <DepartmentContextBar
+        department={props.currentDepartment}
+        parentDepartment={props.parentDepartment}
+      />
+      {props.mode === 'members' ? (
+        <div className='space-y-4'>
+          <DepartmentMembersPanel
+            departmentId={props.currentDepartment.id}
+            tenantId={props.currentDepartment.tenant_id ?? 0}
+            departmentName={props.currentDepartment.name}
+            selectedMemberUserId={props.selectedMemberUserId}
+            onSelectedMemberChange={props.onSelectedMemberChange}
+            onMembersChange={props.onMembersChange}
+          />
+          <DepartmentOwnersPanel
+            departmentId={props.currentDepartment.id}
+            tenantId={props.currentDepartment.tenant_id ?? 0}
+            departmentName={props.currentDepartment.name}
+            members={props.departmentMembers}
+          />
+          <DepartmentMemberContextCard
+            currentDepartment={props.currentDepartment}
+            selectedMember={props.selectedMember}
+            memberships={props.selectedMemberMemberships}
+            loading={props.selectedMemberMembershipsLoading}
+            onMemberRenamed={props.onSelectedMemberChange}
+          />
+        </div>
+      ) : (
+        <>
+          {props.mode === 'allocations' ? (
+            <DepartmentMemberContextSelector
+              departmentId={props.currentDepartment.id}
+              tenantId={props.currentDepartment.tenant_id ?? 0}
+              departmentName={props.currentDepartment.name}
+              selectedMemberUserId={props.selectedMemberUserId}
+              onSelectedMemberChange={props.onSelectedMemberChange}
+              onMembersChange={props.onMembersChange}
+            />
+          ) : null}
+          <DepartmentBudgetPanel
+            departmentId={props.currentDepartment.id}
+            tenantId={props.currentDepartment.tenant_id ?? 0}
+            departmentName={props.currentDepartment.name}
+            selectedBudgetId={props.search.budget_id ?? null}
+            onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
+            selectedMember={props.selectedMember}
+            mode={props.mode}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function DepartmentMemberContextSelector(props: {
+  departmentId: number
+  tenantId: number
+  departmentName: string
+  selectedMemberUserId: number | null
+  onSelectedMemberChange: (userId: number | null) => void
+  onMembersChange: (items: DepartmentMemberItem[]) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Current Member Context')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Select a member from {{department}} before creating a wallet allocation.',
+            {
+              department: props.departmentName,
+            }
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DepartmentMembersPanel
+          departmentId={props.departmentId}
+          tenantId={props.tenantId}
+          departmentName={props.departmentName}
+          selectedMemberUserId={props.selectedMemberUserId}
+          onSelectedMemberChange={props.onSelectedMemberChange}
+          onMembersChange={props.onMembersChange}
+        />
+      </CardContent>
+    </Card>
+  )
+}
+
+function enterpriseOrganizationTaskPath(
+  mode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance'
+) {
+  if (mode === 'members') {
+    return '/enterprise-organization/members' as const
+  }
+  if (mode === 'budgets') {
+    return '/enterprise-organization/budgets' as const
+  }
+  if (mode === 'allocations') {
+    return '/enterprise-organization/allocations' as const
+  }
+  if (mode === 'requests') {
+    return '/enterprise-organization/requests' as const
+  }
+  return '/enterprise-organization/governance' as const
+}
+
+function enterpriseOrganizationTaskTitle(
+  mode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance',
+  t: (key: string) => string
+) {
+  if (mode === 'members') {
+    return t('Members and Permissions')
+  }
+  if (mode === 'budgets') {
+    return t('Budget Pools')
+  }
+  if (mode === 'allocations') {
+    return t('Quota Allocations')
+  }
+  if (mode === 'requests') {
+    return t('Quota Requests')
+  }
+  return t('Governance Records')
+}
+
+function EnterpriseOrganizationTaskNav(props: {
+  departmentId: number
+  budgetId?: number
+  activeMode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance'
+}) {
+  const { t } = useTranslation()
+  const items = [
+    {
+      mode: 'members',
+      label: t('Members and Permissions'),
+      to: '/enterprise-organization/members',
+    },
+    {
+      mode: 'budgets',
+      label: t('Budget Pools'),
+      to: '/enterprise-organization/budgets',
+    },
+    {
+      mode: 'allocations',
+      label: t('Quota Allocations'),
+      to: '/enterprise-organization/allocations',
+    },
+    {
+      mode: 'requests',
+      label: t('Quota Requests'),
+      to: '/enterprise-organization/requests',
+    },
+    {
+      mode: 'governance',
+      label: t('Governance Records'),
+      to: '/enterprise-organization/governance',
+    },
+  ] as const
+
+  return (
+    <div className='flex flex-wrap gap-2 rounded-lg border p-2'>
+      {items.map((item) => (
+        <Button
+          key={item.mode}
+          variant={props.activeMode === item.mode ? 'default' : 'outline'}
+          size='sm'
+          render={
+            <Link
+              to={item.to}
+              search={{
+                dept_id: props.departmentId,
+                budget_id: getTaskNavBudgetId(item.mode, props.budgetId),
+              }}
+            />
+          }
+        >
+          {item.label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+function getTaskNavBudgetId(
+  mode: 'members' | 'budgets' | 'allocations' | 'requests' | 'governance',
+  budgetId: number | undefined
+) {
+  if (mode === 'budgets' || mode === 'allocations') {
+    return budgetId
+  }
+  return undefined
+}
+
+function DepartmentContextBar(props: {
+  department: DepartmentTreeNode
+  parentDepartment: DepartmentTreeNode | null
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardContent className='flex flex-wrap items-start justify-between gap-4 pt-6'>
+        <div className='space-y-2'>
+          <div>
+            <div className='text-lg font-semibold'>{props.department.name}</div>
+            <div className='text-muted-foreground text-sm'>
+              {t('Department ID')} #{props.department.id}
+            </div>
+          </div>
+          <div className='flex flex-wrap gap-2'>
+            <StatusBadge
+              label={departmentStatusLabel(props.department.status, t)}
+              variant={departmentStatusVariant(props.department.status)}
+              copyable={false}
+            />
+            <StatusBadge
+              label={departmentSyncLabel(props.department.sync_status, t)}
+              variant={departmentSyncVariant(props.department.sync_status)}
+              copyable={false}
+            />
+            <Badge variant='outline'>
+              {departmentSourceLabel(props.department.source_type, t)}
+            </Badge>
+          </div>
+        </div>
+        <div className='grid gap-2 text-sm sm:grid-cols-2'>
+          <DepartmentMetaStat
+            label={t('Parent Department')}
+            value={
+              props.parentDepartment
+                ? `${props.parentDepartment.name} (#${props.parentDepartment.id})`
+                : t('Root department')
+            }
+          />
+          <DepartmentMetaStat
+            label={t('External ID')}
+            value={props.department.external_id || t('Local only')}
+          />
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -867,6 +1664,26 @@ export function EnterpriseOrganizationContent(props: {
       onToggleExpand={props.onToggleExpand}
       onSelectDepartment={props.onSelectDepartment}
     />
+  )
+}
+
+export function DepartmentTreeBulkActions(props: {
+  onExpandAll: () => void
+  onCollapse: () => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='flex shrink-0 flex-wrap gap-2'>
+      <Button variant='outline' size='sm' onClick={props.onExpandAll}>
+        <ChevronDown className='size-4' />
+        {t('Expand All')}
+      </Button>
+      <Button variant='outline' size='sm' onClick={props.onCollapse}>
+        <ChevronRight className='size-4' />
+        {t('Collapse All')}
+      </Button>
+    </div>
   )
 }
 
@@ -1108,7 +1925,7 @@ function UserDepartmentsTable({
   )
 }
 
-function DepartmentMembersPanel({
+export function DepartmentMembersPanel({
   departmentId,
   tenantId,
   departmentName,
@@ -1354,7 +2171,7 @@ function DepartmentMemberCandidateList({
   )
 }
 
-function DepartmentOwnersPanel({
+export function DepartmentOwnersPanel({
   departmentId,
   tenantId,
   departmentName,
@@ -2054,6 +2871,7 @@ export function DepartmentBudgetPanel({
   selectedBudgetId,
   onSelectedBudgetIdChange,
   selectedMember,
+  mode = 'all',
 }: {
   departmentId: number
   tenantId: number
@@ -2061,6 +2879,7 @@ export function DepartmentBudgetPanel({
   selectedBudgetId: number | null
   onSelectedBudgetIdChange: (budgetId: number | null) => void
   selectedMember: DepartmentMemberItem | null
+  mode?: EnterpriseOrganizationTaskMode
 }) {
   const { t } = useTranslation()
   const currentUser = useCurrentAuthUser()
@@ -2154,6 +2973,9 @@ export function DepartmentBudgetPanel({
   const [sortBy, setSortBy] = useState<DepartmentBudgetSortField>('usage_ratio')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [includeDescendants, setIncludeDescendants] = useState(false)
+  const [allocationTab, setAllocationTab] = useState<
+    'department-budget' | 'member-wallet'
+  >('department-budget')
   const [supersedeDrafts, setSupersedeDrafts] = useState<
     Record<number, string>
   >({})
@@ -2983,41 +3805,808 @@ export function DepartmentBudgetPanel({
 
   return (
     <div className='space-y-4'>
-      <div
-        className={cn(
-          'grid gap-4',
-          canManageCurrentBudgetLifecycle
-            ? 'xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'
-            : 'xl:grid-cols-1'
-        )}
-      >
-        {canManageCurrentBudgetLifecycle ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('Department Budget')}</CardTitle>
-              <CardDescription>
-                {t(
-                  'Create a balance or subscription budget pool for {{department}} without leaving the current department context.',
-                  {
-                    department: departmentName,
+      {mode === 'budgets' || mode === 'all' ? (
+        <>
+          <div
+            className={cn(
+              'grid gap-4',
+              canManageCurrentBudgetLifecycle
+                ? 'xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'
+                : 'xl:grid-cols-1'
+            )}
+          >
+            {canManageCurrentBudgetLifecycle ? (
+              <DepartmentBudgetCreateCard
+                form={form}
+                budgetType={budgetType}
+                cycleType={cycleType}
+                departmentName={departmentName}
+                createPending={createMutation.isPending}
+                onSubmit={(values) => createMutation.mutate(values)}
+              />
+            ) : null}
+            <div className='space-y-4'>
+              <DepartmentBudgetListCard
+                items={budgetListQuery.data?.items ?? []}
+                loading={budgetListQuery.isLoading}
+                selectedBudgetId={effectiveBudgetId}
+                includeDescendants={includeDescendants}
+                scopeDepartmentName={
+                  budgetListQuery.data?.scope_department_name ?? departmentName
+                }
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onIncludeDescendantsChange={setIncludeDescendants}
+                onSelectBudget={onSelectedBudgetIdChange}
+                onSortByChange={setSortBy}
+                onSortOrderChange={setSortOrder}
+              />
+              <DepartmentBudgetOverviewCard
+                item={budgetQuery.data ?? null}
+                selectedBudget={budgetDetailQuery.data?.budget ?? null}
+                thresholds={
+                  budgetDetailQuery.data?.thresholds ??
+                  budgetListQuery.data?.thresholds ?? {
+                    warning: 80,
+                    critical: 95,
                   }
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form
-                  className='flex flex-col gap-4'
-                  onSubmit={form.handleSubmit((values) =>
-                    createMutation.mutate(values)
+                }
+                resizeForm={resizeForm}
+                onPause={
+                  canManageCurrentBudgetLifecycle
+                    ? (budgetId) => pauseBudgetMutation.mutate(budgetId)
+                    : undefined
+                }
+                onResume={
+                  canManageCurrentBudgetLifecycle
+                    ? (budgetId) => resumeBudgetMutation.mutate(budgetId)
+                    : undefined
+                }
+                onResize={
+                  canManageCurrentBudgetLifecycle
+                    ? (values) => resizeBudgetMutation.mutate(values)
+                    : undefined
+                }
+                lifecyclePending={
+                  pauseBudgetMutation.isPending ||
+                  resumeBudgetMutation.isPending ||
+                  resizeBudgetMutation.isPending
+                }
+              />
+              <DepartmentBudgetDetailTable
+                budget={budgetDetailQuery.data?.budget ?? null}
+                wallets={budgetDetailQuery.data?.wallets ?? []}
+                loading={budgetDetailQuery.isLoading}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
+      {mode === 'governance' || mode === 'all' ? (
+        <GovernanceActivityCard
+          timelineItems={governanceTimelineQuery.data ?? []}
+          notificationItems={governanceNotificationQuery.data ?? []}
+          loading={
+            governanceTimelineQuery.isLoading ||
+            governanceNotificationQuery.isLoading
+          }
+          resendPendingId={
+            governanceResendMutation.isPending
+              ? (governanceResendMutation.variables ?? null)
+              : null
+          }
+          onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
+        />
+      ) : null}
+      {mode === 'allocations' || mode === 'all' ? (
+        <Tabs
+          value={allocationTab}
+          onValueChange={(value) =>
+            setAllocationTab(value as 'department-budget' | 'member-wallet')
+          }
+          className='space-y-4'
+        >
+          <TabsList className='w-full justify-start overflow-x-auto sm:w-fit'>
+            <TabsTrigger value='department-budget'>
+              {t('Allocate Budget To Subordinate Department')}
+            </TabsTrigger>
+            <TabsTrigger value='member-wallet'>
+              {t('Current Member Wallet Allocation')}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value='department-budget' className='mt-0' keepMounted>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {t('Allocate Budget To Subordinate Department')}
+                </CardTitle>
+                <CardDescription>
+                  {t(
+                    'Allocate from the current department budget pool to a subordinate department budget pool, while keeping adjustment history visible.'
                   )}
-                >
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-4'>
+                <Form {...delegationForm}>
+                  <form
+                    className='grid gap-4 md:grid-cols-2'
+                    onSubmit={delegationForm.handleSubmit((values) =>
+                      delegationMutation.mutate(values)
+                    )}
+                  >
+                    <FormField
+                      control={delegationForm.control}
+                      name='target_budget_id'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {t('Target Subordinate Budget Pool')}
+                          </FormLabel>
+                          <Select
+                            value={
+                              field.value ? String(field.value) : undefined
+                            }
+                            onValueChange={(value) => {
+                              const budgetId = Number(value)
+                              const budget = descendantBudgetOptions.find(
+                                (item) => item.id === budgetId
+                              )
+                              field.onChange(budgetId)
+                              delegationForm.setValue(
+                                'target_department_id',
+                                budget?.department_id ?? 0
+                              )
+                            }}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={t(
+                                    'Choose a subordinate budget pool'
+                                  )}
+                                />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {descendantBudgetOptions.map((item) => (
+                                <SelectItem
+                                  key={item.id}
+                                  value={String(item.id)}
+                                >
+                                  {t(
+                                    '{{source}} -> {{target}} -> Budget #{{budgetId}}',
+                                    {
+                                      source: departmentName,
+                                      target: item.department_name,
+                                      budgetId: item.id,
+                                    }
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={delegationForm.control}
+                      name='committed_quota'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Delegation Quota')}</FormLabel>
+                          <FormControl>
+                            <QuotaAmountInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              ariaLabel={t('Delegation Quota')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={delegationForm.control}
+                      name='reason'
+                      render={({ field }) => (
+                        <FormItem className='md:col-span-2'>
+                          <FormLabel>{t('Reason')}</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              value={field.value ?? ''}
+                              placeholder={t('Optional delegation note')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className='flex justify-end md:col-span-2'>
+                      <Button
+                        type='submit'
+                        disabled={
+                          !effectiveBudgetId ||
+                          descendantBudgetOptions.length === 0 ||
+                          delegationMutation.isPending
+                        }
+                      >
+                        <Coins data-icon='inline-start' />
+                        {t('Allocate budget to subordinate department')}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+                <BudgetDelegationTable
+                  items={delegationListQuery.data ?? []}
+                  loading={delegationListQuery.isLoading}
+                  supersedeDrafts={supersedeDrafts}
+                  onSupersedeDraftChange={(delegationId, value) =>
+                    setSupersedeDrafts((current) => ({
+                      ...current,
+                      [delegationId]: value,
+                    }))
+                  }
+                  onSupersede={(delegation) =>
+                    supersedeMutation.mutate({
+                      delegationId: delegation.id,
+                      committedQuota: Number(
+                        supersedeDrafts[delegation.id] ||
+                          delegation.committed_quota
+                      ),
+                    })
+                  }
+                  supersedePendingId={
+                    supersedeMutation.isPending
+                      ? (supersedeMutation.variables?.delegationId ?? null)
+                      : null
+                  }
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value='member-wallet' className='mt-0' keepMounted>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
+                <CardDescription>
+                  {t(
+                    'Keep budget detail, derived wallets, and current member allocation in one current-department workflow.'
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-4'>
+                <DepartmentBudgetDetailTable
+                  budget={budgetDetailQuery.data?.budget ?? null}
+                  wallets={budgetDetailQuery.data?.wallets ?? []}
+                  loading={budgetDetailQuery.isLoading}
+                />
+                <Form {...allocationForm}>
+                  <form
+                    className='grid gap-4 md:grid-cols-2'
+                    onSubmit={allocationForm.handleSubmit((values) =>
+                      allocationMutation.mutate(values)
+                    )}
+                  >
+                    <div className='rounded-lg border p-3 md:col-span-2'>
+                      <div className='text-muted-foreground text-xs'>
+                        {t('Current Member')}
+                      </div>
+                      <div className='mt-1 text-sm font-medium'>
+                        {selectedMember
+                          ? formatEnterpriseUserPrimary({
+                              displayName: selectedMember.display_name,
+                              username: selectedMember.username,
+                              userId: selectedMember.user_id,
+                            })
+                          : t('No member selected')}
+                      </div>
+                      <div className='text-muted-foreground mt-1 text-xs'>
+                        {selectedMember
+                          ? t('Selected from {{department}}', {
+                              department: departmentName,
+                            })
+                          : t(
+                              'Select a member from the current department list before creating a wallet allocation.'
+                            )}
+                      </div>
+                    </div>
+                    <FormField
+                      control={allocationForm.control}
+                      name='committed_quota'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Allocation Quota')}</FormLabel>
+                          <FormControl>
+                            <QuotaAmountInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              ariaLabel={t('Allocation Quota')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={allocationForm.control}
+                      name='reason'
+                      render={({ field }) => (
+                        <FormItem className='md:col-span-2'>
+                          <FormLabel>{t('Reason')}</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              value={field.value ?? ''}
+                              placeholder={t('Optional allocation note')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {!effectiveBudgetId ? (
+                      <div className='md:col-span-2'>
+                        <Empty className='min-h-[140px] border'>
+                          <EmptyHeader>
+                            <EmptyMedia variant='icon'>
+                              <CreditCard className='size-4' />
+                            </EmptyMedia>
+                            <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
+                            <EmptyDescription>
+                              {t(
+                                'Choose a budget pool in the current department before creating a member wallet allocation.'
+                              )}
+                            </EmptyDescription>
+                          </EmptyHeader>
+                        </Empty>
+                      </div>
+                    ) : null}
+                    <div className='flex justify-end md:col-span-2'>
+                      <Button
+                        type='submit'
+                        disabled={
+                          !effectiveBudgetId ||
+                          !selectedMember ||
+                          allocationMutation.isPending
+                        }
+                      >
+                        <CreditCard data-icon='inline-start' />
+                        {t('Create wallet allocation')}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+                <QuotaAllocationTable
+                  items={allocationListQuery.data ?? []}
+                  loading={allocationListQuery.isLoading}
+                  supersedeDrafts={allocationSupersedeDrafts}
+                  onSupersedeDraftChange={(allocationId, value) =>
+                    setAllocationSupersedeDrafts((current) => ({
+                      ...current,
+                      [allocationId]: value,
+                    }))
+                  }
+                  onSupersede={(item) =>
+                    allocationSupersedeMutation.mutate({
+                      allocationId: item.id,
+                      committedQuota: Number(
+                        allocationSupersedeDrafts[item.id] ||
+                          item.committed_quota
+                      ),
+                    })
+                  }
+                  onCancel={(allocationId) =>
+                    allocationCancelMutation.mutate(allocationId)
+                  }
+                  onReclaim={(allocationId) =>
+                    allocationReclaimMutation.mutate(allocationId)
+                  }
+                  supersedePendingId={
+                    allocationSupersedeMutation.isPending
+                      ? (allocationSupersedeMutation.variables?.allocationId ??
+                        null)
+                      : null
+                  }
+                  cancelPendingId={
+                    allocationCancelMutation.isPending
+                      ? (allocationCancelMutation.variables ?? null)
+                      : null
+                  }
+                  reclaimPendingId={
+                    allocationReclaimMutation.isPending
+                      ? (allocationReclaimMutation.variables ?? null)
+                      : null
+                  }
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      ) : null}
+      {mode === 'requests' || mode === 'all' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('Employee Quota Requests')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Submit employee quota requests with an explicit target budget pool, then complete single-step approval in the same department workspace.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-4'>
+            <Form {...quotaRequestForm}>
+              <form
+                className='grid gap-4 md:grid-cols-2'
+                onSubmit={quotaRequestForm.handleSubmit((values) =>
+                  quotaRequestMutation.mutate(values)
+                )}
+              >
+                <div className='rounded-lg border p-3 md:col-span-2'>
+                  <div className='text-muted-foreground text-xs'>
+                    {t('Requester')}
+                  </div>
+                  <div className='mt-1 text-sm font-medium'>
+                    {currentUser
+                      ? formatEnterpriseUserPrimary({
+                          displayName: currentUser.display_name,
+                          username: currentUser.username,
+                          userId: currentUser.id,
+                        })
+                      : t('No current user')}
+                  </div>
+                  <div className='text-muted-foreground mt-1 text-xs'>
+                    {t('Target Department')} {departmentName}
+                  </div>
+                  <div className='mt-3 border-t pt-3'>
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Selected request scope')}
+                    </div>
+                    {selectedQuotaRequestBudget ? (
+                      <QuotaRequestBudgetSummary
+                        item={selectedQuotaRequestBudget}
+                      />
+                    ) : (
+                      <>
+                        <div className='mt-1 text-sm font-medium'>
+                          {departmentName}
+                        </div>
+                        <div className='text-muted-foreground mt-1 text-xs'>
+                          {t('No budget pool selected')}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <FormField
+                  control={quotaRequestForm.control}
+                  name='department_budget_id'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Target Budget Pool')}</FormLabel>
+                      <Select
+                        value={field.value ? String(field.value) : undefined}
+                        onValueChange={(value) => field.onChange(Number(value))}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={t('Choose a target budget pool')}
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {quotaRequestBudgetOptions.map((item) => (
+                            <SelectItem
+                              key={item.id}
+                              value={String(item.id)}
+                              className='items-start py-2'
+                            >
+                              <QuotaRequestBudgetOption item={item} />
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={quotaRequestForm.control}
+                  name='requested_quota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Requested Quota')}</FormLabel>
+                      <FormControl>
+                        <QuotaAmountInput
+                          value={field.value}
+                          onChange={field.onChange}
+                          ariaLabel={t('Requested Quota')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={quotaRequestForm.control}
+                  name='request_reason'
+                  render={({ field }) => (
+                    <FormItem className='md:col-span-2'>
+                      <FormLabel>{t('Request Reason')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          value={field.value ?? ''}
+                          placeholder={t('Optional request note')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className='flex justify-end md:col-span-2'>
+                  <Button
+                    type='submit'
+                    disabled={
+                      !currentUser ||
+                      !quotaRequestCapabilityQuery.data?.can_submit ||
+                      quotaRequestMutation.isPending
+                    }
+                  >
+                    <Coins data-icon='inline-start' />
+                    {t('Submit quota request')}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+            {!quotaRequestCapabilityQuery.data?.can_submit ? (
+              <Empty className='min-h-[140px] border'>
+                <EmptyHeader>
+                  <EmptyMedia variant='icon'>
+                    <Coins className='size-4' />
+                  </EmptyMedia>
+                  <EmptyTitle>
+                    {t('No request access in this department')}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {t(
+                      'You must be an active member of the selected department before submitting a quota request here.'
+                    )}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : null}
+            <QuotaRequestTable
+              items={quotaRequestListQuery.data ?? []}
+              loading={quotaRequestListQuery.isLoading}
+              decisionDrafts={quotaRequestDecisionDrafts}
+              onDecisionDraftChange={(requestId, patch) =>
+                setQuotaRequestDecisionDrafts((current) => ({
+                  ...current,
+                  [requestId]: {
+                    approvedQuota:
+                      patch.approvedQuota ??
+                      current[requestId]?.approvedQuota ??
+                      '',
+                    approvalReason:
+                      patch.approvalReason ??
+                      current[requestId]?.approvalReason ??
+                      '',
+                    rejectedReason:
+                      patch.rejectedReason ??
+                      current[requestId]?.rejectedReason ??
+                      '',
+                  },
+                }))
+              }
+              onApprove={(item) => {
+                const draft = quotaRequestDecisionDrafts[item.id]
+                quotaRequestDecisionMutation.mutate({
+                  requestId: item.id,
+                  payload: {
+                    action: 'approve',
+                    approved_quota: Number(
+                      draft?.approvedQuota || item.requested_quota
+                    ),
+                    approval_reason:
+                      draft?.approvalReason || t('Approved in workspace'),
+                  },
+                })
+              }}
+              onReject={(item) => {
+                const draft = quotaRequestDecisionDrafts[item.id]
+                quotaRequestDecisionMutation.mutate({
+                  requestId: item.id,
+                  payload: {
+                    action: 'reject',
+                    rejected_reason:
+                      draft?.rejectedReason || t('Rejected in workspace'),
+                  },
+                })
+              }}
+              pendingRequestId={
+                quotaRequestDecisionMutation.isPending
+                  ? (quotaRequestDecisionMutation.variables?.requestId ?? null)
+                  : null
+              }
+              canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  )
+}
+
+function DepartmentBudgetCreateCard(props: {
+  form: ReturnType<
+    typeof useForm<z.infer<ReturnType<typeof createBudgetSchema>>>
+  >
+  budgetType: 'balance' | 'subscription'
+  cycleType: 'daily' | 'weekly' | 'monthly' | 'custom'
+  departmentName: string
+  createPending: boolean
+  onSubmit: (values: z.infer<ReturnType<typeof createBudgetSchema>>) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Department Budget')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Create a balance or subscription budget pool for {{department}} without leaving the current department context.',
+            {
+              department: props.departmentName,
+            }
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...props.form}>
+          <form
+            className='flex flex-col gap-4'
+            onSubmit={props.form.handleSubmit(props.onSubmit)}
+          >
+            <FormField
+              control={props.form.control}
+              name='tenant_id'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Tenant ID')}</FormLabel>
+                  <FormControl>
+                    <Input inputMode='numeric' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={props.form.control}
+              name='type'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Budget Type')}</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) =>
+                      field.onChange(value as 'balance' | 'subscription')
+                    }
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue>
+                          {formatBudgetType(field.value, t)}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value='balance'>
+                        {t('Balance Budget')}
+                      </SelectItem>
+                      <SelectItem value='subscription'>
+                        {t('Subscription Budget')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {props.budgetType === 'balance' ? (
+              <FormField
+                control={props.form.control}
+                name='total_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Total Quota')}</FormLabel>
+                    <FormControl>
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Total Quota')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <>
+                <FormField
+                  control={props.form.control}
+                  name='cycle_quota'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Cycle Quota')}</FormLabel>
+                      <FormControl>
+                        <QuotaAmountInput
+                          value={field.value}
+                          onChange={field.onChange}
+                          ariaLabel={t('Cycle Quota')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={props.form.control}
+                  name='cycle_type'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Cycle Type')}</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value='daily'>{t('Daily')}</SelectItem>
+                          <SelectItem value='weekly'>{t('Weekly')}</SelectItem>
+                          <SelectItem value='monthly'>
+                            {t('Monthly')}
+                          </SelectItem>
+                          <SelectItem value='custom'>
+                            {t('Custom (seconds)')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={props.form.control}
+                  name='cycle_started_at'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Cycle Start Time')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='2026-05-29T12:00'
+                          type='datetime-local'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {props.cycleType === 'custom' ? (
                   <FormField
-                    control={form.control}
-                    name='tenant_id'
+                    control={props.form.control}
+                    name='custom_seconds'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Tenant ID')}</FormLabel>
+                        <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
                         <FormControl>
                           <Input inputMode='numeric' {...field} />
                         </FormControl>
@@ -3025,725 +4614,30 @@ export function DepartmentBudgetPanel({
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name='type'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Budget Type')}</FormLabel>
-                        <Select
-                          value={field.value}
-                          onValueChange={(value) =>
-                            field.onChange(value as 'balance' | 'subscription')
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value='balance'>
-                              {t('Balance Budget')}
-                            </SelectItem>
-                            <SelectItem value='subscription'>
-                              {t('Subscription Budget')}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  {budgetType === 'balance' ? (
-                    <FormField
-                      control={form.control}
-                      name='total_quota'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Total Quota')}</FormLabel>
-                          <FormControl>
-                            <QuotaAmountInput
-                              value={field.value}
-                              onChange={field.onChange}
-                              ariaLabel={t('Total Quota')}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <>
-                      <FormField
-                        control={form.control}
-                        name='cycle_quota'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('Cycle Quota')}</FormLabel>
-                            <FormControl>
-                              <QuotaAmountInput
-                                value={field.value}
-                                onChange={field.onChange}
-                                ariaLabel={t('Cycle Quota')}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name='cycle_type'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('Cycle Type')}</FormLabel>
-                            <Select
-                              value={field.value}
-                              onValueChange={field.onChange}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value='daily'>
-                                  {t('Daily')}
-                                </SelectItem>
-                                <SelectItem value='weekly'>
-                                  {t('Weekly')}
-                                </SelectItem>
-                                <SelectItem value='monthly'>
-                                  {t('Monthly')}
-                                </SelectItem>
-                                <SelectItem value='custom'>
-                                  {t('Custom (seconds)')}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name='cycle_started_at'
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('Cycle Start Time')}</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder='2026-05-29T12:00'
-                                type='datetime-local'
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      {cycleType === 'custom' ? (
-                        <FormField
-                          control={form.control}
-                          name='custom_seconds'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
-                              <FormControl>
-                                <Input inputMode='numeric' {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      ) : null}
-                    </>
-                  )}
-                  <FormField
-                    control={form.control}
-                    name='expires_at'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Expires At (optional)')}</FormLabel>
-                        <FormControl>
-                          <Input type='datetime-local' {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button type='submit' disabled={createMutation.isPending}>
-                    <Coins data-icon='inline-start' />
-                    {t('Create Budget Pool')}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-        ) : null}
-        <DepartmentBudgetOverviewCard
-          item={budgetQuery.data ?? null}
-          selectedBudget={budgetDetailQuery.data?.budget ?? null}
-          thresholds={
-            budgetDetailQuery.data?.thresholds ??
-            budgetListQuery.data?.thresholds ?? { warning: 80, critical: 95 }
-          }
-          resizeForm={resizeForm}
-          onPause={
-            canManageCurrentBudgetLifecycle
-              ? (budgetId) => pauseBudgetMutation.mutate(budgetId)
-              : undefined
-          }
-          onResume={
-            canManageCurrentBudgetLifecycle
-              ? (budgetId) => resumeBudgetMutation.mutate(budgetId)
-              : undefined
-          }
-          onResize={
-            canManageCurrentBudgetLifecycle
-              ? (values) => resizeBudgetMutation.mutate(values)
-              : undefined
-          }
-          lifecyclePending={
-            pauseBudgetMutation.isPending ||
-            resumeBudgetMutation.isPending ||
-            resizeBudgetMutation.isPending
-          }
-        />
-      </div>
-      <DepartmentBudgetListCard
-        items={budgetListQuery.data?.items ?? []}
-        loading={budgetListQuery.isLoading}
-        selectedBudgetId={effectiveBudgetId}
-        includeDescendants={includeDescendants}
-        scopeDepartmentName={
-          budgetListQuery.data?.scope_department_name ?? departmentName
-        }
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onIncludeDescendantsChange={setIncludeDescendants}
-        onSelectBudget={onSelectedBudgetIdChange}
-        onSortByChange={setSortBy}
-        onSortOrderChange={setSortOrder}
-      />
-      <GovernanceActivityCard
-        timelineItems={governanceTimelineQuery.data ?? []}
-        notificationItems={governanceNotificationQuery.data ?? []}
-        loading={
-          governanceTimelineQuery.isLoading ||
-          governanceNotificationQuery.isLoading
-        }
-        resendPendingId={
-          governanceResendMutation.isPending
-            ? (governanceResendMutation.variables ?? null)
-            : null
-        }
-        onResend={(deliveryId) => governanceResendMutation.mutate(deliveryId)}
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {t('Allocate Budget To Subordinate Department')}
-          </CardTitle>
-          <CardDescription>
-            {t(
-              'Allocate from the current department budget pool to a subordinate department budget pool, while keeping adjustment history visible.'
+                ) : null}
+              </>
             )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <Form {...delegationForm}>
-            <form
-              className='grid gap-4 md:grid-cols-2'
-              onSubmit={delegationForm.handleSubmit((values) =>
-                delegationMutation.mutate(values)
+            <FormField
+              control={props.form.control}
+              name='expires_at'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Expires At (optional)')}</FormLabel>
+                  <FormControl>
+                    <Input type='datetime-local' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            >
-              <FormField
-                control={delegationForm.control}
-                name='target_budget_id'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Target Subordinate Budget Pool')}</FormLabel>
-                    <Select
-                      value={field.value ? String(field.value) : undefined}
-                      onValueChange={(value) => {
-                        const budgetId = Number(value)
-                        const budget = descendantBudgetOptions.find(
-                          (item) => item.id === budgetId
-                        )
-                        field.onChange(budgetId)
-                        delegationForm.setValue(
-                          'target_department_id',
-                          budget?.department_id ?? 0
-                        )
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={t('Choose a subordinate budget pool')}
-                          />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {descendantBudgetOptions.map((item) => (
-                          <SelectItem key={item.id} value={String(item.id)}>
-                            {t(
-                              '{{source}} -> {{target}} -> Budget #{{budgetId}}',
-                              {
-                                source: departmentName,
-                                target: item.department_name,
-                                budgetId: item.id,
-                              }
-                            )}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={delegationForm.control}
-                name='committed_quota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Delegation Quota')}</FormLabel>
-                    <FormControl>
-                      <QuotaAmountInput
-                        value={field.value}
-                        onChange={field.onChange}
-                        ariaLabel={t('Delegation Quota')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={delegationForm.control}
-                name='reason'
-                render={({ field }) => (
-                  <FormItem className='md:col-span-2'>
-                    <FormLabel>{t('Reason')}</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        {...field}
-                        value={field.value ?? ''}
-                        placeholder={t('Optional delegation note')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className='flex justify-end md:col-span-2'>
-                <Button
-                  type='submit'
-                  disabled={
-                    !effectiveBudgetId ||
-                    descendantBudgetOptions.length === 0 ||
-                    delegationMutation.isPending
-                  }
-                >
-                  <Coins data-icon='inline-start' />
-                  {t('Allocate budget to subordinate department')}
-                </Button>
-              </div>
-            </form>
-          </Form>
-          <BudgetDelegationTable
-            items={delegationListQuery.data ?? []}
-            loading={delegationListQuery.isLoading}
-            supersedeDrafts={supersedeDrafts}
-            onSupersedeDraftChange={(delegationId, value) =>
-              setSupersedeDrafts((current) => ({
-                ...current,
-                [delegationId]: value,
-              }))
-            }
-            onSupersede={(delegation) =>
-              supersedeMutation.mutate({
-                delegationId: delegation.id,
-                committedQuota: Number(
-                  supersedeDrafts[delegation.id] || delegation.committed_quota
-                ),
-              })
-            }
-            supersedePendingId={
-              supersedeMutation.isPending
-                ? (supersedeMutation.variables?.delegationId ?? null)
-                : null
-            }
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('Employee Quota Requests')}</CardTitle>
-          <CardDescription>
-            {t(
-              'Submit employee quota requests with an explicit target budget pool, then complete single-step approval in the same department workspace.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <Form {...quotaRequestForm}>
-            <form
-              className='grid gap-4 md:grid-cols-2'
-              onSubmit={quotaRequestForm.handleSubmit((values) =>
-                quotaRequestMutation.mutate(values)
-              )}
-            >
-              <div className='rounded-lg border p-3 md:col-span-2'>
-                <div className='text-muted-foreground text-xs'>
-                  {t('Requester')}
-                </div>
-                <div className='mt-1 text-sm font-medium'>
-                  {currentUser
-                    ? formatEnterpriseUserPrimary({
-                        displayName: currentUser.display_name,
-                        username: currentUser.username,
-                        userId: currentUser.id,
-                      })
-                    : t('No current user')}
-                </div>
-                <div className='text-muted-foreground mt-1 text-xs'>
-                  {t('Target Department')} {departmentName}
-                </div>
-                <div className='mt-3 border-t pt-3'>
-                  <div className='text-muted-foreground text-xs'>
-                    {t('Selected request scope')}
-                  </div>
-                  {selectedQuotaRequestBudget ? (
-                    <QuotaRequestBudgetSummary
-                      item={selectedQuotaRequestBudget}
-                    />
-                  ) : (
-                    <>
-                      <div className='mt-1 text-sm font-medium'>
-                        {departmentName}
-                      </div>
-                      <div className='text-muted-foreground mt-1 text-xs'>
-                        {t('No budget pool selected')}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              <FormField
-                control={quotaRequestForm.control}
-                name='department_budget_id'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Target Budget Pool')}</FormLabel>
-                    <Select
-                      value={field.value ? String(field.value) : undefined}
-                      onValueChange={(value) => field.onChange(Number(value))}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={t('Choose a target budget pool')}
-                          />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {quotaRequestBudgetOptions.map((item) => (
-                          <SelectItem
-                            key={item.id}
-                            value={String(item.id)}
-                            className='items-start py-2'
-                          >
-                            <QuotaRequestBudgetOption item={item} />
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={quotaRequestForm.control}
-                name='requested_quota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Requested Quota')}</FormLabel>
-                    <FormControl>
-                      <QuotaAmountInput
-                        value={field.value}
-                        onChange={field.onChange}
-                        ariaLabel={t('Requested Quota')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={quotaRequestForm.control}
-                name='request_reason'
-                render={({ field }) => (
-                  <FormItem className='md:col-span-2'>
-                    <FormLabel>{t('Request Reason')}</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        {...field}
-                        value={field.value ?? ''}
-                        placeholder={t('Optional request note')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className='flex justify-end md:col-span-2'>
-                <Button
-                  type='submit'
-                  disabled={
-                    !currentUser ||
-                    !quotaRequestCapabilityQuery.data?.can_submit ||
-                    quotaRequestMutation.isPending
-                  }
-                >
-                  <Coins data-icon='inline-start' />
-                  {t('Submit quota request')}
-                </Button>
-              </div>
-            </form>
-          </Form>
-          {!quotaRequestCapabilityQuery.data?.can_submit ? (
-            <Empty className='min-h-[140px] border'>
-              <EmptyHeader>
-                <EmptyMedia variant='icon'>
-                  <Coins className='size-4' />
-                </EmptyMedia>
-                <EmptyTitle>
-                  {t('No request access in this department')}
-                </EmptyTitle>
-                <EmptyDescription>
-                  {t(
-                    'You must be an active member of the selected department before submitting a quota request here.'
-                  )}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : null}
-          <QuotaRequestTable
-            items={quotaRequestListQuery.data ?? []}
-            loading={quotaRequestListQuery.isLoading}
-            decisionDrafts={quotaRequestDecisionDrafts}
-            onDecisionDraftChange={(requestId, patch) =>
-              setQuotaRequestDecisionDrafts((current) => ({
-                ...current,
-                [requestId]: {
-                  approvedQuota:
-                    patch.approvedQuota ??
-                    current[requestId]?.approvedQuota ??
-                    '',
-                  approvalReason:
-                    patch.approvalReason ??
-                    current[requestId]?.approvalReason ??
-                    '',
-                  rejectedReason:
-                    patch.rejectedReason ??
-                    current[requestId]?.rejectedReason ??
-                    '',
-                },
-              }))
-            }
-            onApprove={(item) => {
-              const draft = quotaRequestDecisionDrafts[item.id]
-              quotaRequestDecisionMutation.mutate({
-                requestId: item.id,
-                payload: {
-                  action: 'approve',
-                  approved_quota: Number(
-                    draft?.approvedQuota || item.requested_quota
-                  ),
-                  approval_reason:
-                    draft?.approvalReason || t('Approved in workspace'),
-                },
-              })
-            }}
-            onReject={(item) => {
-              const draft = quotaRequestDecisionDrafts[item.id]
-              quotaRequestDecisionMutation.mutate({
-                requestId: item.id,
-                payload: {
-                  action: 'reject',
-                  rejected_reason:
-                    draft?.rejectedReason || t('Rejected in workspace'),
-                },
-              })
-            }}
-            pendingRequestId={
-              quotaRequestDecisionMutation.isPending
-                ? (quotaRequestDecisionMutation.variables?.requestId ?? null)
-                : null
-            }
-            canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>
-          <CardDescription>
-            {t(
-              'Keep budget detail, derived wallets, and current member allocation in one current-department workflow.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <DepartmentBudgetDetailTable
-            budget={budgetDetailQuery.data?.budget ?? null}
-            wallets={budgetDetailQuery.data?.wallets ?? []}
-            loading={budgetDetailQuery.isLoading}
-          />
-          <Form {...allocationForm}>
-            <form
-              className='grid gap-4 md:grid-cols-2'
-              onSubmit={allocationForm.handleSubmit((values) =>
-                allocationMutation.mutate(values)
-              )}
-            >
-              <div className='rounded-lg border p-3 md:col-span-2'>
-                <div className='text-muted-foreground text-xs'>
-                  {t('Current Member')}
-                </div>
-                <div className='mt-1 text-sm font-medium'>
-                  {selectedMember
-                    ? formatEnterpriseUserPrimary({
-                        displayName: selectedMember.display_name,
-                        username: selectedMember.username,
-                        userId: selectedMember.user_id,
-                      })
-                    : t('No member selected')}
-                </div>
-                <div className='text-muted-foreground mt-1 text-xs'>
-                  {selectedMember
-                    ? t('Selected from {{department}}', {
-                        department: departmentName,
-                      })
-                    : t(
-                        'Select a member from the current department list before creating a wallet allocation.'
-                      )}
-                </div>
-              </div>
-              <FormField
-                control={allocationForm.control}
-                name='committed_quota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Allocation Quota')}</FormLabel>
-                    <FormControl>
-                      <QuotaAmountInput
-                        value={field.value}
-                        onChange={field.onChange}
-                        ariaLabel={t('Allocation Quota')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={allocationForm.control}
-                name='reason'
-                render={({ field }) => (
-                  <FormItem className='md:col-span-2'>
-                    <FormLabel>{t('Reason')}</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        {...field}
-                        value={field.value ?? ''}
-                        placeholder={t('Optional allocation note')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {!effectiveBudgetId ? (
-                <div className='md:col-span-2'>
-                  <Empty className='min-h-[140px] border'>
-                    <EmptyHeader>
-                      <EmptyMedia variant='icon'>
-                        <CreditCard className='size-4' />
-                      </EmptyMedia>
-                      <EmptyTitle>{t('Select a budget pool')}</EmptyTitle>
-                      <EmptyDescription>
-                        {t(
-                          'Choose a budget pool in the current department before creating a member wallet allocation.'
-                        )}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                </div>
-              ) : null}
-              <div className='flex justify-end md:col-span-2'>
-                <Button
-                  type='submit'
-                  disabled={
-                    !effectiveBudgetId ||
-                    !selectedMember ||
-                    allocationMutation.isPending
-                  }
-                >
-                  <CreditCard data-icon='inline-start' />
-                  {t('Create wallet allocation')}
-                </Button>
-              </div>
-            </form>
-          </Form>
-          <QuotaAllocationTable
-            items={allocationListQuery.data ?? []}
-            loading={allocationListQuery.isLoading}
-            supersedeDrafts={allocationSupersedeDrafts}
-            onSupersedeDraftChange={(allocationId, value) =>
-              setAllocationSupersedeDrafts((current) => ({
-                ...current,
-                [allocationId]: value,
-              }))
-            }
-            onSupersede={(item) =>
-              allocationSupersedeMutation.mutate({
-                allocationId: item.id,
-                committedQuota: Number(
-                  allocationSupersedeDrafts[item.id] || item.committed_quota
-                ),
-              })
-            }
-            onCancel={(allocationId) =>
-              allocationCancelMutation.mutate(allocationId)
-            }
-            onReclaim={(allocationId) =>
-              allocationReclaimMutation.mutate(allocationId)
-            }
-            supersedePendingId={
-              allocationSupersedeMutation.isPending
-                ? (allocationSupersedeMutation.variables?.allocationId ?? null)
-                : null
-            }
-            cancelPendingId={
-              allocationCancelMutation.isPending
-                ? (allocationCancelMutation.variables ?? null)
-                : null
-            }
-            reclaimPendingId={
-              allocationReclaimMutation.isPending
-                ? (allocationReclaimMutation.variables ?? null)
-                : null
-            }
-          />
-        </CardContent>
-      </Card>
-    </div>
+            />
+            <Button type='submit' disabled={props.createPending}>
+              <Coins data-icon='inline-start' />
+              {t('Create Budget Pool')}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -4634,7 +5528,15 @@ export function DepartmentBudgetListCard({
               }
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {sortBy === 'usage_ratio'
+                    ? t('Usage Ratio')
+                    : sortBy === 'remaining'
+                      ? t('Remaining Quota')
+                      : sortBy === 'type'
+                        ? t('Budget Type')
+                        : t('Budget Status')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='usage_ratio'>{t('Usage Ratio')}</SelectItem>
@@ -4655,7 +5557,9 @@ export function DepartmentBudgetListCard({
               }
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {sortOrder === 'desc' ? t('Descending') : t('Ascending')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value='desc'>{t('Descending')}</SelectItem>

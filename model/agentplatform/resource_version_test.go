@@ -111,6 +111,7 @@ func TestResourceVersionAndDefinitionsPersistRetainedFields(t *testing.T) {
 		ResourceVersion: "1.0.0",
 		CliType:         AgentCliTypeOpenCode,
 		Name:            "Agent",
+		CategoriesJSON:  `["general"]`,
 	}).Error)
 
 	var skillDetail SkillDef

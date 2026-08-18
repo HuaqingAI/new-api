@@ -172,13 +172,14 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.NoError(t, err)
 
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
-		CliType:      apmodel.AgentCliTypeCodex,
-		DisplayName:  "Codex Agent",
-		Instructions: "Follow Codex rules.",
-		Categories:   []string{apmodel.AgentCategoryGeneral},
-		McpIds:       []string{mcp.ResourceId},
-		KnowledgeIds: []string{knowledge.ResourceId},
-		OwnerUserId:  1,
+		CliType:            apmodel.AgentCliTypeCodex,
+		DisplayName:        "Codex Agent",
+		Instructions:       "Follow Codex rules.",
+		Categories:         []string{apmodel.AgentCategoryGeneral},
+		RecommendedPrompts: []string{"整理资料", "生成摘要"},
+		McpIds:             []string{mcp.ResourceId},
+		KnowledgeIds:       []string{knowledge.ResourceId},
+		OwnerUserId:        1,
 	})
 	require.NoError(t, err)
 
@@ -235,6 +236,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)
 	require.Equal(t, apmodel.AgentCliTypeCodex, publishedDef.CliType)
 	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, publishedDef.Categories())
+	require.Equal(t, []string{"整理资料", "生成摘要"}, publishedDef.RecommendedPrompts())
 	require.Equal(t, result.Artifact.ArtifactKey, publishedDef.PackagePath)
 	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
 }

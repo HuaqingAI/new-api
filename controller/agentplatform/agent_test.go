@@ -80,10 +80,11 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	router, _ := setupAgentControllerTest(t)
 
 	create := performAgentRequest(t, router, http.MethodPost, "/api/agent-platform/agents", dtoagentplatform.CreateAgentRequest{
-		CliType:     apmodel.AgentCliTypeOpenCode,
-		DisplayName: "Agent A",
-		Categories:  []string{apmodel.AgentCategoryGeneral},
-		OwnerUserId: 100,
+		CliType:            apmodel.AgentCliTypeOpenCode,
+		DisplayName:        "Agent A",
+		Categories:         []string{apmodel.AgentCategoryGeneral},
+		RecommendedPrompts: []string{"问题一", "问题二"},
+		OwnerUserId:        100,
 	})
 	createResp := decodeAgentAPIResponse(t, create)
 	require.True(t, createResp.Success, createResp.Message)
@@ -92,6 +93,7 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	require.NoError(t, common.Unmarshal(createResp.Data, &created))
 	require.Equal(t, apmodel.ResourceTypeAgent, created.ResourceType)
 	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, created.Categories)
+	require.Equal(t, []string{"问题一", "问题二"}, created.RecommendedPrompts)
 
 	list := performAgentRequest(t, router, http.MethodGet, "/api/agent-platform/agents", nil)
 	listResp := decodeAgentAPIResponse(t, list)
@@ -101,12 +103,17 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	require.NoError(t, common.Unmarshal(listResp.Data, &listData))
 	require.Equal(t, 1, listData.Total)
 	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, listData.Items[0].Categories)
+	require.Equal(t, []string{"问题一", "问题二"}, listData.Items[0].RecommendedPrompts)
 
 	update := performAgentRequest(t, router, http.MethodPut, "/api/agent-platform/agents/"+created.ResourceId, dtoagentplatform.UpdateAgentRequest{
-		CliType:     apmodel.AgentCliTypeOpenCode,
-		DisplayName: "Agent A V2",
-		Categories:  []string{apmodel.AgentCategoryGeneral},
+		CliType:            apmodel.AgentCliTypeOpenCode,
+		DisplayName:        "Agent A V2",
+		Categories:         []string{apmodel.AgentCategoryGeneral},
+		RecommendedPrompts: []string{"更新问题"},
 	})
 	updateResp := decodeAgentAPIResponse(t, update)
 	require.True(t, updateResp.Success, updateResp.Message)
+	var updated dtoagentplatform.AgentDetailItem
+	require.NoError(t, common.Unmarshal(updateResp.Data, &updated))
+	require.Equal(t, []string{"更新问题"}, updated.RecommendedPrompts)
 }

@@ -22,14 +22,16 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	svc, db := newAgentServiceForTest(t)
 
 	created, err := svc.Create(AgentCreateInput{
-		CliType:     apmodel.AgentCliTypeOpenCode,
-		DisplayName: "My Agent",
-		Categories:  []string{apmodel.AgentCategoryGeneral},
-		OwnerUserId: 101,
-		TenantId:    7,
+		CliType:            apmodel.AgentCliTypeOpenCode,
+		DisplayName:        "My Agent",
+		Categories:         []string{apmodel.AgentCategoryGeneral},
+		RecommendedPrompts: []string{"  question one  ", "", "question one", "question two"},
+		OwnerUserId:        101,
+		TenantId:           7,
 	})
 	require.NoError(t, err)
 	require.Equal(t, apmodel.ResourceTypeAgent, created.ResourceType)
+	require.Equal(t, []string{"question one", "question two"}, created.RecommendedPrompts)
 
 	require.NoError(t, db.Create(&apmodel.Resource{
 		ResourceType: apmodel.ResourceTypeKnowledge,
@@ -44,17 +46,20 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	require.Equal(t, created.ResourceId, list.Items[0].ResourceId)
 
 	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{
-		CliType:     apmodel.AgentCliTypeOpenCode,
-		DisplayName: "My Agent V2",
-		Categories:  []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance},
+		CliType:            apmodel.AgentCliTypeOpenCode,
+		DisplayName:        "My Agent V2",
+		Categories:         []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance},
+		RecommendedPrompts: []string{"new question", " new question ", "another question"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "My Agent V2", updated.DisplayName)
 	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, updated.Categories)
+	require.Equal(t, []string{"new question", "another question"}, updated.RecommendedPrompts)
 
 	fetched, err := svc.Get(created.ResourceId)
 	require.NoError(t, err)
 	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, fetched.Categories)
+	require.Equal(t, []string{"new question", "another question"}, fetched.RecommendedPrompts)
 }
 
 func TestAgentServiceGetRejectsNonAgentResources(t *testing.T) {

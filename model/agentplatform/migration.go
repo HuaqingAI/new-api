@@ -2,6 +2,8 @@ package agentplatform
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -89,6 +91,9 @@ func Migrate(db *gorm.DB) error {
 	if err := backfillAgentDefCategories(db); err != nil {
 		return err
 	}
+	if err := backfillAgentDefRecommendedPrompts(db); err != nil {
+		return err
+	}
 	if err := dropRemovedColumns(db, removedAgentPlatformColumns); err != nil {
 		return err
 	}
@@ -139,4 +144,92 @@ func backfillAgentDefCategories(db *gorm.DB) error {
 	return db.Model(&AgentDef{}).
 		Where("categories_json = ? OR categories_json IS NULL", "").
 		Update("categories_json", string(data)).Error
+}
+
+var legacyOpenRemarkBlockPattern = regexp.MustCompile(`(?is)<open-remark>(.*?)</open-remark>`)
+
+func backfillAgentDefRecommendedPrompts(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&AgentDef{}) || !db.Migrator().HasColumn(&AgentDef{}, "recommended_prompts_json") {
+		return nil
+	}
+
+	resourceDescriptions := map[string]string{}
+	if db.Migrator().HasTable(&Resource{}) {
+		var resources []Resource
+		if err := db.Where("resource_type = ?", ResourceTypeAgent).Find(&resources).Error; err != nil {
+			return err
+		}
+		for _, resource := range resources {
+			resourceDescriptions[resource.ResourceId] = resource.Description
+		}
+	}
+
+	var definitions []AgentDef
+	if err := db.Find(&definitions).Error; err != nil {
+		return err
+	}
+	for _, definition := range definitions {
+		legacyDescription := definition.Description
+		legacyPrompts := extractLegacyRecommendedPrompts(legacyDescription)
+		if definition.ResourceVersion == ResourceStatusDraft {
+			legacyPrompts = append(legacyPrompts, extractLegacyRecommendedPrompts(resourceDescriptions[definition.ResourceId])...)
+		}
+		cleanedDescription := removeLegacyRecommendedPromptBlock(legacyDescription)
+		if cleanedDescription == legacyDescription && len(legacyPrompts) == 0 {
+			continue
+		}
+
+		updates := map[string]any{}
+		if cleanedDescription != legacyDescription {
+			updates["description"] = cleanedDescription
+		}
+		if len(legacyPrompts) > 0 {
+			prompts := append(definition.RecommendedPrompts(), legacyPrompts...)
+			data, err := common.Marshal(NormalizeAgentRecommendedPrompts(prompts))
+			if err != nil {
+				return err
+			}
+			updates["recommended_prompts_json"] = string(data)
+		}
+		if len(updates) > 0 {
+			if err := db.Model(&AgentDef{}).Where("id = ?", definition.Id).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(resourceDescriptions) == 0 {
+		return nil
+	}
+	for resourceID, description := range resourceDescriptions {
+		cleanedDescription := removeLegacyRecommendedPromptBlock(description)
+		if cleanedDescription == description {
+			continue
+		}
+		if err := db.Model(&Resource{}).Where("resource_id = ?", resourceID).Update("description", cleanedDescription).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractLegacyRecommendedPrompts(description string) []string {
+	matches := legacyOpenRemarkBlockPattern.FindAllStringSubmatch(description, -1)
+	if len(matches) == 0 {
+		return []string{}
+	}
+	prompts := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 {
+			prompts = append(prompts, strings.Split(match[1], "\n")...)
+		}
+	}
+	return NormalizeAgentRecommendedPrompts(prompts)
+}
+
+func removeLegacyRecommendedPromptBlock(description string) string {
+	if !legacyOpenRemarkBlockPattern.MatchString(description) {
+		return description
+	}
+	return strings.TrimSpace(legacyOpenRemarkBlockPattern.ReplaceAllString(description, ""))
 }

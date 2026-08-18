@@ -57,14 +57,16 @@ func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 		PackageSha256:   "sha",
 		PackageSize:     3,
 	}).Error)
-	require.NoError(t, db.Create(&apmodel.AgentDef{
+	firstDef := apmodel.AgentDef{
 		ResourceId:      "res_agent_1",
 		ResourceVersion: "1.0.0",
 		CliType:         "opencode",
 		Name:            "Agent Def One",
 		Description:     "from def",
 		Avatar:          avatarPath,
-	}).Error)
+	}
+	require.NoError(t, firstDef.SetCategories([]string{apmodel.AgentCategoryGeneral}))
+	require.NoError(t, db.Create(&firstDef).Error)
 	parentDepartmentID := 8
 	require.NoError(t, db.Create([]entmodel.Department{
 		{Id: parentDepartmentID, Name: "信息部"},
@@ -100,12 +102,14 @@ func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 		PackageSha256:   "codex-sha",
 		PackageSize:     9,
 	}).Error)
-	require.NoError(t, db.Create(&apmodel.AgentDef{
+	secondDef := apmodel.AgentDef{
 		ResourceId:      "res_agent_2",
 		ResourceVersion: "1.0.0",
 		CliType:         "codex",
 		Name:            "Agent Def Two",
-	}).Error)
+	}
+	require.NoError(t, secondDef.SetCategories([]string{apmodel.AgentCategoryGeneral}))
+	require.NoError(t, db.Create(&secondDef).Error)
 	require.NoError(t, db.Create(&apmodel.ResourceGrant{
 		ResourceId:      "res_agent_2",
 		ResourceVersion: "1.0.0",
@@ -146,7 +150,7 @@ func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 	require.Equal(t, "https://oss.test/agent-packages/codex/res_agent_2/1.0.0/codex.zip", result.Agents[1].Url)
 }
 
-func TestAgentConfigServiceExtractsCategoriesAndRecommendedPrompts(t *testing.T) {
+func TestAgentConfigServiceUsesIndependentRecommendedPrompts(t *testing.T) {
 	oldDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -188,9 +192,10 @@ func TestAgentConfigServiceExtractsCategoriesAndRecommendedPrompts(t *testing.T)
 		ResourceVersion: "2.0.0",
 		CliType:         "opencode",
 		Name:            "Agent Def Three",
-		Description:     "负责售后。\n<open-remark>\n帮我写回访话术\n\n帮我整理工单\n</open-remark>",
+		Description:     "负责售后。\n<open-remark>\n旧的推荐问题\n</open-remark>",
 	}
 	require.NoError(t, def.SetCategories([]string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}))
+	require.NoError(t, def.SetRecommendedPrompts([]string{"独立推荐问题一", "独立推荐问题二"}))
 	require.NoError(t, db.Create(&def).Error)
 	require.NoError(t, db.Create(&apmodel.ResourceGrant{
 		ResourceId:      "res_agent_3",
@@ -205,7 +210,7 @@ func TestAgentConfigServiceExtractsCategoriesAndRecommendedPrompts(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, result.Agents, 1)
 	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}, result.Agents[0].Categories)
-	require.Equal(t, []string{"帮我写回访话术", "帮我整理工单"}, result.Agents[0].RecommendedPrompts)
+	require.Equal(t, []string{"独立推荐问题一", "独立推荐问题二"}, result.Agents[0].RecommendedPrompts)
 	require.Contains(t, result.Agents[0].Description, "<open-remark>")
 }
 

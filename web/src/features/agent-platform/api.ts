@@ -66,6 +66,7 @@ export type AgentPlatformAgentItem = AgentPlatformItem & {
   cli_type: AgentPlatformAgentCliType
   instructions?: string
   categories?: string[]
+  recommended_prompts?: string[]
   mcp_ids?: string[]
   skill_ids?: string[]
   knowledge_ids?: string[]
@@ -142,6 +143,7 @@ export type CreateAgentPlatformAgentRequest = {
   avatar?: string
   instructions?: string
   categories?: string[]
+  recommended_prompts?: string[]
   mcp_ids?: string[]
   skill_ids?: string[]
   knowledge_ids?: string[]

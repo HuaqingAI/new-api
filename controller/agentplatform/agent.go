@@ -52,17 +52,18 @@ func CreateAgent(c *gin.Context) {
 		return
 	}
 	item, err := agentService().Create(apservice.AgentCreateInput{
-		CliType:      req.CliType,
-		DisplayName:  req.DisplayName,
-		Description:  req.Description,
-		Avatar:       req.Avatar,
-		Instructions: req.Instructions,
-		Categories:   req.Categories,
-		McpIds:       req.McpIds,
-		SkillIds:     req.SkillIds,
-		KnowledgeIds: req.KnowledgeIds,
-		OwnerUserId:  c.GetInt("id"),
-		TenantId:     0,
+		CliType:            req.CliType,
+		DisplayName:        req.DisplayName,
+		Description:        req.Description,
+		Avatar:             req.Avatar,
+		Instructions:       req.Instructions,
+		Categories:         req.Categories,
+		RecommendedPrompts: req.RecommendedPrompts,
+		McpIds:             req.McpIds,
+		SkillIds:           req.SkillIds,
+		KnowledgeIds:       req.KnowledgeIds,
+		OwnerUserId:        c.GetInt("id"),
+		TenantId:           0,
 	})
 	if err != nil {
 		writeResourceError(c, err)
@@ -78,15 +79,16 @@ func UpdateAgent(c *gin.Context) {
 		return
 	}
 	item, err := agentService().Update(c.Param("id"), apservice.AgentUpdateInput{
-		CliType:      req.CliType,
-		DisplayName:  req.DisplayName,
-		Description:  req.Description,
-		Avatar:       req.Avatar,
-		Instructions: req.Instructions,
-		Categories:   req.Categories,
-		McpIds:       req.McpIds,
-		SkillIds:     req.SkillIds,
-		KnowledgeIds: req.KnowledgeIds,
+		CliType:            req.CliType,
+		DisplayName:        req.DisplayName,
+		Description:        req.Description,
+		Avatar:             req.Avatar,
+		Instructions:       req.Instructions,
+		Categories:         req.Categories,
+		RecommendedPrompts: req.RecommendedPrompts,
+		McpIds:             req.McpIds,
+		SkillIds:           req.SkillIds,
+		KnowledgeIds:       req.KnowledgeIds,
 	})
 	if err != nil {
 		writeResourceError(c, err)
@@ -177,13 +179,14 @@ func GetAgentPublishDefaults(c *gin.Context) {
 
 func mapAgentDetailItem(item apservice.AgentItem) dtoagentplatform.AgentDetailItem {
 	return dtoagentplatform.AgentDetailItem{
-		ResourceItem: mapResourceItem(item.ResourceItem),
-		CliType:      item.CliType,
-		Instructions: item.Instructions,
-		Categories:   item.Categories,
-		McpIds:       item.McpIds,
-		SkillIds:     item.SkillIds,
-		KnowledgeIds: item.KnowledgeIds,
+		ResourceItem:       mapResourceItem(item.ResourceItem),
+		CliType:            item.CliType,
+		Instructions:       item.Instructions,
+		Categories:         item.Categories,
+		RecommendedPrompts: item.RecommendedPrompts,
+		McpIds:             item.McpIds,
+		SkillIds:           item.SkillIds,
+		KnowledgeIds:       item.KnowledgeIds,
 	}
 }
 

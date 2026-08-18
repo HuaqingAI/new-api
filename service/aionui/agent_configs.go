@@ -2,7 +2,6 @@ package aionui
 
 import (
 	"context"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,8 +20,6 @@ const (
 	CliTypeCodex       = "codex"
 	defaultAgentAvatar = "\U0001f916"
 )
-
-var openRemarkBlockPattern = regexp.MustCompile(`(?is)<open-remark>(.*?)</open-remark>`)
 
 type AgentConfigService struct {
 	now func() time.Time
@@ -209,45 +206,19 @@ func platformAgentConfigItem(grant apmodel.ResourceGrant) (dtoaionui.AgentConfig
 		avatar = defaultAgentAvatar
 	}
 	return dtoaionui.AgentConfigItem{
-		Id:           resource.ResourceId,
-		CliType:      cliType,
-		ArtifactKey:  ref.URI,
-		Url:          signed.URL,
-		UrlType:      signed.URLType,
-		UrlExpiresAt: signed.ExpiresAt,
-		Version:      version.Version,
-		Name:         name,
-		Description:  description,
-		Categories:   def.Categories(),
-		RecommendedPrompts: extractRecommendedPrompts(description),
-		Avatar:       avatar,
-		Sha256:       sha,
-		Size:         version.PackageSize,
+		Id:                 resource.ResourceId,
+		CliType:            cliType,
+		ArtifactKey:        ref.URI,
+		Url:                signed.URL,
+		UrlType:            signed.URLType,
+		UrlExpiresAt:       signed.ExpiresAt,
+		Version:            version.Version,
+		Name:               name,
+		Description:        description,
+		Categories:         def.Categories(),
+		RecommendedPrompts: def.RecommendedPrompts(),
+		Avatar:             avatar,
+		Sha256:             sha,
+		Size:               version.PackageSize,
 	}, true, nil
-}
-
-func extractRecommendedPrompts(description string) []string {
-	matches := openRemarkBlockPattern.FindAllStringSubmatch(description, -1)
-	if len(matches) == 0 {
-		return []string{}
-	}
-	seen := map[string]struct{}{}
-	prompts := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		for _, line := range strings.Split(match[1], "\n") {
-			prompt := strings.TrimSpace(line)
-			if prompt == "" {
-				continue
-			}
-			if _, ok := seen[prompt]; ok {
-				continue
-			}
-			seen[prompt] = struct{}{}
-			prompts = append(prompts, prompt)
-		}
-	}
-	return prompts
 }

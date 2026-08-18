@@ -15,13 +15,13 @@ const (
 	AgentCliTypeOpenCode = "opencode"
 	AgentCliTypeCodex    = "codex"
 
-	AgentCategoryGeneral        = "general"
-	AgentCategoryOperations     = "operations"
+	AgentCategoryGeneral         = "general"
+	AgentCategoryOperations      = "operations"
 	AgentCategoryCustomerService = "customer_service"
-	AgentCategoryLogistics      = "logistics"
-	AgentCategoryMarketing      = "marketing"
-	AgentCategoryFinance        = "finance"
-	AgentCategoryHR             = "hr"
+	AgentCategoryLogistics       = "logistics"
+	AgentCategoryMarketing       = "marketing"
+	AgentCategoryFinance         = "finance"
+	AgentCategoryHR              = "hr"
 )
 
 var allowedAgentCategories = []string{
@@ -35,21 +35,22 @@ var allowedAgentCategories = []string{
 }
 
 type AgentDef struct {
-	Id              int       `json:"id" gorm:"primaryKey"`
-	ResourceId      string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
-	ResourceVersion string    `json:"resource_version" gorm:"type:varchar(64);uniqueIndex:idx_ap_agent_def_version;not null"`
-	CliType         string    `json:"cli_type" gorm:"type:varchar(32);not null;default:'opencode'"`
-	Name            string    `json:"name" gorm:"type:varchar(255)"`
-	Description     string    `json:"description" gorm:"type:text"`
-	CategoriesJSON  string    `json:"categories_json" gorm:"type:text"`
-	Avatar          string    `json:"avatar" gorm:"type:text"`
-	Instructions    string    `json:"instructions" gorm:"type:text"`
-	ModelConfigJSON string    `json:"model_config_json" gorm:"type:text"`
-	PackagePath     string    `json:"package_path" gorm:"type:text"`
-	PackageSha256   string    `json:"package_sha256" gorm:"type:varchar(64)"`
-	PackageSize     int64     `json:"package_size" gorm:"not null;default:0"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Id                     int       `json:"id" gorm:"primaryKey"`
+	ResourceId             string    `json:"resource_id" gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
+	ResourceVersion        string    `json:"resource_version" gorm:"type:varchar(64);uniqueIndex:idx_ap_agent_def_version;not null"`
+	CliType                string    `json:"cli_type" gorm:"type:varchar(32);not null;default:'opencode'"`
+	Name                   string    `json:"name" gorm:"type:varchar(255)"`
+	Description            string    `json:"description" gorm:"type:text"`
+	CategoriesJSON         string    `json:"categories_json" gorm:"type:text"`
+	RecommendedPromptsJSON string    `json:"recommended_prompts_json" gorm:"type:text"`
+	Avatar                 string    `json:"avatar" gorm:"type:text"`
+	Instructions           string    `json:"instructions" gorm:"type:text"`
+	ModelConfigJSON        string    `json:"model_config_json" gorm:"type:text"`
+	PackagePath            string    `json:"package_path" gorm:"type:text"`
+	PackageSha256          string    `json:"package_sha256" gorm:"type:varchar(64)"`
+	PackageSize            int64     `json:"package_size" gorm:"not null;default:0"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 func (AgentDef) TableName() string {
@@ -74,6 +75,7 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 	d.Name = strings.TrimSpace(d.Name)
 	d.Description = strings.TrimSpace(d.Description)
 	d.CategoriesJSON = strings.TrimSpace(d.CategoriesJSON)
+	d.RecommendedPromptsJSON = strings.TrimSpace(d.RecommendedPromptsJSON)
 	d.Avatar = strings.TrimSpace(d.Avatar)
 	d.Instructions = strings.TrimSpace(d.Instructions)
 	d.ModelConfigJSON = strings.TrimSpace(d.ModelConfigJSON)
@@ -83,6 +85,9 @@ func (d *AgentDef) applyDefaultsAndValidate() error {
 		return ErrInvalidAgentDefBody
 	}
 	if _, err := parseStoredAgentCategoriesJSON(d.CategoriesJSON); err != nil {
+		return ErrInvalidAgentDefBody
+	}
+	if _, err := parseStoredAgentRecommendedPromptsJSON(d.RecommendedPromptsJSON); err != nil {
 		return ErrInvalidAgentDefBody
 	}
 	return nil
@@ -151,6 +156,40 @@ func (d *AgentDef) SetCategories(values []string) error {
 	return nil
 }
 
+func NormalizeAgentRecommendedPrompts(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func (d *AgentDef) RecommendedPrompts() []string {
+	prompts, err := parseStoredAgentRecommendedPromptsJSON(d.RecommendedPromptsJSON)
+	if err != nil {
+		return []string{}
+	}
+	return prompts
+}
+
+func (d *AgentDef) SetRecommendedPrompts(values []string) error {
+	data, err := common.Marshal(NormalizeAgentRecommendedPrompts(values))
+	if err != nil {
+		return err
+	}
+	d.RecommendedPromptsJSON = string(data)
+	return nil
+}
+
 func parseStoredAgentCategoriesJSON(value string) ([]string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -161,4 +200,16 @@ func parseStoredAgentCategoriesJSON(value string) ([]string, error) {
 		return nil, ErrInvalidAgentDefBody
 	}
 	return NormalizeAgentCategories(categories)
+}
+
+func parseStoredAgentRecommendedPromptsJSON(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return []string{}, nil
+	}
+	var prompts []string
+	if err := common.Unmarshal([]byte(value), &prompts); err != nil {
+		return nil, ErrInvalidAgentDefBody
+	}
+	return NormalizeAgentRecommendedPrompts(prompts), nil
 }

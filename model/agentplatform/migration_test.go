@@ -62,6 +62,46 @@ func TestMigrateBackfillsAgentCategories(t *testing.T) {
 	require.Equal(t, []string{AgentCategoryGeneral}, agent.Categories())
 }
 
+func TestMigrateBackfillsRecommendedPromptsAndRemovesLegacyBlocks(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&legacyAgentDef{}, &legacyResource{}))
+	require.NoError(t, db.Create(&legacyResource{
+		ResourceId:   "res_legacy",
+		ResourceType: ResourceTypeAgent,
+		DisplayName:  "Legacy Agent",
+		Description:  "资源说明\n<open-remark>\n资源问题\n</open-remark>",
+		OwnerUserId:  1,
+		Status:       ResourceStatusDraft,
+	}).Error)
+	require.NoError(t, db.Create(&legacyAgentDef{
+		ResourceId:      "res_legacy",
+		ResourceVersion: ResourceStatusDraft,
+		Description:     "负责售后。\n<open-remark>\n问题一\n\n问题二\n问题一\n</open-remark>\n继续服务",
+	}).Error)
+	require.NoError(t, db.Create(&legacyAgentDef{
+		ResourceId:      "res_unclosed",
+		ResourceVersion: ResourceStatusDraft,
+		Description:     "保留说明\n<open-remark>\n未闭合问题",
+	}).Error)
+
+	require.NoError(t, Migrate(db))
+
+	var agent AgentDef
+	require.NoError(t, db.Where("resource_id = ?", "res_legacy").First(&agent).Error)
+	require.Equal(t, []string{"问题一", "问题二", "资源问题"}, agent.RecommendedPrompts())
+	require.Equal(t, "负责售后。\n\n继续服务", agent.Description)
+
+	var unclosed AgentDef
+	require.NoError(t, db.Where("resource_id = ?", "res_unclosed").First(&unclosed).Error)
+	require.Empty(t, unclosed.RecommendedPrompts())
+	require.Equal(t, "保留说明\n<open-remark>\n未闭合问题", unclosed.Description)
+
+	var resource Resource
+	require.NoError(t, db.Where("resource_id = ?", "res_legacy").First(&resource).Error)
+	require.Equal(t, "资源说明", resource.Description)
+}
+
 func createLegacyAgentPlatformTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.AutoMigrate(
@@ -76,6 +116,7 @@ type legacyAgentDef struct {
 	Id                    int    `gorm:"primaryKey"`
 	ResourceId            string `gorm:"type:varchar(40);uniqueIndex:idx_ap_agent_def_version;not null"`
 	ResourceVersion       string `gorm:"type:varchar(64);uniqueIndex:idx_ap_agent_def_version;not null"`
+	Description           string `gorm:"type:text"`
 	ManifestJSON          string `gorm:"type:text"`
 	DependenciesJSON      string `gorm:"type:text"`
 	PromptMetadataJSON    string `gorm:"type:text"`
@@ -84,6 +125,23 @@ type legacyAgentDef struct {
 
 func (legacyAgentDef) TableName() string {
 	return AgentDef{}.TableName()
+}
+
+type legacyResource struct {
+	Id            int    `gorm:"primaryKey"`
+	ResourceId    string `gorm:"type:varchar(40);uniqueIndex:idx_ap_resource_id;not null"`
+	ResourceType  string `gorm:"type:varchar(16);index:idx_ap_resource_type;not null"`
+	DisplayName   string `gorm:"type:varchar(255);not null"`
+	Description   string `gorm:"type:text"`
+	Avatar        string `gorm:"type:text"`
+	OwnerUserId   int    `gorm:"index:idx_ap_resource_owner;not null"`
+	Status        string `gorm:"type:varchar(16);index:idx_ap_resource_status;not null"`
+	LatestVersion string `gorm:"type:varchar(64);not null"`
+	TenantId      int    `gorm:"index:idx_ap_resource_tenant;not null;default:0"`
+}
+
+func (legacyResource) TableName() string {
+	return Resource{}.TableName()
 }
 
 type legacyKnowledgeDef struct {

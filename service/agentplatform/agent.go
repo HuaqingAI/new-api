@@ -17,39 +17,42 @@ type AgentQuery struct {
 }
 
 type AgentCreateInput struct {
-	CliType      string
-	DisplayName  string
-	Description  string
-	Avatar       string
-	Instructions string
-	Categories   []string
-	McpIds       []string
-	SkillIds     []string
-	KnowledgeIds []string
-	OwnerUserId  int
-	TenantId     int
+	CliType            string
+	DisplayName        string
+	Description        string
+	Avatar             string
+	Instructions       string
+	Categories         []string
+	RecommendedPrompts []string
+	McpIds             []string
+	SkillIds           []string
+	KnowledgeIds       []string
+	OwnerUserId        int
+	TenantId           int
 }
 
 type AgentUpdateInput struct {
-	CliType      string
-	DisplayName  string
-	Description  string
-	Avatar       string
-	Instructions string
-	Categories   []string
-	McpIds       []string
-	SkillIds     []string
-	KnowledgeIds []string
+	CliType            string
+	DisplayName        string
+	Description        string
+	Avatar             string
+	Instructions       string
+	Categories         []string
+	RecommendedPrompts []string
+	McpIds             []string
+	SkillIds           []string
+	KnowledgeIds       []string
 }
 
 type AgentItem struct {
 	ResourceItem
-	CliType      string
-	Instructions string
-	Categories   []string
-	McpIds       []string
-	SkillIds     []string
-	KnowledgeIds []string
+	CliType            string
+	Instructions       string
+	Categories         []string
+	RecommendedPrompts []string
+	McpIds             []string
+	SkillIds           []string
+	KnowledgeIds       []string
 }
 
 type AgentListResult struct {
@@ -154,6 +157,9 @@ func (s *AgentService) Create(input AgentCreateInput) (AgentItem, error) {
 		if err := def.SetCategories(input.Categories); err != nil {
 			return err
 		}
+		if err := def.SetRecommendedPrompts(input.RecommendedPrompts); err != nil {
+			return err
+		}
 		if err := tx.Create(&def).Error; err != nil {
 			return err
 		}
@@ -196,6 +202,10 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 		if err != nil {
 			return err
 		}
+		recommendedPromptsJSON, err := common.Marshal(input.RecommendedPrompts)
+		if err != nil {
+			return err
+		}
 		if err := tx.Model(&apmodel.Resource{}).Where("resource_id = ?", resourceID).Updates(map[string]any{
 			"display_name": input.DisplayName,
 			"description":  input.Description,
@@ -204,12 +214,13 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 			return err
 		}
 		defValues := map[string]any{
-			"cli_type":        input.CliType,
-			"name":            input.DisplayName,
-			"description":     input.Description,
-			"categories_json": string(categoriesJSON),
-			"avatar":          input.Avatar,
-			"instructions":    input.Instructions,
+			"cli_type":                 input.CliType,
+			"name":                     input.DisplayName,
+			"description":              input.Description,
+			"categories_json":          string(categoriesJSON),
+			"recommended_prompts_json": string(recommendedPromptsJSON),
+			"avatar":                   input.Avatar,
+			"instructions":             input.Instructions,
 		}
 		result := tx.Model(&apmodel.AgentDef{}).Where("resource_id = ? AND resource_version = ?", resourceID, "draft").Updates(defValues)
 		if result.Error != nil {
@@ -226,6 +237,9 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 				Instructions:    input.Instructions,
 			}
 			if err := def.SetCategories(input.Categories); err != nil {
+				return err
+			}
+			if err := def.SetRecommendedPrompts(input.RecommendedPrompts); err != nil {
 				return err
 			}
 			if err := tx.Create(&def).Error; err != nil {
@@ -249,17 +263,19 @@ func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {
 		return AgentItem{}, ErrResourceNotFound
 	}
 	agent := AgentItem{
-		ResourceItem: item,
-		Categories:   apmodel.DefaultAgentCategories(),
-		McpIds:       []string{},
-		SkillIds:     []string{},
-		KnowledgeIds: []string{},
+		ResourceItem:       item,
+		Categories:         apmodel.DefaultAgentCategories(),
+		RecommendedPrompts: []string{},
+		McpIds:             []string{},
+		SkillIds:           []string{},
+		KnowledgeIds:       []string{},
 	}
 	var def apmodel.AgentDef
 	if err := s.db.Where("resource_id = ? AND resource_version = ?", item.ResourceId, "draft").First(&def).Error; err == nil {
 		agent.CliType = def.CliType
 		agent.Instructions = def.Instructions
 		agent.Categories = def.Categories()
+		agent.RecommendedPrompts = def.RecommendedPrompts()
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return AgentItem{}, err
 	}
@@ -291,6 +307,7 @@ func (input *AgentCreateInput) normalize() error {
 		return err
 	}
 	input.Categories = categories
+	input.RecommendedPrompts = apmodel.NormalizeAgentRecommendedPrompts(input.RecommendedPrompts)
 	input.McpIds = normalizeIDList(input.McpIds)
 	input.SkillIds = normalizeIDList(input.SkillIds)
 	input.KnowledgeIds = normalizeIDList(input.KnowledgeIds)
@@ -308,6 +325,7 @@ func (input *AgentUpdateInput) normalize() error {
 		return err
 	}
 	input.Categories = categories
+	input.RecommendedPrompts = apmodel.NormalizeAgentRecommendedPrompts(input.RecommendedPrompts)
 	input.McpIds = normalizeIDList(input.McpIds)
 	input.SkillIds = normalizeIDList(input.SkillIds)
 	input.KnowledgeIds = normalizeIDList(input.KnowledgeIds)

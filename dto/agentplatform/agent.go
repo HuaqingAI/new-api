@@ -3,29 +3,31 @@ package agentplatform
 import "time"
 
 type CreateAgentRequest struct {
-	CliType      string   `json:"cli_type" binding:"required"`
-	DisplayName  string   `json:"display_name" binding:"required"`
-	Description  string   `json:"description,omitempty"`
-	Avatar       string   `json:"avatar,omitempty"`
-	Instructions string   `json:"instructions,omitempty"`
-	Categories   []string `json:"categories" binding:"required"`
-	McpIds       []string `json:"mcp_ids,omitempty"`
-	SkillIds     []string `json:"skill_ids,omitempty"`
-	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
-	OwnerUserId  int      `json:"owner_user_id,omitempty"`
-	TenantId     *int     `json:"tenant_id,omitempty"`
+	CliType            string   `json:"cli_type" binding:"required"`
+	DisplayName        string   `json:"display_name" binding:"required"`
+	Description        string   `json:"description,omitempty"`
+	Avatar             string   `json:"avatar,omitempty"`
+	Instructions       string   `json:"instructions,omitempty"`
+	Categories         []string `json:"categories" binding:"required"`
+	RecommendedPrompts []string `json:"recommended_prompts,omitempty"`
+	McpIds             []string `json:"mcp_ids,omitempty"`
+	SkillIds           []string `json:"skill_ids,omitempty"`
+	KnowledgeIds       []string `json:"knowledge_ids,omitempty"`
+	OwnerUserId        int      `json:"owner_user_id,omitempty"`
+	TenantId           *int     `json:"tenant_id,omitempty"`
 }
 
 type UpdateAgentRequest struct {
-	CliType      string   `json:"cli_type" binding:"required"`
-	DisplayName  string   `json:"display_name" binding:"required"`
-	Description  string   `json:"description,omitempty"`
-	Avatar       string   `json:"avatar,omitempty"`
-	Instructions string   `json:"instructions,omitempty"`
-	Categories   []string `json:"categories" binding:"required"`
-	McpIds       []string `json:"mcp_ids,omitempty"`
-	SkillIds     []string `json:"skill_ids,omitempty"`
-	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
+	CliType            string   `json:"cli_type" binding:"required"`
+	DisplayName        string   `json:"display_name" binding:"required"`
+	Description        string   `json:"description,omitempty"`
+	Avatar             string   `json:"avatar,omitempty"`
+	Instructions       string   `json:"instructions,omitempty"`
+	Categories         []string `json:"categories" binding:"required"`
+	RecommendedPrompts []string `json:"recommended_prompts,omitempty"`
+	McpIds             []string `json:"mcp_ids,omitempty"`
+	SkillIds           []string `json:"skill_ids,omitempty"`
+	KnowledgeIds       []string `json:"knowledge_ids,omitempty"`
 }
 
 type AgentQuery struct {
@@ -39,12 +41,13 @@ type AgentItem = ResourceItem
 
 type AgentDetailItem struct {
 	ResourceItem
-	CliType      string   `json:"cli_type"`
-	Instructions string   `json:"instructions"`
-	Categories   []string `json:"categories"`
-	McpIds       []string `json:"mcp_ids"`
-	SkillIds     []string `json:"skill_ids"`
-	KnowledgeIds []string `json:"knowledge_ids"`
+	CliType            string   `json:"cli_type"`
+	Instructions       string   `json:"instructions"`
+	Categories         []string `json:"categories"`
+	RecommendedPrompts []string `json:"recommended_prompts"`
+	McpIds             []string `json:"mcp_ids"`
+	SkillIds           []string `json:"skill_ids"`
+	KnowledgeIds       []string `json:"knowledge_ids"`
 }
 
 type AgentListResponse struct {

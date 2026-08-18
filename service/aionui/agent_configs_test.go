@@ -135,6 +135,8 @@ func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 	require.Equal(t, "https://oss.test/agent-packages/opencode/res_agent_1/1.0.0/opencode.zip", result.Agents[0].Url)
 	require.Equal(t, int64(1780000000), result.Agents[0].UrlExpiresAt)
 	require.Equal(t, int64(3), result.Agents[0].Size)
+	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, result.Agents[0].Categories)
+	require.Empty(t, result.Agents[0].RecommendedPrompts)
 	require.Equal(t, "res_agent_2", result.Agents[1].Id)
 	require.Equal(t, "codex", result.Agents[1].CliType)
 	require.Equal(t, "Agent Def Two", result.Agents[1].Name)
@@ -142,6 +144,69 @@ func TestAgentConfigServiceListsAgentsGrantedToParentDepartment(t *testing.T) {
 	require.Equal(t, "https", result.Agents[1].UrlType)
 	require.Equal(t, codexPackagePath, result.Agents[1].ArtifactKey)
 	require.Equal(t, "https://oss.test/agent-packages/codex/res_agent_2/1.0.0/codex.zip", result.Agents[1].Url)
+}
+
+func TestAgentConfigServiceExtractsCategoriesAndRecommendedPrompts(t *testing.T) {
+	oldDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&apmodel.Resource{},
+		&apmodel.ResourceVersion{},
+		&apmodel.AgentDef{},
+		&apmodel.ResourceGrant{},
+		&entmodel.Department{},
+		&entmodel.UserDepartment{},
+	))
+	model.DB = db
+	t.Cleanup(func() {
+		model.DB = oldDB
+	})
+	restore := apservice.SetArtifactStoreForTest(fakeAionUIArtifactStore{})
+	t.Cleanup(restore)
+
+	require.NoError(t, db.Create(&apmodel.Resource{
+		ResourceId:    "res_agent_3",
+		ResourceType:  apmodel.ResourceTypeAgent,
+		DisplayName:   "Agent Three",
+		OwnerUserId:   1,
+		Status:        apmodel.ResourceStatusPublished,
+		LatestVersion: "2.0.0",
+	}).Error)
+	require.NoError(t, db.Create(&apmodel.ResourceVersion{
+		ResourceId:      "res_agent_3",
+		Version:         "2.0.0",
+		ContractVersion: "opencode-agent-platform/v1",
+		Status:          apmodel.ResourceStatusPublished,
+		CreatedBy:       1,
+		PackagePath:     "oss://test-bucket/agent-packages/opencode/res_agent_3/2.0.0/opencode.zip",
+		PackageSha256:   "sha3",
+		PackageSize:     4,
+	}).Error)
+	def := apmodel.AgentDef{
+		ResourceId:      "res_agent_3",
+		ResourceVersion: "2.0.0",
+		CliType:         "opencode",
+		Name:            "Agent Def Three",
+		Description:     "负责售后。\n<open-remark>\n帮我写回访话术\n\n帮我整理工单\n</open-remark>",
+	}
+	require.NoError(t, def.SetCategories([]string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}))
+	require.NoError(t, db.Create(&def).Error)
+	require.NoError(t, db.Create(&apmodel.ResourceGrant{
+		ResourceId:      "res_agent_3",
+		ResourceVersion: "2.0.0",
+		SubjectType:     apmodel.GrantSubjectTypeUser,
+		SubjectId:       "101",
+		GrantedBy:       1,
+	}).Error)
+
+	service := NewAgentConfigService()
+	result, err := service.ListForUser(101, "user@example.com")
+	require.NoError(t, err)
+	require.Len(t, result.Agents, 1)
+	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}, result.Agents[0].Categories)
+	require.Equal(t, []string{"帮我写回访话术", "帮我整理工单"}, result.Agents[0].RecommendedPrompts)
+	require.Contains(t, result.Agents[0].Description, "<open-remark>")
 }
 
 type fakeAionUIArtifactStore struct{}

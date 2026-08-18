@@ -53,6 +53,7 @@ func TestDeleteTypedResourceAllowsDraftOnlyDependencyTarget(t *testing.T) {
 	_, err = NewAgentService(db).Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		McpIds:      []string{mcp.ResourceId},
 		OwnerUserId: 100,
 	})
@@ -79,6 +80,7 @@ func TestDeleteTypedResourceRejectsDependencyTargetReferencedByLatestAgentVersio
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId: 100,
 	})
 	require.NoError(t, err)
@@ -104,6 +106,7 @@ func TestDeleteTypedResourceAllowsOlderPublishedDependencyTarget(t *testing.T) {
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId: 100,
 	})
 	require.NoError(t, err)
@@ -135,6 +138,7 @@ func TestDeleteTypedResourceRejectsSkillAndKnowledgeReferencedByLatestAgentVersi
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId: 100,
 	})
 	require.NoError(t, err)
@@ -190,6 +194,7 @@ func TestDeleteTypedResourcePhysicallyDeletesAgentGraph(t *testing.T) {
 	agent, err := NewAgentService(db).Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		McpIds:      []string{mcp.ResourceId},
 		OwnerUserId: 100,
 	})

@@ -92,12 +92,14 @@ func TestDeleteMcpRejectsLatestAgentVersionDependency(t *testing.T) {
 	agent := performMcpRequest(t, router, http.MethodPost, "/api/agent-platform/agents", dtoagentplatform.CreateAgentRequest{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		McpIds:      []string{mcp.ResourceId},
 	})
 	agentResp := decodeMcpAPIResponse(t, agent)
 	require.True(t, agentResp.Success, agentResp.Message)
 	var agentItem dtoagentplatform.AgentDetailItem
 	require.NoError(t, common.Unmarshal(agentResp.Data, &agentItem))
+	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, agentItem.Categories)
 	publishedAt := time.Now().UTC()
 	require.NoError(t, db.Create(&apmodel.ResourceVersion{
 		ResourceId:      agentItem.ResourceId,

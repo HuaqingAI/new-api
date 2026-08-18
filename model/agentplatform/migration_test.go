@@ -46,6 +46,22 @@ func TestMigrateDropsRemovedTables(t *testing.T) {
 	}
 }
 
+func TestMigrateBackfillsAgentCategories(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&legacyAgentDef{}))
+	require.NoError(t, db.Create(&legacyAgentDef{
+		ResourceId:      "res_agent",
+		ResourceVersion: "draft",
+	}).Error)
+
+	require.NoError(t, Migrate(db))
+
+	var agent AgentDef
+	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", "res_agent", "draft").First(&agent).Error)
+	require.Equal(t, []string{AgentCategoryGeneral}, agent.Categories())
+}
+
 func createLegacyAgentPlatformTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.AutoMigrate(

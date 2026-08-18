@@ -24,6 +24,7 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	created, err := svc.Create(AgentCreateInput{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "My Agent",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId: 101,
 		TenantId:    7,
 	})
@@ -42,9 +43,18 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	require.Len(t, list.Items, 1)
 	require.Equal(t, created.ResourceId, list.Items[0].ResourceId)
 
-	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{CliType: apmodel.AgentCliTypeOpenCode, DisplayName: "My Agent V2"})
+	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{
+		CliType:     apmodel.AgentCliTypeOpenCode,
+		DisplayName: "My Agent V2",
+		Categories:  []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance},
+	})
 	require.NoError(t, err)
 	require.Equal(t, "My Agent V2", updated.DisplayName)
+	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, updated.Categories)
+
+	fetched, err := svc.Get(created.ResourceId)
+	require.NoError(t, err)
+	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, fetched.Categories)
 }
 
 func TestAgentServiceGetRejectsNonAgentResources(t *testing.T) {

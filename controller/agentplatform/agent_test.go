@@ -82,14 +82,16 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	create := performAgentRequest(t, router, http.MethodPost, "/api/agent-platform/agents", dtoagentplatform.CreateAgentRequest{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId: 100,
 	})
 	createResp := decodeAgentAPIResponse(t, create)
 	require.True(t, createResp.Success, createResp.Message)
 
-	var created dtoagentplatform.AgentItem
+	var created dtoagentplatform.AgentDetailItem
 	require.NoError(t, common.Unmarshal(createResp.Data, &created))
 	require.Equal(t, apmodel.ResourceTypeAgent, created.ResourceType)
+	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, created.Categories)
 
 	list := performAgentRequest(t, router, http.MethodGet, "/api/agent-platform/agents", nil)
 	listResp := decodeAgentAPIResponse(t, list)
@@ -98,10 +100,12 @@ func TestAgentAPIWorkflow(t *testing.T) {
 	var listData dtoagentplatform.AgentListResponse
 	require.NoError(t, common.Unmarshal(listResp.Data, &listData))
 	require.Equal(t, 1, listData.Total)
+	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, listData.Items[0].Categories)
 
 	update := performAgentRequest(t, router, http.MethodPut, "/api/agent-platform/agents/"+created.ResourceId, dtoagentplatform.UpdateAgentRequest{
 		CliType:     apmodel.AgentCliTypeOpenCode,
 		DisplayName: "Agent A V2",
+		Categories:  []string{apmodel.AgentCategoryGeneral},
 	})
 	updateResp := decodeAgentAPIResponse(t, update)
 	require.True(t, updateResp.Success, updateResp.Message)

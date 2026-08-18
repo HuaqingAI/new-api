@@ -8,6 +8,7 @@ type CreateAgentRequest struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
+	Categories   []string `json:"categories" binding:"required"`
 	McpIds       []string `json:"mcp_ids,omitempty"`
 	SkillIds     []string `json:"skill_ids,omitempty"`
 	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
@@ -21,6 +22,7 @@ type UpdateAgentRequest struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
+	Categories   []string `json:"categories" binding:"required"`
 	McpIds       []string `json:"mcp_ids,omitempty"`
 	SkillIds     []string `json:"skill_ids,omitempty"`
 	KnowledgeIds []string `json:"knowledge_ids,omitempty"`
@@ -39,16 +41,17 @@ type AgentDetailItem struct {
 	ResourceItem
 	CliType      string   `json:"cli_type"`
 	Instructions string   `json:"instructions"`
+	Categories   []string `json:"categories"`
 	McpIds       []string `json:"mcp_ids"`
 	SkillIds     []string `json:"skill_ids"`
 	KnowledgeIds []string `json:"knowledge_ids"`
 }
 
 type AgentListResponse struct {
-	Items    []AgentItem `json:"items"`
-	Total    int         `json:"total"`
-	Page     int         `json:"page"`
-	PageSize int         `json:"page_size"`
+	Items    []AgentDetailItem `json:"items"`
+	Total    int               `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
 }
 
 type AgentGrantRequest struct {

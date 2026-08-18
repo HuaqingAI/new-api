@@ -38,6 +38,8 @@ type AgentConfigItem struct {
 	Version      string `json:"version"`
 	Name         string `json:"name"`
 	Description  string `json:"description,omitempty"`
+	Categories   []string `json:"categories"`
+	RecommendedPrompts []string `json:"recommended_prompts,omitempty"`
 	Avatar       string `json:"avatar,omitempty"`
 	Sha256       string `json:"sha256,omitempty"`
 	Size         int64  `json:"size,omitempty"`

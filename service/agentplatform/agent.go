@@ -22,6 +22,7 @@ type AgentCreateInput struct {
 	Description  string
 	Avatar       string
 	Instructions string
+	Categories   []string
 	McpIds       []string
 	SkillIds     []string
 	KnowledgeIds []string
@@ -35,6 +36,7 @@ type AgentUpdateInput struct {
 	Description  string
 	Avatar       string
 	Instructions string
+	Categories   []string
 	McpIds       []string
 	SkillIds     []string
 	KnowledgeIds []string
@@ -44,6 +46,7 @@ type AgentItem struct {
 	ResourceItem
 	CliType      string
 	Instructions string
+	Categories   []string
 	McpIds       []string
 	SkillIds     []string
 	KnowledgeIds []string
@@ -116,7 +119,9 @@ func (s *AgentService) Create(input AgentCreateInput) (AgentItem, error) {
 	if s == nil || s.db == nil {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
-	input.normalize()
+	if err := input.normalize(); err != nil {
+		return AgentItem{}, err
+	}
 	if input.DisplayName == "" || input.OwnerUserId <= 0 || !apmodel.ValidAgentCliType(input.CliType) {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
@@ -146,6 +151,9 @@ func (s *AgentService) Create(input AgentCreateInput) (AgentItem, error) {
 			Avatar:          input.Avatar,
 			Instructions:    input.Instructions,
 		}
+		if err := def.SetCategories(input.Categories); err != nil {
+			return err
+		}
 		if err := tx.Create(&def).Error; err != nil {
 			return err
 		}
@@ -166,7 +174,9 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 		return AgentItem{}, ErrInvalidResourceInput
 	}
 	resourceID = strings.TrimSpace(resourceID)
-	input.normalize()
+	if err := input.normalize(); err != nil {
+		return AgentItem{}, err
+	}
 	if resourceID == "" || input.DisplayName == "" || !apmodel.ValidAgentCliType(input.CliType) {
 		return AgentItem{}, ErrInvalidResourceInput
 	}
@@ -182,6 +192,10 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 		if err := validateAgentDependencyTargets(tx, input.McpIds, input.SkillIds, input.KnowledgeIds); err != nil {
 			return err
 		}
+		categoriesJSON, err := common.Marshal(input.Categories)
+		if err != nil {
+			return err
+		}
 		if err := tx.Model(&apmodel.Resource{}).Where("resource_id = ?", resourceID).Updates(map[string]any{
 			"display_name": input.DisplayName,
 			"description":  input.Description,
@@ -190,11 +204,12 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 			return err
 		}
 		defValues := map[string]any{
-			"cli_type":     input.CliType,
-			"name":         input.DisplayName,
-			"description":  input.Description,
-			"avatar":       input.Avatar,
-			"instructions": input.Instructions,
+			"cli_type":        input.CliType,
+			"name":            input.DisplayName,
+			"description":     input.Description,
+			"categories_json": string(categoriesJSON),
+			"avatar":          input.Avatar,
+			"instructions":    input.Instructions,
 		}
 		result := tx.Model(&apmodel.AgentDef{}).Where("resource_id = ? AND resource_version = ?", resourceID, "draft").Updates(defValues)
 		if result.Error != nil {
@@ -209,6 +224,9 @@ func (s *AgentService) Update(resourceID string, input AgentUpdateInput) (AgentI
 				Description:     input.Description,
 				Avatar:          input.Avatar,
 				Instructions:    input.Instructions,
+			}
+			if err := def.SetCategories(input.Categories); err != nil {
+				return err
 			}
 			if err := tx.Create(&def).Error; err != nil {
 				return err
@@ -230,11 +248,18 @@ func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {
 	if item.ResourceType != apmodel.ResourceTypeAgent {
 		return AgentItem{}, ErrResourceNotFound
 	}
-	agent := AgentItem{ResourceItem: item, McpIds: []string{}, SkillIds: []string{}, KnowledgeIds: []string{}}
+	agent := AgentItem{
+		ResourceItem: item,
+		Categories:   apmodel.DefaultAgentCategories(),
+		McpIds:       []string{},
+		SkillIds:     []string{},
+		KnowledgeIds: []string{},
+	}
 	var def apmodel.AgentDef
 	if err := s.db.Where("resource_id = ? AND resource_version = ?", item.ResourceId, "draft").First(&def).Error; err == nil {
 		agent.CliType = def.CliType
 		agent.Instructions = def.Instructions
+		agent.Categories = def.Categories()
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return AgentItem{}, err
 	}
@@ -255,26 +280,38 @@ func (s *AgentService) detailForResource(item ResourceItem) (AgentItem, error) {
 	return agent, nil
 }
 
-func (input *AgentCreateInput) normalize() {
+func (input *AgentCreateInput) normalize() error {
 	input.CliType = strings.TrimSpace(strings.ToLower(input.CliType))
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Avatar = strings.TrimSpace(input.Avatar)
 	input.Instructions = strings.TrimSpace(input.Instructions)
+	categories, err := apmodel.NormalizeAgentCategories(input.Categories)
+	if err != nil {
+		return err
+	}
+	input.Categories = categories
 	input.McpIds = normalizeIDList(input.McpIds)
 	input.SkillIds = normalizeIDList(input.SkillIds)
 	input.KnowledgeIds = normalizeIDList(input.KnowledgeIds)
+	return nil
 }
 
-func (input *AgentUpdateInput) normalize() {
+func (input *AgentUpdateInput) normalize() error {
 	input.CliType = strings.TrimSpace(strings.ToLower(input.CliType))
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Avatar = strings.TrimSpace(input.Avatar)
 	input.Instructions = strings.TrimSpace(input.Instructions)
+	categories, err := apmodel.NormalizeAgentCategories(input.Categories)
+	if err != nil {
+		return err
+	}
+	input.Categories = categories
 	input.McpIds = normalizeIDList(input.McpIds)
 	input.SkillIds = normalizeIDList(input.SkillIds)
 	input.KnowledgeIds = normalizeIDList(input.KnowledgeIds)
+	return nil
 }
 
 func buildOpenCodeModelConfig(modelName string) map[string]any {

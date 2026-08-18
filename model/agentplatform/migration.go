@@ -3,6 +3,7 @@ package agentplatform
 import (
 	"fmt"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
@@ -85,6 +86,9 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := backfillAgentDefCategories(db); err != nil {
+		return err
+	}
 	if err := dropRemovedColumns(db, removedAgentPlatformColumns); err != nil {
 		return err
 	}
@@ -122,4 +126,17 @@ func dropRemovedTables(db *gorm.DB, tables []any) error {
 		}
 	}
 	return nil
+}
+
+func backfillAgentDefCategories(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&AgentDef{}) || !db.Migrator().HasColumn(&AgentDef{}, "categories_json") {
+		return nil
+	}
+	data, err := common.Marshal(DefaultAgentCategories())
+	if err != nil {
+		return err
+	}
+	return db.Model(&AgentDef{}).
+		Where("categories_json = ? OR categories_json IS NULL", "").
+		Update("categories_json", string(data)).Error
 }

@@ -57,6 +57,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 		Description:  "Agent description",
 		Avatar:       "bot",
 		Instructions: "Follow team rules.",
+		Categories:   []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService},
 		McpIds:       []string{mcp.ResourceId},
 		SkillIds:     []string{skill.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},
@@ -174,6 +175,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 		CliType:      apmodel.AgentCliTypeCodex,
 		DisplayName:  "Codex Agent",
 		Instructions: "Follow Codex rules.",
+		Categories:   []string{apmodel.AgentCategoryGeneral},
 		McpIds:       []string{mcp.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},
 		OwnerUserId:  1,
@@ -232,6 +234,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	var publishedDef apmodel.AgentDef
 	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)
 	require.Equal(t, apmodel.AgentCliTypeCodex, publishedDef.CliType)
+	require.Equal(t, []string{apmodel.AgentCategoryGeneral}, publishedDef.Categories())
 	require.Equal(t, result.Artifact.ArtifactKey, publishedDef.PackagePath)
 	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
 }
@@ -245,6 +248,7 @@ func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) 
 		CliType:      apmodel.AgentCliTypeOpenCode,
 		DisplayName:  "Demo Agent",
 		Instructions: "Follow team rules.",
+		Categories:   []string{apmodel.AgentCategoryGeneral},
 		OwnerUserId:  1,
 	})
 	require.NoError(t, err)

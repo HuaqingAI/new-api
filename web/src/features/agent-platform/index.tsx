@@ -192,6 +192,7 @@ type ResourceFormState = {
   skillFile: File | null
   externalKnowledgeId: string
   instructions: string
+  categories: string[]
   mcpIds: string[]
   skillIds: string[]
   knowledgeIds: string[]
@@ -218,6 +219,7 @@ type AgentPlatformDetailItem = AgentPlatformItem &
     external_knowledge_id: string
     cli_type: AgentPlatformAgentCliType
     instructions: string
+    categories: string[]
     mcp_ids: string[]
     skill_ids: string[]
     knowledge_ids: string[]
@@ -286,6 +288,50 @@ const MCP_CONFIG_JSON_PLACEHOLDER =
   '}'
 
 const AGENT_INSTRUCTIONS_PLACEHOLDER = '你是一个有用的助手'
+const AGENT_CATEGORY_VALUES = [
+  'general',
+  'operations',
+  'customer_service',
+  'logistics',
+  'marketing',
+  'finance',
+  'hr',
+] as const
+
+type AgentCategoryValue = (typeof AGENT_CATEGORY_VALUES)[number]
+
+function formatAgentCategoryLabel(value: AgentCategoryValue, t: ReturnType<typeof useTranslation>['t']) {
+  switch (value) {
+    case 'general':
+      return t('General Assistant', { defaultValue: '通用助手' })
+    case 'operations':
+      return t('Operations Assistant', { defaultValue: '运营助手' })
+    case 'customer_service':
+      return t('Customer Service Assistant', { defaultValue: '客服助手' })
+    case 'logistics':
+      return t('Logistics Assistant', { defaultValue: '物流助手' })
+    case 'marketing':
+      return t('Marketing Assistant', { defaultValue: '市场助手' })
+    case 'finance':
+      return t('Finance Assistant', { defaultValue: '财务助手' })
+    case 'hr':
+      return t('HR Assistant', { defaultValue: '人事助手' })
+  }
+}
+
+function normalizeAgentCategories(values?: string[]) {
+  const seen = new Set<string>()
+  const categories: string[] = []
+  for (const value of values ?? []) {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized || seen.has(normalized) || !AGENT_CATEGORY_VALUES.includes(normalized as AgentCategoryValue)) {
+      continue
+    }
+    seen.add(normalized)
+    categories.push(normalized)
+  }
+  return categories.length > 0 ? categories : ['general']
+}
 
 function formatStatusLabel(
   status: string,
@@ -520,22 +566,23 @@ function defaultResourceFormState(
   const mcpConfig =
     detail?.resource_type === 'mcp' ? formatJsonPreview(detail.config) : ''
 
-  return {
-    type,
-    cliType: agent?.cli_type ?? 'opencode',
-    displayName: item?.display_name ?? '',
-    description: item?.description ?? '',
+    return {
+      type,
+      cliType: agent?.cli_type ?? 'opencode',
+      displayName: item?.display_name ?? '',
+      description: item?.description ?? '',
     avatar: item?.avatar ?? '',
     avatarPreviewUrl: item?.avatar_url ?? item?.avatar ?? '',
     mcpConfigJson: mcpConfig,
-    skillFile: null,
-    externalKnowledgeId: detail?.external_knowledge_id ?? '',
-    instructions: agent?.instructions ?? '',
-    mcpIds: agent?.mcp_ids ?? [],
-    skillIds: agent?.skill_ids ?? [],
-    knowledgeIds: agent?.knowledge_ids ?? [],
+      skillFile: null,
+      externalKnowledgeId: detail?.external_knowledge_id ?? '',
+      instructions: agent?.instructions ?? '',
+      categories: normalizeAgentCategories(agent?.categories),
+      mcpIds: agent?.mcp_ids ?? [],
+      skillIds: agent?.skill_ids ?? [],
+      knowledgeIds: agent?.knowledge_ids ?? [],
+    }
   }
-}
 
 function buildCreateOrUpdateBase(form: ResourceFormState) {
   return {
@@ -759,7 +806,9 @@ function DetailField(props: { label: string; value: ReactNode }) {
       <div className='text-muted-foreground text-xs font-medium'>
         {props.label}
       </div>
-      <div className='text-sm break-words'>{props.value}</div>
+      <div className='text-sm break-words whitespace-pre-wrap'>
+        {props.value}
+      </div>
     </div>
   )
 }
@@ -916,15 +965,20 @@ function ResourceEditorDialog(props: {
             />
           </Field>
 
-          <Field>
-            <FieldLabel>{t('Description')}</FieldLabel>
-            <Textarea
-              value={props.form.description}
-              onChange={(event) => update('description', event.target.value)}
-              placeholder={t('Describe the resource purpose')}
-              rows={3}
-            />
-          </Field>
+            <Field>
+              <FieldLabel>{t('Description')}</FieldLabel>
+              <Textarea
+                value={props.form.description}
+                onChange={(event) => update('description', event.target.value)}
+                placeholder={t('Describe the resource purpose')}
+                rows={3}
+              />
+              {props.form.type === 'agent' ? (
+                <FieldDescription>
+                  {t('Wrap suggested questions in <open-remark>...</open-remark>, one per line.')}
+                </FieldDescription>
+              ) : null}
+            </Field>
 
           {props.form.type === 'mcp' ? (
             <Field>
@@ -975,7 +1029,7 @@ function ResourceEditorDialog(props: {
           {props.form.type === 'agent' ? (
             <>
               <Field>
-                <FieldLabel>{t('Agent 类型')}</FieldLabel>
+                <FieldLabel>{t('Agent CLI 类型')}</FieldLabel>
                 <NativeSelect
                   className='w-full'
                   value={props.form.cliType}
@@ -996,9 +1050,46 @@ function ResourceEditorDialog(props: {
                     ? t('发布后将生成 codex.zip。')
                     : t('发布后将生成 opencode.zip。')}
                 </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel>{t('Avatar')}</FieldLabel>
+                </Field>
+                <Field>
+                  <FieldLabel>{t('Agent 分类')}</FieldLabel>
+                  <FieldDescription>
+                    {t('Select at least one category for this agent.')}
+                  </FieldDescription>
+                  <div className='grid gap-2 sm:grid-cols-2'>
+                    {AGENT_CATEGORY_VALUES.map((category) => {
+                      const checked = props.form.categories.includes(category)
+                      return (
+                        <label
+                          key={category}
+                          className='hover:bg-muted/40 flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2'
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(value) => {
+                              const enabled = value === true
+                              if (enabled) {
+                                update('categories', normalizeAgentCategories([...props.form.categories, category]))
+                                return
+                              }
+                              update(
+                                'categories',
+                                props.form.categories.filter((item) => item !== category)
+                              )
+                            }}
+                          />
+                          <span className='min-w-0 flex-1'>
+                            <span className='block truncate font-medium'>
+                              {formatAgentCategoryLabel(category, t)}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </Field>
+                <Field>
+                  <FieldLabel>{t('Avatar')}</FieldLabel>
                 <div className='flex items-center gap-2'>
                   <Button
                     variant='outline'
@@ -1302,11 +1393,25 @@ function ResourceDetailSheet(props: {
               {item.resource_type === 'agent' ? (
                 <>
                   <DetailField
-                    label={t('Agent 类型')}
+                    label={t('Agent CLI 类型')}
                     value={item.cli_type || t('未配置')}
-                  />
-                  <DetailField
-                    label={t('Instructions')}
+                    />
+                    {item.categories?.length ? (
+                      <DetailField
+                        label={t('Agent 分类')}
+                        value={
+                          <div className='flex flex-wrap gap-2'>
+                            {item.categories.map((category) => (
+                              <Badge key={category} variant='outline'>
+                                {formatAgentCategoryLabel(category as AgentCategoryValue, t)}
+                              </Badge>
+                            ))}
+                          </div>
+                        }
+                      />
+                    ) : null}
+                    <DetailField
+                      label={t('Instructions')}
                     value={
                       <pre className='bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap'>
                         {item.instructions || t('Not configured')}
@@ -1835,16 +1940,17 @@ export function AgentPlatformShell() {
             ...base,
             external_knowledge_id: form.externalKnowledgeId.trim(),
           })
-        case 'agent':
-          return createAgentPlatformAgent({
-            ...base,
-            cli_type: form.cliType,
-            avatar: form.avatar.trim(),
-            instructions: form.instructions,
-            mcp_ids: form.mcpIds,
-            skill_ids: form.skillIds,
-            knowledge_ids: form.knowledgeIds,
-          })
+          case 'agent':
+            return createAgentPlatformAgent({
+              ...base,
+              cli_type: form.cliType,
+              avatar: form.avatar.trim(),
+              instructions: form.instructions,
+              categories: form.categories,
+              mcp_ids: form.mcpIds,
+              skill_ids: form.skillIds,
+              knowledge_ids: form.knowledgeIds,
+            })
       }
     },
     onSuccess: async (response, form) => {
@@ -1890,16 +1996,17 @@ export function AgentPlatformShell() {
             ...base,
             external_knowledge_id: input.form.externalKnowledgeId.trim(),
           })
-        case 'agent':
-          return updateAgentPlatformAgent(input.item.resource_id, {
-            ...base,
-            cli_type: input.form.cliType,
-            avatar: input.form.avatar.trim(),
-            instructions: input.form.instructions,
-            mcp_ids: input.form.mcpIds,
-            skill_ids: input.form.skillIds,
-            knowledge_ids: input.form.knowledgeIds,
-          })
+          case 'agent':
+            return updateAgentPlatformAgent(input.item.resource_id, {
+              ...base,
+              cli_type: input.form.cliType,
+              avatar: input.form.avatar.trim(),
+              instructions: input.form.instructions,
+              categories: input.form.categories,
+              mcp_ids: input.form.mcpIds,
+              skill_ids: input.form.skillIds,
+              knowledge_ids: input.form.knowledgeIds,
+            })
       }
     },
     onSuccess: async (response, input) => {
@@ -2045,6 +2152,10 @@ export function AgentPlatformShell() {
   const handleResourceSubmit = () => {
     if (!resourceForm.displayName.trim()) {
       toast.error(t('Display name is required'))
+      return
+    }
+    if (resourceForm.type === 'agent' && resourceForm.categories.length === 0) {
+      toast.error(t('Select at least one category'))
       return
     }
     try {

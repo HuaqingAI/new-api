@@ -3,6 +3,7 @@ package aionui
 const (
 	DefaultPersonalAPIKeyName     = "hth-default-apikey"
 	DefaultPersonalAPIKeyGroup    = "default"
+	HTHBuddyPersonalAPIKeyGroup   = "hthbuddy"
 	PersonalAPIKeyPlaceholder     = "<hth-personal-apikey>"
 	DefaultAgentModel             = "gpt-5.6-terra"
 	defaultQuotaApplyPath         = "/wallet#quota-request"

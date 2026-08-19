@@ -16,9 +16,13 @@ type PersonalAPIKey struct {
 	MaskedKey string
 }
 
-func EnsurePersonalAPIKey(userID int) (PersonalAPIKey, error) {
+func EnsurePersonalAPIKey(userID int, requestedGroup string) (PersonalAPIKey, error) {
 	if model.DB == nil || userID <= 0 {
 		return PersonalAPIKey{}, ErrUserUnavailable
+	}
+	group := strings.TrimSpace(requestedGroup)
+	if group != HTHBuddyPersonalAPIKeyGroup {
+		group = DefaultPersonalAPIKeyGroup
 	}
 	var token model.Token
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -46,7 +50,7 @@ func EnsurePersonalAPIKey(userID int) (PersonalAPIKey, error) {
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 			ModelLimits:        "",
-			Group:              DefaultPersonalAPIKeyGroup,
+			Group:              group,
 		}
 		return tx.Create(&token).Error
 	})

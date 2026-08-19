@@ -102,6 +102,7 @@ func TestDesktopAuthServiceReusesExistingPersonalAPIKey(t *testing.T) {
 		Status:      common.TokenStatusEnabled,
 		CreatedTime: 1,
 		ExpiredTime: -1,
+		Group:       DefaultPersonalAPIKeyGroup,
 	}).Error)
 
 	service := NewDesktopAuthService()
@@ -112,13 +113,54 @@ func TestDesktopAuthServiceReusesExistingPersonalAPIKey(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	token, err := service.ExchangeCode(dtoaionui.DesktopTokenRequest{Code: code, DeviceId: "device-3"})
+	token, err := service.ExchangeCode(dtoaionui.DesktopTokenRequest{
+		Code:     code,
+		DeviceId: "device-3",
+		Group:    HTHBuddyPersonalAPIKeyGroup,
+	})
 	require.NoError(t, err)
 	require.Equal(t, "sk-existing-personal-key", token.PersonalAPIKey.Key)
 
 	var count int64
 	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ? AND name = ?", 102, DefaultPersonalAPIKeyName).Count(&count).Error)
 	require.Equal(t, int64(1), count)
+	var personalToken model.Token
+	require.NoError(t, db.Where("user_id = ? AND name = ?", 102, DefaultPersonalAPIKeyName).First(&personalToken).Error)
+	require.Equal(t, DefaultPersonalAPIKeyGroup, personalToken.Group)
+}
+
+func TestDesktopAuthServiceCreatesPersonalAPIKeyWithAllowedRequestedGroup(t *testing.T) {
+	db := newDesktopAuthTestDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.Create(&model.User{
+		Id:       104,
+		Username: "erin",
+		Email:    "erin@example.com",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "erin",
+	}).Error)
+
+	service := NewDesktopAuthService()
+	code, err := service.IssueCode(
+		&model.User{Id: 104, Username: "erin", Email: "erin@example.com", Status: common.UserStatusEnabled},
+		DesktopRedirectURI,
+		"state-1234567890",
+	)
+	require.NoError(t, err)
+
+	_, err = service.ExchangeCode(dtoaionui.DesktopTokenRequest{
+		Code:     code,
+		DeviceId: "device-5",
+		Group:    HTHBuddyPersonalAPIKeyGroup,
+	})
+	require.NoError(t, err)
+
+	var personalToken model.Token
+	require.NoError(t, db.Where("user_id = ? AND name = ?", 104, DefaultPersonalAPIKeyName).First(&personalToken).Error)
+	require.Equal(t, HTHBuddyPersonalAPIKeyGroup, personalToken.Group)
 }
 
 func TestDesktopAuthServiceValidatesPersistedTokenAfterRestart(t *testing.T) {

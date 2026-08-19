@@ -249,7 +249,7 @@ func (s *DesktopAuthService) ExchangeCode(req dtoaionui.DesktopTokenRequest) (dt
 	if err != nil {
 		return dtoaionui.DesktopTokenResponse{}, err
 	}
-	personalAPIKey, err := EnsurePersonalAPIKey(user.Id)
+	personalAPIKey, err := EnsurePersonalAPIKey(user.Id, req.Group)
 	if err != nil {
 		return dtoaionui.DesktopTokenResponse{}, err
 	}

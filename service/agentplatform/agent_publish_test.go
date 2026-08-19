@@ -27,6 +27,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	t.Cleanup(restore)
 	t.Setenv("AIONUI_SYS_SKILLS_DIR", filepath.Join(root, "sys-skills"))
 	t.Setenv("BACKEND_BASE_URL", "https://hth.huaqing.run/")
+	t.Setenv("HTH_AGENT_ALLOWED_MODELS", "gpt-4.1,custom-model")
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "cherry-knowledge-search"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "cherry-knowledge-search", "SKILL.md"), []byte("# cherry"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "sys-skills", "ziniao-store"), 0o755))
@@ -90,22 +91,6 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Equal(t, openCodeUserContextTemplate, string(files["project/user-context.md"]))
 	require.Contains(t, string(files["project/opencode.jsonc"]), aionUIPersonalAPIKeyPlaceholder)
 	require.NotContains(t, string(files["project/opencode.jsonc"]), `\u003chth-personal-apikey\u003e`)
-	projectOpenCodeConfig := string(files["project/opencode.jsonc"])
-	flashIndex := strings.Index(projectOpenCodeConfig, `"deepseek-v4-flash":`)
-	proIndex := strings.Index(projectOpenCodeConfig, `"deepseek-v4-pro":`)
-	lunaIndex := strings.Index(projectOpenCodeConfig, `"gpt-5.6-luna":`)
-	terraIndex := strings.Index(projectOpenCodeConfig, `"gpt-5.6-terra":`)
-	solIndex := strings.Index(projectOpenCodeConfig, `"gpt-5.6-sol":`)
-	require.NotEqual(t, -1, flashIndex)
-	require.NotEqual(t, -1, proIndex)
-	require.NotEqual(t, -1, lunaIndex)
-	require.NotEqual(t, -1, terraIndex)
-	require.NotEqual(t, -1, solIndex)
-	require.Less(t, flashIndex, proIndex)
-	require.Less(t, proIndex, lunaIndex)
-	require.Less(t, lunaIndex, terraIndex)
-	require.Less(t, terraIndex, solIndex)
-
 	var projectConfig map[string]any
 	require.NoError(t, common.Unmarshal(files["project/opencode.jsonc"], &projectConfig))
 	require.Equal(t, "hth/gpt-5.6-terra", projectConfig["model"])
@@ -118,25 +103,13 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	options := hthProvider["options"].(map[string]any)
 	require.Equal(t, aionUIPersonalAPIKeyPlaceholder, options["apiKey"])
 	models := hthProvider["models"].(map[string]any)
-	require.Contains(t, models, "gpt-5.6-luna")
-	require.Contains(t, models, "gpt-5.6-sol")
-	require.Contains(t, models, "gpt-5.6-terra")
-	require.Contains(t, models, "deepseek-v4-flash")
-	require.Contains(t, models, "deepseek-v4-pro")
-	require.NotContains(t, models, "gpt-5.3-codex")
-	require.NotContains(t, models, "gpt-4.1")
-	terraModel := models["gpt-5.6-terra"].(map[string]any)
-	require.Equal(t, "GPT-5.6-TERRA 39x", terraModel["name"])
-	require.Equal(t, "DEEPSEEK-V4-FLASH 1x", models["deepseek-v4-flash"].(map[string]any)["name"])
-	require.Equal(t, "DEEPSEEK-V4-PRO 3x", models["deepseek-v4-pro"].(map[string]any)["name"])
-	require.Equal(t, "GPT-5.6-LUNA 16x", models["gpt-5.6-luna"].(map[string]any)["name"])
-	require.Equal(t, "GPT-5.6-SOL 78x", models["gpt-5.6-sol"].(map[string]any)["name"])
-	flashModalities := models["deepseek-v4-flash"].(map[string]any)["modalities"].(map[string]any)
-	require.Equal(t, []any{"text"}, flashModalities["input"])
-	require.Equal(t, []any{"text"}, flashModalities["output"])
-	terraModalities := terraModel["modalities"].(map[string]any)
-	require.Equal(t, []any{"text", "image"}, terraModalities["input"])
-	require.Equal(t, []any{"text", "image"}, terraModalities["output"])
+	require.Empty(t, models)
+	var publishedDef apmodel.AgentDef
+	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)
+	var modelConfigSnapshot map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(publishedDef.ModelConfigJSON, &modelConfigSnapshot))
+	require.Equal(t, "aionui_runtime_v1", modelConfigSnapshot["model_source"])
+	require.NotContains(t, modelConfigSnapshot, "models")
 	mcpConfig := projectConfig["mcp"].(map[string]any)
 	localServer := mcpConfig["demo-local"].(map[string]any)
 	require.Equal(t, "local", localServer["type"])
@@ -294,52 +267,6 @@ func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) 
 	require.Equal(t, "1.0.1", secondDefaults.LatestVersion)
 	require.Equal(t, "1.0.2", secondDefaults.NextVersion)
 	require.Len(t, secondDefaults.Grants, 2)
-}
-
-func TestAllowedAionUIAgentModelsIncludesConfiguredDeepSeekModels(t *testing.T) {
-	t.Setenv("HTH_AGENT_ALLOWED_MODELS", "gpt-5.6-terra,deepseek-v4-flash,deepseek-v4-pro")
-
-	modelNames := allowedAionUIAgentModels()
-	require.Equal(t, []string{"gpt-5.6-terra", "deepseek-v4-flash", "deepseek-v4-pro"}, modelNames)
-	models := buildAllowedOpenCodeModels(modelNames)
-	require.Contains(t, models, "deepseek-v4-flash")
-	require.Contains(t, models, "deepseek-v4-pro")
-	flashModel := models["deepseek-v4-flash"].(map[string]any)
-	variants := flashModel["variants"].(map[string]any)
-	require.Contains(t, variants, "none")
-	require.Contains(t, variants, "max")
-	require.NotContains(t, variants, "low")
-	require.NotContains(t, variants, "medium")
-	require.NotContains(t, variants, "high")
-	require.NotContains(t, variants, "xhigh")
-	maxVariant := variants["max"].(map[string]any)
-	require.Equal(t, "max", maxVariant["reasoningEffort"])
-	maxBody := maxVariant["body"].(map[string]any)
-	require.Equal(t, map[string]any{"type": "enabled"}, maxBody["thinking"])
-
-	body, err := common.Marshal(openCodeProjectConfig(map[string]any{}, OpenCodeProviderConfigInput{
-		APIBase:      "http://localhost:3000/v1",
-		APIKey:       aionUIPersonalAPIKeyPlaceholder,
-		DefaultModel: aionUIDefaultAgentModel,
-		ModelNames:   modelNames,
-		Models:       models,
-	}))
-	require.NoError(t, err)
-	projectOpenCodeConfig := string(body)
-	terraIndex := strings.Index(projectOpenCodeConfig, `"gpt-5.6-terra":`)
-	flashIndex := strings.Index(projectOpenCodeConfig, `"deepseek-v4-flash":`)
-	proIndex := strings.Index(projectOpenCodeConfig, `"deepseek-v4-pro":`)
-	require.NotEqual(t, -1, terraIndex)
-	require.NotEqual(t, -1, flashIndex)
-	require.NotEqual(t, -1, proIndex)
-	require.Less(t, terraIndex, flashIndex)
-	require.Less(t, flashIndex, proIndex)
-}
-
-func TestAllowedAionUIAgentModelsFiltersUnsupportedModels(t *testing.T) {
-	t.Setenv("HTH_AGENT_ALLOWED_MODELS", "gpt-4.1,gpt-5.6-terra,gpt-5.6-luna,gpt-4o,gpt-5.6-luna")
-
-	require.Equal(t, []string{"gpt-5.6-terra", "gpt-5.6-luna"}, allowedAionUIAgentModels())
 }
 
 func TestSafeExtractSkillZipUsesSingleRootDirectoryWhenZipHasDirectoryEntry(t *testing.T) {

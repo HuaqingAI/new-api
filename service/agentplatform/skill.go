@@ -331,8 +331,37 @@ func validateSkillPackageZip(zipPath string) error {
 		return ErrInvalidResourceInput
 	}
 	defer reader.Close()
-	if singleRootDir(reader.File) == "" {
+	if len(skillPackageRootDirs(reader.File)) == 0 {
 		return ErrInvalidResourceInput
 	}
 	return nil
+}
+
+// skillPackageRootDirs returns the top-level directories that contain files in
+// the package. A package may contain one skill directory or a group of them,
+// but files at the archive root are not valid skill packages.
+func skillPackageRootDirs(files []*zip.File) []string {
+	roots := make(map[string]struct{})
+	for _, file := range files {
+		name := strings.Trim(filepath.ToSlash(file.Name), "/")
+		if name == "" {
+			continue
+		}
+		parts := strings.Split(name, "/")
+		if len(parts) == 1 {
+			if file.FileInfo().IsDir() {
+				continue
+			}
+			return nil
+		}
+		roots[parts[0]] = struct{}{}
+	}
+	if len(roots) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(roots))
+	for root := range roots {
+		result = append(result, root)
+	}
+	return result
 }

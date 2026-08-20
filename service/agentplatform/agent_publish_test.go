@@ -41,7 +41,10 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 
 	skill, err := NewSkillService(db).Create(SkillCreateInput{DisplayName: "Custom Skill", OwnerUserId: 1})
 	require.NoError(t, err)
-	skillZip := buildTestSkillZip(t, "custom-skill/SKILL.md", "# custom")
+	skillZip := buildTestSkillZipWithFiles(t, map[string]string{
+		"custom-skill/SKILL.md":            "# custom",
+		"custom-order-reconciler/SKILL.md": "# reconciler",
+	})
 	_, err = NewSkillService(db).SavePackage(skill.ResourceId, "custom-skill.zip", bytes.NewReader(skillZip))
 	require.NoError(t, err)
 
@@ -86,6 +89,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.NotContains(t, files, "project/.opencode/skills/cherry-knowledge-search/config.json")
 	require.Contains(t, files, "project/.opencode/skills/ziniao-store/SKILL.md")
 	require.Contains(t, files, "project/.opencode/skills/custom-skill/SKILL.md")
+	require.Contains(t, files, "project/.opencode/skills/custom-order-reconciler/SKILL.md")
 	require.Contains(t, files, "project/opencode.jsonc")
 	require.Equal(t, "Follow team rules.", string(files["project/instructions.md"]))
 	require.Equal(t, openCodeUserContextTemplate, string(files["project/user-context.md"]))
@@ -288,6 +292,23 @@ func TestSafeExtractSkillZipUsesSingleRootDirectoryWhenZipHasDirectoryEntry(t *t
 
 	require.FileExists(t, filepath.Join(skillsDir, "refund-order-reconciler", "SKILL.md"))
 	require.NoFileExists(t, filepath.Join(skillsDir, "1111", "refund-order-reconciler", "SKILL.md"))
+}
+
+func TestSafeExtractSkillZipExtractsMultipleRootDirectories(t *testing.T) {
+	root := t.TempDir()
+	zipPath := filepath.Join(root, "shopify-skill.zip")
+	zipData := buildTestSkillZipWithFiles(t, map[string]string{
+		"shopify-admin/SKILL.md":    "# admin",
+		"shopify-customer/SKILL.md": "# customer",
+	})
+	require.NoError(t, os.WriteFile(zipPath, zipData, 0o644))
+
+	skillsDir := filepath.Join(root, "skills")
+	require.NoError(t, safeExtractSkillZip(zipPath, skillsDir, "Shopify Skills"))
+
+	require.FileExists(t, filepath.Join(skillsDir, "shopify-admin", "SKILL.md"))
+	require.FileExists(t, filepath.Join(skillsDir, "shopify-customer", "SKILL.md"))
+	require.NoFileExists(t, filepath.Join(skillsDir, "shopify-skills", "shopify-admin", "SKILL.md"))
 }
 
 func newAgentPublishTestDB(t *testing.T) *gorm.DB {

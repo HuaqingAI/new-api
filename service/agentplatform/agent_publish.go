@@ -1137,17 +1137,15 @@ func safeExtractSkillZip(zipPath string, skillsDir string, fallbackName string) 
 	}
 	defer reader.Close()
 	prefix := singleRootDir(reader.File)
+	rootDirs := skillPackageRootDirs(reader.File)
 	targetBase := skillsDir
-	if prefix == "" {
+	if prefix == "" && len(rootDirs) == 0 {
 		targetBase = filepath.Join(skillsDir, normalizedSkillFolder(fallbackName))
-		if err := os.MkdirAll(targetBase, 0o755); err != nil {
-			return err
-		}
-	} else {
+	} else if prefix != "" {
 		targetBase = filepath.Join(skillsDir, prefix)
-		if err := os.MkdirAll(targetBase, 0o755); err != nil {
-			return err
-		}
+	}
+	if err := os.MkdirAll(targetBase, 0o755); err != nil {
+		return err
 	}
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {

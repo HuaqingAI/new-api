@@ -80,25 +80,37 @@ func TestSkillServiceSavePackageAcceptsSingleRootDirectoryIndependentOfDisplayNa
 	require.Len(t, store.files, 1)
 }
 
-func TestSkillServiceSavePackageRejectsZipWithoutSingleRootDirectory(t *testing.T) {
-	for name, skillZip := range map[string][]byte{
-		"flat.zip":       buildTestSkillZip(t, "SKILL.md", "# invalid"),
-		"multi-root.zip": buildTestSkillZipWithFiles(t, map[string]string{"a/SKILL.md": "# a", "b/SKILL.md": "# b"}),
-	} {
-		t.Run(name, func(t *testing.T) {
-			svc, _ := newSkillServiceForTest(t)
-			restore := SetArtifactStoreForTest(newFakeArtifactStore())
-			t.Cleanup(restore)
-			skill, err := svc.Create(SkillCreateInput{DisplayName: "1111", OwnerUserId: 100})
-			require.NoError(t, err)
+func TestSkillServiceSavePackageAcceptsMultipleRootDirectories(t *testing.T) {
+	svc, _ := newSkillServiceForTest(t)
+	artifactStore := newFakeArtifactStore()
+	restore := SetArtifactStoreForTest(artifactStore)
+	t.Cleanup(restore)
+	skill, err := svc.Create(SkillCreateInput{DisplayName: "Shopify Skills", OwnerUserId: 100})
+	require.NoError(t, err)
 
-			_, err = svc.SavePackage(skill.ResourceId, name, bytes.NewReader(skillZip))
+	skillZip := buildTestSkillZipWithFiles(t, map[string]string{
+		"shopify-admin/SKILL.md":    "# admin",
+		"shopify-customer/SKILL.md": "# customer",
+	})
+	saved, err := svc.SavePackage(skill.ResourceId, "shopify-skill.zip", bytes.NewReader(skillZip))
 
-			require.ErrorIs(t, err, ErrInvalidResourceInput)
-			var def apmodel.SkillDef
-			require.True(t, errors.Is(svc.db.Where("resource_id = ?", skill.ResourceId).First(&def).Error, gorm.ErrRecordNotFound))
-		})
-	}
+	require.NoError(t, err)
+	require.Equal(t, "shopify-skill.zip", saved.FileName)
+	require.Len(t, artifactStore.files, 1)
+}
+
+func TestSkillServiceSavePackageRejectsZipWithRootFiles(t *testing.T) {
+	svc, _ := newSkillServiceForTest(t)
+	restore := SetArtifactStoreForTest(newFakeArtifactStore())
+	t.Cleanup(restore)
+	skill, err := svc.Create(SkillCreateInput{DisplayName: "1111", OwnerUserId: 100})
+	require.NoError(t, err)
+
+	_, err = svc.SavePackage(skill.ResourceId, "flat.zip", bytes.NewReader(buildTestSkillZip(t, "SKILL.md", "# invalid")))
+
+	require.ErrorIs(t, err, ErrInvalidResourceInput)
+	var def apmodel.SkillDef
+	require.True(t, errors.Is(svc.db.Where("resource_id = ?", skill.ResourceId).First(&def).Error, gorm.ErrRecordNotFound))
 }
 
 func buildTestSkillZipWithFiles(t *testing.T, files map[string]string) []byte {

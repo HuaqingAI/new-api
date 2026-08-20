@@ -31,7 +31,6 @@ const openCodeUserContextTemplate = "将下面<user-context></user-context>中�
 const (
 	aionUIPersonalAPIKeyPlaceholder = "<hth-personal-apikey>"
 	aionUIDefaultAgentModel         = "gpt-5.6-terra"
-	cherryKnowledgeSearchSkillName  = "cherry-knowledge-search"
 )
 
 type PublishAgentInput struct {
@@ -1055,9 +1054,6 @@ func copySystemSkillsForAgentPackage(skillsDir string) error {
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			continue
-		}
-		if entry.Name() == cherryKnowledgeSearchSkillName {
 			continue
 		}
 		src := filepath.Join(sourceRoot, entry.Name())

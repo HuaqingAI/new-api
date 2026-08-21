@@ -194,7 +194,7 @@ func TestAgentConfigServiceUsesIndependentRecommendedPrompts(t *testing.T) {
 		Name:            "Agent Def Three",
 		Description:     "负责售后。\n<open-remark>\n旧的推荐问题\n</open-remark>",
 	}
-	require.NoError(t, def.SetCategories([]string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}))
+	require.NoError(t, def.SetCategories([]string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryCustomerService}))
 	require.NoError(t, def.SetRecommendedPrompts([]string{"独立推荐问题一", "独立推荐问题二"}))
 	require.NoError(t, db.Create(&def).Error)
 	require.NoError(t, db.Create(&apmodel.ResourceGrant{
@@ -209,7 +209,7 @@ func TestAgentConfigServiceUsesIndependentRecommendedPrompts(t *testing.T) {
 	result, err := service.ListForUser(101, "user@example.com")
 	require.NoError(t, err)
 	require.Len(t, result.Agents, 1)
-	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService}, result.Agents[0].Categories)
+	require.Equal(t, []string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryCustomerService}, result.Agents[0].Categories)
 	require.Equal(t, []string{"独立推荐问题一", "独立推荐问题二"}, result.Agents[0].RecommendedPrompts)
 	require.Contains(t, result.Agents[0].Description, "<open-remark>")
 }

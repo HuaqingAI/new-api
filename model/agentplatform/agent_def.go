@@ -15,23 +15,31 @@ const (
 	AgentCliTypeOpenCode = "opencode"
 	AgentCliTypeCodex    = "codex"
 
-	AgentCategoryGeneral         = "general"
-	AgentCategoryOperations      = "operations"
-	AgentCategoryCustomerService = "customer_service"
-	AgentCategoryLogistics       = "logistics"
-	AgentCategoryMarketing       = "marketing"
-	AgentCategoryFinance         = "finance"
-	AgentCategoryHR              = "hr"
+	AgentCategoryGeneral          = "general"
+	AgentCategoryAmazonOperations = "amazon_operations"
+	AgentCategoryDTCOperations    = "dtc_operations"
+	AgentCategoryMarketing        = "marketing"
+	AgentCategoryDesign           = "design"
+	AgentCategoryCustomerService  = "customer_service"
+	AgentCategoryLogistics        = "logistics"
+	AgentCategoryMarket           = "market"
+	AgentCategoryFinance          = "finance"
+	AgentCategoryHR               = "hr"
+	AgentCategoryAdministration   = "administration"
 )
 
 var allowedAgentCategories = []string{
 	AgentCategoryGeneral,
-	AgentCategoryOperations,
+	AgentCategoryAmazonOperations,
+	AgentCategoryDTCOperations,
+	AgentCategoryMarketing,
+	AgentCategoryDesign,
 	AgentCategoryCustomerService,
 	AgentCategoryLogistics,
-	AgentCategoryMarketing,
+	AgentCategoryMarket,
 	AgentCategoryFinance,
 	AgentCategoryHR,
+	AgentCategoryAdministration,
 }
 
 type AgentDef struct {

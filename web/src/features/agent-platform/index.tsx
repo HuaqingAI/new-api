@@ -292,12 +292,16 @@ const MCP_CONFIG_JSON_PLACEHOLDER =
 const AGENT_INSTRUCTIONS_PLACEHOLDER = '你是一个有用的助手'
 const AGENT_CATEGORY_VALUES = [
   'general',
-  'operations',
+  'amazon_operations',
+  'dtc_operations',
+  'marketing',
+  'design',
   'customer_service',
   'logistics',
-  'marketing',
+  'market',
   'finance',
   'hr',
+  'administration',
 ] as const
 
 type AgentCategoryValue = (typeof AGENT_CATEGORY_VALUES)[number]
@@ -309,18 +313,28 @@ function formatAgentCategoryLabel(
   switch (value) {
     case 'general':
       return t('General Assistant', { defaultValue: '通用助手' })
-    case 'operations':
-      return t('Operations Assistant', { defaultValue: '运营助手' })
+    case 'amazon_operations':
+      return t('Amazon Operations Assistant', {
+        defaultValue: '亚马逊运营助手',
+      })
+    case 'dtc_operations':
+      return t('DTC Operations Assistant', { defaultValue: 'DTC运营助手' })
+    case 'marketing':
+      return t('Marketing Assistant', { defaultValue: '营销助手' })
+    case 'design':
+      return t('Design Assistant', { defaultValue: '设计助手' })
     case 'customer_service':
       return t('Customer Service Assistant', { defaultValue: '客服助手' })
     case 'logistics':
       return t('Logistics Assistant', { defaultValue: '物流助手' })
-    case 'marketing':
-      return t('Marketing Assistant', { defaultValue: '市场助手' })
+    case 'market':
+      return t('Market Assistant', { defaultValue: '市场助手' })
     case 'finance':
       return t('Finance Assistant', { defaultValue: '财务助手' })
     case 'hr':
       return t('HR Assistant', { defaultValue: '人事助手' })
+    case 'administration':
+      return t('Administration Assistant', { defaultValue: '行政助手' })
   }
 }
 

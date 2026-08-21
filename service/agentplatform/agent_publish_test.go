@@ -61,7 +61,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 		Description:  "Agent description",
 		Avatar:       "bot",
 		Instructions: "Follow team rules.",
-		Categories:   []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryCustomerService},
+		Categories:   []string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryCustomerService},
 		McpIds:       []string{mcp.ResourceId},
 		SkillIds:     []string{skill.ResourceId},
 		KnowledgeIds: []string{knowledge.ResourceId},

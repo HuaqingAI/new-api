@@ -48,18 +48,60 @@ func TestAgentServiceCreatesListsAndUpdatesOnlyAgents(t *testing.T) {
 	updated, err := svc.Update(created.ResourceId, AgentUpdateInput{
 		CliType:            apmodel.AgentCliTypeOpenCode,
 		DisplayName:        "My Agent V2",
-		Categories:         []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance},
+		Categories:         []string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryFinance},
 		RecommendedPrompts: []string{"new question", " new question ", "another question"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "My Agent V2", updated.DisplayName)
-	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, updated.Categories)
+	require.Equal(t, []string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryFinance}, updated.Categories)
 	require.Equal(t, []string{"new question", "another question"}, updated.RecommendedPrompts)
 
 	fetched, err := svc.Get(created.ResourceId)
 	require.NoError(t, err)
-	require.Equal(t, []string{apmodel.AgentCategoryOperations, apmodel.AgentCategoryFinance}, fetched.Categories)
+	require.Equal(t, []string{apmodel.AgentCategoryAmazonOperations, apmodel.AgentCategoryFinance}, fetched.Categories)
 	require.Equal(t, []string{"new question", "another question"}, fetched.RecommendedPrompts)
+}
+
+func TestAgentServiceRejectsRetiredCategory(t *testing.T) {
+	svc, _ := newAgentServiceForTest(t)
+
+	_, err := svc.Create(AgentCreateInput{
+		CliType:     apmodel.AgentCliTypeOpenCode,
+		DisplayName: "Retired Category Agent",
+		Categories:  []string{"operations"},
+		OwnerUserId: 101,
+		TenantId:    7,
+	})
+
+	require.ErrorIs(t, err, apmodel.ErrInvalidAgentDefBody)
+}
+
+func TestAgentServiceAcceptsAllCurrentCategories(t *testing.T) {
+	svc, _ := newAgentServiceForTest(t)
+	categories := []string{
+		apmodel.AgentCategoryGeneral,
+		apmodel.AgentCategoryAmazonOperations,
+		apmodel.AgentCategoryDTCOperations,
+		apmodel.AgentCategoryMarketing,
+		apmodel.AgentCategoryDesign,
+		apmodel.AgentCategoryCustomerService,
+		apmodel.AgentCategoryLogistics,
+		apmodel.AgentCategoryMarket,
+		apmodel.AgentCategoryFinance,
+		apmodel.AgentCategoryHR,
+		apmodel.AgentCategoryAdministration,
+	}
+
+	created, err := svc.Create(AgentCreateInput{
+		CliType:     apmodel.AgentCliTypeOpenCode,
+		DisplayName: "All Categories Agent",
+		Categories:  categories,
+		OwnerUserId: 101,
+		TenantId:    7,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, categories, created.Categories)
 }
 
 func TestAgentServiceGetRejectsNonAgentResources(t *testing.T) {

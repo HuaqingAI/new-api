@@ -1,12 +1,12 @@
 ---
-name: aionui-config
+name: hqbuddy-config
 description: >-
-  Configure AionUi itself through the bundled aioncore config CLI: create and edit assistants, update assistant rules, inspect and import skills, manage MCP servers, configure model providers, update settings, manage agents, configure scheduled tasks, and manage app configuration from an agent conversation. Use when the user wants you to set up or modify an AionUi assistant, attach skills, change an assistant's system prompt, add MCP or model provider configuration, schedule recurring work, or otherwise configure their AionUi installation, including when the user needs to know whether assistant changes affect the current conversation or only new conversations.
+  Configure HQBuddy itself through the bundled aioncore config CLI: create and edit assistants, update assistant rules, inspect and import skills, manage MCP servers, configure model providers, update settings, manage agents, configure scheduled tasks, and manage app configuration from an agent conversation. Use when the user wants you to set up or modify an HQBuddy assistant, attach skills, change an assistant's system prompt, add MCP or model provider configuration, schedule recurring work, or otherwise configure their HQBuddy installation, including when the user needs to know whether assistant changes affect the current conversation or only new conversations.
 ---
 
-# AionUi Config
+# HQBuddy Config
 
-Configure AionUi with the bundled agent-facing CLI. Do not discover ports, do
+Configure HQBuddy with the bundled agent-facing CLI. Do not discover ports, do
 not call raw backend paths, and do not depend on tools outside the bundled
 `aioncore` binary.
 
@@ -69,7 +69,7 @@ rules or defaults.
 
 ## Assistant Change Timing
 
-AionUi persists assistant configuration immediately, but running conversations
+HQBuddy persists assistant configuration immediately, but running conversations
 may keep the assistant snapshot created when the conversation started. Use this
 timing model when reporting successful assistant changes:
 
@@ -121,7 +121,7 @@ Create an assistant:
     "Turn this feature idea into a PRD",
     "Review this PRD and identify confusing parts for new users"
   ],
-  "enabled_skills": ["aionui-config"]
+  "enabled_skills": ["hqbuddy-config"]
 }
 JSON
 ```
@@ -231,7 +231,7 @@ Attach skills to an assistant by updating the assistant's full skill list:
 "$AIONUI_HELPER_BIN" config assistants update <<'JSON'
 {
   "assistant_id": "current",
-  "enabled_skills": ["aionui-config", "cron"]
+  "enabled_skills": ["hqbuddy-config", "cron"]
 }
 JSON
 ```

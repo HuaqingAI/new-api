@@ -15,6 +15,7 @@ var (
 	ErrResourceVersionNotFound     = errors.New("agent platform resource version not found")
 	ErrInvalidResourceVersionInput = errors.New("agent platform resource version input invalid")
 	ErrAgentDependencyInvalid      = errors.New("agent platform agent dependency invalid")
+	ErrCodexMcpSSEUnsupported      = errors.New("Codex CLI does not support SSE MCP servers; use stdio or streamable HTTP instead")
 )
 
 type CreateResourceVersionInput struct {

@@ -215,6 +215,16 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.Contains(t, publishedDef.ModelConfigJSON, `"cli_type":"codex"`)
 }
 
+func TestCodexMcpRejectsSSEWithActionableError(t *testing.T) {
+	_, err := toCodexMcpServer("events", map[string]any{
+		"type": "sse",
+		"url":  "https://example.com/mcp",
+	})
+
+	require.ErrorIs(t, err, ErrCodexMcpSSEUnsupported)
+	require.EqualError(t, err, ErrCodexMcpSSEUnsupported.Error())
+}
+
 func TestAgentPublishDefaultsUseLatestVersionGrantsAndKeepHistory(t *testing.T) {
 	db := newAgentPublishTestDB(t)
 	restore := SetArtifactStoreForTest(newFakeArtifactStore())

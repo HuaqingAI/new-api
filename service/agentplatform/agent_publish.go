@@ -918,7 +918,7 @@ func toCodexMcpServer(name string, input map[string]any) (codexMcpServerConfig, 
 			out.HTTPHeaders = stringMapFromAny(input["headers"])
 		}
 	case "sse":
-		return codexMcpServerConfig{}, ErrAgentDependencyInvalid
+		return codexMcpServerConfig{}, ErrCodexMcpSSEUnsupported
 	default:
 		return codexMcpServerConfig{}, ErrAgentDependencyInvalid
 	}

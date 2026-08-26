@@ -176,6 +176,7 @@ type ResourceListCardProps = {
   onOpenEdit: (item: AgentPlatformItem) => void
   onRetry: () => void
   response?: AgentPlatformListResponse
+  showCliType: boolean
   showLatestVersion: boolean
   title: string
   typeLabel: string
@@ -380,6 +381,18 @@ function formatStatusLabel(
     return t('Unknown')
   }
   return t(value)
+}
+
+function formatAgentCliTypeLabel(value?: string) {
+  const normalized = value?.trim().toLowerCase()
+  switch (normalized) {
+    case 'opencode':
+      return 'OpenCode'
+    case 'codex':
+      return 'Codex'
+    default:
+      return value?.trim() || ''
+  }
 }
 
 function formatDateTimeText(value?: string) {
@@ -706,6 +719,7 @@ function ResourceListCard(props: ResourceListCardProps) {
             items={items}
             onOpenDetails={props.onOpenDetails}
             onOpenEdit={props.onOpenEdit}
+            showCliType={props.showCliType}
             showLatestVersion={props.showLatestVersion}
             typeLabel={props.typeLabel}
           />
@@ -719,6 +733,7 @@ function ResourceTable(props: {
   items: AgentPlatformItem[]
   onOpenDetails: (item: AgentPlatformItem) => void
   onOpenEdit: (item: AgentPlatformItem) => void
+  showCliType: boolean
   showLatestVersion: boolean
   typeLabel: string
 }) {
@@ -731,6 +746,9 @@ function ResourceTable(props: {
           <TableRow>
             <TableHead>{t('Resource')}</TableHead>
             <TableHead>{t('Type')}</TableHead>
+            {props.showCliType ? (
+              <TableHead>{t('Agent CLI 类型')}</TableHead>
+            ) : null}
             {props.showLatestVersion ? (
               <TableHead>{t('Status')}</TableHead>
             ) : null}
@@ -750,6 +768,7 @@ function ResourceTable(props: {
               item={item}
               onOpenDetails={props.onOpenDetails}
               onOpenEdit={props.onOpenEdit}
+              showCliType={props.showCliType}
               showLatestVersion={props.showLatestVersion}
               typeLabel={props.typeLabel}
             />
@@ -775,11 +794,13 @@ function ResourceRow(props: {
   item: AgentPlatformItem
   onOpenDetails: (item: AgentPlatformItem) => void
   onOpenEdit: (item: AgentPlatformItem) => void
+  showCliType: boolean
   showLatestVersion: boolean
   typeLabel: string
 }) {
   const { t } = useTranslation()
   const item = props.item
+  const agentItem = item as AgentPlatformAgentItem
 
   return (
     <TableRow>
@@ -802,6 +823,13 @@ function ResourceRow(props: {
       <TableCell>
         <Badge variant='outline'>{props.typeLabel}</Badge>
       </TableCell>
+      {props.showCliType ? (
+        <TableCell>
+          <Badge variant='secondary'>
+            {formatAgentCliTypeLabel(agentItem.cli_type) || t('Not configured')}
+          </Badge>
+        </TableCell>
+      ) : null}
       {props.showLatestVersion ? (
         <TableCell>
           <StatusBadge
@@ -2442,6 +2470,7 @@ export function AgentPlatformShell() {
                   badgeLabel={t('Tooling')}
                   createLabel={t('New MCP')}
                   icon={Unplug}
+                  showCliType={false}
                   showLatestVersion={false}
                   typeLabel={resourceTypeLabel('mcp', t)}
                   response={mcpsQuery.data}
@@ -2466,6 +2495,7 @@ export function AgentPlatformShell() {
                   badgeLabel={t('Package')}
                   createLabel={t('New Skill')}
                   icon={Puzzle}
+                  showCliType={false}
                   showLatestVersion={false}
                   typeLabel={resourceTypeLabel('skill', t)}
                   response={skillsQuery.data}
@@ -2492,6 +2522,7 @@ export function AgentPlatformShell() {
                   badgeLabel={t('Knowledge ID')}
                   createLabel={t('New Knowledge')}
                   icon={BookOpen}
+                  showCliType={false}
                   showLatestVersion={false}
                   typeLabel={resourceTypeLabel('knowledge', t)}
                   response={knowledgeQuery.data}
@@ -2518,6 +2549,7 @@ export function AgentPlatformShell() {
                   badgeLabel={t('Release managed')}
                   createLabel={t('New Agent')}
                   icon={Bot}
+                  showCliType
                   showLatestVersion
                   typeLabel={resourceTypeLabel('agent', t)}
                   response={agentsQuery.data}

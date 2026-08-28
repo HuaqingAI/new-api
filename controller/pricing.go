@@ -91,7 +91,11 @@ func GetAionUiPricing(c *gin.Context) {
 		return
 	}
 	response := buildPricingResponse(userID, true)
-	response["pricing_group"] = serviceaionui.HTHBuddyPersonalAPIKeyGroup
+	pricingGroup := serviceaionui.HTHBuddyPersonalAPIKeyGroup
+	if group, err := serviceaionui.GetPersonalAPIKeyGroup(userID); err == nil && group != "" {
+		pricingGroup = group
+	}
+	response["pricing_group"] = pricingGroup
 	c.JSON(200, response)
 }
 

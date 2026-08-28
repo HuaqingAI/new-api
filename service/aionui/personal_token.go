@@ -16,6 +16,24 @@ type PersonalAPIKey struct {
 	MaskedKey string
 }
 
+// GetPersonalAPIKeyGroup returns the current pricing group of the desktop user's
+// personal API key. The group can be changed from the admin token settings, so
+// it must be read from the database instead of relying on the login request.
+func GetPersonalAPIKeyGroup(userID int) (string, error) {
+	if model.DB == nil || userID <= 0 {
+		return "", ErrUserUnavailable
+	}
+
+	var token model.Token
+	err := model.DB.Where("user_id = ? AND name = ? AND status = ?", userID, DefaultPersonalAPIKeyName, common.TokenStatusEnabled).
+		Order("id ASC").
+		First(&token).Error
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(token.Group), nil
+}
+
 func EnsurePersonalAPIKey(userID int, requestedGroup string) (PersonalAPIKey, error) {
 	if model.DB == nil || userID <= 0 {
 		return PersonalAPIKey{}, ErrUserUnavailable

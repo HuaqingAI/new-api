@@ -129,6 +129,25 @@ func TestDesktopAuthServiceReusesExistingPersonalAPIKey(t *testing.T) {
 	require.Equal(t, DefaultPersonalAPIKeyGroup, personalToken.Group)
 }
 
+func TestGetPersonalAPIKeyGroupReturnsCurrentAdminConfiguredGroup(t *testing.T) {
+	db := newDesktopAuthTestDB(t)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.Create(&model.Token{
+		UserId:      105,
+		Name:        DefaultPersonalAPIKeyName,
+		Key:         "configured-personal-key",
+		Status:      common.TokenStatusEnabled,
+		CreatedTime: 1,
+		ExpiredTime: -1,
+		Group:       "vip",
+	}).Error)
+
+	group, err := GetPersonalAPIKeyGroup(105)
+	require.NoError(t, err)
+	require.Equal(t, "vip", group)
+}
+
 func TestDesktopAuthServiceCreatesPersonalAPIKeyWithAllowedRequestedGroup(t *testing.T) {
 	db := newDesktopAuthTestDB(t)
 	model.DB = db

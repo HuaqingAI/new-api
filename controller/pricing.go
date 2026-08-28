@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -89,7 +90,9 @@ func GetAionUiPricing(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(200, buildPricingResponse(userID, true))
+	response := buildPricingResponse(userID, true)
+	response["pricing_group"] = serviceaionui.HTHBuddyPersonalAPIKeyGroup
+	c.JSON(200, response)
 }
 
 func dashboardPricingUser(c *gin.Context) (int, bool) {

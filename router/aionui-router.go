@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/controller"
 	controlleraionui "github.com/QuantumNous/new-api/controller/aionui"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-gonic/gin"
@@ -10,6 +11,7 @@ func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 	aionUiRoute := apiRouter.Group("/aionui")
 	{
 		aionUiRoute.GET("/agent-configs", middleware.AionUiDesktopAuth(), controlleraionui.GetAgentConfigs)
+		aionUiRoute.GET("/pricing", middleware.AionUiDesktopAuth(), controller.GetAionUiPricing)
 		aionUiRoute.GET("/quota-summary", middleware.AionUiDesktopAuth(), controlleraionui.GetQuotaSummary)
 		aionUiRoute.GET("/client-packages/latest", controlleraionui.ListLatestClientPackages)
 		aionUiRoute.GET("/client-packages/:id/download", controlleraionui.DownloadClientPackage)

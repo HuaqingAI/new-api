@@ -1334,27 +1334,18 @@ function EnterpriseOrganizationTaskPageContent(props: {
           />
         </div>
       ) : (
-        <>
-          {props.mode === 'allocations' ? (
-            <DepartmentMemberContextSelector
-              departmentId={props.currentDepartment.id}
-              tenantId={props.currentDepartment.tenant_id ?? 0}
-              departmentName={props.currentDepartment.name}
-              selectedMemberUserId={props.selectedMemberUserId}
-              onSelectedMemberChange={props.onSelectedMemberChange}
-              onMembersChange={props.onMembersChange}
-            />
-          ) : null}
-          <DepartmentBudgetPanel
-            departmentId={props.currentDepartment.id}
-            tenantId={props.currentDepartment.tenant_id ?? 0}
-            departmentName={props.currentDepartment.name}
-            selectedBudgetId={props.search.budget_id ?? null}
-            onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
-            selectedMember={props.selectedMember}
-            mode={props.mode}
-          />
-        </>
+        <DepartmentBudgetPanel
+          departmentId={props.currentDepartment.id}
+          tenantId={props.currentDepartment.tenant_id ?? 0}
+          departmentName={props.currentDepartment.name}
+          selectedBudgetId={props.search.budget_id ?? null}
+          onSelectedBudgetIdChange={props.onSelectedBudgetIdChange}
+          selectedMember={props.selectedMember}
+          mode={props.mode}
+          selectedMemberUserId={props.selectedMemberUserId}
+          onSelectedMemberChange={props.onSelectedMemberChange}
+          onMembersChange={props.onMembersChange}
+        />
       )}
     </div>
   )
@@ -1371,29 +1362,29 @@ function DepartmentMemberContextSelector(props: {
   const { t } = useTranslation()
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('Current Member Context')}</CardTitle>
-        <CardDescription>
+    <section className='space-y-4'>
+      <div className='space-y-1'>
+        <h2 className='text-base font-semibold'>
+          {t('Current Member Context')}
+        </h2>
+        <p className='text-muted-foreground text-sm'>
           {t(
             'Select a member from {{department}} before creating a wallet allocation.',
             {
               department: props.departmentName,
             }
           )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <DepartmentMembersPanel
-          departmentId={props.departmentId}
-          tenantId={props.tenantId}
-          departmentName={props.departmentName}
-          selectedMemberUserId={props.selectedMemberUserId}
-          onSelectedMemberChange={props.onSelectedMemberChange}
-          onMembersChange={props.onMembersChange}
-        />
-      </CardContent>
-    </Card>
+        </p>
+      </div>
+      <DepartmentMembersPanel
+        departmentId={props.departmentId}
+        tenantId={props.tenantId}
+        departmentName={props.departmentName}
+        selectedMemberUserId={props.selectedMemberUserId}
+        onSelectedMemberChange={props.onSelectedMemberChange}
+        onMembersChange={props.onMembersChange}
+      />
+    </section>
   )
 }
 
@@ -2872,6 +2863,9 @@ export function DepartmentBudgetPanel({
   onSelectedBudgetIdChange,
   selectedMember,
   mode = 'all',
+  selectedMemberUserId,
+  onSelectedMemberChange,
+  onMembersChange,
 }: {
   departmentId: number
   tenantId: number
@@ -2880,6 +2874,9 @@ export function DepartmentBudgetPanel({
   onSelectedBudgetIdChange: (budgetId: number | null) => void
   selectedMember: DepartmentMemberItem | null
   mode?: EnterpriseOrganizationTaskMode
+  selectedMemberUserId?: number | null
+  onSelectedMemberChange?: (userId: number | null) => void
+  onMembersChange?: (items: DepartmentMemberItem[]) => void
 }) {
   const { t } = useTranslation()
   const currentUser = useCurrentAuthUser()
@@ -4066,7 +4063,23 @@ export function DepartmentBudgetPanel({
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value='member-wallet' className='mt-0' keepMounted>
+          <TabsContent
+            value='member-wallet'
+            className='mt-0 space-y-4'
+            keepMounted
+          >
+            {mode === 'allocations' &&
+            onSelectedMemberChange &&
+            onMembersChange ? (
+              <DepartmentMemberContextSelector
+                departmentId={departmentId}
+                tenantId={tenantId}
+                departmentName={departmentName}
+                selectedMemberUserId={selectedMemberUserId ?? null}
+                onSelectedMemberChange={onSelectedMemberChange}
+                onMembersChange={onMembersChange}
+              />
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle>{t('Current Member Wallet Allocation')}</CardTitle>

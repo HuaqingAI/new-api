@@ -2646,7 +2646,7 @@ describe('Enterprise organization department tree workflow', () => {
     assert.doesNotMatch(html, /Membership Lookup/)
   })
 
-  test('allocation workspace splits subordinate budget and member wallet flows into tabs', () => {
+  test('allocation workspace places the member selector only in the member wallet tab', () => {
     const html = renderDepartmentBudgetPanel({
       departmentId: 7,
       departmentName: 'Security',
@@ -2661,6 +2661,18 @@ describe('Enterprise organization department tree workflow', () => {
     assert.ok(
       html.indexOf('Allocate Budget To Subordinate Department') <
         html.indexOf('Current Member Wallet Allocation')
+    )
+    assert.ok(
+      html.indexOf('Allocate budget to subordinate department') <
+        html.indexOf('Current Member Context')
+    )
+    assert.ok(
+      html.indexOf('Current Member Context') <
+        html.indexOf('Department Members')
+    )
+    assert.equal(html.split('Current Member Context').length - 1, 1)
+    assert.ok(
+      html.indexOf('Department Members') < html.indexOf('Allocation Quota')
     )
   })
 
@@ -2751,6 +2763,9 @@ function renderDepartmentBudgetPanel({
           onSelectedBudgetIdChange={() => undefined}
           selectedMember={selectedMember}
           mode={mode}
+          selectedMemberUserId={selectedMember?.user_id ?? null}
+          onSelectedMemberChange={() => undefined}
+          onMembersChange={() => undefined}
         />
       </I18nextProvider>
     </QueryClientProvider>

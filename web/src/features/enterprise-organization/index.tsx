@@ -3934,57 +3934,69 @@ export function DepartmentBudgetPanel({
                     <FormField
                       control={delegationForm.control}
                       name='target_budget_id'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {t('Target Subordinate Budget Pool')}
-                          </FormLabel>
-                          <Select
-                            value={
-                              field.value ? String(field.value) : undefined
-                            }
-                            onValueChange={(value) => {
-                              const budgetId = Number(value)
-                              const budget = descendantBudgetOptions.find(
-                                (item) => item.id === budgetId
-                              )
-                              field.onChange(budgetId)
-                              delegationForm.setValue(
-                                'target_department_id',
-                                budget?.department_id ?? 0
-                              )
-                            }}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue
-                                  placeholder={t(
-                                    'Choose a subordinate budget pool'
-                                  )}
-                                />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {descendantBudgetOptions.map((item) => (
-                                <SelectItem
-                                  key={item.id}
-                                  value={String(item.id)}
-                                >
-                                  {t(
-                                    '{{source}} -> {{target}} -> Budget #{{budgetId}}',
-                                    {
-                                      source: departmentName,
-                                      target: item.department_name,
-                                      budgetId: item.id,
-                                    }
-                                  )}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const selectedBudget = descendantBudgetOptions.find(
+                          (item) => item.id === field.value
+                        )
+
+                        return (
+                          <FormItem>
+                            <FormLabel>
+                              {t('Target Subordinate Budget Pool')}
+                            </FormLabel>
+                            <Select
+                              value={
+                                field.value ? String(field.value) : undefined
+                              }
+                              onValueChange={(value) => {
+                                const budgetId = Number(value)
+                                const budget = descendantBudgetOptions.find(
+                                  (item) => item.id === budgetId
+                                )
+                                field.onChange(budgetId)
+                                delegationForm.setValue(
+                                  'target_department_id',
+                                  budget?.department_id ?? 0
+                                )
+                              }}
+                            >
+                              <FormControl>
+                                <SelectTrigger className='w-full'>
+                                  <SelectValue
+                                    placeholder={t(
+                                      'Choose a subordinate budget pool'
+                                    )}
+                                  >
+                                    {selectedBudget ? (
+                                      <BudgetDelegationOption
+                                        item={selectedBudget}
+                                        sourceDepartmentName={departmentName}
+                                      />
+                                    ) : null}
+                                  </SelectValue>
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent
+                                alignItemWithTrigger={false}
+                                className='w-[min(90vw,36rem)]'
+                              >
+                                {descendantBudgetOptions.map((item) => (
+                                  <SelectItem
+                                    key={item.id}
+                                    value={String(item.id)}
+                                  >
+                                    <BudgetDelegationOption
+                                      item={item}
+                                      sourceDepartmentName={departmentName}
+                                    />
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )
+                      }}
                     />
                     <FormField
                       control={delegationForm.control}
@@ -4450,6 +4462,26 @@ export function DepartmentBudgetPanel({
         </Card>
       ) : null}
     </div>
+  )
+}
+
+export function BudgetDelegationOption({
+  item,
+  sourceDepartmentName,
+}: {
+  item: DepartmentBudgetItem
+  sourceDepartmentName: string
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <span className='block max-w-full truncate'>
+      {t('{{source}} -> {{target}} -> Budget #{{budgetId}}', {
+        source: sourceDepartmentName,
+        target: item.department_name,
+        budgetId: item.id,
+      })}
+    </span>
   )
 }
 

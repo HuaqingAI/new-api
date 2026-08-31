@@ -43,6 +43,7 @@ import {
   DepartmentMemberContextCard,
   DepartmentSummaryCard,
   DepartmentBudgetPanel,
+  BudgetDelegationOption,
   enterpriseOrganizationTaskSearchSchema,
   enterpriseOrganizationSearchSchema,
   EnterpriseOrganizationContent,
@@ -822,6 +823,23 @@ describe('Enterprise organization department tree workflow', () => {
         assert.match(html, new RegExp(escapeRegExp(expected)))
       }
     }
+  })
+
+  test('formats subordinate budget options for both the list and selected value', () => {
+    const budget = departmentBudget({
+      id: 41,
+      department_name: 'AI Native',
+    })
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <BudgetDelegationOption
+          item={budget}
+          sourceDepartmentName='信息系统中心'
+        />
+      </I18nextProvider>
+    )
+
+    assert.match(html, /信息系统中心 -&gt; AI Native -&gt; Budget #41/)
   })
 
   test('clears stale selected members when the current department member list changes', () => {

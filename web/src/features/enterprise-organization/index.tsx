@@ -3962,7 +3962,7 @@ export function DepartmentBudgetPanel({
                               }}
                             >
                               <FormControl>
-                                <SelectTrigger className='w-full max-w-[420px]'>
+                                <SelectTrigger className='w-fit max-w-full'>
                                   <SelectValue
                                     placeholder={t(
                                       'Choose a subordinate budget pool'

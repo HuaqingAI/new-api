@@ -70,3 +70,14 @@ export function getQuotaRequestBudgetDisplayText(
     statusLabel: enterpriseBudgetStatusLabel(item.status, t),
   }
 }
+
+export function getQuotaRequestBudgetTriggerLabel(
+  item: QuotaRequestCapabilityBudgetItem,
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  const display = getQuotaRequestBudgetDisplayText(item, t)
+  return t('{{department}} · {{budget}}', {
+    department: display.departmentName,
+    budget: display.identity,
+  })
+}

@@ -90,6 +90,7 @@ import {
   enterpriseBudgetStatusLabel,
   formatBudgetType,
   getQuotaRequestBudgetDisplayText,
+  getQuotaRequestBudgetTriggerLabel,
 } from './quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
@@ -790,6 +791,10 @@ describe('Enterprise organization department tree workflow', () => {
       status: 'paused',
     })
     const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+    assert.equal(
+      getQuotaRequestBudgetTriggerLabel(budget, i18n.t),
+      'Engineering · Budget #31'
+    )
 
     assert.deepEqual(display, {
       departmentName: 'Engineering',

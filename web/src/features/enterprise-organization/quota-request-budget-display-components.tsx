@@ -18,7 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { getQuotaRequestBudgetDisplayText } from './quota-request-budget-display'
+import {
+  getQuotaRequestBudgetDisplayText,
+  getQuotaRequestBudgetTriggerLabel,
+} from './quota-request-budget-display'
 import type { DepartmentBudgetItem } from './types'
 
 export function QuotaRequestBudgetOption({
@@ -56,10 +59,7 @@ export function QuotaRequestBudgetSummary({
   return (
     <div className='mt-1 space-y-1'>
       <div className='text-sm font-medium'>
-        {t('{{department}} · {{budget}}', {
-          department: display.departmentName,
-          budget: display.identity,
-        })}
+        {getQuotaRequestBudgetTriggerLabel(item, t)}
       </div>
       <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs'>
         <span>{display.typeLabel}</span>

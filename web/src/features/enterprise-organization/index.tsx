@@ -169,6 +169,7 @@ import { QuotaAmountDisplay, QuotaAmountInput } from './quota-amount-controls'
 import {
   enterpriseBudgetStatusLabel,
   formatBudgetType,
+  getQuotaRequestBudgetTriggerLabel,
 } from './quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
@@ -4318,7 +4319,14 @@ export function DepartmentBudgetPanel({
                           <SelectTrigger>
                             <SelectValue
                               placeholder={t('Choose a target budget pool')}
-                            />
+                            >
+                              {selectedQuotaRequestBudget
+                                ? getQuotaRequestBudgetTriggerLabel(
+                                    selectedQuotaRequestBudget,
+                                    t
+                                  )
+                                : null}
+                            </SelectValue>
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>

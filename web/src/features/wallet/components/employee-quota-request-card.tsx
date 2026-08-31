@@ -71,6 +71,7 @@ import {
   governanceTimelineQueryKey,
 } from '@/features/enterprise-organization/api'
 import { QuotaAmountInput } from '@/features/enterprise-organization/quota-amount-controls'
+import { getQuotaRequestBudgetTriggerLabel } from '@/features/enterprise-organization/quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
@@ -111,6 +112,12 @@ export function getEmployeeQuotaRequestDepartmentOptions(
   items: UserDepartmentItem[]
 ) {
   return items.filter((item) => item.status === activeMembershipStatus)
+}
+
+function getEmployeeQuotaRequestDepartmentLabel(
+  item: Pick<UserDepartmentItem, 'department_id' | 'department_name'>
+) {
+  return item.department_name || `#${item.department_id}`
 }
 
 export function resolveEmployeeQuotaRequestBudgetId(
@@ -325,7 +332,15 @@ export function EmployeeQuotaRequestCard({
                       <SelectTrigger>
                         <SelectValue
                           placeholder={t('Choose a target department')}
-                        />
+                        >
+                          {currentDepartment ? (
+                            <span className='block max-w-full truncate'>
+                              {getEmployeeQuotaRequestDepartmentLabel(
+                                currentDepartment
+                              )}
+                            </span>
+                          ) : null}
+                        </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -334,7 +349,7 @@ export function EmployeeQuotaRequestCard({
                           key={item.id}
                           value={String(item.department_id)}
                         >
-                          {item.department_name || `#${item.department_id}`}
+                          {getEmployeeQuotaRequestDepartmentLabel(item)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -357,7 +372,14 @@ export function EmployeeQuotaRequestCard({
                       <SelectTrigger>
                         <SelectValue
                           placeholder={t('Choose a target budget pool')}
-                        />
+                        >
+                          {selectedBudget
+                            ? getQuotaRequestBudgetTriggerLabel(
+                                selectedBudget,
+                                t
+                              )
+                            : null}
+                        </SelectValue>
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

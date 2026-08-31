@@ -18,13 +18,18 @@ import {
   convertEnterpriseQuotaInputMode,
   parseEnterpriseQuotaInput,
 } from '@/features/enterprise-organization/quota-amount-controls'
-import { getQuotaRequestBudgetDisplayText } from '@/features/enterprise-organization/quota-request-budget-display'
+import {
+  getQuotaRequestBudgetDisplayText,
+  getQuotaRequestBudgetTriggerLabel,
+} from '@/features/enterprise-organization/quota-request-budget-display'
 import {
   QuotaRequestBudgetOption,
   QuotaRequestBudgetSummary,
 } from '@/features/enterprise-organization/quota-request-budget-display-components'
-import type { UserDepartmentItem } from '@/features/enterprise-organization/types'
-import type { QuotaRequestCapabilityBudgetItem } from '@/features/enterprise-organization/types'
+import type {
+  QuotaRequestCapabilityBudgetItem,
+  UserDepartmentItem,
+} from '@/features/enterprise-organization/types'
 import i18n from '@/i18n/config'
 import { api } from '@/lib/api'
 
@@ -84,6 +89,10 @@ describe('Employee quota request wallet entry', () => {
       remaining: 1250,
     })
     const display = getQuotaRequestBudgetDisplayText(budget, i18n.t)
+    assert.equal(
+      getQuotaRequestBudgetTriggerLabel(budget, i18n.t),
+      'Engineering · Budget #31'
+    )
 
     assert.deepEqual(display, {
       departmentName: 'Engineering',

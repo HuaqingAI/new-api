@@ -3961,7 +3961,7 @@ export function DepartmentBudgetPanel({
                               }}
                             >
                               <FormControl>
-                                <SelectTrigger className='w-full'>
+                                <SelectTrigger className='w-full max-w-[420px]'>
                                   <SelectValue
                                     placeholder={t(
                                       'Choose a subordinate budget pool'
@@ -3978,7 +3978,7 @@ export function DepartmentBudgetPanel({
                               </FormControl>
                               <SelectContent
                                 alignItemWithTrigger={false}
-                                className='w-[min(90vw,36rem)]'
+                                className='w-[min(90vw,26rem)]'
                               >
                                 {descendantBudgetOptions.map((item) => (
                                   <SelectItem

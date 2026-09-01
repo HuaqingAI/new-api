@@ -34,7 +34,7 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "ziniao-store", "SKILL.md"), []byte("# ziniao store"), 0o644))
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Local MCP",
-		Config:      []byte(`{"mcpServers":{"demo-local":{"command":"npx","args":["-y","demo"]}}}`),
+		Config:      []byte(`{"mcpServers":{"demo-local":{"command":"npx","args":["-y","demo"]},"meta-ads":{"type":"streamableHttp","url":"https://mcp.facebook.com/ads","oauth":{"callback_port":51786,"callback_url":"https://glove-throttle-galley.ngrok-free.dev/callback/p3oJPar44nR2","client_id":"920282887328556"}}}}`),
 		OwnerUserId: 1,
 	})
 	require.NoError(t, err)
@@ -118,6 +118,13 @@ func TestAgentPublishGeneratesOpenCodeZip(t *testing.T) {
 	require.Equal(t, []any{"npx", "-y", "demo"}, localServer["command"])
 	require.NotContains(t, localServer, "args")
 	require.NotContains(t, localServer, "enabled")
+	metaAds := mcpConfig["meta-ads"].(map[string]any)
+	require.Equal(t, "remote", metaAds["type"])
+	require.Equal(t, "https://mcp.facebook.com/ads", metaAds["url"])
+	oauth := metaAds["oauth"].(map[string]any)
+	require.Equal(t, "920282887328556", oauth["clientId"])
+	require.NotContains(t, oauth, "callback_url")
+	require.NotContains(t, oauth, "callback_port")
 }
 
 func TestAgentPublishGeneratesCodexZip(t *testing.T) {
@@ -134,7 +141,7 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sys-skills", "ziniao-store", "SKILL.md"), []byte("# ziniao store"), 0o644))
 	mcp, err := NewMcpService(db).Create(McpCreateInput{
 		DisplayName: "Codex MCP",
-		Config:      []byte(`{"mcpServers":{"filesystem":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},"docs":{"type":"streamablehttp","url":"https://example.com/mcp","headers":{"X-Client":"codex"}}}}`),
+		Config:      []byte(`{"mcpServers":{"filesystem":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},"docs":{"type":"streamablehttp","url":"https://example.com/mcp","headers":{"X-Client":"codex"},"oauth":{"callback_port":51786,"callback_url":"https://glove-throttle-galley.ngrok-free.dev/callback/p3oJPar44nR2","client_id":"920282887328556"}}}}`),
 		OwnerUserId: 1,
 	})
 	require.NoError(t, err)
@@ -202,9 +209,14 @@ func TestAgentPublishGeneratesCodexZip(t *testing.T) {
 	require.Contains(t, projectConfig, "[mcp_servers.filesystem]\ncommand = \"npx\"\nargs = [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\ndefault_tools_approval_mode = \"approve\"")
 	require.Contains(t, projectConfig, "[mcp_servers.docs]")
 	require.Contains(t, projectConfig, "url = \"https://example.com/mcp\"")
-	require.Contains(t, projectConfig, "[mcp_servers.docs]\nurl = \"https://example.com/mcp\"\ndefault_tools_approval_mode = \"approve\"")
+	require.Contains(t, projectConfig, "[mcp_servers.docs]\nurl = \"https://example.com/mcp\"\nauth = \"oauth\"\ndefault_tools_approval_mode = \"approve\"")
 	require.Contains(t, projectConfig, "[mcp_servers.docs.http_headers]")
 	require.Contains(t, projectConfig, "\"X-Client\" = \"codex\"")
+	require.Contains(t, projectConfig, "auth = \"oauth\"")
+	require.Contains(t, projectConfig, "[mcp_servers.docs.oauth]")
+	require.Contains(t, projectConfig, "client_id = \"920282887328556\"")
+	require.Contains(t, projectConfig, "callback_url = \"https://glove-throttle-galley.ngrok-free.dev/callback/p3oJPar44nR2\"")
+	require.Contains(t, projectConfig, "callback_port = 51786")
 
 	var publishedDef apmodel.AgentDef
 	require.NoError(t, db.Where("resource_id = ? AND resource_version = ?", agent.ResourceId, "1.0.0").First(&publishedDef).Error)

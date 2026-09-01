@@ -169,6 +169,8 @@ describe('Agent Platform shell', () => {
     assert.match(source, /New Agent/)
     assert.match(source, /New MCP/)
     assert.match(source, /Publish/)
+    assert.match(source, /Example JSON \(streamableHttp OAuth\)/)
+    assert.match(source, /callback_port/)
   })
 
   test('overlay surfaces stay outside the slot-only page layout', async () => {

@@ -719,6 +719,7 @@ type codexMcpServerConfig struct {
 	Args        []string
 	URL         string
 	HTTPHeaders map[string]string
+	OAuth       *mcpOAuthConfig
 }
 
 func codexProjectConfig(draft apmodel.AgentDef, mcp []codexMcpServerConfig, defaultModel string) string {
@@ -748,6 +749,20 @@ func codexProjectConfig(draft apmodel.AgentDef, mcp []codexMcpServerConfig, defa
 		builder.WriteString("url = ")
 		builder.WriteString(tomlQuotedString(server.URL))
 		builder.WriteString("\n")
+		if server.OAuth != nil {
+			builder.WriteString("auth = \"oauth\"\n")
+			scopes := strings.Fields(server.OAuth.Scope)
+			if len(scopes) > 0 {
+				builder.WriteString("scopes = ")
+				builder.WriteString(tomlStringArray(scopes))
+				builder.WriteString("\n")
+			}
+			if server.OAuth.Resource != "" {
+				builder.WriteString("oauth_resource = ")
+				builder.WriteString(tomlQuotedString(server.OAuth.Resource))
+				builder.WriteString("\n")
+			}
+		}
 		builder.WriteString("default_tools_approval_mode = \"approve\"\n")
 		if len(server.HTTPHeaders) > 0 {
 			builder.WriteString("\n[mcp_servers.")
@@ -762,6 +777,26 @@ func codexProjectConfig(draft apmodel.AgentDef, mcp []codexMcpServerConfig, defa
 				builder.WriteString(tomlQuotedString(key))
 				builder.WriteString(" = ")
 				builder.WriteString(tomlQuotedString(server.HTTPHeaders[key]))
+				builder.WriteString("\n")
+			}
+		}
+		if server.OAuth != nil && (server.OAuth.ClientID != "" || server.OAuth.CallbackURL != "" || server.OAuth.CallbackPort != 0) {
+			builder.WriteString("\n[mcp_servers.")
+			builder.WriteString(tableKey)
+			builder.WriteString(".oauth]\n")
+			if server.OAuth.ClientID != "" {
+				builder.WriteString("client_id = ")
+				builder.WriteString(tomlQuotedString(server.OAuth.ClientID))
+				builder.WriteString("\n")
+			}
+			if server.OAuth.CallbackURL != "" {
+				builder.WriteString("callback_url = ")
+				builder.WriteString(tomlQuotedString(server.OAuth.CallbackURL))
+				builder.WriteString("\n")
+			}
+			if server.OAuth.CallbackPort != 0 {
+				builder.WriteString("callback_port = ")
+				builder.WriteString(strconv.Itoa(server.OAuth.CallbackPort))
 				builder.WriteString("\n")
 			}
 		}
@@ -844,7 +879,11 @@ func buildOpenCodeMcpConfig(tx *gorm.DB, mcpIds []string) (map[string]any, error
 			if _, exists := merged[name]; exists {
 				return nil, ErrAgentDependencyInvalid
 			}
-			merged[name] = toOpenCodeMcpServer(payload.McpServers[name])
+			server, err := toOpenCodeMcpServer(payload.McpServers[name])
+			if err != nil {
+				return nil, err
+			}
+			merged[name] = server
 		}
 	}
 	return merged, nil
@@ -917,6 +956,11 @@ func toCodexMcpServer(name string, input map[string]any) (codexMcpServerConfig, 
 		if len(out.HTTPHeaders) == 0 {
 			out.HTTPHeaders = stringMapFromAny(input["headers"])
 		}
+		oauth, err := parseMcpOAuthConfig(input["oauth"])
+		if err != nil {
+			return codexMcpServerConfig{}, err
+		}
+		out.OAuth = oauth
 	case "sse":
 		return codexMcpServerConfig{}, ErrCodexMcpSSEUnsupported
 	default:
@@ -925,7 +969,7 @@ func toCodexMcpServer(name string, input map[string]any) (codexMcpServerConfig, 
 	return out, nil
 }
 
-func toOpenCodeMcpServer(input map[string]any) map[string]any {
+func toOpenCodeMcpServer(input map[string]any) (map[string]any, error) {
 	serverType := strings.TrimSpace(strings.ToLower(common.Interface2String(input["type"])))
 	out := map[string]any{}
 	switch serverType {
@@ -941,8 +985,92 @@ func toOpenCodeMcpServer(input map[string]any) map[string]any {
 		if headers, ok := input["headers"]; ok {
 			out["headers"] = headers
 		}
+		oauth, err := parseMcpOAuthConfig(input["oauth"])
+		if err != nil {
+			return nil, err
+		}
+		if oauth != nil {
+			out["oauth"] = map[string]any{}
+			if oauth.ClientID != "" {
+				out["oauth"].(map[string]any)["clientId"] = oauth.ClientID
+			}
+			if oauth.ClientSecret != "" {
+				out["oauth"].(map[string]any)["clientSecret"] = oauth.ClientSecret
+			}
+			if oauth.Scope != "" {
+				out["oauth"].(map[string]any)["scope"] = oauth.Scope
+			}
+		}
 	}
-	return out
+	return out, nil
+}
+
+type mcpOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	Scope        string
+	CallbackURL  string
+	CallbackPort int
+	Resource     string
+}
+
+func parseMcpOAuthConfig(value any) (*mcpOAuthConfig, error) {
+	if value == nil {
+		return nil, nil
+	}
+	fields, ok := value.(map[string]any)
+	if !ok {
+		return nil, ErrAgentDependencyInvalid
+	}
+	config := &mcpOAuthConfig{
+		ClientID:     firstNonEmptyString(fields, "client_id", "clientId"),
+		ClientSecret: firstNonEmptyString(fields, "client_secret", "clientSecret"),
+		Scope:        firstNonEmptyString(fields, "scope"),
+		CallbackURL:  firstNonEmptyString(fields, "callback_url", "callbackUrl"),
+		Resource:     firstNonEmptyString(fields, "resource", "oauth_resource", "oauthResource"),
+	}
+	if config.Scope == "" {
+		config.Scope = strings.Join(stringSliceFromAny(fields["scopes"]), " ")
+	}
+	if rawPort, exists := fields["callback_port"]; exists {
+		port, ok := positivePort(rawPort)
+		if !ok {
+			return nil, ErrAgentDependencyInvalid
+		}
+		config.CallbackPort = port
+	} else if rawPort, exists := fields["callbackPort"]; exists {
+		port, ok := positivePort(rawPort)
+		if !ok {
+			return nil, ErrAgentDependencyInvalid
+		}
+		config.CallbackPort = port
+	}
+	return config, nil
+}
+
+func firstNonEmptyString(fields map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, exists := fields[key]
+		if !exists {
+			continue
+		}
+		text, ok := value.(string)
+		if !ok {
+			return ""
+		}
+		if text = strings.TrimSpace(text); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func positivePort(value any) (int, bool) {
+	port, ok := value.(float64)
+	if !ok || port < 1 || port > 65535 || port != float64(int(port)) {
+		return 0, false
+	}
+	return int(port), true
 }
 
 func stringSliceFromAny(value any) []string {

@@ -276,6 +276,20 @@ const MCP_CONFIG_JSON_PLACEHOLDER =
   '    }\n' +
   '  }\n' +
   '}\n\n' +
+  '// Example JSON (streamableHttp OAuth):\n' +
+  '{\n' +
+  '  "mcpServers": {\n' +
+  '    "streamable-http-oauth-example": {\n' +
+  '      "type": "streamableHttp",\n' +
+  '      "url": "http://localhost:3002/mcp",\n' +
+  '      "oauth": {\n' +
+  '        "callback_port": 51786,\n' +
+  '        "callback_url": "http://localhost:51786/callback",\n' +
+  '        "client_id": "your-oauth-client-id"\n' +
+  '      }\n' +
+  '    }\n' +
+  '  }\n' +
+  '}\n\n' +
   '// Example JSON (streamableHttp):\n' +
   '{\n' +
   '  "mcpServers": {\n' +

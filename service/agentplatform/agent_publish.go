@@ -736,6 +736,7 @@ func codexProjectConfig(draft apmodel.AgentDef, mcp []codexMcpServerConfig, defa
 		builder.WriteString("\n[mcp_servers.")
 		builder.WriteString(tableKey)
 		builder.WriteString("]\n")
+		builder.WriteString("enabled = true\n")
 		if server.Command != "" {
 			builder.WriteString("command = ")
 			builder.WriteString(tomlQuotedString(server.Command))

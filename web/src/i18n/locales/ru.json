@@ -2608,6 +2608,8 @@
     "How to select keys: random or sequential polling": "Как выбирать ключи: случайно или последовательный опрос",
     "How will you use the platform?": "Как вы будете использовать платформу?",
     "HR Assistant": "HR-ассистент",
+    "HTH · Powered by NewAPI": "HTH · На базе NewAPI",
+    "HTH builds on NewAPI to provide stable multi-model access and usage management. Huaqing AI Assistant brings these capabilities to the desktop, using local files, workplace connectors, and automation tools to move from understanding requests to delivering results.": "HTH использует NewAPI как основу для стабильного доступа к нескольким моделям и управления использованием. Huaqing AI Assistant переносит эти возможности на рабочий стол и использует локальные файлы, рабочие интеграции и средства автоматизации, чтобы пройти путь от запроса до готового результата.",
     "HTTP Protocol": "HTTP-протокол",
     "HTTP protocol must be Auto or HTTP/1.1": "HTTP-протокол должен быть Auto или HTTP/1.1",
     "http_retrieval": "HTTP-поиск",

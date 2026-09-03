@@ -164,7 +164,7 @@ export function Hero(props: HeroProps) {
               style={{ animationDelay: '120ms' }}
             >
               {t(
-                'NewAPI provides stable multi-model access and usage management. Huaqing AI Assistant brings these capabilities to the desktop, using local files, workplace connectors, and automation tools to move from understanding requests to delivering results.'
+                'HTH builds on NewAPI to provide stable multi-model access and usage management. Huaqing AI Assistant brings these capabilities to the desktop, using local files, workplace connectors, and automation tools to move from understanding requests to delivering results.'
               )}
             </p>
 

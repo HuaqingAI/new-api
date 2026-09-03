@@ -186,7 +186,7 @@ export function Hero(props: HeroProps) {
                 className='border-border/60 hover:border-border hover:bg-muted/50 h-11 justify-center rounded-lg px-5 text-sm font-medium sm:justify-start'
                 render={
                   <Link
-                    to={props.isAuthenticated ? '/dashboard' : '/sign-up'}
+                    to={props.isAuthenticated ? '/dashboard' : '/sign-in'}
                   />
                 }
               >

@@ -867,12 +867,10 @@ func validateClientPackageUploadInput(input ClientPackageUploadInput) error {
 			return clientPackageValidationError(ErrClientPackageUpdateFileRequired, "发布 macOS 客户端时必须同时上传 electron-builder 产出的 .zip 自动更新包")
 		}
 	}
-	if strings.TrimSpace(input.UpdateMetadataFileName) != "" && !validUpdateMetadataFileName(input.Platform, input.UpdateMetadataFileName) {
+	if strings.TrimSpace(input.UpdateMetadataFileName) != "" && !validUpdateMetadataFileName(input.UpdateMetadataFileName) {
 		return clientPackageValidationError(
 			ErrClientPackageInvalidInput,
-			"更新元数据文件名不正确，%s 需要上传 %s",
-			clientPackagePlatformLabel(input.Platform),
-			expectedUpdateMetadataFileName(input.Platform),
+			"更新元数据文件格式不正确，请上传 .yml 或 .yaml 文件",
 		)
 	}
 	return nil
@@ -959,7 +957,7 @@ func validateClientPackageDirectArtifact(platform string, file ClientPackageDire
 			return ErrClientPackageInvalidInput
 		}
 	case "metadata":
-		if !validUpdateMetadataFileName(platform, file.FileName) {
+		if !validUpdateMetadataFileName(file.FileName) {
 			return ErrClientPackageInvalidInput
 		}
 	default:
@@ -1100,21 +1098,12 @@ func expectedClientPackageFileExt(platform string, update bool) string {
 	return ".dmg"
 }
 
-func validUpdateMetadataFileName(platform string, fileName string) bool {
-	base := filepath.Base(strings.TrimSpace(fileName))
-	return base == expectedUpdateMetadataFileName(platform)
-}
-
-func expectedUpdateMetadataFileName(platform string) string {
-	switch platform {
-	case apmodel.ClientPackagePlatformWindowsX64:
-		return "latest.yml"
-	case apmodel.ClientPackagePlatformMacX64:
-		return "latest-mac.yml"
-	case apmodel.ClientPackagePlatformMacArm64:
-		return "latest-arm64-mac.yml"
+func validUpdateMetadataFileName(fileName string) bool {
+	switch strings.ToLower(filepath.Ext(filepath.Base(strings.TrimSpace(fileName)))) {
+	case ".yml", ".yaml":
+		return true
 	default:
-		return "latest*.yml"
+		return false
 	}
 }
 

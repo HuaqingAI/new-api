@@ -318,6 +318,48 @@ releaseDate: '2026-08-05T10:00:00.000Z'
 	require.Equal(t, metadataSha256, item.UpdateMetadataSha256)
 }
 
+func TestClientPackageDirectUploadAcceptsMacArm64MetadataWithNonCanonicalName(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&apmodel.ClientPackage{}))
+	store := newFakeClientPackageStore()
+	restore := apservice.SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
+
+	service := NewClientPackageService(db)
+	result, err := service.CreateDirectUpload(ClientPackageDirectUploadInitInput{
+		Platform: apmodel.ClientPackagePlatformMacArm64,
+		Version:  "1.0.0",
+		Files: []ClientPackageDirectArtifactInput{
+			{
+				Kind:     "download",
+				FileName: "HQBuddy-1.0.0-mac-arm64.dmg",
+				Sha256:   testClientPackageSha256("installer"),
+				Sha512:   testClientPackageSha512("installer"),
+				Size:     int64(len("installer")),
+			},
+			{
+				Kind:     "update",
+				FileName: "HQBuddy-1.0.0-mac-arm64.zip",
+				Sha256:   testClientPackageSha256("update"),
+				Sha512:   testClientPackageSha512("update"),
+				Size:     int64(len("update")),
+			},
+			{
+				Kind:     "metadata",
+				FileName: "latest-mac.yml",
+				Sha256:   testClientPackageSha256("metadata"),
+				Sha512:   testClientPackageSha512("metadata"),
+				Size:     int64(len("metadata")),
+			},
+		},
+		ActorUserId: 7,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Files, 3)
+}
+
 func testClientPackageSha256(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])

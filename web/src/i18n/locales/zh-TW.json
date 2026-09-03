@@ -2608,6 +2608,8 @@
     "How to select keys: random or sequential polling": "金鑰選擇方式：隨機或順序輪詢",
     "How will you use the platform?": "您將如何使用本平台？",
     "HR Assistant": "人事助手",
+    "HTH · Powered by NewAPI": "HTH · 由 NewAPI 提供支援",
+    "HTH builds on NewAPI to provide stable multi-model access and usage management. Huaqing AI Assistant brings these capabilities to the desktop, using local files, workplace connectors, and automation tools to move from understanding requests to delivering results.": "HTH 基於 NewAPI 提供穩定的多模型接入與用量管理；華青智能助手將這些能力帶到桌面，呼叫本機檔案、辦公連接器與自動化工具，從理解要求到交付成果一步完成。",
     "HTTP Protocol": "HTTP 協定",
     "HTTP protocol must be Auto or HTTP/1.1": "HTTP 協定必須是自動或 HTTP/1.1",
     "http_retrieval": "http_retrieval",

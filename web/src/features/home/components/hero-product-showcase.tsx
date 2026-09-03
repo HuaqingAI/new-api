@@ -81,7 +81,7 @@ export function HeroProductShowcase(props: HeroProductShowcaseProps) {
           </div>
 
           <span className='text-muted-foreground/55 ml-auto hidden text-[9px] font-semibold tracking-[0.08em] sm:block'>
-            {t('Unified model capabilities powered by NewAPI')}
+            {t('HTH · Powered by NewAPI')}
           </span>
         </div>
 

@@ -1,4 +1,6 @@
 {
+  "Agent 分类": "Agent Category",
+  "Agent CLI 类型": "Agent CLI Type",
   "Alert delivery resent": "Alert delivery resent",
   "All subscriptions": "All subscriptions",
   "Available subscriptions": "Available subscriptions",
@@ -14,16 +16,12 @@
   "DingTalk connectivity tested": "DingTalk connectivity tested",
   "DingTalk owner sync updated": "DingTalk owner sync updated",
   "DingTalk sync conflict candidate bound": "DingTalk sync conflict candidate bound",
+  "Enter one suggested question per line.": "Enter one suggested question per line.",
   "footer.columns.related.links.midjourney": "Midjourney-Proxy",
   "Grant this published version to users and departments.": "Grant this published version to users and departments.",
+  "Huaqing AI Assistant": "Huaqing AI Assistant",
   "macOS Apple Silicon": "macOS Apple Silicon",
   "macOS Intel": "macOS Intel",
-  "Recommended prompts": "Recommended prompts",
-  "Enter one suggested question per line.": "Enter one suggested question per line.",
-  "Select at least one category": "Select at least one category",
-  "Select at least one category for this agent.": "Select at least one category for this agent.",
-  "Agent CLI 类型": "Agent CLI Type",
-  "Agent 分类": "Agent Category",
   "Membership added": "Membership added",
   "Membership disabled": "Membership disabled",
   "Membership renamed": "Membership renamed",
@@ -34,6 +32,9 @@
   "No grants configured": "No grants configured",
   "No published versions": "No published versions",
   "Published versions": "Published versions",
+  "Recommended prompts": "Recommended prompts",
+  "Select at least one category": "Select at least one category",
+  "Select at least one category for this agent.": "Select at least one category for this agent.",
   "Selected MCP definitions will be written into project opencode.jsonc.": "Selected MCP definitions will be written into project opencode.jsonc.",
   "Selected Skill packages will be copied into project .opencode/skills.": "Selected Skill packages will be copied into project .opencode/skills.",
   "Upload image": "Upload image",
@@ -42,5 +43,6 @@
   "Version grants": "Version grants",
   "View release records and active grants.": "View release records and active grants.",
   "Webhook": "Webhook",
-  "Windows": "Windows"
+  "Windows": "Windows",
+  "Windows 10 / 11": "Windows 10 / 11"
 }

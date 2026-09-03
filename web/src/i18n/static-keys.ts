@@ -143,6 +143,14 @@ export const STATIC_I18N_KEYS = [
   'Successfully created {{count}} redemption codes',
 
   // Home page (constants-driven labels)
+  'Switch between multiple models',
+  'Unified access and management through NewAPI',
+  'Workplace connectors',
+  'Calendars, tasks, approvals, and knowledge bases',
+  'Scheduled automation',
+  'Let agents keep recurring work moving',
+  'Local files and projects',
+  'Create deliverables within authorized folders',
   'Cost Tracking',
   'Model Access',
   'Guardrails',

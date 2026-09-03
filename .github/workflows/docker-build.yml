@@ -10,6 +10,10 @@ on:
         description: 'Tag name to build (e.g., v0.10.8-alpha.3)'
         required: true
         type: string
+      helm_rollback_revision:
+        description: 'Optional Helm revision to roll back to before deployment'
+        required: false
+        type: string
 
 jobs:
   resolve_version:
@@ -339,6 +343,7 @@ jobs:
       HELM_EXTRA_SET: ${{ vars.HELM_EXTRA_SET || secrets.HELM_EXTRA_SET }}
       HELM_EXTRA_SET_TYPED: ${{ vars.HELM_EXTRA_SET_TYPED || secrets.HELM_EXTRA_SET_TYPED }}
       HELM_RWO_ROLLOUT_MODE: ${{ vars.HELM_RWO_ROLLOUT_MODE || secrets.HELM_RWO_ROLLOUT_MODE || 'recreate' }}
+      HELM_ROLLBACK_REVISION: ${{ github.event.inputs.helm_rollback_revision }}
       HELM_VALUES: ${{ secrets.HELM_VALUES }}
       HELM_REPO_NAME: ${{ vars.HELM_REPO_NAME || secrets.HELM_REPO_NAME }}
       HELM_REPO_URL: ${{ vars.HELM_REPO_URL || secrets.HELM_REPO_URL }}
@@ -461,6 +466,25 @@ jobs:
           echo "HELM_NAMESPACE=${kube_namespace}" >> "$GITHUB_ENV"
           echo "IMAGE=${image}" >> "$GITHUB_ENV"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      - name: Recover pending Helm release
+        if: env.DEPLOY_STRATEGY == 'helm' && env.HELM_ROLLBACK_REVISION != ''
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$HELM_ROLLBACK_REVISION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::helm_rollback_revision must be a positive integer"
+            exit 1
+          fi
+
+          echo "Rolling back Helm release '${HELM_RELEASE}' in namespace '${HELM_NAMESPACE}' to revision ${HELM_ROLLBACK_REVISION}."
+          helm --namespace "$HELM_NAMESPACE" rollback \
+            "$HELM_RELEASE" \
+            "$HELM_ROLLBACK_REVISION" \
+            --cleanup-on-fail \
+            --wait \
+            --timeout "$KUBE_ROLLOUT_TIMEOUT"
+          helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE"
 
       - name: Update Helm release image
         if: env.DEPLOY_STRATEGY == 'helm'
@@ -748,6 +772,7 @@ jobs:
             echo "- Helm namespace: ${HELM_NAMESPACE:-unset}"
             echo "- Helm create namespace: ${HELM_CREATE_NAMESPACE:-false}"
             echo "- Helm RWO rollout mode: ${HELM_RWO_ROLLOUT_MODE:-unset}"
+            echo "- Helm rollback revision: ${HELM_ROLLBACK_REVISION:-unset}"
             echo "- Helm release: ${HELM_RELEASE:-unset}"
             echo "- Helm chart: ${HELM_CHART:-unset}"
             echo "- Deployments: ${KUBE_DEPLOYMENTS:-unset}"

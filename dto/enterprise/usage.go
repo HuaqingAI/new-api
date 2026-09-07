@@ -21,10 +21,29 @@ type DepartmentUsageExportQuery struct {
 }
 
 type DepartmentUsageDetailQuery struct {
-	TenantId *int  `form:"tenant_id"`
-	DeptId   *int  `form:"dept_id"`
-	From     int64 `form:"from"`
-	To       int64 `form:"to"`
+	TenantId           *int  `form:"tenant_id"`
+	DeptId             *int  `form:"dept_id"`
+	From               int64 `form:"from"`
+	To                 int64 `form:"to"`
+	IncludeDescendants *bool `form:"include_descendants,omitempty"`
+}
+
+type DepartmentUsageOverviewQuery struct {
+	TenantId     *int    `form:"tenant_id"`
+	From         int64   `form:"from"`
+	To           int64   `form:"to"`
+	SummarySort  *string `form:"summary_sort,omitempty"`
+	SummaryOrder *string `form:"summary_order,omitempty"`
+}
+
+type DepartmentUsagePeersQuery struct {
+	TenantId           *int    `form:"tenant_id"`
+	DepartmentId       *int    `form:"department_id"`
+	From               int64   `form:"from"`
+	To                 int64   `form:"to"`
+	IncludeDescendants *bool   `form:"include_descendants,omitempty"`
+	SummarySort        *string `form:"summary_sort,omitempty"`
+	SummaryOrder       *string `form:"summary_order,omitempty"`
 }
 
 type DepartmentUsageReportConfigRequest struct {
@@ -139,8 +158,37 @@ type DepartmentUsageSummaryScope struct {
 }
 
 type DepartmentUsageSummaryResponse struct {
-	Items []DepartmentUsageSummaryItem  `json:"items"`
-	Scope DepartmentUsageSummaryScope   `json:"scope"`
+	Items []DepartmentUsageSummaryItem `json:"items"`
+	Scope DepartmentUsageSummaryScope  `json:"scope"`
+}
+
+type DepartmentUsageOverviewMetrics struct {
+	RequestCount             int64 `json:"request_count"`
+	PromptTokens             int64 `json:"prompt_tokens"`
+	CompletionTokens         int64 `json:"completion_tokens"`
+	Quota                    int64 `json:"quota"`
+	UserCount                int64 `json:"user_count"`
+	DepartmentCount          int64 `json:"department_count"`
+	ConsumingDepartmentCount int64 `json:"consuming_department_count"`
+	UnassignedRequestCount   int64 `json:"unassigned_request_count"`
+	UnassignedQuota          int64 `json:"unassigned_quota"`
+	DataThrough              int64 `json:"data_through"`
+}
+
+type DepartmentUsageOverviewResponse struct {
+	Metrics          DepartmentUsageOverviewMetrics `json:"metrics"`
+	Items            []DepartmentUsageSummaryItem   `json:"items"`
+	SecondLevelItems []DepartmentUsageSummaryItem   `json:"second_level_items"`
+	Trend            []DepartmentUsageTrendPoint    `json:"trend"`
+	IsPartial        bool                           `json:"is_partial"`
+}
+
+type DepartmentUsagePeersResponse struct {
+	ParentDepartmentId   *int                         `json:"parent_department_id"`
+	ParentDepartmentName string                       `json:"parent_department_name"`
+	Items                []DepartmentUsageSummaryItem `json:"items"`
+	DataThrough          int64                        `json:"data_through"`
+	IsPartial            bool                         `json:"is_partial"`
 }
 
 type DepartmentUsageUserRankItem struct {
@@ -201,5 +249,17 @@ type DepartmentUsageDetailResponse struct {
 	UserRanking       []DepartmentUsageUserRankItem `json:"user_ranking"`
 	ModelDistribution []UsageModelDistributionItem  `json:"model_distribution"`
 	Trend             []DepartmentUsageTrendPoint   `json:"trend"`
+	ChildDepartments  []DepartmentUsageSummaryItem  `json:"child_departments"`
 	RecentLogsEntry   DepartmentUsageLogEntryLink   `json:"recent_logs_entry"`
+	Scope             DepartmentUsageDetailScope    `json:"scope"`
+}
+
+type DepartmentUsageDetailScope struct {
+	DepartmentIds            []int  `json:"department_ids"`
+	IncludeDescendants       bool   `json:"include_descendants"`
+	MetricBasis              string `json:"metric_basis"`
+	DepartmentCount          int64  `json:"department_count"`
+	ConsumingDepartmentCount int64  `json:"consuming_department_count"`
+	DataThrough              int64  `json:"data_through"`
+	IsPartial                bool   `json:"is_partial"`
 }

@@ -43,9 +43,33 @@ func TestUsageSnapshotModelDistributionNormalizesEmptyValues(t *testing.T) {
 	require.JSONEq(t, `[]`, snapshot.ModelDistribution)
 }
 
+func TestUsageScopeSnapshotPreservesScopeKeyAndDeduplicatedUserIDs(t *testing.T) {
+	departmentID := 12
+	snapshot := UsageScopeSnapshot{
+		TenantId:     3,
+		ScopeType:    UsageScopeTypeDepartment,
+		DepartmentId: &departmentID,
+	}
+
+	require.NoError(t, snapshot.SetModelDistribution([]UsageSnapshotModelStat{{
+		ModelName:    "gpt-4o",
+		RequestCount: 2,
+	}}))
+	require.NoError(t, snapshot.SetUserIds([]int{3, 8}))
+	require.NoError(t, snapshot.normalize())
+	require.Equal(t, "department:12", snapshot.ScopeKey)
+	require.Equal(t, int64(2), snapshot.UserCount)
+	require.JSONEq(t, `[3,8]`, snapshot.UserIds)
+
+	users, err := snapshot.ParsedUserIds()
+	require.NoError(t, err)
+	require.Equal(t, []int{3, 8}, users)
+}
+
 func TestEnterpriseTextFieldsIncludeUsageSnapshotWithoutDatabaseDefaults(t *testing.T) {
 	models := []any{
 		UsageSnapshot{},
+		UsageScopeSnapshot{},
 	}
 
 	for _, model := range models {
@@ -90,5 +114,12 @@ func TestMigrateCreatesUsageSnapshotTableAndIndexes(t *testing.T) {
 	} {
 		require.True(t, db.Migrator().HasIndex(&UsageSnapshot{}, index), index)
 	}
+	require.True(t, db.Migrator().HasTable(&UsageScopeSnapshot{}))
+	for _, index := range []string{
+		"idx_usage_scope_snapshots_tenant_window",
+		"idx_usage_scope_snapshots_tenant_dept_window",
+		"uq_usage_scope_snapshots_bucket",
+	} {
+		require.True(t, db.Migrator().HasIndex(&UsageScopeSnapshot{}, index), index)
+	}
 }
-

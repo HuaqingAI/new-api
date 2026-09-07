@@ -18,54 +18,44 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 
-import { departmentSummaryQueryKey, getDepartmentUsageSummary } from '../api'
+import { departmentOverviewQueryKey, getDepartmentUsageOverview } from '../api'
 import { normalizeDepartmentUsageItems } from '../lib/usage-normalizers'
+import type { DepartmentUsageSummarySort, UsageSortOrder } from '../types'
 
-export function useDepartmentUsageSummary(params: {
+export function useDepartmentUsageOverview(params: {
   from: number
   to: number
   tenantId?: number
-  departmentId?: number
-  includeDescendants?: boolean
-  summarySort?: 'requests' | 'quota' | 'users' | 'dept_name'
-  summaryOrder?: 'asc' | 'desc'
-  enabled?: boolean
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
 }) {
   return useQuery({
-    enabled: params.enabled ?? true,
-    queryKey: departmentSummaryQueryKey(
+    queryKey: departmentOverviewQueryKey(
       params.from,
       params.to,
       params.tenantId,
-      params.departmentId,
-      params.includeDescendants,
       params.summarySort,
       params.summaryOrder
     ),
     queryFn: async () => {
-      const response = await getDepartmentUsageSummary(params)
+      const response = await getDepartmentUsageOverview(params)
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
       }
       return {
-        ...(response.data ?? {
-          items: [],
-          scope: {
-            department_name: '',
-            include_descendants: false,
-            department_ids: [],
-            request_count: 0,
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            quota: 0,
-            user_count: 0,
-          },
-        }),
+        metrics: response.data?.metrics,
         items: normalizeDepartmentUsageItems(
           response.data?.items ?? [],
           params.summarySort,
           params.summaryOrder
         ),
+        secondLevelItems: normalizeDepartmentUsageItems(
+          response.data?.second_level_items ?? [],
+          params.summarySort,
+          params.summaryOrder
+        ),
+        trend: response.data?.trend ?? [],
+        isPartial: response.data?.is_partial ?? false,
       }
     },
   })

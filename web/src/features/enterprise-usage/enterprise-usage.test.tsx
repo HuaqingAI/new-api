@@ -37,6 +37,8 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   departmentDetailQueryKey,
+  departmentOverviewQueryKey,
+  departmentPeersQueryKey,
   departmentUsageReportQueryKey,
   departmentSummaryQueryKey,
   exportDepartmentUsageCSV,
@@ -45,13 +47,10 @@ import {
 } from './api'
 import {
   EnterpriseUsageContent,
-  compareDepartmentUsageItems,
   enterpriseUsageSearchSchema,
   formatModelDistributionSummary,
   mergeEnterpriseUsageSearch,
   normalizeEnterpriseUsageSearch,
-  normalizeDepartmentUsageDetail,
-  normalizeDepartmentUsageItems,
   resolveEnterpriseUsageSyncedSearch,
   resolveDepartmentUsageExportParams,
   resolveEnterpriseUsageRange,
@@ -61,6 +60,12 @@ import {
   shouldResetReportForm,
   sortDepartmentUserRanking,
 } from './index'
+import { shouldRefreshSelectedDepartmentUsage } from './lib/department-usage-refresh'
+import {
+  compareDepartmentUsageItems,
+  normalizeDepartmentUsageDetail,
+  normalizeDepartmentUsageItems,
+} from './lib/usage-normalizers'
 import type {
   DepartmentUsageDetailResponse,
   DepartmentUsageLogUserOption,
@@ -168,7 +173,7 @@ describe('Enterprise usage overview dashboard', () => {
     )
   })
 
-  test('normalizes usage search around the current department tree and clears stale child state', () => {
+  test('keeps an absent department selection in enterprise overview mode and clears stale child state', () => {
     const departments = [
       departmentTreeNode({
         id: 1,
@@ -199,7 +204,7 @@ describe('Enterprise usage overview dashboard', () => {
         },
       }),
       {
-        dept_id: 1,
+        dept_id: undefined,
         include_descendants: false,
         log_user: undefined,
         sort: 'tokens',
@@ -218,7 +223,7 @@ describe('Enterprise usage overview dashboard', () => {
         },
       }),
       {
-        dept_id: 1,
+        dept_id: undefined,
         include_descendants: false,
         log_user: undefined,
         sort: 'quota',
@@ -292,7 +297,7 @@ describe('Enterprise usage overview dashboard', () => {
       ),
       {
         dept_id: undefined,
-        include_descendants: false,
+        include_descendants: undefined,
         log_user: undefined,
         sort: 'requests',
       }
@@ -316,6 +321,11 @@ describe('Enterprise usage overview dashboard', () => {
         sort: 'requests',
       }
     )
+  })
+
+  test('refreshes department-scoped data only after a department is selected', () => {
+    assert.equal(shouldRefreshSelectedDepartmentUsage(undefined), false)
+    assert.equal(shouldRefreshSelectedDepartmentUsage(12), true)
   })
 
   test('builds a serializable feature-scoped query key for department summary requests', () => {
@@ -364,8 +374,48 @@ describe('Enterprise usage overview dashboard', () => {
       'enterprise',
       'usage',
       'department-detail',
-      { deptId: 5, from: 1748390400, to: 1748476800, tenantId: 2 },
+      {
+        deptId: 5,
+        from: 1748390400,
+        to: 1748476800,
+        tenantId: 2,
+        includeDescendants: undefined,
+      },
     ])
+
+    assert.deepEqual(
+      departmentOverviewQueryKey(1748390400, 1748476800, 2, 'quota', 'asc'),
+      [
+        'enterprise',
+        'usage',
+        'department-overview',
+        {
+          from: 1748390400,
+          to: 1748476800,
+          tenantId: 2,
+          summarySort: 'quota',
+          summaryOrder: 'asc',
+        },
+      ]
+    )
+
+    assert.deepEqual(
+      departmentPeersQueryKey(5, 1748390400, 1748476800, 2, true),
+      [
+        'enterprise',
+        'usage',
+        'department-peers',
+        {
+          departmentId: 5,
+          from: 1748390400,
+          to: 1748476800,
+          tenantId: 2,
+          includeDescendants: true,
+          summarySort: undefined,
+          summaryOrder: undefined,
+        },
+      ]
+    )
 
     assert.deepEqual(departmentUsageReportQueryKey, [
       'enterprise',
@@ -411,14 +461,51 @@ describe('Enterprise usage overview dashboard', () => {
     }
   })
 
-  test('renders disclaimer, unassigned row, and compact model distribution summary', () => {
+  test('renders enterprise overview metrics and root department ranking without selecting a department', () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
         <EnterpriseUsageContent
-          items={[
+          departments={[
+            departmentTreeNode({
+              id: 1,
+              name: 'Engineering',
+              children: [
+                departmentTreeNode({
+                  id: 2,
+                  parent_id: 1,
+                  name: 'Platform',
+                }),
+              ],
+            }),
+            departmentTreeNode({
+              id: 3,
+              name: 'Operations',
+              children: [
+                departmentTreeNode({
+                  id: 4,
+                  parent_id: 3,
+                  name: 'Platform',
+                }),
+              ],
+            }),
+          ]}
+          items={[]}
+          overviewMetrics={{
+            request_count: 12,
+            prompt_tokens: 1200,
+            completion_tokens: 600,
+            quota: 320000,
+            user_count: 3,
+            department_count: 2,
+            consuming_department_count: 1,
+            unassigned_request_count: 2,
+            unassigned_quota: 40000,
+            data_through: 1748563200,
+          }}
+          overviewItems={[
             departmentUsageItem({
-              dept_id: null,
-              dept_name: '',
+              dept_id: 1,
+              dept_name: 'Engineering',
               request_count: 12,
               prompt_tokens: 1200,
               completion_tokens: 600,
@@ -456,6 +543,22 @@ describe('Enterprise usage overview dashboard', () => {
               ],
             }),
           ]}
+          overviewSecondLevelItems={[
+            departmentUsageItem({
+              dept_id: 2,
+              dept_name: 'Platform',
+              request_count: 8,
+              quota: 240000,
+              user_count: 2,
+            }),
+            departmentUsageItem({
+              dept_id: 4,
+              dept_name: 'Platform',
+              request_count: 4,
+              quota: 120000,
+              user_count: 1,
+            }),
+          ]}
           selectedDepartmentId={undefined}
           detail={null}
           detailLoading={false}
@@ -491,15 +594,17 @@ describe('Enterprise usage overview dashboard', () => {
 
     for (const expected of [
       'Department totals cannot be added together across departments.',
-      'Unassigned',
-      'gpt-4o',
-      'claude-sonnet-4',
-      '+1 more models',
-      'Current Department Analysis',
+      'Department Usage Overview',
+      'Enterprise Requests',
+      'Enterprise Quota',
+      'Active Usage Users',
+      'Organization Departments',
+      'Unassigned Requests',
+      'Root Department Ranking',
+      'Second-Level Department Ranking',
+      'Enterprise Usage Trend',
       'Department Tree',
       'Select a department from the tree to drive the analysis workspace on the right.',
-      'Top Model',
-      'Models',
       'Department totals are non-additive',
       '2026-05-28 ~ 2026-05-28',
       'Today',
@@ -508,11 +613,74 @@ describe('Enterprise usage overview dashboard', () => {
       'Last 30 Days',
       'Custom',
       'Apply',
-      'Current department context',
-      'Analysis Notes',
+      'Engineering',
+      'Engineering / Platform',
+      'Operations / Platform',
+      'Expand All',
+      'Collapse All',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
+  })
+
+  test('keeps the department tree unselected while enterprise overview data is visible', () => {
+    const html = renderEnterpriseUsageContent({
+      departments: [
+        departmentTreeNode({
+          id: 10,
+          name: 'Headquarters',
+        }),
+      ],
+      items: [],
+      selectedDepartmentId: undefined,
+      overviewMetrics: {
+        request_count: 8,
+        prompt_tokens: 400,
+        completion_tokens: 160,
+        quota: 80000,
+        user_count: 2,
+        department_count: 1,
+        consuming_department_count: 1,
+        unassigned_request_count: 0,
+        unassigned_quota: 0,
+        data_through: 1748563200,
+      },
+      overviewItems: [
+        departmentUsageItem({
+          dept_id: 10,
+          dept_name: 'Headquarters',
+          request_count: 8,
+        }),
+      ],
+    })
+
+    assert.match(html, /Department Usage Overview/)
+    assert.match(html, /Headquarters/)
+    assert.doesNotMatch(html, /aria-selected="true"/)
+  })
+
+  test('renders only the supplied true peer departments for a selected department', () => {
+    const html = renderEnterpriseUsageContent({
+      selectedDepartmentId: 12,
+      currentDepartmentName: 'Platform',
+      departments: [departmentTreeNode({ id: 12, name: 'Platform' })],
+      items: [departmentUsageItem({ dept_id: 12, dept_name: 'Platform' })],
+      detail: detailUsageItem({ dept_id: 12, dept_name: 'Platform' }),
+      peerItems: [
+        departmentUsageItem({ dept_id: 12, dept_name: 'Platform' }),
+        departmentUsageItem({ dept_id: 13, dept_name: 'Reliability' }),
+      ],
+      peers: {
+        parent_department_id: 10,
+        parent_department_name: 'Engineering',
+        data_through: 1748563200,
+        is_partial: false,
+        items: [],
+      },
+    })
+
+    assert.match(html, /Peers under Engineering/)
+    assert.match(html, /Reliability/)
   })
 
   test('renders empty and error states with retry affordance', () => {
@@ -553,7 +721,7 @@ describe('Enterprise usage overview dashboard', () => {
       </I18nextProvider>
     )
     assert.match(emptyHtml, /No department usage data for this time range/)
-    assert.match(emptyHtml, /Current Department Analysis/)
+    assert.match(emptyHtml, /Department Usage Overview/)
 
     const errorHtml = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -564,7 +732,8 @@ describe('Enterprise usage overview dashboard', () => {
           detailLoading={false}
           detailErrorMessage={null}
           isLoading={false}
-          errorMessage='common.invalid_params'
+          errorMessage={null}
+          overviewErrorMessage='common.invalid_params'
           rangeLabel='2026-05-29 ~ 2026-05-29'
           customRange={{
             from: '2026-05-29',
@@ -608,7 +777,8 @@ describe('Enterprise usage overview dashboard', () => {
           detail={null}
           detailLoading={false}
           detailErrorMessage={null}
-          isLoading
+          isLoading={false}
+          overviewLoading
           errorMessage={null}
           rangeLabel='2026-05-29 ~ 2026-05-29'
           customRange={{
@@ -1638,6 +1808,7 @@ function detailUsageItem(
         user_count: 1,
       },
     ],
+    child_departments: [],
     recent_logs_entry: {
       path: '/usage-logs/common',
       section: 'common',
@@ -1661,6 +1832,15 @@ function detailUsageItem(
           },
         ] satisfies DepartmentUsageLogUserOption[],
       },
+    },
+    scope: {
+      department_ids: [1],
+      include_descendants: false,
+      metric_basis: 'direct',
+      department_count: 1,
+      consuming_department_count: 1,
+      data_through: 1748563200,
+      is_partial: false,
     },
     ...overrides,
   }
@@ -1693,7 +1873,7 @@ function reportUsageItem(
 }
 
 function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function departmentTreeNode(

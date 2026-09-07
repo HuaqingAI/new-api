@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import type {
   ApiResponse,
   DepartmentUsageDetailResponse,
+  DepartmentUsageOverviewResponse,
+  DepartmentUsagePeersResponse,
   DepartmentUsageReportConfigResponse,
   DepartmentUsageSummaryResponse,
   DepartmentUsageSummarySort,
@@ -57,14 +59,53 @@ export function departmentDetailQueryKey(
   deptId: number,
   from: number,
   to: number,
-  tenantId?: number
+  tenantId?: number,
+  includeDescendants?: boolean
 ) {
   return [
     ...enterpriseUsageQueryKey,
     'department-detail',
     tenantId === undefined
-      ? { deptId, from, to }
-      : { deptId, from, to, tenantId },
+      ? { deptId, from, to, includeDescendants }
+      : { deptId, from, to, tenantId, includeDescendants },
+  ] as const
+}
+
+export function departmentOverviewQueryKey(
+  from: number,
+  to: number,
+  tenantId?: number,
+  summarySort?: DepartmentUsageSummarySort,
+  summaryOrder?: UsageSortOrder
+) {
+  return [
+    ...enterpriseUsageQueryKey,
+    'department-overview',
+    { from, to, tenantId, summarySort, summaryOrder },
+  ] as const
+}
+
+export function departmentPeersQueryKey(
+  departmentId: number,
+  from: number,
+  to: number,
+  tenantId?: number,
+  includeDescendants?: boolean,
+  summarySort?: DepartmentUsageSummarySort,
+  summaryOrder?: UsageSortOrder
+) {
+  return [
+    ...enterpriseUsageQueryKey,
+    'department-peers',
+    {
+      departmentId,
+      from,
+      to,
+      tenantId,
+      includeDescendants,
+      summarySort,
+      summaryOrder,
+    },
   ] as const
 }
 
@@ -85,6 +126,58 @@ export async function getDepartmentUsageSummary(params: {
       ...(params.departmentId === undefined
         ? {}
         : { department_id: params.departmentId }),
+      ...(params.includeDescendants === undefined
+        ? {}
+        : { include_descendants: params.includeDescendants }),
+      ...(params.summarySort === undefined
+        ? {}
+        : { summary_sort: params.summarySort }),
+      ...(params.summaryOrder === undefined
+        ? {}
+        : { summary_order: params.summaryOrder }),
+    },
+  })
+  return res.data
+}
+
+export async function getDepartmentUsageOverview(params: {
+  from: number
+  to: number
+  tenantId?: number
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
+}): Promise<ApiResponse<DepartmentUsageOverviewResponse>> {
+  const res = await api.get('/api/enterprise/usage/department-overview', {
+    params: {
+      from: params.from,
+      to: params.to,
+      ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.summarySort === undefined
+        ? {}
+        : { summary_sort: params.summarySort }),
+      ...(params.summaryOrder === undefined
+        ? {}
+        : { summary_order: params.summaryOrder }),
+    },
+  })
+  return res.data
+}
+
+export async function getDepartmentUsagePeers(params: {
+  departmentId: number
+  from: number
+  to: number
+  tenantId?: number
+  includeDescendants?: boolean
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
+}): Promise<ApiResponse<DepartmentUsagePeersResponse>> {
+  const res = await api.get('/api/enterprise/usage/department-peers', {
+    params: {
+      department_id: params.departmentId,
+      from: params.from,
+      to: params.to,
+      ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
       ...(params.includeDescendants === undefined
         ? {}
         : { include_descendants: params.includeDescendants }),
@@ -163,6 +256,7 @@ export async function getDepartmentUsageDetail(params: {
   from: number
   to: number
   tenantId?: number
+  includeDescendants?: boolean
 }): Promise<ApiResponse<DepartmentUsageDetailResponse>> {
   const res = await api.get('/api/enterprise/usage/department-detail', {
     params: {
@@ -170,6 +264,9 @@ export async function getDepartmentUsageDetail(params: {
       from: params.from,
       to: params.to,
       ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params.includeDescendants === undefined
+        ? {}
+        : { include_descendants: params.includeDescendants }),
     },
   })
   return res.data

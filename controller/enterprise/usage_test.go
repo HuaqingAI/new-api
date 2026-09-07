@@ -2,6 +2,7 @@ package enterprise
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,6 +110,119 @@ func TestUsageSummaryAPIAppliesRequestedSummarySort(t *testing.T) {
 	require.Equal(t, "Engineering", payload.Items[1].DeptName)
 }
 
+func TestUsageDashboardAndPeersAPIReadScopeSnapshots(t *testing.T) {
+	router, db := setupEnterpriseControllerTest(t)
+	parentID := 1
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("id = ?", 2).Update("parent_id", parentID).Error)
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       3,
+		TenantId: 0,
+		Name:     "Reliability",
+		ParentId: &parentID,
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+	securityID := 2
+	require.NoError(t, db.Create(&entmodel.Department{
+		Id:       4,
+		TenantId: 0,
+		Name:     "Authentication",
+		ParentId: &securityID,
+		Status:   constant.EnterpriseDepartmentStatusActive,
+	}).Error)
+
+	departmentID := 1
+	tenantSnapshot := entmodel.UsageScopeSnapshot{
+		TenantId:         0,
+		ScopeType:        entmodel.UsageScopeTypeTenant,
+		ScopeKey:         entmodel.UsageScopeTypeTenant,
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     2,
+		PromptTokens:     20,
+		CompletionTokens: 10,
+		Quota:            60,
+	}
+	require.NoError(t, tenantSnapshot.SetModelDistribution(nil))
+	require.NoError(t, tenantSnapshot.SetUserIds([]int{100, 101}))
+	departmentSnapshot := entmodel.UsageScopeSnapshot{
+		TenantId:         0,
+		ScopeType:        entmodel.UsageScopeTypeDepartment,
+		ScopeKey:         "department:1",
+		DepartmentId:     &departmentID,
+		DepartmentName:   "Engineering",
+		WindowStart:      1700000000,
+		WindowEnd:        1700003600,
+		RequestCount:     2,
+		PromptTokens:     20,
+		CompletionTokens: 10,
+		Quota:            60,
+	}
+	require.NoError(t, departmentSnapshot.SetModelDistribution(nil))
+	require.NoError(t, departmentSnapshot.SetUserIds([]int{100, 101}))
+	require.NoError(t, db.Create(&tenantSnapshot).Error)
+	require.NoError(t, db.Create(&departmentSnapshot).Error)
+
+	for _, child := range []struct {
+		id           int
+		name         string
+		requestCount int64
+	}{
+		{id: 2, name: "Security", requestCount: 2},
+		{id: 3, name: "Reliability", requestCount: 1},
+	} {
+		childID := child.id
+		snapshot := entmodel.UsageScopeSnapshot{
+			TenantId:       0,
+			ScopeType:      entmodel.UsageScopeTypeDepartment,
+			ScopeKey:       "department:" + strconv.Itoa(child.id),
+			DepartmentId:   &childID,
+			DepartmentName: child.name,
+			WindowStart:    1700000000,
+			WindowEnd:      1700003600,
+			RequestCount:   child.requestCount,
+		}
+		require.NoError(t, snapshot.SetModelDistribution(nil))
+		require.NoError(t, snapshot.SetUserIds([]int{child.id + 98}))
+		require.NoError(t, db.Create(&snapshot).Error)
+	}
+	grandchildID := 4
+	grandchildSnapshot := entmodel.UsageScopeSnapshot{
+		TenantId:       0,
+		ScopeType:      entmodel.UsageScopeTypeDepartment,
+		ScopeKey:       "department:4",
+		DepartmentId:   &grandchildID,
+		DepartmentName: "Authentication",
+		WindowStart:    1700000000,
+		WindowEnd:      1700003600,
+		RequestCount:   1,
+	}
+	require.NoError(t, grandchildSnapshot.SetModelDistribution(nil))
+	require.NoError(t, grandchildSnapshot.SetUserIds([]int{100}))
+	require.NoError(t, db.Create(&grandchildSnapshot).Error)
+
+	overviewRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/department-overview?from=1700000000&to=1700003600", nil)
+	overviewResponse := decodeEnterpriseAPIResponse(t, overviewRecorder)
+	require.True(t, overviewResponse.Success, overviewResponse.Message)
+	var overview dtoenterprise.DepartmentUsageOverviewResponse
+	require.NoError(t, common.Unmarshal(overviewResponse.Data, &overview))
+	assert.Equal(t, int64(2), overview.Metrics.RequestCount)
+	require.Len(t, overview.Items, 1)
+	assert.Equal(t, "Engineering", overview.Items[0].DeptName)
+	require.Len(t, overview.SecondLevelItems, 2)
+	assert.Equal(t, []string{"Security", "Reliability"}, []string{overview.SecondLevelItems[0].DeptName, overview.SecondLevelItems[1].DeptName})
+	assert.Equal(t, []int64{2, 1}, []int64{overview.SecondLevelItems[0].RequestCount, overview.SecondLevelItems[1].RequestCount})
+	require.Len(t, overview.Trend, 1)
+
+	peersRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/department-peers?department_id=2&from=1700000000&to=1700003600&include_descendants=true", nil)
+	peersResponse := decodeEnterpriseAPIResponse(t, peersRecorder)
+	require.True(t, peersResponse.Success, peersResponse.Message)
+	var peers dtoenterprise.DepartmentUsagePeersResponse
+	require.NoError(t, common.Unmarshal(peersResponse.Data, &peers))
+	assert.Equal(t, "Engineering", peers.ParentDepartmentName)
+	require.Len(t, peers.Items, 2)
+	assert.Equal(t, []string{"Security", "Reliability"}, []string{peers.Items[0].DeptName, peers.Items[1].DeptName})
+}
+
 func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
 
@@ -152,6 +267,22 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	require.NoError(t, snapshotB.SetUserIds([]int{999}))
 	require.NoError(t, db.Create(&snapshotA).Error)
 	require.NoError(t, db.Create(&snapshotB).Error)
+	rootScope := entmodel.UsageScopeSnapshot{
+		TenantId:         0,
+		ScopeKey:         "department:9",
+		ScopeType:        entmodel.UsageScopeTypeDepartment,
+		DepartmentId:     &parentID,
+		DepartmentName:   "Platform",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     5,
+		PromptTokens:     50,
+		CompletionTokens: 10,
+		Quota:            120,
+	}
+	require.NoError(t, rootScope.SetModelDistribution(nil))
+	require.NoError(t, rootScope.SetUserIds([]int{100, 101}))
+	require.NoError(t, db.Create(&rootScope).Error)
 
 	recorder := performEnterpriseRequest(
 		t,
@@ -165,15 +296,14 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, recorder.Header().Get("Content-Disposition"))
 
 	body := recorder.Body.String()
-	require.Contains(t, body, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
-	require.Contains(t, body, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
-	require.Contains(t, body, "1,Engineering,Platform,1714521600,1714608000,5,50,10,120,2")
-	require.Contains(t, body, ",未归属,,1714521600,1714608000,2,20,4,40,1")
+	require.Contains(t, body, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和")
+	require.Contains(t, body, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
+	require.Contains(t, body, "root_subtree,9,Platform,,1714521600,1714608000,5,50,10,120,2")
 
 	lines := strings.Split(strings.TrimSpace(body), "\n")
 	require.GreaterOrEqual(t, len(lines), 4)
-	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
-	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.Equal(t, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和", lines[0])
+	require.Equal(t, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
 	require.NotContains(t, body, "null")
 	require.NotContains(t, body, "<nil>")
 }

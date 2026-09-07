@@ -94,6 +94,91 @@ func GetDepartmentUsageSummary(c *gin.Context) {
 	})
 }
 
+func GetDepartmentUsageOverview(c *gin.Context) {
+	var req dtoenterprise.DepartmentUsageOverviewQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	if req.From <= 0 || req.To <= 0 || req.From >= req.To {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
+	result, err := entservice.NewUsageAggregationService(model.DB).GetUsageDashboardOverview(entservice.UsageDashboardOverviewQuery{
+		TenantId: tenantId,
+		From:     req.From,
+		To:       req.To,
+		Sort:     sortConfig,
+	})
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsageOverviewResponse{
+		Metrics: dtoenterprise.DepartmentUsageOverviewMetrics{
+			RequestCount:             result.Metrics.RequestCount,
+			PromptTokens:             result.Metrics.PromptTokens,
+			CompletionTokens:         result.Metrics.CompletionTokens,
+			Quota:                    result.Metrics.Quota,
+			UserCount:                result.Metrics.UserCount,
+			DepartmentCount:          result.Metrics.DepartmentCount,
+			ConsumingDepartmentCount: result.Metrics.ConsumingDepartmentCount,
+			UnassignedRequestCount:   result.Metrics.UnassignedRequestCount,
+			UnassignedQuota:          result.Metrics.UnassignedQuota,
+			DataThrough:              result.Metrics.DataThrough,
+		},
+		Items:            mapDepartmentUsageSummaryItems(result.Items),
+		SecondLevelItems: mapDepartmentUsageSummaryItems(result.SecondLevelItems),
+		Trend:            mapDepartmentUsageTrendPoints(result.Trend),
+		IsPartial:        result.IsPartial,
+	})
+}
+
+func GetDepartmentUsagePeers(c *gin.Context) {
+	var req dtoenterprise.DepartmentUsagePeersQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	if req.DepartmentId == nil || *req.DepartmentId <= 0 || req.From <= 0 || req.To <= 0 || req.From >= req.To {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
+	result, err := entservice.NewUsageAggregationService(model.DB).GetDepartmentPeers(entservice.UsageDepartmentPeersQuery{
+		TenantId:           tenantId,
+		DepartmentId:       *req.DepartmentId,
+		From:               req.From,
+		To:                 req.To,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
+		Sort:               sortConfig,
+	})
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsagePeersResponse{
+		ParentDepartmentId:   result.ParentDepartmentId,
+		ParentDepartmentName: result.ParentDepartmentName,
+		Items:                mapDepartmentUsageSummaryItems(result.Items),
+		DataThrough:          result.DataThrough,
+		IsPartial:            result.IsPartial,
+	})
+}
+
 func ExportDepartmentUsageCSV(c *gin.Context) {
 	var req dtoenterprise.DepartmentUsageExportQuery
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -152,10 +237,11 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 	}
 
 	result, err := entservice.NewUsageAggregationService(model.DB).GetDepartmentDetail(entservice.UsageDetailQuery{
-		TenantId: tenantId,
-		DeptId:   req.DeptId,
-		From:     req.From,
-		To:       req.To,
+		TenantId:           tenantId,
+		DeptId:             req.DeptId,
+		From:               req.From,
+		To:                 req.To,
+		IncludeDescendants: req.IncludeDescendants != nil && *req.IncludeDescendants,
 	})
 	if err != nil {
 		writeUsageSummaryError(c, err)
@@ -224,6 +310,7 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 		UserRanking:       userRanking,
 		ModelDistribution: modelDistribution,
 		Trend:             trend,
+		ChildDepartments:  mapDepartmentUsageSummaryItems(result.ChildDepartments),
 		RecentLogsEntry: dtoenterprise.DepartmentUsageLogEntryLink{
 			Path:    result.RecentLogsLink.Path,
 			Section: result.RecentLogsLink.Section,
@@ -235,6 +322,15 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 				UsernameOptions: append([]string{}, result.RecentLogsLink.Usernames...),
 				UserOptions:     userOptions,
 			},
+		},
+		Scope: dtoenterprise.DepartmentUsageDetailScope{
+			DepartmentIds:            append([]int{}, result.Scope.DepartmentIds...),
+			IncludeDescendants:       result.Scope.IncludeDescendants,
+			MetricBasis:              result.Scope.MetricBasis,
+			DepartmentCount:          result.Scope.DepartmentCount,
+			ConsumingDepartmentCount: result.Scope.ConsumingDepartmentCount,
+			DataThrough:              result.Scope.DataThrough,
+			IsPartial:                result.Scope.IsPartial,
 		},
 	})
 }
@@ -322,6 +418,8 @@ func writeUsageSummaryError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entservice.ErrInvalidUsageSummaryQuery), errors.Is(err, entservice.ErrInvalidUsageDetailQuery):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, entservice.ErrDepartmentNotFound):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentNotFound)
 	case errors.Is(err, entservice.ErrUsageReportInvalidInput):
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrUsageReportInvalidEmail):
@@ -331,6 +429,52 @@ func writeUsageSummaryError(c *gin.Context, err error) {
 	default:
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 	}
+}
+
+func mapDepartmentUsageSummaryItems(items []entservice.UsageDepartmentSummaryItem) []dtoenterprise.DepartmentUsageSummaryItem {
+	result := make([]dtoenterprise.DepartmentUsageSummaryItem, 0, len(items))
+	for _, item := range items {
+		modelDistribution := make([]dtoenterprise.UsageModelDistributionItem, 0, len(item.ModelDistribution))
+		for _, stat := range item.ModelDistribution {
+			modelDistribution = append(modelDistribution, dtoenterprise.UsageModelDistributionItem{
+				ModelName:        stat.ModelName,
+				RequestCount:     stat.RequestCount,
+				PromptTokens:     stat.PromptTokens,
+				CompletionTokens: stat.CompletionTokens,
+				Quota:            stat.Quota,
+			})
+		}
+		result = append(result, dtoenterprise.DepartmentUsageSummaryItem{
+			DeptId:            item.DeptId,
+			DeptName:          item.DeptName,
+			WindowStart:       item.WindowStart,
+			WindowEnd:         item.WindowEnd,
+			RequestCount:      item.RequestCount,
+			PromptTokens:      item.PromptTokens,
+			CompletionTokens:  item.CompletionTokens,
+			Quota:             item.Quota,
+			UserCount:         item.UserCount,
+			ModelDistribution: modelDistribution,
+		})
+	}
+	return result
+}
+
+func mapDepartmentUsageTrendPoints(points []entservice.UsageDepartmentTrendPoint) []dtoenterprise.DepartmentUsageTrendPoint {
+	result := make([]dtoenterprise.DepartmentUsageTrendPoint, 0, len(points))
+	for _, point := range points {
+		result = append(result, dtoenterprise.DepartmentUsageTrendPoint{
+			WindowStart:      point.WindowStart,
+			WindowEnd:        point.WindowEnd,
+			RequestCount:     point.RequestCount,
+			PromptTokens:     point.PromptTokens,
+			CompletionTokens: point.CompletionTokens,
+			TokenCount:       point.TokenCount,
+			Quota:            point.Quota,
+			UserCount:        point.UserCount,
+		})
+	}
+	return result
 }
 
 func readOptionalString(value *string) string {

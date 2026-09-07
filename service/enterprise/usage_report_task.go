@@ -230,7 +230,7 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 	job.Status = entmodel.UsageReportStatusRunning
 	job.ErrorReason = ""
 	windowStart, windowEnd := usageReportWindow(job.RangeType, now)
-	summary, err := s.aggregation.GetDepartmentSummary(UsageSummaryQuery{
+	overview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
 		TenantId: job.TenantId,
 		From:     windowStart,
 		To:       windowEnd,
@@ -261,7 +261,7 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 	}
 
 	previousStart, previousEnd := previousUsageReportWindow(windowStart, windowEnd)
-	previousSummary, err := s.aggregation.GetDepartmentSummary(UsageSummaryQuery{
+	previousOverview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
 		TenantId: job.TenantId,
 		From:     previousStart,
 		To:       previousEnd,
@@ -277,7 +277,7 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 		return err
 	}
 
-	snapshot := buildUsageReportSnapshot(summary.Items, previousSummary.Items, windowStart, windowEnd, previousStart, previousEnd)
+	snapshot := buildUsageReportSnapshotFromOverview(overview, previousOverview, windowStart, windowEnd, previousStart, previousEnd)
 	subject := buildUsageReportSubject(job.RangeType, windowStart, windowEnd)
 	content := buildUsageReportHTML(snapshot)
 	if err := s.sendEmail(subject, strings.Join(receivers, ";"), content); err != nil {
@@ -484,6 +484,17 @@ func buildUsageReportSnapshot(items []UsageDepartmentSummaryItem, previousItems 
 	return snapshot
 }
 
+func buildUsageReportSnapshotFromOverview(current UsageDashboardOverviewResult, previous UsageDashboardOverviewResult, windowStart int64, windowEnd int64, previousStart int64, previousEnd int64) *entmodel.UsageReportSnapshot {
+	snapshot := buildUsageReportSnapshot(current.Items, previous.Items, windowStart, windowEnd, previousStart, previousEnd)
+	snapshot.DepartmentCount = current.Metrics.DepartmentCount
+	snapshot.RequestCount = current.Metrics.RequestCount
+	snapshot.PromptTokens = current.Metrics.PromptTokens
+	snapshot.CompletionTokens = current.Metrics.CompletionTokens
+	snapshot.Quota = current.Metrics.Quota
+	snapshot.UserCount = current.Metrics.UserCount
+	return snapshot
+}
+
 func calculateUsageGrowthRate(previous int64, current int64) float64 {
 	if previous <= 0 {
 		return 0
@@ -498,7 +509,7 @@ func buildUsageReportSubject(rangeType string, windowStart int64, windowEnd int6
 func buildUsageReportHTML(snapshot *entmodel.UsageReportSnapshot) string {
 	var builder strings.Builder
 	builder.WriteString("<div>")
-	builder.WriteString(fmt.Sprintf("<p>%s</p>", html.EscapeString(usageExportDisclaimer)))
+	builder.WriteString(fmt.Sprintf("<p>%s</p>", html.EscapeString(usageRootExportDisclaimer)))
 	builder.WriteString(fmt.Sprintf("<p>统计周期：%s ~ %s</p>", time.Unix(snapshot.WindowStart, 0).Format("2006-01-02"), time.Unix(snapshot.WindowEnd-1, 0).Format("2006-01-02")))
 	builder.WriteString(fmt.Sprintf("<p>部门总览：部门数 %d，请求数 %d，Prompt Tokens %d，Completion Tokens %d，Quota %d，用户数 %d。</p>", snapshot.DepartmentCount, snapshot.RequestCount, snapshot.PromptTokens, snapshot.CompletionTokens, snapshot.Quota, snapshot.UserCount))
 	builder.WriteString("<p>Top 部门：</p><ul>")

@@ -35,6 +35,7 @@ func Migrate(db *gorm.DB) error {
 		&AlertDelivery{},
 		&GovernanceNotificationDelivery{},
 		&UsageSnapshot{},
+		&UsageScopeSnapshot{},
 		&UsageReportJob{},
 		&DingTalkConfig{},
 		&DingTalkIdentity{},

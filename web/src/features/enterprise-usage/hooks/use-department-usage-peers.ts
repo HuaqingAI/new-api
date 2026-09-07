@@ -18,40 +18,54 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 
-import { departmentDetailQueryKey, getDepartmentUsageDetail } from '../api'
-import { normalizeDepartmentUsageDetail } from '../lib/usage-normalizers'
+import { departmentPeersQueryKey, getDepartmentUsagePeers } from '../api'
+import { normalizeDepartmentUsageItems } from '../lib/usage-normalizers'
+import type { DepartmentUsageSummarySort, UsageSortOrder } from '../types'
 
-export function useDepartmentUsageDetail(params: {
-  deptId?: number
+export function useDepartmentUsagePeers(params: {
+  departmentId?: number
   from: number
   to: number
   tenantId?: number
   includeDescendants?: boolean
+  summarySort?: DepartmentUsageSummarySort
+  summaryOrder?: UsageSortOrder
 }) {
   return useQuery({
-    enabled: typeof params.deptId === 'number',
+    enabled: typeof params.departmentId === 'number',
     queryKey:
-      typeof params.deptId === 'number'
-        ? departmentDetailQueryKey(
-            params.deptId,
+      typeof params.departmentId === 'number'
+        ? departmentPeersQueryKey(
+            params.departmentId,
             params.from,
             params.to,
             params.tenantId,
-            params.includeDescendants
+            params.includeDescendants,
+            params.summarySort,
+            params.summaryOrder
           )
-        : ['enterprise', 'usage', 'department-detail', 'disabled'],
+        : ['enterprise', 'usage', 'department-peers', 'disabled'],
     queryFn: async () => {
-      const response = await getDepartmentUsageDetail({
-        deptId: params.deptId as number,
+      const response = await getDepartmentUsagePeers({
+        departmentId: params.departmentId as number,
         from: params.from,
         to: params.to,
         tenantId: params.tenantId,
         includeDescendants: params.includeDescendants,
+        summarySort: params.summarySort,
+        summaryOrder: params.summaryOrder,
       })
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
       }
-      return normalizeDepartmentUsageDetail(response.data)
+      return {
+        ...response.data,
+        items: normalizeDepartmentUsageItems(
+          response.data?.items ?? [],
+          params.summarySort,
+          params.summaryOrder
+        ),
+      }
     },
   })
 }

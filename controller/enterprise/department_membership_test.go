@@ -70,6 +70,8 @@ func setupEnterpriseControllerTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 	router.POST("/api/enterprise/departments/:id/admins", GrantDepartmentAdmin)
 	router.DELETE("/api/enterprise/departments/:id/admins/:user_id", RevokeDepartmentAdmin)
 	router.GET("/api/enterprise/usage/department-summary", GetDepartmentUsageSummary)
+	router.GET("/api/enterprise/usage/department-overview", GetDepartmentUsageOverview)
+	router.GET("/api/enterprise/usage/department-peers", GetDepartmentUsagePeers)
 	router.GET("/api/enterprise/usage/department-detail", GetDepartmentUsageDetail)
 	router.GET("/api/enterprise/usage/export", ExportDepartmentUsageCSV)
 	router.GET("/api/enterprise/usage/reports", GetDepartmentUsageReportConfig)

@@ -60,6 +60,8 @@ func RegisterEnterpriseRouter(apiRouter *gin.RouterGroup) {
 		enterpriseRoute.PUT("/alerts/rules", middleware.EnterpriseAdmin(), controllerenterprise.SaveAlertRule)
 		enterpriseRoute.DELETE("/alerts/rules/:id", middleware.EnterpriseAdmin(), controllerenterprise.DeleteAlertRule)
 		enterpriseRoute.GET("/usage/department-summary", controllerenterprise.GetDepartmentUsageSummary)
+		enterpriseRoute.GET("/usage/department-overview", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageOverview)
+		enterpriseRoute.GET("/usage/department-peers", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsagePeers)
 		enterpriseRoute.GET("/usage/export", controllerenterprise.ExportDepartmentUsageCSV)
 		enterpriseRoute.GET("/usage/department-detail", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageDetail)
 		enterpriseRoute.GET("/usage/reports", middleware.EnterpriseAdmin(), controllerenterprise.GetDepartmentUsageReportConfig)

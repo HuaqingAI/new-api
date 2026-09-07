@@ -64,7 +64,7 @@ export function DepartmentTree({
         <span>{t('External ID')}</span>
         <span>{t('Sync')}</span>
       </div>
-      <div className='min-w-[760px] divide-y'>
+      <div className='min-w-[760px] divide-y' role='tree'>
         {nodes.map((node) => (
           <DepartmentTreeRow
             key={node.id}
@@ -104,6 +104,10 @@ function DepartmentTreeRow({
   return (
     <>
       <div
+        role='treeitem'
+        aria-level={level + 1}
+        aria-selected={isSelected}
+        aria-expanded={hasChildren ? isExpanded : undefined}
         className={cn(
           'grid grid-cols-[minmax(260px,1.5fr)_120px_130px_160px_120px] gap-3 px-4 py-3 text-sm',
           isSelected ? 'bg-muted/50' : undefined

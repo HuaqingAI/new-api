@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -369,6 +370,22 @@ func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
 	require.NoError(t, snapshotB.SetUserIds([]int{999}))
 	require.NoError(t, db.Create(&snapshotA).Error)
 	require.NoError(t, db.Create(&snapshotB).Error)
+	rootScope := entmodel.UsageScopeSnapshot{
+		TenantId:         0,
+		ScopeKey:         usageScopeDepartmentKey(parentID),
+		ScopeType:        entmodel.UsageScopeTypeDepartment,
+		DepartmentId:     &parentID,
+		DepartmentName:   "Platform",
+		WindowStart:      1714521600,
+		WindowEnd:        1714608000,
+		RequestCount:     5,
+		PromptTokens:     60,
+		CompletionTokens: 30,
+		Quota:            150,
+	}
+	require.NoError(t, rootScope.SetModelDistribution(nil))
+	require.NoError(t, rootScope.SetUserIds([]int{101, 102}))
+	require.NoError(t, db.Create(&rootScope).Error)
 
 	service := NewUsageExportService(db)
 	result, err := service.ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
@@ -382,28 +399,25 @@ func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "usage-department-20240501-20240501.csv", result.FileName)
-	require.Len(t, result.Rows, 2)
-	require.Equal(t, "Engineering", result.Rows[0].DeptName)
-	require.Equal(t, "Platform", result.Rows[0].ParentDepartment)
-	require.Equal(t, "未归属", result.Rows[1].DeptName)
-	require.Equal(t, "", result.Rows[1].ParentDepartment)
+	require.Len(t, result.Rows, 1)
+	require.Equal(t, "root_subtree", result.Rows[0].MetricBasis)
+	require.Equal(t, "Platform", result.Rows[0].DeptName)
+	require.Equal(t, "", result.Rows[0].ParentDepartment)
 
 	var buffer bytes.Buffer
 	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, result))
 	csvText := buffer.String()
-	require.Contains(t, csvText, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
-	require.Contains(t, csvText, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
-	require.Contains(t, csvText, "101,Engineering,Platform,1714521600,1714608000,5,60,30,150,2")
-	require.Contains(t, csvText, ",未归属,,1714521600,1714608000,3,30,10,50,1")
+	require.Contains(t, csvText, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和")
+	require.Contains(t, csvText, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
+	require.Contains(t, csvText, "root_subtree,100,Platform,,1714521600,1714608000,5,60,30,150,2")
 	require.NotContains(t, csvText, "null")
 	require.NotContains(t, csvText, "<nil>")
 
 	lines := strings.Split(strings.TrimSpace(csvText), "\n")
-	require.GreaterOrEqual(t, len(lines), 4)
-	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
-	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
-	require.Equal(t, "101,Engineering,Platform,1714521600,1714608000,5,60,30,150,2", lines[2])
-	require.Equal(t, ",未归属,,1714521600,1714608000,3,30,10,50,1", lines[3])
+	require.GreaterOrEqual(t, len(lines), 3)
+	require.Equal(t, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和", lines[0])
+	require.Equal(t, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.Equal(t, "root_subtree,100,Platform,,1714521600,1714608000,5,60,30,150,2", lines[2])
 }
 
 func TestUsageExportSortsDepartmentNamesWithStableTieBreakers(t *testing.T) {
@@ -819,6 +833,7 @@ func TestUsageDetailBuildsRankingTrendAndAllowsMultiDepartmentDuplication(t *tes
 func TestUsageDetailReturnsEmptyArraysForAdjacentWindow(t *testing.T) {
 	db := newUsageAggregationTestDB(t)
 	deptId := 1
+	seedUsageTestDepartment(t, db, deptId, "Engineering")
 
 	detail, err := NewUsageAggregationService(db).GetDepartmentDetail(UsageDetailQuery{
 		TenantId: 0,
@@ -862,6 +877,106 @@ func TestUsageDetailRejectsInvalidQuery(t *testing.T) {
 		To:       1700000000,
 	})
 	require.ErrorIs(t, err, ErrInvalidUsageDetailQuery)
+
+	_, err = NewUsageAggregationService(db).GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &deptId,
+		From:     1700000000,
+		To:       1700003600,
+	})
+	require.ErrorIs(t, err, ErrDepartmentNotFound)
+}
+
+func TestUsageAggregationDoesNotIncludeForeignTenantLogs(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	seedUsageTestUser(t, db, 101, "default-user")
+	seedUsageTestUser(t, db, 202, "tenant-user")
+
+	defaultDepartmentID := 1
+	tenantDepartmentID := 2
+	require.NoError(t, db.Create(&[]entmodel.Department{
+		{
+			Id:          defaultDepartmentID,
+			TenantId:    0,
+			Name:        "Default Engineering",
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+		{
+			Id:          tenantDepartmentID,
+			TenantId:    981,
+			Name:        "Tenant Engineering",
+			Status:      constant.DepartmentStatusEnabled,
+			SourceType:  constant.DepartmentSourceTypeManual,
+			SyncStatus:  constant.DepartmentSyncStatusOK,
+			NameHistory: "[]",
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]entmodel.UserDepartment{
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   defaultDepartmentID,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			TenantId:       981,
+			UserId:         202,
+			DepartmentId:   tenantDepartmentID,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			Id:               901,
+			UserId:           101,
+			Username:         "default-user",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            100,
+			PromptTokens:     40,
+			CompletionTokens: 20,
+			CreatedAt:        1700000100,
+		},
+		{
+			Id:               902,
+			UserId:           202,
+			Username:         "tenant-user",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            70,
+			PromptTokens:     30,
+			CompletionTokens: 10,
+			CreatedAt:        1700000200,
+		},
+	}).Error)
+
+	service := NewUsageAggregationService(db)
+	processed, err := service.AggregateWindow(UsageAggregationWindow{
+		TenantId:    981,
+		WindowStart: 1700000000,
+		WindowEnd:   1700003600,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, processed)
+
+	overview, err := service.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
+		TenantId: 981,
+		From:     1700000000,
+		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), overview.Metrics.RequestCount)
+	require.Equal(t, int64(70), overview.Metrics.Quota)
+	require.Equal(t, int64(1), overview.Metrics.UserCount)
+	require.Equal(t, int64(0), overview.Metrics.UnassignedRequestCount)
+	require.Len(t, overview.Items, 1)
+	require.Equal(t, int64(1), overview.Items[0].RequestCount)
 }
 
 func TestRunUsageAggregationTaskOnceStartsFromEarliestMissingWindow(t *testing.T) {
@@ -901,4 +1016,157 @@ func TestRunUsageAggregationTaskOnceStartsFromEarliestMissingWindow(t *testing.T
 	require.NoError(t, db.Order("window_start ASC").Find(&snapshots).Error)
 	require.NotEmpty(t, snapshots)
 	require.Equal(t, oldWindowStart, snapshots[0].WindowStart)
+}
+
+func TestUsageAggregationDeduplicatesDepartmentScopesAndBuildsDashboardViews(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	seedUsageTestUser(t, db, 101, "alice")
+	seedUsageTestUser(t, db, 102, "bob")
+	seedUsageTestDepartment(t, db, 1, "Engineering")
+	seedUsageTestDepartment(t, db, 2, "Platform")
+	seedUsageTestDepartment(t, db, 3, "Reliability")
+	seedUsageTestDepartment(t, db, 4, "Operations")
+
+	parentID := 1
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("id IN ?", []int{2, 3}).Update("parent_id", parentID).Error)
+	require.NoError(t, db.Create(&[]entmodel.UserDepartment{
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   1,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   2,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			TenantId:       0,
+			UserId:         102,
+			DepartmentId:   3,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			Id:               1,
+			UserId:           101,
+			Username:         "alice",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            100,
+			PromptTokens:     40,
+			CompletionTokens: 20,
+			CreatedAt:        1700000100,
+		},
+		{
+			Id:               2,
+			UserId:           102,
+			Username:         "bob",
+			Type:             model.LogTypeConsume,
+			ModelName:        "claude-sonnet-4",
+			Quota:            80,
+			PromptTokens:     30,
+			CompletionTokens: 10,
+			CreatedAt:        1700000200,
+		},
+	}).Error)
+
+	service := NewUsageAggregationService(db)
+	_, err := service.AggregateWindow(UsageAggregationWindow{
+		TenantId:    0,
+		WindowStart: 1700000000,
+		WindowEnd:   1700003600,
+	})
+	require.NoError(t, err)
+
+	var scopeSnapshots []entmodel.UsageScopeSnapshot
+	require.NoError(t, db.Order("scope_key ASC").Find(&scopeSnapshots).Error)
+	require.Len(t, scopeSnapshots, 4)
+	scopeByKey := make(map[string]entmodel.UsageScopeSnapshot, len(scopeSnapshots))
+	for _, snapshot := range scopeSnapshots {
+		scopeByKey[snapshot.ScopeKey] = snapshot
+	}
+	assert.Equal(t, int64(2), scopeByKey[entmodel.UsageScopeTypeTenant].RequestCount)
+	assert.Equal(t, int64(2), scopeByKey[usageScopeDepartmentKey(1)].RequestCount)
+	assert.Equal(t, int64(1), scopeByKey[usageScopeDepartmentKey(2)].RequestCount)
+	assert.Equal(t, int64(1), scopeByKey[usageScopeDepartmentKey(3)].RequestCount)
+
+	rootID := 1
+	directDetail, err := service.GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0,
+		DeptId:   &rootID,
+		From:     1700000000,
+		To:       1700003600,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), directDetail.RequestCount)
+	assert.Equal(t, int64(1), directDetail.UserCount)
+	assert.Equal(t, "direct", directDetail.Scope.MetricBasis)
+	assert.Equal(t, int64(1), directDetail.Scope.ConsumingDepartmentCount)
+
+	subtreeDetail, err := service.GetDepartmentDetail(UsageDetailQuery{
+		TenantId:           0,
+		DeptId:             &rootID,
+		From:               1700000000,
+		To:                 1700003600,
+		IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), subtreeDetail.RequestCount)
+	assert.Equal(t, int64(2), subtreeDetail.UserCount)
+	assert.Equal(t, "subtree", subtreeDetail.Scope.MetricBasis)
+	assert.Equal(t, int64(3), subtreeDetail.Scope.DepartmentCount)
+	assert.Equal(t, int64(3), subtreeDetail.Scope.ConsumingDepartmentCount)
+	require.Len(t, subtreeDetail.UserRanking, 2)
+	require.Len(t, subtreeDetail.ChildDepartments, 2)
+	assert.Equal(t, []int{2, 3}, []int{*subtreeDetail.ChildDepartments[0].DeptId, *subtreeDetail.ChildDepartments[1].DeptId})
+
+	overview, err := service.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
+		TenantId: 0,
+		From:     1700000000,
+		To:       1700003600,
+		Sort:     DefaultUsageSummarySort(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), overview.Metrics.RequestCount)
+	assert.Equal(t, int64(2), overview.Metrics.UserCount)
+	assert.Equal(t, int64(4), overview.Metrics.DepartmentCount)
+	assert.Equal(t, int64(3), overview.Metrics.ConsumingDepartmentCount)
+	require.Len(t, overview.Items, 2)
+	require.Len(t, overview.SecondLevelItems, 2)
+	assert.Equal(t, []int{2, 3}, []int{*overview.SecondLevelItems[0].DeptId, *overview.SecondLevelItems[1].DeptId})
+	require.Len(t, overview.Trend, 1)
+	assert.Equal(t, int64(2), overview.Trend[0].RequestCount)
+
+	peers, err := service.GetDepartmentPeers(UsageDepartmentPeersQuery{
+		TenantId:           0,
+		DepartmentId:       2,
+		From:               1700000000,
+		To:                 1700003600,
+		IncludeDescendants: true,
+		Sort:               DefaultUsageSummarySort(),
+	})
+	require.NoError(t, err)
+	require.Len(t, peers.Items, 2)
+	assert.Equal(t, "Engineering", peers.ParentDepartmentName)
+	assert.Equal(t, []int{2, 3}, []int{*peers.Items[0].DeptId, *peers.Items[1].DeptId})
+
+	exportResult, err := NewUsageExportService(db).ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
+		TenantId:           0,
+		DepartmentId:       &rootID,
+		From:               1700000000,
+		To:                 1700003600,
+		IncludeDescendants: true,
+		Sort:               DefaultUsageSummarySort(),
+	})
+	require.NoError(t, err)
+	require.Len(t, exportResult.Rows, 1)
+	assert.Equal(t, int64(2), exportResult.Rows[0].RequestCount)
+	assert.Equal(t, int64(2), exportResult.Rows[0].UserCount)
 }

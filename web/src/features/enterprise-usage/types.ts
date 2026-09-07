@@ -60,6 +60,35 @@ export type DepartmentUsageSummaryResponse = {
   scope: DepartmentUsageSummaryScope
 }
 
+export type DepartmentUsageOverviewMetrics = {
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  quota: number
+  user_count: number
+  department_count: number
+  consuming_department_count: number
+  unassigned_request_count: number
+  unassigned_quota: number
+  data_through: number
+}
+
+export type DepartmentUsageOverviewResponse = {
+  metrics: DepartmentUsageOverviewMetrics
+  items: DepartmentUsageSummaryItem[]
+  second_level_items: DepartmentUsageSummaryItem[]
+  trend: DepartmentUsageTrendPoint[]
+  is_partial: boolean
+}
+
+export type DepartmentUsagePeersResponse = {
+  parent_department_id: number | null
+  parent_department_name: string
+  items: DepartmentUsageSummaryItem[]
+  data_through: number
+  is_partial: boolean
+}
+
 export type DepartmentUsageUserRankItem = {
   user_id: number
   username: string
@@ -118,7 +147,19 @@ export type DepartmentUsageDetailResponse = {
   user_ranking: DepartmentUsageUserRankItem[]
   model_distribution: UsageModelDistributionItem[]
   trend: DepartmentUsageTrendPoint[]
+  child_departments: DepartmentUsageSummaryItem[]
   recent_logs_entry: DepartmentUsageLogEntryLink
+  scope: DepartmentUsageDetailScope
+}
+
+export type DepartmentUsageDetailScope = {
+  department_ids: number[]
+  include_descendants: boolean
+  metric_basis: 'direct' | 'subtree' | string
+  department_count: number
+  consuming_department_count: number
+  data_through: number
+  is_partial: boolean
 }
 
 export type DepartmentUsageReportTopDepartment = {

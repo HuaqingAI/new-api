@@ -22,8 +22,6 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Building2,
   CalendarClock,
-  ChevronDown,
-  ChevronRight,
   Coins,
   CreditCard,
   History,
@@ -152,6 +150,7 @@ import {
   userDepartmentsQueryKey,
 } from './api'
 import { DepartmentTree } from './components/DepartmentTree'
+import { DepartmentTreeBulkActions } from './components/DepartmentTreeBulkActions'
 import { useDepartmentTree } from './hooks/use-department-tree'
 import {
   findDepartmentNode,
@@ -1659,25 +1658,7 @@ export function EnterpriseOrganizationContent(props: {
   )
 }
 
-export function DepartmentTreeBulkActions(props: {
-  onExpandAll: () => void
-  onCollapse: () => void
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <div className='flex shrink-0 flex-wrap gap-2'>
-      <Button variant='outline' size='sm' onClick={props.onExpandAll}>
-        <ChevronDown className='size-4' />
-        {t('Expand All')}
-      </Button>
-      <Button variant='outline' size='sm' onClick={props.onCollapse}>
-        <ChevronRight className='size-4' />
-        {t('Collapse All')}
-      </Button>
-    </div>
-  )
-}
+export { DepartmentTreeBulkActions } from './components/DepartmentTreeBulkActions'
 
 function DepartmentTreeSkeleton() {
   return (

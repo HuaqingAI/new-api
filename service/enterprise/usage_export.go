@@ -14,7 +14,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const usageExportDisclaimer = "注意：用量按用户当前所属部门重复计入，部门间数值不可加和"
+const (
+	usageDirectExportDisclaimer = "注意：直接部门用量按用户当前所属部门重复计入，部门间数值不可加和"
+	usageRootExportDisclaimer   = "注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和"
+)
 
 type UsageSummarySortField string
 type UsageSortOrder string
@@ -44,6 +47,7 @@ type DepartmentUsageExportQuery struct {
 }
 
 type DepartmentUsageExportRow struct {
+	MetricBasis      string
 	DeptId           *int
 	DeptName         string
 	ParentDepartment string
@@ -57,8 +61,9 @@ type DepartmentUsageExportRow struct {
 }
 
 type DepartmentUsageExportResult struct {
-	FileName string
-	Rows     []DepartmentUsageExportRow
+	FileName   string
+	Disclaimer string
+	Rows       []DepartmentUsageExportRow
 }
 
 type UsageExportService struct {
@@ -184,26 +189,57 @@ func compareOptionalInt(left *int, right *int) int {
 }
 
 func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExportQuery) (DepartmentUsageExportResult, error) {
-	summary, err := s.aggregation.GetDepartmentSummary(UsageSummaryQuery{
-		TenantId:           query.TenantId,
-		DeptId:             query.DepartmentId,
-		From:               query.From,
-		To:                 query.To,
-		Sort:               query.Sort,
-		IncludeDescendants: query.IncludeDescendants,
-	})
+	items := []UsageDepartmentSummaryItem{}
+	metricBasis := "direct"
+	disclaimer := usageDirectExportDisclaimer
+	if query.DepartmentId == nil {
+		overview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
+			TenantId: query.TenantId,
+			From:     query.From,
+			To:       query.To,
+			Sort:     query.Sort,
+		})
+		if err != nil {
+			return DepartmentUsageExportResult{}, err
+		}
+		items = overview.Items
+		metricBasis = "root_subtree"
+		disclaimer = usageRootExportDisclaimer
+	} else {
+		detail, err := s.aggregation.GetDepartmentDetail(UsageDetailQuery{
+			TenantId:           query.TenantId,
+			DeptId:             query.DepartmentId,
+			From:               query.From,
+			To:                 query.To,
+			IncludeDescendants: query.IncludeDescendants,
+		})
+		if err != nil {
+			return DepartmentUsageExportResult{}, err
+		}
+		metricBasis = detail.Scope.MetricBasis
+		items = []UsageDepartmentSummaryItem{{
+			DeptId:            detail.DeptId,
+			DeptName:          detail.DeptName,
+			WindowStart:       detail.WindowStart,
+			WindowEnd:         detail.WindowEnd,
+			RequestCount:      detail.RequestCount,
+			PromptTokens:      detail.PromptTokens,
+			CompletionTokens:  detail.CompletionTokens,
+			Quota:             detail.Quota,
+			UserCount:         detail.UserCount,
+			ModelDistribution: detail.ModelDistribution,
+		}}
+	}
+
+	parentNames, err := s.loadParentDepartmentNames(query.TenantId, items)
 	if err != nil {
 		return DepartmentUsageExportResult{}, err
 	}
 
-	parentNames, err := s.loadParentDepartmentNames(query.TenantId, summary.Items)
-	if err != nil {
-		return DepartmentUsageExportResult{}, err
-	}
-
-	rows := make([]DepartmentUsageExportRow, 0, len(summary.Items))
-	for _, item := range summary.Items {
+	rows := make([]DepartmentUsageExportRow, 0, len(items))
+	for _, item := range items {
 		row := DepartmentUsageExportRow{
+			MetricBasis:      metricBasis,
 			DeptId:           item.DeptId,
 			DeptName:         item.DeptName,
 			ParentDepartment: "",
@@ -225,18 +261,20 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 	}
 
 	return DepartmentUsageExportResult{
-		FileName: buildDepartmentUsageExportFileName(query.From, query.To),
-		Rows:     rows,
+		FileName:   buildDepartmentUsageExportFileName(query.From, query.To),
+		Disclaimer: disclaimer,
+		Rows:       rows,
 	}, nil
 }
 
 func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result DepartmentUsageExportResult) error {
 	csvWriter := csv.NewWriter(writer)
 
-	if err := csvWriter.Write([]string{"# " + usageExportDisclaimer}); err != nil {
+	if err := csvWriter.Write([]string{"# " + result.Disclaimer}); err != nil {
 		return err
 	}
 	if err := csvWriter.Write([]string{
+		"统计口径",
 		"部门 ID",
 		"部门名称",
 		"父部门",
@@ -253,6 +291,7 @@ func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result De
 
 	for _, row := range result.Rows {
 		if err := csvWriter.Write([]string{
+			row.MetricBasis,
 			formatOptionalInt(row.DeptId),
 			row.DeptName,
 			row.ParentDepartment,

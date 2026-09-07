@@ -48,6 +48,16 @@ const channelActionConfig = (
   skipErrorHandler: true,
 })
 
+export type TaskPluginOption = { key: string; name: string; models: string[] }
+
+export async function getTaskPluginOptions(): Promise<TaskPluginOption[]> {
+  const response = await api.get<{
+    success: boolean
+    data: TaskPluginOption[]
+  }>('/api/task_plugin_options')
+  return response.data.data
+}
+
 export type CodexUsageResponse = {
   success: boolean
   message?: string
@@ -295,13 +305,15 @@ export async function deleteDisabledChannels(): Promise<{
  */
 export async function getChannelKey(
   id: number,
-  proofToken?: string
+  proofToken: string,
+  signal?: AbortSignal
 ): Promise<{ success: boolean; message?: string; data?: { key: string } }> {
   const res = await api.post(
     `/api/channel/${id}/key`,
     undefined,
     channelActionConfig({
-      headers: proofToken ? { 'X-Security-Proof': proofToken } : undefined,
+      headers: { 'X-Security-Proof': proofToken },
+      signal,
     })
   )
   return res.data

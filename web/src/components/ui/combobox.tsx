@@ -24,6 +24,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -39,8 +40,8 @@ import {
 import { cn } from '@/lib/utils'
 
 type LegacyComboboxProps = {
-  options: ComboboxInputOption[]
-  value?: string
+  options: readonly ComboboxInputOption[]
+  value?: string | null
   onValueChange?: (value: string | null) => void
   placeholder?: string
   searchPlaceholder?: string
@@ -49,6 +50,14 @@ type LegacyComboboxProps = {
   className?: string
   id?: string
   openOnFocus?: boolean
+  disabled?: boolean
+  name?: string
+  onBlur?: React.FocusEventHandler<HTMLInputElement>
+  ref?: React.Ref<HTMLInputElement>
+  'aria-label'?: string
+  'aria-labelledby'?: string
+  'aria-describedby'?: string
+  'aria-invalid'?: React.AriaAttributes['aria-invalid']
 }
 
 function Combobox(props: LegacyComboboxProps): React.ReactElement
@@ -61,6 +70,7 @@ function Combobox(
     | LegacyComboboxProps
 ) {
   if ('options' in props) {
+    if (!props.allowCustomValue) return <OptionCombobox {...props} />
     return (
       <LegacyComboboxInput
         id={props.id}
@@ -77,6 +87,70 @@ function Combobox(
   }
 
   return <ComboboxPrimitive.Root {...props} />
+}
+
+function OptionCombobox(props: LegacyComboboxProps) {
+  const { t } = useTranslation()
+  const [open, setOpen] = React.useState(false)
+  const [search, setSearch] = React.useState('')
+  const anchor = useComboboxAnchor()
+  const selected = props.options.find((option) => option.value === props.value)
+  const displayedValue = selected?.label ?? props.value ?? ''
+  return (
+    <ComboboxPrimitive.Root
+      items={props.options}
+      value={selected ?? null}
+      name={props.name}
+      disabled={props.disabled}
+      open={open && !props.disabled}
+      inputValue={open ? search : displayedValue}
+      onInputValueChange={(value, details) => {
+        if (details.reason === 'input-change') setSearch(value)
+      }}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        setSearch('')
+      }}
+      onValueChange={(option) => {
+        if (option) props.onValueChange?.(option.value)
+      }}
+      filter={(option, query) => {
+        const term = query.trim().toLowerCase()
+        return option.label.toLowerCase().includes(term) || option.value.toLowerCase().includes(term)
+      }}
+      isItemEqualToValue={(item, value) => item.value === value.value}
+    >
+      <div ref={anchor} className={cn('min-w-0', props.className)}>
+        <ComboboxInput
+          ref={props.ref}
+          id={props.id}
+          disabled={props.disabled}
+          onBlur={props.onBlur}
+          onFocus={() => {
+            if (props.openOnFocus !== false) setOpen(true)
+          }}
+          aria-label={props['aria-label']}
+          aria-labelledby={props['aria-labelledby']}
+          aria-describedby={props['aria-describedby']}
+          aria-invalid={props['aria-invalid']}
+          placeholder={props.searchPlaceholder ?? props.placeholder ?? t('Search...')}
+          triggerAriaLabel={props['aria-label'] ?? t('Open')}
+          className='h-full min-h-8 w-full'
+        />
+      </div>
+      <ComboboxContent anchor={anchor}>
+        <ComboboxEmpty>{props.emptyText ?? t('No results found')}</ComboboxEmpty>
+        <ComboboxList>
+          {(option: ComboboxInputOption) => (
+            <ComboboxItem key={option.value} value={option} disabled={option.disabled}>
+              {option.icon && <span aria-hidden>{option.icon}</span>}
+              <span className='min-w-0 break-words'>{option.label}{option.description && <span className='text-muted-foreground block text-xs break-all'>{option.description}</span>}</span>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </ComboboxPrimitive.Root>
+  )
 }
 
 function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {
@@ -127,10 +201,12 @@ function ComboboxInput({
   disabled = false,
   showTrigger = true,
   showClear = false,
+  triggerAriaLabel,
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean
   showClear?: boolean
+  triggerAriaLabel?: string
 }) {
   return (
     <InputGroup className={cn('w-auto', className)}>
@@ -143,7 +219,7 @@ function ComboboxInput({
           <InputGroupButton
             size='icon-xs'
             variant='ghost'
-            render={<ComboboxTrigger />}
+            render={<ComboboxTrigger aria-label={triggerAriaLabel} />}
             data-slot='input-group-button'
             className='group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent'
             disabled={disabled}

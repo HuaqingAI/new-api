@@ -26,6 +26,7 @@ import {
 
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
+import { buildQuotaAuditOperation } from './quota-audit-operation'
 
 export { normalizeTierLabel }
 
@@ -164,6 +165,25 @@ export function parseLogOther(other: string): LogOtherData | null {
     // eslint-disable-next-line no-console
     console.error('Failed to parse log other field:', error)
     return null
+  }
+}
+
+export function getReasoningEffortVariant(
+  effort: string | undefined
+): StatusBadgeProps['variant'] {
+  switch (effort?.trim().toLowerCase()) {
+    case 'max':
+    case 'xhigh':
+    case 'high':
+      return 'orange'
+    case 'medium':
+      return 'yellow'
+    case 'low':
+    case 'minimal':
+      return 'green'
+    case 'none':
+    default:
+      return 'grey'
   }
 }
 
@@ -370,11 +390,32 @@ export function formatDuration(
  * translatable instead of being frozen to whatever language was written to DB.
  */
 const AUDIT_TEMPLATES: Record<string, string> = {
+  'token.create': 'API token creation',
+  'token.update': 'API token configuration update',
+  'token.status_update': 'API token status update',
+  'token.delete': 'API token deletion',
+  'token.delete_batch': 'API token batch deletion',
+  'token.key_view': 'API token key access',
+  'token.key_view_batch': 'API token batch key access',
+  'access_token.generate': 'Generated a system access token',
+  'access_token.revoke': 'Revoked the system access token',
+  'user.2fa_setup': 'Started two-factor authentication setup',
+  'user.2fa_enable': 'Enabled two-factor authentication',
+  'user.2fa_disable_self': 'Disabled two-factor authentication',
+  'user.2fa_backup_codes': 'Regenerated two-factor backup codes',
+  'user.security_verify': 'Completed security verification',
+  'user.password_change': 'Account password change',
+  'user.binding_start': 'Account binding request',
+  'user.binding_bind': 'Account binding',
+  'user.binding_unbind': 'Account unlinking',
+  'user.email_binding_resend': 'Email confirmation code resend',
+
   login: 'Logged in successfully via {{method}}',
   // User management
   'user.create': 'Created user {{username}} (role {{role}})',
   'user.update': 'Updated user {{username}} (ID: {{id}})',
   'user.delete': 'Deleted user {{username}} (ID: {{id}})',
+  'user.account_delete': 'Account deletion',
   'user.manage': 'Performed {{action}} on user {{username}} (ID: {{id}})',
   'user.quota_add': 'Increased user quota by {{quota}}',
   'user.quota_subtract': 'Decreased user quota by {{quota}}',
@@ -402,6 +443,9 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // Channel
   'channel.create': 'Created channel {{name}} (type {{type}}, count {{count}})',
   'channel.update': 'Updated channel {{name}} (ID: {{id}})',
+  'channel.status_update': 'Updated channel status (ID: {{id}})',
+  'channel.status_update_batch':
+    'Batch updated channel status ({{count}}/{{total}} changed)',
   'channel.delete': 'Deleted channel {{name}} (ID: {{id}})',
   'channel.delete_batch': 'Batch deleted {{count}} channels',
   'channel.delete_disabled': 'Deleted all disabled channels ({{count}})',
@@ -453,7 +497,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
 }
 
 /**
- * Render the localized content of an audit/login log from its structured
+ * Render the localized content of an operation log from its structured
  * `other.op` descriptor. Returns null when the log has no recognized action,
  * letting callers fall back to the raw `content` field.
  */
@@ -465,5 +509,15 @@ export function renderAuditContent(
   if (!op?.action) return null
   const template = AUDIT_TEMPLATES[op.action]
   if (!template) return null
-  return t(template, (op.params ?? {}) as Record<string, unknown>)
+  const quotaOperation = buildQuotaAuditOperation(
+    op.action,
+    op.params ?? {},
+    other?.audit_info?.success !== false,
+    t
+  )
+  if (quotaOperation) {
+    return `${quotaOperation.summary} · ${quotaOperation.description}`
+  }
+  const params = { ...op.params }
+  return t(template, params)
 }

@@ -22,15 +22,13 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { useModelPricing } from '@/features/model-pricing/api'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { getModels, searchModels, getVendors } from '../api'
-import {
-  DEFAULT_PAGE_SIZE,
-  getModelStatusOptions,
-  getSyncStatusOptions,
-} from '../constants'
+import { DEFAULT_PAGE_SIZE } from '../constants'
 import { modelsQueryKeys, vendorsQueryKeys } from '../lib'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { useModelsColumns } from './models-columns'
@@ -120,7 +118,7 @@ export function ModelsTable() {
 
   // Fetch models data
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: modelsQueryKeys.list({
       keyword: globalFilter,
       vendor: activeVendorFilter,
@@ -152,17 +150,31 @@ export function ModelsTable() {
   const vendorCounts = data?.data?.vendor_counts
 
   // Columns configuration
-  const columns = useModelsColumns(vendors)
+  const pricingQuery = useModelPricing(
+    models
+      .filter((item) => item.name_rule === 0)
+      .map((item) => item.model_name),
+    models.length > 0
+  )
+  let pricingState: 'loading' | 'error' | undefined
+  if (pricingQuery.isError) pricingState = 'error'
+  else if (pricingQuery.isLoading) pricingState = 'loading'
+  const columns = useModelsColumns(vendors, pricingQuery.data, pricingState)
 
   // React Table instance
   const { table } = useDataTable({
     data: models,
+    getRowId: (model) => String(model.id),
     columns,
     totalCount,
     initialColumnVisibility: {
       description: false,
-      bound_channels: false,
-      quota_types: false,
+      id: false,
+      vendor_id: false,
+      name_rule: false,
+      endpoints: false,
+      created_time: false,
+      updated_time: false,
     },
     columnFilters,
     pagination,
@@ -188,25 +200,46 @@ export function ModelsTable() {
     })),
   ]
 
+  if (isError || data?.success === false) {
+    return (
+      <ErrorState
+        description={error?.message ?? data?.message}
+        onRetry={() => void refetch()}
+      />
+    )
+  }
+
   return (
     <DataTablePage
+      showMobileBulkActions
+      mobileProps={{ enableRowSelection: true }}
       table={table}
       columns={columns}
       isLoading={isLoading}
       isFetching={isFetching}
       emptyTitle={t('No Models Found')}
-      emptyDescription={t(
-        'No models available. Create your first model to get started.'
-      )}
+      emptyDescription={
+        shouldSearch
+          ? t('Try adjusting your search')
+          : t('No models available. Create your first model to get started.')
+      }
       skeletonKeyPrefix='model-skeleton'
       applyHeaderSize
+      pinnedColumns={[
+        { columnId: 'model_name', side: 'left' },
+        { columnId: 'actions', side: 'right' },
+      ]}
       toolbarProps={{
         searchPlaceholder: t('Filter by model name...'),
+        searchDebounceMs: 500,
         filters: [
           {
             columnId: 'status',
-            title: t('Status'),
-            options: [...getModelStatusOptions(t)],
+            title: t('Model square visibility'),
+            options: [
+              { label: t('Shown'), value: 'enabled' },
+              { label: t('Not shown'), value: 'disabled' },
+            ],
             singleSelect: true,
           },
           {
@@ -217,8 +250,11 @@ export function ModelsTable() {
           },
           {
             columnId: 'sync_official',
-            title: t('Official Sync'),
-            options: [...getSyncStatusOptions(t)],
+            title: t('Sync policy'),
+            options: [
+              { label: t('Allow updates'), value: 'yes' },
+              { label: t('Keep local'), value: 'no' },
+            ],
             singleSelect: true,
           },
         ],

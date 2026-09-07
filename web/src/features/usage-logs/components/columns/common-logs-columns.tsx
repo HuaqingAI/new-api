@@ -101,14 +101,22 @@ function buildDetailSegments(
   isAdmin: boolean
 ): DetailSegment[] {
   const segments = buildTypeDetailSegments(log, other, t)
+  const adminSegments: DetailSegment[] = []
   // Quota saturation is a rare, admin-only anomaly marker; surface it first
   // and in danger styling so it stands out on the related billing log. The
   // backend already strips admin_info for non-admins; gate on isAdmin too as
   // defense in depth so the marker never leaks if that changes.
   if (isAdmin && other?.admin_info?.quota_saturation) {
-    return [{ text: t('Quota clamped'), danger: true }, ...segments]
+    adminSegments.push({ text: t('Quota clamped'), danger: true })
   }
-  return segments
+  const plugin = isAdmin ? other?.admin_info?.task_plugin : undefined
+  if (plugin) {
+    const version = plugin.version ? ` @ ${plugin.version}` : ''
+    adminSegments.push({
+      text: `${t('Plugin')}: ${plugin.name || plugin.key}${version}`,
+    })
+  }
+  return [...adminSegments, ...segments]
 }
 
 function buildTypeDetailSegments(
@@ -116,9 +124,8 @@ function buildTypeDetailSegments(
   other: LogOtherData | null,
   t: (key: string, opts?: Record<string, unknown>) => string
 ): DetailSegment[] {
-  // Audit (type=3) and login (type=7) logs: render localized content from the
-  // structured op descriptor instead of the raw (English-fallback) content.
-  if (log.type === 3 || log.type === 7) {
+  // Top-up, audit, and login logs can carry a localized operation descriptor.
+  if (log.type === 1 || log.type === 3 || log.type === 7) {
     const text = renderAuditContent(other, t)
     return text ? [{ text }] : []
   }
@@ -283,7 +290,10 @@ function buildTypeDetailSegments(
   return segments
 }
 
-export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
+export function useCommonLogsColumns(
+  isAdmin: boolean,
+  isRoot: boolean
+): ColumnDef<UsageLog>[] {
   const { t } = useTranslation()
   const columns: ColumnDef<UsageLog>[] = [
     {
@@ -635,6 +645,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         return (
           <StreamTpsCell
             isStream={log.is_stream}
+            isTask={other?.is_task === true}
             tokensPerSecond={tokensPerSecond}
             streamStatus={other?.stream_status}
           />
@@ -727,6 +738,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       accessorKey: 'content',
       header: t('Details'),
       cell: function DetailsCell({ row }) {
+        const { t } = useTranslation()
         const [dialogOpen, setDialogOpen] = useState(false)
         const log = row.original
         const other = parseLogOther(log.other)
@@ -778,6 +790,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             <DetailsDialog
               log={log}
               isAdmin={isAdmin}
+              isRoot={isRoot}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
             />

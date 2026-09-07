@@ -139,10 +139,12 @@ export const Route = createRootRouteWithContext<{
         authBootstrap,
       ])
 
-      if (status?.success && status.data && !status.data.status) {
-        throw redirect({ to: '/setup' })
+      if (status?.success && status.data) {
+        if (!status.data.status) {
+          throw redirect({ to: '/setup' })
+        }
+        setupStatusChecked = true
       }
-      setupStatusChecked = true
     } else {
       await authBootstrap
     }

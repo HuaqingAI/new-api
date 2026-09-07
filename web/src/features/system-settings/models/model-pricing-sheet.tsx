@@ -24,6 +24,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { useForm } from 'react-hook-form'
@@ -61,6 +62,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import {
+  createDefaultTaskVisualConfig,
+  generateTaskExprFromConfig,
+} from '@/features/pricing/lib/task-expr'
+import type { BillingUsageSchema } from '@/features/pricing/types'
 import { cn } from '@/lib/utils'
 
 import {
@@ -81,6 +88,7 @@ import {
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
+import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
 export type { ModelRatioData } from './model-pricing-core'
@@ -91,6 +99,8 @@ type ModelPricingSheetProps = {
   editData?: ModelRatioData | null
   onSave?: () => void | Promise<void>
   isSaving?: boolean
+  usageSchema?: BillingUsageSchema
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 type ModelPricingEditorPanelProps = Omit<
@@ -104,11 +114,21 @@ export type ModelPricingEditorPanelHandle = {
   commitDraft: () => Promise<ModelRatioData | null>
 }
 
+const DEFAULT_TOKEN_BILLING_EXPR = 'tier("base", p * 0 + c * 0)'
+
 export const ModelPricingSheet = forwardRef<
   ModelPricingEditorPanelHandle,
   ModelPricingSheetProps
 >(function ModelPricingSheet(
-  { open, onOpenChange, editData, onSave, isSaving },
+  {
+    open,
+    onOpenChange,
+    editData,
+    onSave,
+    isSaving,
+    usageSchema,
+    onDirtyChange,
+  },
   ref
 ) {
   const { t } = useTranslation()
@@ -128,6 +148,8 @@ export const ModelPricingSheet = forwardRef<
         <ModelPricingEditorPanel
           ref={ref}
           editData={editData}
+          usageSchema={usageSchema}
+          onDirtyChange={onDirtyChange}
           onSave={onSave}
           isSaving={isSaving}
           className='h-full rounded-none border-0'
@@ -141,7 +163,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ModelPricingEditorPanelHandle,
   ModelPricingEditorPanelProps
 >(function ModelPricingEditorPanel(
-  { editData, className, onSave, isSaving },
+  { editData, className, onSave, isSaving, usageSchema, onDirtyChange },
   ref
 ) {
   const { t } = useTranslation()
@@ -156,7 +178,9 @@ export const ModelPricingEditorPanel = forwardRef<
   const [billingExpr, setBillingExpr] = useState('')
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
+  const autoSwitchedForRef = useRef<string | null>(null)
   const isEditMode = !!editData
+  const { models: pricingModels } = usePricingData()
 
   const form = useForm<ModelPricingFormValues>({
     resolver: zodResolver(createModelPricingSchema(t)),
@@ -172,6 +196,45 @@ export const ModelPricingEditorPanel = forwardRef<
       audioCompletionRatio: '',
     },
   })
+  const watchedValues = form.watch()
+  const usageSchemaByModel = useMemo(
+    () =>
+      new Map(
+        pricingModels.map((model) => [
+          model.model_name,
+          model.billing_usage_schema,
+        ])
+      ),
+    [pricingModels]
+  )
+  const usageExamplesByModel = useMemo(
+    () =>
+      new Map(
+        pricingModels.map((model) => [
+          model.model_name,
+          model.billing_usage_examples,
+        ])
+      ),
+    [pricingModels]
+  )
+  const taskUsageSchema =
+    usageSchema ?? usageSchemaByModel.get(watchedValues.name.trim())
+  const taskUsageExamples = usageExamplesByModel.get(watchedValues.name.trim())
+  const defaultTaskBillingExpr = useMemo(
+    () =>
+      taskUsageSchema
+        ? generateTaskExprFromConfig(
+            createDefaultTaskVisualConfig(taskUsageSchema),
+            taskUsageSchema
+          )
+        : '',
+    [taskUsageSchema]
+  )
+  const resolvedBillingExpr =
+    taskUsageSchema &&
+    (!billingExpr || billingExpr === DEFAULT_TOKEN_BILLING_EXPR)
+      ? defaultTaskBillingExpr
+      : billingExpr
 
   useEffect(() => {
     const nextLaneState = createInitialLaneState(editData)
@@ -188,13 +251,13 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
-      setPricingMode(
-        editData.billingMode === 'tiered_expr'
-          ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
-      )
+      let nextPricingMode: PricingMode = 'per-token'
+      if (editData.billingMode === 'tiered_expr') {
+        nextPricingMode = 'tiered_expr'
+      } else if (editData.price) {
+        nextPricingMode = 'per-request'
+      }
+      setPricingMode(nextPricingMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
@@ -218,7 +281,40 @@ export const ModelPricingEditorPanel = forwardRef<
     setLanePrices(nextLaneState.prices)
     setLaneEnabled(nextLaneState.enabled)
     setEditorReloadToken((token) => token + 1)
+    autoSwitchedForRef.current = null
   }, [editData, form])
+
+  useEffect(() => {
+    if (!editData) return
+    if (editData.billingMode === 'tiered_expr') return
+    if (editData.price || editData.ratio) return
+
+    const schema = usageSchema ?? usageSchemaByModel.get(editData.name)
+    if (!schema || Object.keys(schema).length === 0) return
+    if (autoSwitchedForRef.current === editData.name) return
+
+    setPricingMode('tiered_expr')
+    autoSwitchedForRef.current = editData.name
+  }, [editData, usageSchemaByModel, usageSchema])
+
+  useEffect(() => {
+    let originalMode: PricingMode = 'per-token'
+    if (editData?.billingMode === 'tiered_expr') originalMode = 'tiered_expr'
+    else if (editData?.price) originalMode = 'per-request'
+    onDirtyChange?.(
+      form.formState.isDirty ||
+        pricingMode !== originalMode ||
+        billingExpr !== (editData?.billingExpr ?? '') ||
+        requestRuleExpr !== (editData?.requestRuleExpr ?? '')
+    )
+  }, [
+    onDirtyChange,
+    form.formState.isDirty,
+    pricingMode,
+    billingExpr,
+    requestRuleExpr,
+    editData,
+  ])
 
   const setFormValue = (field: keyof ModelPricingFormValues, value: string) => {
     form.setValue(field, value, {
@@ -336,17 +432,16 @@ export const ModelPricingEditorPanel = forwardRef<
     const nextMode = value as PricingMode
     setPricingMode(nextMode)
     if (nextMode === 'tiered_expr' && !billingExpr) {
-      setBillingExpr('tier("base", p * 0 + c * 0)')
+      setBillingExpr(defaultTaskBillingExpr || DEFAULT_TOKEN_BILLING_EXPR)
     }
   }
 
-  const watchedValues = form.watch()
   const previewRows = useMemo(
     () =>
       buildPreviewRows(
         watchedValues,
         pricingMode,
-        billingExpr,
+        resolvedBillingExpr,
         requestRuleExpr,
         promptPrice,
         lanePrices,
@@ -354,7 +449,7 @@ export const ModelPricingEditorPanel = forwardRef<
         t
       ),
     [
-      billingExpr,
+      resolvedBillingExpr,
       laneEnabled,
       lanePrices,
       pricingMode,
@@ -413,6 +508,24 @@ export const ModelPricingEditorPanel = forwardRef<
   const validatePricingValues = useCallback(() => {
     if (
       pricingMode === 'per-token' &&
+      ((toNumberOrNull(promptPrice) === 0 &&
+        laneConfigs.some(
+          ({ key }) =>
+            laneEnabled[key] && (toNumberOrNull(lanePrices[key]) ?? 0) > 0
+        )) ||
+        (toNumberOrNull(lanePrices.audioInput) === 0 &&
+          laneEnabled.audioOutput &&
+          (toNumberOrNull(lanePrices.audioOutput) ?? 0) > 0))
+    ) {
+      form.setError('ratio', {
+        message: t(
+          'Use expression pricing when a dependent price is non-zero and its base price is zero.'
+        ),
+      })
+      return false
+    }
+    if (
+      pricingMode === 'per-token' &&
       toNumberOrNull(promptPrice) === null &&
       laneConfigs.some(
         ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
@@ -454,13 +567,13 @@ export const ModelPricingEditorPanel = forwardRef<
       }
 
       if (pricingMode === 'tiered_expr') {
-        data.billingExpr = billingExpr
+        data.billingExpr = resolvedBillingExpr
         data.requestRuleExpr = requestRuleExpr
       }
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr]
+    [pricingMode, requestRuleExpr, resolvedBillingExpr]
   )
 
   useImperativeHandle(
@@ -557,6 +670,32 @@ export const ModelPricingEditorPanel = forwardRef<
                   </TabsList>
 
                   <TabsContent value='per-token' className='pt-0'>
+                    {taskUsageSchema &&
+                      Object.keys(taskUsageSchema).length > 0 && (
+                        <Alert className='mb-4'>
+                          <AlertDescription className='flex flex-col gap-3 text-xs'>
+                            <p>
+                              {t(
+                                'This is a task model billed by usage (e.g. seconds, resolution). Prices entered here act as a per-call base rate, not per-token prices.'
+                              )}
+                            </p>
+                            <p>
+                              {t(
+                                'Tip: after configuring one model, select others in the table and use bulk copy.'
+                              )}
+                            </p>
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              className='w-fit'
+                              onClick={() => handleModeChange('tiered_expr')}
+                            >
+                              {t('Configure task pricing')}
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
+                      )}
                     <FieldGroup className='gap-5'>
                       <Field>
                         <FieldLabel>{t('Input price')}</FieldLabel>
@@ -641,14 +780,26 @@ export const ModelPricingEditorPanel = forwardRef<
 
                   <TabsContent value='tiered_expr' className='pt-0'>
                     <FieldGroup className='gap-5'>
-                      <TieredPricingEditor
-                        key={editorReloadToken}
-                        modelName={watchedValues.name}
-                        billingExpr={billingExpr}
-                        requestRuleExpr={requestRuleExpr}
-                        onBillingExprChange={setBillingExpr}
-                        onRequestRuleExprChange={setRequestRuleExpr}
-                      />
+                      {taskUsageSchema ? (
+                        <TaskUsagePricingEditor
+                          key={`${editorReloadToken}:${watchedValues.name}`}
+                          billingExpr={resolvedBillingExpr}
+                          requestRuleExpr={requestRuleExpr}
+                          usageSchema={taskUsageSchema}
+                          usageExamples={taskUsageExamples}
+                          onBillingExprChange={setBillingExpr}
+                          onRequestRuleExprChange={setRequestRuleExpr}
+                        />
+                      ) : (
+                        <TieredPricingEditor
+                          key={editorReloadToken}
+                          modelName={watchedValues.name}
+                          billingExpr={billingExpr}
+                          requestRuleExpr={requestRuleExpr}
+                          onBillingExprChange={setBillingExpr}
+                          onRequestRuleExprChange={setRequestRuleExpr}
+                        />
+                      )}
                     </FieldGroup>
                   </TabsContent>
                 </Tabs>

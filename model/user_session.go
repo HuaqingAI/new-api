@@ -131,6 +131,14 @@ func userSessionCacheDeadline() time.Time {
 }
 
 func CreateUserSession(session *UserSession) error {
+	cacheDeadline := userSessionCacheDeadline()
+	if err := createUserSessionWithTx(DB, session); err != nil {
+		return err
+	}
+	return publishCreatedUserSession(session, cacheDeadline)
+}
+
+func createUserSessionWithTx(tx *gorm.DB, session *UserSession) error {
 	now := time.Now().Unix()
 	if session == nil || session.SID == "" || session.UserID <= 0 || session.UserAuthVersion <= 0 || session.RefreshHash == "" || session.ExpiresAt <= now {
 		return ErrUserSessionInvalid
@@ -150,10 +158,10 @@ func CreateUserSession(session *UserSession) error {
 	if session.CreatedAt == 0 {
 		session.CreatedAt = now
 	}
-	cacheDeadline := userSessionCacheDeadline()
-	if err := DB.Create(session).Error; err != nil {
-		return err
-	}
+	return tx.Create(session).Error
+}
+
+func publishCreatedUserSession(session *UserSession, cacheDeadline time.Time) error {
 	if err := writeUserSessionCache(session.cacheEntry(), cacheDeadline); err != nil {
 		if errors.Is(err, errUserSessionCacheObservationStale) {
 			return confirmUserSessionActiveSnapshot(session)

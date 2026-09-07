@@ -81,14 +81,7 @@ import {
 } from '@/components/ui/form'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
@@ -107,10 +100,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  SecureVerificationDialog,
-  useSecureVerification,
-} from '@/features/auth/secure-verification'
+import { SecureVerificationDialog } from '@/features/auth/secure-verification'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useHiddenClickUnlock } from '@/hooks/use-hidden-click-unlock'
 import {
@@ -131,21 +121,27 @@ import {
   fetchModels,
   getAllModels,
   getChannel,
-  getChannelKey,
   getGroups,
   getPrefillGroups,
+  getTaskPluginOptions,
   refreshCodexCredential,
 } from '../../api'
 import {
   ADD_MODE_OPTIONS,
+  CLAUDE_FIELD_PASSTHROUGH_TYPES,
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
+  CHANNEL_TYPE_TASK_PLUGIN,
+  channelTypeOptionsForTaskPluginBind,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
+  FIELD_PASSTHROUGH_TYPES,
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
+  OPENAI_FIELD_PASSTHROUGH_TYPES,
 } from '../../constants'
+import { useChannelKeyDisclosure } from '../../hooks/use-channel-key-disclosure'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
   CHANNEL_FORM_DEFAULT_VALUES,
@@ -617,10 +613,13 @@ export function ChannelMutateDrawer({
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
+  const canBindTaskPlugin = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.TASK_PLUGIN,
+    ADMIN_PERMISSION_ACTIONS.BIND
+  )
   const canRevealChannelKey = currentUser?.role === ROLE.SUPER_ADMIN
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
-  const [channelKey, setChannelKey] = useState<string | null>(null)
-  const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
   const [isCodexCredentialRefreshing, setIsCodexCredentialRefreshing] =
     useState(false)
   const initialModelsRef = useRef<string[]>([])
@@ -684,25 +683,8 @@ export function ChannelMutateDrawer({
 
   const { copyToClipboard } = useCopyToClipboard()
 
-  const {
-    open: verificationOpen,
-    methods: verificationMethods,
-    state: verificationState,
-    executeVerification,
-    withVerification,
-    cancel: cancelVerification,
-    setCode: setVerificationCode,
-    switchMethod: switchVerificationMethod,
-  } = useSecureVerification()
-
-  useEffect(() => {
-    if (!open) {
-      setChannelKey(null)
-      setIsChannelKeyLoading(false)
-    } else if (channelId) {
-      setChannelKey(null)
-    }
-  }, [open, channelId])
+  const { channelKey, isChannelKeyLoading, handleRevealKey, verification } =
+    useChannelKeyDisclosure(open, channelId)
 
   // Check if this is a multi-key channel
   const isMultiKeyChannel =
@@ -926,13 +908,20 @@ export function ChannelMutateDrawer({
         ?.label || `#${currentType}`,
     [currentType]
   )
+  const taskPluginOptionsQuery = useQuery({
+    queryKey: ['task-plugin-options'],
+    queryFn: getTaskPluginOptions,
+    enabled: currentType === CHANNEL_TYPE_TASK_PLUGIN && canBindTaskPlugin,
+  })
 
   const channelTypeOptions = useMemo(() => {
-    const options = CHANNEL_TYPE_OPTIONS.map((option) => ({
-      value: String(option.value),
-      label: t(option.label),
-      icon: <ChannelTypeLogo type={option.value} size={16} />,
-    }))
+    const options = channelTypeOptionsForTaskPluginBind(canBindTaskPlugin).map(
+      (option) => ({
+        value: String(option.value),
+        label: t(option.label),
+        icon: <ChannelTypeLogo type={option.value} size={16} />,
+      })
+    )
     if (!options.some((option) => Number(option.value) === currentType)) {
       options.push({
         value: String(currentType),
@@ -941,7 +930,7 @@ export function ChannelMutateDrawer({
       })
     }
     return options
-  }, [currentType, t])
+  }, [canBindTaskPlugin, currentType, t])
 
   const formErrors = form.formState.errors
   const identityHasErrors = Boolean(
@@ -1026,7 +1015,7 @@ export function ChannelMutateDrawer({
     (currentHttp2ConnectionShards != null && currentHttp2ConnectionShards > 1)
   )
   let fieldPassthroughConfigured = false
-  if (currentType === 1 || currentType === 57) {
+  if (OPENAI_FIELD_PASSTHROUGH_TYPES.has(currentType)) {
     fieldPassthroughConfigured = Boolean(
       currentAllowServiceTier ||
       currentDisableStore ||
@@ -1034,13 +1023,16 @@ export function ChannelMutateDrawer({
       currentAllowIncludeObfuscation ||
       currentAllowInferenceGeo
     )
-  } else if (currentType === 14) {
-    fieldPassthroughConfigured = Boolean(
-      currentAllowServiceTier ||
-      currentAllowInferenceGeo ||
-      currentAllowSpeed ||
-      currentClaudeBetaQuery
-    )
+  }
+  if (CLAUDE_FIELD_PASSTHROUGH_TYPES.has(currentType)) {
+    fieldPassthroughConfigured =
+      fieldPassthroughConfigured ||
+      Boolean(
+        currentAllowServiceTier ||
+        currentAllowInferenceGeo ||
+        currentAllowSpeed ||
+        (currentType === 14 && currentClaudeBetaQuery)
+      )
   }
   const upstreamModelDetectionConfigured = Boolean(
     upstreamModelUpdateCheckEnabled ||
@@ -1077,7 +1069,7 @@ export function ChannelMutateDrawer({
       configured: extraSettingsConfigured,
     },
   ]
-  if (currentType === 1 || currentType === 14 || currentType === 57) {
+  if (FIELD_PASSTHROUGH_TYPES.has(currentType)) {
     advancedNavChildren.push({
       id: ADVANCED_SETTINGS_SECTION_IDS.fieldPassthrough,
       title: t('Field passthrough controls'),
@@ -1350,49 +1342,6 @@ export function ChannelMutateDrawer({
       )
     }
   }
-
-  const fetchChannelKey = useCallback(
-    async (proofToken?: string) => {
-      if (!channelId) {
-        throw new Error('Channel is not selected')
-      }
-
-      setIsChannelKeyLoading(true)
-      try {
-        const res = await getChannelKey(channelId, proofToken)
-        if (!res.success) {
-          throw new Error(res.message || t('Failed to fetch channel key'))
-        }
-
-        const keyValue = res.data?.key ?? ''
-        setChannelKey(keyValue)
-        toast.success(t('Channel key unlocked'))
-        return res
-      } finally {
-        setIsChannelKeyLoading(false)
-      }
-    },
-    [channelId, t]
-  )
-
-  const handleRevealKey = useCallback(async () => {
-    if (!channelId) return
-
-    try {
-      await withVerification(fetchChannelKey, {
-        scope: 'channel.key.read',
-        preferredMethod: 'passkey',
-        title: t('Verify to view channel key'),
-        description: t(
-          'Use Passkey or 2FA to confirm your identity before revealing this channel key.'
-        ),
-      })
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message)
-      }
-    }
-  }, [channelId, withVerification, fetchChannelKey, t])
 
   const handleRefreshCodexCredential = useCallback(async () => {
     if (!channelId) return
@@ -2022,6 +1971,63 @@ export function ChannelMutateDrawer({
                               )}
                             />
                           </fieldset>
+
+                          {currentType === CHANNEL_TYPE_TASK_PLUGIN && (
+                            <FormField
+                              control={form.control}
+                              name='task_plugin_key'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>{t('Task plugin *')}</FormLabel>
+                                  {canBindTaskPlugin ? (
+                                    <FormControl><Combobox
+value={field.value}
+onValueChange={(value) => {
+                                        field.onChange(value)
+                                        const plugin =
+                                          taskPluginOptionsQuery.data?.find(
+                                            (item) => item.key === value
+                                          )
+                                        if (plugin?.models?.length) {
+                                          form.setValue(
+                                            'models',
+                                            formatModelsArray(plugin.models),
+                                            {
+                                              shouldDirty: true,
+                                            }
+                                          )
+                                        }
+                                      }}
+options={(
+                                        taskPluginOptionsQuery.data ?? []
+                                      ).map((plugin) => ({
+                                        value: plugin.key,
+                                        label: `${plugin.name} (${plugin.key})`,
+                                      }))}
+className='w-full'
+placeholder={t(
+                                              'Select task plugin'
+                                            )}
+/></FormControl>
+                                  ) : (
+                                    <FormControl>
+                                      <Input
+                                        readOnly
+                                        value={field.value ?? ''}
+                                        className='font-mono'
+                                      />
+                                    </FormControl>
+                                  )}
+                                  <FormDescription>
+                                    {t(
+                                      'Selecting a plugin fills its declared models.'
+                                    )}
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          )}
 
                           <FormField
                             control={form.control}
@@ -2773,7 +2779,11 @@ export function ChannelMutateDrawer({
                                 name='base_url'
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>{t('Base URL')}</FormLabel>
+                                    <FormLabel>
+                                      {currentType === CHANNEL_TYPE_TASK_PLUGIN
+                                        ? t('Base URL *')
+                                        : t('Base URL')}
+                                    </FormLabel>
                                     <FormControl>
                                       <Input
                                         placeholder={t(
@@ -3032,11 +3042,11 @@ export function ChannelMutateDrawer({
                                                 onClick={handleRevealKey}
                                                 disabled={
                                                   isChannelKeyLoading ||
-                                                  verificationState.loading
+                                                  verification.isActive
                                                 }
                                               >
                                                 {isChannelKeyLoading ||
-                                                verificationState.loading ? (
+                                                verification.isActive ? (
                                                   <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                                                 ) : (
                                                   <Eye className='mr-2 h-4 w-4' />
@@ -4367,9 +4377,7 @@ export function ChannelMutateDrawer({
                           </fieldset>
                         </div>
 
-                        {(currentType === 1 ||
-                          currentType === 14 ||
-                          currentType === 57) && (
+                        {FIELD_PASSTHROUGH_TYPES.has(currentType) && (
                           <div
                             id={ADVANCED_SETTINGS_SECTION_IDS.fieldPassthrough}
                             className={sideDrawerSectionClassName(
@@ -4414,7 +4422,9 @@ export function ChannelMutateDrawer({
                                   )}
                                 />
 
-                                {(currentType === 1 || currentType === 57) && (
+                                {OPENAI_FIELD_PASSTHROUGH_TYPES.has(
+                                  currentType
+                                ) && (
                                   <>
                                     <FormField
                                       control={form.control}
@@ -4524,34 +4534,38 @@ export function ChannelMutateDrawer({
                                   </>
                                 )}
 
-                                {currentType === 14 && (
+                                {CLAUDE_FIELD_PASSTHROUGH_TYPES.has(
+                                  currentType
+                                ) && (
                                   <>
-                                    <FormField
-                                      control={form.control}
-                                      name='allow_inference_geo'
-                                      render={({ field }) => (
-                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
-                                          <div className='space-y-0.5'>
-                                            <FormLabel className='text-sm'>
-                                              {t(
-                                                'Allow inference_geo passthrough'
-                                              )}
-                                            </FormLabel>
-                                            <FormDescription>
-                                              {t(
-                                                'Pass through the inference_geo field for Claude data residency region control'
-                                              )}
-                                            </FormDescription>
-                                          </div>
-                                          <FormControl>
-                                            <Switch
-                                              checked={field.value}
-                                              onCheckedChange={field.onChange}
-                                            />
-                                          </FormControl>
-                                        </FormItem>
-                                      )}
-                                    />
+                                    {currentType === 14 && (
+                                      <FormField
+                                        control={form.control}
+                                        name='allow_inference_geo'
+                                        render={({ field }) => (
+                                          <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                            <div className='space-y-0.5'>
+                                              <FormLabel className='text-sm'>
+                                                {t(
+                                                  'Allow inference_geo passthrough'
+                                                )}
+                                              </FormLabel>
+                                              <FormDescription>
+                                                {t(
+                                                  'Pass through the inference_geo field for Claude data residency region control'
+                                                )}
+                                              </FormDescription>
+                                            </div>
+                                            <FormControl>
+                                              <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                              />
+                                            </FormControl>
+                                          </FormItem>
+                                        )}
+                                      />
+                                    )}
 
                                     <FormField
                                       control={form.control}
@@ -4578,32 +4592,34 @@ export function ChannelMutateDrawer({
                                       )}
                                     />
 
-                                    <FormField
-                                      control={form.control}
-                                      name='claude_beta_query'
-                                      render={({ field }) => (
-                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
-                                          <div className='space-y-0.5'>
-                                            <FormLabel className='text-sm'>
-                                              {t(
-                                                'Allow Claude beta query passthrough'
-                                              )}
-                                            </FormLabel>
-                                            <FormDescription>
-                                              {t(
-                                                'Pass through the anthropic-beta header for beta features'
-                                              )}
-                                            </FormDescription>
-                                          </div>
-                                          <FormControl>
-                                            <Switch
-                                              checked={field.value}
-                                              onCheckedChange={field.onChange}
-                                            />
-                                          </FormControl>
-                                        </FormItem>
-                                      )}
-                                    />
+                                    {currentType === 14 && (
+                                      <FormField
+                                        control={form.control}
+                                        name='claude_beta_query'
+                                        render={({ field }) => (
+                                          <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                            <div className='space-y-0.5'>
+                                              <FormLabel className='text-sm'>
+                                                {t(
+                                                  'Allow Claude beta query passthrough'
+                                                )}
+                                              </FormLabel>
+                                              <FormDescription>
+                                                {t(
+                                                  'Pass through the anthropic-beta header for beta features'
+                                                )}
+                                              </FormDescription>
+                                            </div>
+                                            <FormControl>
+                                              <Switch
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                              />
+                                            </FormControl>
+                                          </FormItem>
+                                        )}
+                                      />
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -4822,29 +4838,10 @@ export function ChannelMutateDrawer({
         channelName={
           shouldPreviewUnsavedModels ? currentName?.trim() : undefined
         }
-        existingModelsOverride={
-          shouldPreviewUnsavedModels
-            ? parseModelsString(form.getValues('models') || '')
-            : undefined
-        }
+        existingModelsOverride={currentModelsArray}
       />
 
-      <SecureVerificationDialog
-        open={verificationOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            cancelVerification()
-          }
-        }}
-        methods={verificationMethods}
-        state={verificationState}
-        onVerify={async (method, code) => {
-          await executeVerification(method, code)
-        }}
-        onCancel={cancelVerification}
-        onCodeChange={setVerificationCode}
-        onMethodChange={switchVerificationMethod}
-      />
+      <SecureVerificationDialog {...verification.dialogProps} />
 
       {/* Missing Models Confirmation Dialog */}
       <MissingModelsConfirmationDialog

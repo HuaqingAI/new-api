@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -81,7 +82,7 @@ type GeneralOpenAIRequest struct {
 	ExtraBody json.RawMessage `json:"extra_body,omitempty"`
 	//xai
 	SearchParameters json.RawMessage `json:"search_parameters,omitempty"`
-	// claude
+	// OpenAI Chat web search.
 	WebSearchOptions *WebSearchOptions `json:"web_search_options,omitempty"`
 	// OpenRouter Params
 	Usage     json.RawMessage `json:"usage,omitempty"`
@@ -106,6 +107,11 @@ type GeneralOpenAIRequest struct {
 	SearchMode             json.RawMessage `json:"search_mode,omitempty"`
 	// Minimax
 	ReasoningSplit json.RawMessage `json:"reasoning_split,omitempty"`
+	// vLLM
+	ThinkingTokenBudget json.RawMessage `json:"thinking_token_budget,omitempty"`
+
+	// Internal conversion state; never serialized to an upstream protocol.
+	ReasoningConversion *ReasoningConversionState `json:"-"`
 }
 
 func (r GeneralOpenAIRequest) MarshalJSON() ([]byte, error) {
@@ -227,8 +233,74 @@ func IsOpenAIReasoningOModel(modelName string) bool {
 		strings.HasPrefix(modelName, "o4")
 }
 
+// IsOpenAIGPT5Model identifies the GPT-5 family, independently of request capabilities.
 func IsOpenAIGPT5Model(modelName string) bool {
-	return strings.HasPrefix(modelName, "gpt-5")
+	return modelName == "gpt-5" || strings.HasPrefix(modelName, "gpt-5-") || strings.HasPrefix(modelName, "gpt-5.")
+}
+
+// OpenAIChatCapabilities describes independent Chat Completions compatibility rules.
+type OpenAIChatCapabilities struct {
+	UseMaxCompletionTokens bool
+	UseDeveloperRole       bool
+	SupportsTemperature    bool
+	SupportsTopP           bool
+	SupportsLogProbs       bool // Also governs top_logprobs.
+}
+
+// GetOpenAIChatCapabilities uses the mapped model and resolved reasoning effort.
+// Unrecognized models retain their parameters; future GPT generations do not
+// automatically inherit the restrictions of existing models.
+func GetOpenAIChatCapabilities(modelName, reasoningEffort string) OpenAIChatCapabilities {
+	capabilities := OpenAIChatCapabilities{
+		SupportsTemperature: true,
+		SupportsTopP:        true,
+		SupportsLogProbs:    true,
+	}
+	if IsOpenAIReasoningOModel(modelName) {
+		capabilities.UseMaxCompletionTokens = true
+		capabilities.UseDeveloperRole = !strings.HasPrefix(modelName, "o1-mini") && !strings.HasPrefix(modelName, "o1-preview")
+		capabilities.SupportsTemperature = false
+		return capabilities
+	}
+
+	isGPT5Model := IsOpenAIGPT5Model(modelName)
+	if !isGPT5Model && !isOpenAIModelSnapshot(modelName, "gpt-6-astra") {
+		return capabilities
+	}
+	capabilities.UseMaxCompletionTokens = true
+	capabilities.UseDeveloperRole = true
+
+	// These standard GPT-5 models default to none and support sampling only
+	// without reasoning. Named variants (pro, codex, chat-latest, etc.) do not
+	// inherit this exception. GPT-6 Astra never supports these parameters.
+	// https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.2
+	// https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.4
+	// https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra
+	supportsSampling := false
+	if isGPT5Model && (reasoningEffort == "" || reasoningEffort == "none") {
+		for _, model := range []string{"gpt-5.1", "gpt-5.2", "gpt-5.4"} {
+			if isOpenAIModelSnapshot(modelName, model) {
+				supportsSampling = true
+				break
+			}
+		}
+	}
+	capabilities.SupportsTemperature = supportsSampling
+	capabilities.SupportsTopP = supportsSampling
+	capabilities.SupportsLogProbs = supportsSampling
+	return capabilities
+}
+
+func isOpenAIModelSnapshot(modelName, baseModel string) bool {
+	if modelName == baseModel {
+		return true
+	}
+	snapshot, ok := strings.CutPrefix(modelName, baseModel+"-")
+	if !ok {
+		return false
+	}
+	_, err := time.Parse(time.DateOnly, snapshot)
+	return err == nil
 }
 
 func IsQwenThinkingBudgetModel(modelName string) bool {
@@ -240,11 +312,7 @@ func IsQwenThinkingBudgetModel(modelName string) bool {
 }
 
 func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
-	if IsOpenAIReasoningOModel(r.Model) {
-		if !strings.HasPrefix(r.Model, "o1-mini") && !strings.HasPrefix(r.Model, "o1-preview") {
-			return "developer"
-		}
-	} else if IsOpenAIGPT5Model(r.Model) {
+	if GetOpenAIChatCapabilities(r.Model, r.ReasoningEffort).UseDeveloperRole {
 		return "developer"
 	}
 	return "system"
@@ -264,6 +332,7 @@ type FunctionRequest struct {
 	Name        string `json:"name"`
 	Parameters  any    `json:"parameters,omitempty"`
 	Arguments   string `json:"arguments,omitempty"`
+	Strict      *bool  `json:"strict,omitempty"`
 }
 
 type StreamOptions struct {
@@ -309,7 +378,10 @@ type Message struct {
 	Reasoning        *string         `json:"reasoning,omitempty"`
 	ToolCalls        json.RawMessage `json:"tool_calls,omitempty"`
 	ToolCallId       string          `json:"tool_call_id,omitempty"`
-	parsedContent    []MediaContent
+	// Annotations is an official Chat response field. Keeping it on the shared
+	// message type also preserves annotations when clients replay assistant output.
+	Annotations   json.RawMessage `json:"annotations,omitempty"`
+	parsedContent []MediaContent
 	//parsedStringContent *string
 }
 
@@ -483,14 +555,14 @@ func (m *Message) ParseToolCalls() []ToolCallRequest {
 		return nil
 	}
 	var toolCalls []ToolCallRequest
-	if err := json.Unmarshal(m.ToolCalls, &toolCalls); err == nil {
+	if err := kitutil.Unmarshal(m.ToolCalls, &toolCalls); err == nil {
 		return toolCalls
 	}
 	return toolCalls
 }
 
 func (m *Message) SetToolCalls(toolCalls any) {
-	toolCallsJson, _ := json.Marshal(toolCalls)
+	toolCallsJson, _ := kitutil.Marshal(toolCalls)
 	m.ToolCalls = toolCallsJson
 }
 
@@ -558,6 +630,11 @@ func (m *Message) ParseContent() []MediaContent {
 		}}
 		m.parsedContent = contentList
 		return contentList
+	}
+
+	if content, ok := m.Content.([]MediaContent); ok {
+		m.parsedContent = content
+		return content
 	}
 
 	// 尝试解析为数组
@@ -680,7 +757,7 @@ func (m *Message) ParseContent() []MediaContent {
 	}
 
 	var stringContent string
-	if err := json.Unmarshal(m.Content, &stringContent); err == nil {
+	if err := kitutil.Unmarshal(m.Content, &stringContent); err == nil {
 		m.parsedStringContent = &stringContent
 		return stringContent
 	}
@@ -705,14 +782,14 @@ func (m *Message) SetNullContent() {
 }
 
 func (m *Message) SetStringContent(content string) {
-	jsonContent, _ := json.Marshal(content)
+	jsonContent, _ := kitutil.Marshal(content)
 	m.Content = jsonContent
 	m.parsedStringContent = &content
 	m.parsedContent = nil
 }
 
 func (m *Message) SetMediaContent(content []MediaContent) {
-	jsonContent, _ := json.Marshal(content)
+	jsonContent, _ := kitutil.Marshal(content)
 	m.Content = jsonContent
 	m.parsedContent = nil
 	m.parsedStringContent = nil
@@ -723,7 +800,7 @@ func (m *Message) IsStringContent() bool {
 		return true
 	}
 	var stringContent string
-	if err := json.Unmarshal(m.Content, &stringContent); err == nil {
+	if err := kitutil.Unmarshal(m.Content, &stringContent); err == nil {
 		m.parsedStringContent = &stringContent
 		return true
 	}
@@ -739,7 +816,7 @@ func (m *Message) ParseContent() []MediaContent {
 
 	// 先尝试解析为字符串
 	var stringContent string
-	if err := json.Unmarshal(m.Content, &stringContent); err == nil {
+	if err := kitutil.Unmarshal(m.Content, &stringContent); err == nil {
 		contentList = []MediaContent{{
 			Type: ContentTypeText,
 			Text: stringContent,
@@ -750,7 +827,7 @@ func (m *Message) ParseContent() []MediaContent {
 
 	// 尝试解析为数组
 	var arrayContent []map[string]interface{}
-	if err := json.Unmarshal(m.Content, &arrayContent); err == nil {
+	if err := kitutil.Unmarshal(m.Content, &arrayContent); err == nil {
 		for _, contentItem := range arrayContent {
 			contentType, ok := contentItem["type"].(string)
 			if !ok {
@@ -859,14 +936,19 @@ type OpenAIResponsesRequest struct {
 	Include json.RawMessage `json:"include,omitempty"`
 	// 在后台运行推理，暂时还不支持依赖的接口
 	// Background         json.RawMessage `json:"background,omitempty"`
-	Conversation       json.RawMessage `json:"conversation,omitempty"`
-	ContextManagement  json.RawMessage `json:"context_management,omitempty"`
-	Instructions       json.RawMessage `json:"instructions,omitempty"`
-	MaxOutputTokens    *uint           `json:"max_output_tokens,omitempty"`
-	TopLogProbs        *int            `json:"top_logprobs,omitempty"`
-	Metadata           json.RawMessage `json:"metadata,omitempty"`
-	Moderation         json.RawMessage `json:"moderation,omitempty"`
-	ParallelToolCalls  json.RawMessage `json:"parallel_tool_calls,omitempty"`
+	Conversation      json.RawMessage `json:"conversation,omitempty"`
+	ContextManagement json.RawMessage `json:"context_management,omitempty"`
+	Instructions      json.RawMessage `json:"instructions,omitempty"`
+	MaxOutputTokens   *uint           `json:"max_output_tokens,omitempty"`
+	TopLogProbs       *int            `json:"top_logprobs,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+	Moderation        json.RawMessage `json:"moderation,omitempty"`
+	ParallelToolCalls json.RawMessage `json:"parallel_tool_calls,omitempty"`
+	// FrequencyPenalty/PresencePenalty are not part of the official OpenAI
+	// Responses API; they are forwarded verbatim for OpenAI-compatible upstreams
+	// (e.g. vLLM) that accept them.
+	FrequencyPenalty   json.RawMessage `json:"frequency_penalty,omitempty"`
+	PresencePenalty    json.RawMessage `json:"presence_penalty,omitempty"`
 	PreviousResponseID string          `json:"previous_response_id,omitempty"`
 	Reasoning          *Reasoning      `json:"reasoning,omitempty"`
 	// ServiceTier specifies upstream service level and may affect billing.
@@ -900,6 +982,9 @@ type OpenAIResponsesRequest struct {
 	ThinkingBudget json.RawMessage `json:"thinking_budget,omitempty"`
 	// perplexity
 	Preset json.RawMessage `json:"preset,omitempty"`
+
+	// Internal conversion state; never serialized to an upstream protocol.
+	ReasoningConversion *ReasoningConversionState `json:"-"`
 }
 
 func (r OpenAIResponsesRequest) MarshalJSON() ([]byte, error) {

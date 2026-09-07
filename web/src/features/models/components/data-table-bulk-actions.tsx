@@ -17,14 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
-import { type Table } from '@tanstack/react-table'
-import { Power, PowerOff, Trash2, Copy } from 'lucide-react'
+import type { Table } from '@tanstack/react-table'
+import { Eye, EyeOff, Trash2, Copy, Building2, Unlink } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { DataTableBulkActions as BulkActionsToolbar } from '@/components/data-table'
-import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -33,12 +32,11 @@ import {
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
-import {
-  handleBatchEnableModels,
-  handleBatchDisableModels,
-  handleBatchDeleteModels,
-} from '../lib'
+import { handleBatchEnableModels, handleBatchDisableModels } from '../lib'
 import type { Model } from '../types'
+import type { VendorOperation } from '../vendor-api'
+import { ModelDeleteDialog } from './dialogs/model-delete-dialog'
+import { VendorOperationDialog } from './dialogs/vendor-operation-dialog'
 
 interface DataTableBulkActionsProps<TData> {
   table: Table<TData>
@@ -49,6 +47,8 @@ export function DataTableBulkActions<TData>({
 }: DataTableBulkActionsProps<TData>) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const [vendorOperation, setVendorOperation] =
+    useState<VendorOperation | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const selectedRows = table.getFilteredSelectedRowModel().rows
@@ -76,13 +76,6 @@ export function DataTableBulkActions<TData>({
     handleBatchDisableModels(selectedIds, queryClient, handleClearSelection)
   }
 
-  const handleDeleteAll = () => {
-    handleBatchDeleteModels(selectedIds, queryClient, () => {
-      setShowDeleteConfirm(false)
-      handleClearSelection()
-    })
-  }
-
   const handleCopyNames = async () => {
     const names = selectedModels.map((m) => m.model_name).join(',')
     const success = await copyToClipboard(names)
@@ -95,7 +88,42 @@ export function DataTableBulkActions<TData>({
 
   return (
     <>
+      {vendorOperation && (
+        <VendorOperationDialog
+          selection={vendorOperation}
+          onClose={() => setVendorOperation(null)}
+          onSuccess={handleClearSelection}
+        />
+      )}
       <BulkActionsToolbar table={table} entityName='model'>
+        <Button
+          variant='outline'
+          size='icon'
+          className='size-8'
+          title={t('Change vendor')}
+          aria-label={t('Change vendor')}
+          onClick={() =>
+            setVendorOperation({ action: 'assign', model_ids: selectedIds })
+          }
+        >
+          <Building2 />
+        </Button>
+        <Button
+          variant='outline'
+          size='icon'
+          className='size-8'
+          title={t('Clear vendor')}
+          aria-label={t('Clear vendor')}
+          onClick={() =>
+            setVendorOperation({
+              action: 'assign',
+              model_ids: selectedIds,
+              target_vendor_id: 0,
+            })
+          }
+        >
+          <Unlink />
+        </Button>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -104,16 +132,18 @@ export function DataTableBulkActions<TData>({
                 size='icon'
                 onClick={handleEnableAll}
                 className='size-8'
-                aria-label={t('Enable selected models')}
-                title={t('Enable selected models')}
+                aria-label={t('Show selected models in model square')}
+                title={t('Show selected models in model square')}
               />
             }
           >
-            <Power />
-            <span className='sr-only'>{t('Enable selected models')}</span>
+            <Eye />
+            <span className='sr-only'>
+              {t('Show selected models in model square')}
+            </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{t('Enable selected models')}</p>
+            <p>{t('Show selected models in model square')}</p>
           </TooltipContent>
         </Tooltip>
 
@@ -125,16 +155,18 @@ export function DataTableBulkActions<TData>({
                 size='icon'
                 onClick={handleDisableAll}
                 className='size-8'
-                aria-label={t('Disable selected models')}
-                title={t('Disable selected models')}
+                aria-label={t('Hide selected models from model square')}
+                title={t('Hide selected models from model square')}
               />
             }
           >
-            <PowerOff />
-            <span className='sr-only'>{t('Disable selected models')}</span>
+            <EyeOff />
+            <span className='sr-only'>
+              {t('Hide selected models from model square')}
+            </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{t('Disable selected models')}</p>
+            <p>{t('Hide selected models from model square')}</p>
           </TooltipContent>
         </Tooltip>
 
@@ -181,32 +213,13 @@ export function DataTableBulkActions<TData>({
         </Tooltip>
       </BulkActionsToolbar>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={showDeleteConfirm}
-        onOpenChange={setShowDeleteConfirm}
-        title={t('Delete Models?')}
-        description={t(
-          'Are you sure you want to delete {{count}} model(s)? This action cannot be undone.',
-          { count: selectedIds.length }
-        )}
-        contentHeight='auto'
-        footer={
-          <>
-            <Button
-              variant='outline'
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              {t('Cancel')}
-            </Button>
-            <Button variant='destructive' onClick={handleDeleteAll}>
-              {t('Delete')}
-            </Button>
-          </>
-        }
-      >
-        {' '}
-      </Dialog>
+      {showDeleteConfirm && (
+        <ModelDeleteDialog
+          models={selectedModels}
+          onClose={() => setShowDeleteConfirm(false)}
+          onSuccess={handleClearSelection}
+        />
+      )}
     </>
   )
 }

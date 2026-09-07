@@ -17,6 +17,13 @@ const RefreshCookieName = "new_api_refresh"
 const refreshCookiePath = "/api"
 const legacyRefreshCookiePath = "/api/user/auth"
 
+// SessionHintCookieName is the script-readable companion to RefreshCookieName.
+// See writeSessionHintCookie for why it exists and what it is not.
+const SessionHintCookieName = "new_api_has_session"
+
+// SessionHintCookieValue is the only value the hint ever carries.
+const SessionHintCookieValue = "1"
+
 var (
 	ErrLoginSessionInvalid  = errors.New("login session is invalid")
 	ErrLoginSessionRevoked  = errors.New("login session is revoked")
@@ -81,15 +88,32 @@ func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, 
 	if issuanceCount >= int64(common.UserSessionIssuanceLimit) {
 		return nil, model.ErrUserSessionIssuanceLimit
 	}
-	refreshSecret, err := common.GenerateRandomCharsKey(64)
+	session, refreshSecret, err := newLoginSession(userID, user.AuthVersion, loginMethod, ip, userAgent)
 	if err != nil {
 		return nil, err
 	}
+	if err := model.CreateUserSession(session); err != nil {
+		return nil, err
+	}
+	bundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
+	if err != nil {
+		_, _ = model.RevokeUserSession(userID, session.SID, "token_issue_failed")
+		return nil, err
+	}
+	return bundle, nil
+}
+
+func newLoginSession(userID int, authVersion int64, loginMethod, ip, userAgent string) (*model.UserSession, string, error) {
+	refreshSecret, err := common.GenerateRandomCharsKey(64)
+	if err != nil {
+		return nil, "", err
+	}
+	now := time.Now().Unix()
 	session := &model.UserSession{
 		SID:             uuid.NewString(),
 		UserID:          userID,
 		Version:         1,
-		UserAuthVersion: user.AuthVersion,
+		UserAuthVersion: authVersion,
 		Status:          model.UserSessionStatusActive,
 		RefreshHash:     hashRefreshSecret(refreshSecret),
 		LoginMethod:     strings.TrimSpace(loginMethod),
@@ -102,15 +126,7 @@ func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, 
 	if session.LoginMethod == "" {
 		session.LoginMethod = "unknown"
 	}
-	if err := model.CreateUserSession(session); err != nil {
-		return nil, err
-	}
-	bundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
-	if err != nil {
-		_, _ = model.RevokeUserSession(userID, session.SID, "token_issue_failed")
-		return nil, err
-	}
-	return bundle, nil
+	return session, refreshSecret, nil
 }
 
 func ValidateLoginSession(identity AuthIdentity) (*model.UserSession, *model.UserBase, error) {
@@ -222,7 +238,7 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 	if err != nil {
 		return nil, nil, err
 	}
-	currentUser, err := model.GetUserById(session.UserID, false)
+	currentUser, err := model.GetSelfUserById(session.UserID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -313,6 +329,7 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 		SameSite: http.SameSiteStrictMode,
 	})
 	clearRefreshCookieAtPath(c, legacyRefreshCookiePath)
+	writeSessionHintCookie(c, maxAge, expiresAt)
 }
 
 func ClearRefreshCookie(c *gin.Context) {
@@ -328,6 +345,50 @@ func clearRefreshCookieAtPath(c *gin.Context, path string) {
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
 		HttpOnly: true,
+		Secure:   common.SessionCookieSecure,
+		SameSite: http.SameSiteStrictMode,
+	})
+	clearSessionHintCookie(c)
+}
+
+// writeSessionHintCookie mirrors the Refresh Cookie's lifetime with a
+// script-readable marker. The Refresh Cookie itself is HttpOnly and scoped to
+// /api/user/auth, so a page at / cannot tell whether a login session exists;
+// without this hint the frontend has to POST /api/user/auth/refresh on every
+// cold boot just to learn that an anonymous visitor is anonymous. That request
+// is guaranteed to 401 and still consumes a slot of the IP-keyed
+// CriticalRateLimit budget shared by everyone behind the same address.
+//
+// The value is the constant "1" and carries no credential: it states that a
+// Refresh Cookie was issued, never who for. Authorization still derives solely
+// from the Refresh Cookie and the Access Token, so forging this hint only costs
+// the forger the round trip it was meant to avoid.
+//
+// It must be written and cleared in lockstep with the Refresh Cookie, which is
+// why it lives inside these two helpers rather than at their call sites: both
+// cookies then ride the same response with the same expiry, and no login path
+// can set one without the other.
+func writeSessionHintCookie(c *gin.Context, maxAge int, expiresAt time.Time) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     SessionHintCookieName,
+		Value:    SessionHintCookieValue,
+		Path:     "/",
+		MaxAge:   maxAge,
+		Expires:  expiresAt,
+		HttpOnly: false,
+		Secure:   common.SessionCookieSecure,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func clearSessionHintCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     SessionHintCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+		HttpOnly: false,
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})

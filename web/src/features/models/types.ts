@@ -41,6 +41,7 @@ export interface Model {
   tags?: string
   vendor_id?: number
   endpoints?: string
+  supported_endpoints?: string[]
   status: number
   sync_official: number
   created_time: number
@@ -58,6 +59,8 @@ export interface Model {
  * Vendor entity from API
  */
 export interface Vendor {
+  model_count?: number
+  version?: string
   id: number
   name: string
   description?: string
@@ -155,51 +158,77 @@ export interface GetVendorResponse {
 /**
  * Sync diff data
  */
-export interface SyncDiffData {
-  missing?: Array<{
-    model_name: string
-    vendor?: string
-    [key: string]: unknown
-  }>
-  conflicts?: Array<{
-    model_name: string
-    local?: Partial<Model>
-    upstream?: Partial<Model>
-    fields?: Array<{
-      field: string
-      local?: unknown
-      upstream?: unknown
-    }>
-    [key: string]: unknown
-  }>
+export type MetadataSyncField =
+  | 'description'
+  | 'icon'
+  | 'tags'
+  | 'vendor'
+  | 'endpoints'
+  | 'name_rule'
+  | 'status'
+export type MetadataSyncValues = {
+  description: string
+  icon: string
+  tags: string
+  vendor: string
+  endpoints: string
+  name_rule: number
+  status: number
 }
-
-export interface SyncOverwritePayload {
+export type MetadataSyncCandidate = {
   model_name: string
-  fields: string[]
+  kind:
+    | 'create'
+    | 'update'
+    | 'unchanged'
+    | 'blocked'
+    | 'missing_upstream'
+    | 'missing_vendor'
+  scope: 'site' | 'catalog'
+  record_version: string
+  fields: Array<{
+    field: MetadataSyncField
+    local: string | number
+    upstream: string | number
+  }>
+  upstream?: MetadataSyncValues
+  vendor_to_create?: string
 }
-
-/**
- * Sync upstream response
- */
+export type MetadataSyncSource = {
+  locale: SyncLocale
+  models_url: string
+  vendors_url: string
+  version: string
+}
+export type MetadataSyncPreview = {
+  source: MetadataSyncSource
+  candidates: MetadataSyncCandidate[]
+}
+export type MetadataSyncSelection = {
+  model_name: string
+  record_version: string
+  create: boolean
+  fields: MetadataSyncField[]
+}
+export type MetadataSyncRequest = {
+  locale: SyncLocale
+  source_version: string
+  selections: MetadataSyncSelection[]
+}
+export type MetadataSyncResult = {
+  created_models: string[]
+  updated_models: MetadataSyncSelection[]
+  created_vendors: string[]
+}
 export interface SyncUpstreamResponse {
   success: boolean
   message?: string
-  data?: {
-    created_models?: number
-    updated_models?: number
-    created_vendors?: number
-    skipped_models?: string[]
-  }
+  data?: MetadataSyncResult
 }
-
-/**
- * Preview upstream diff response
- */
 export interface PreviewUpstreamDiffResponse {
   success: boolean
   message?: string
-  data?: SyncDiffData
+  data?: MetadataSyncPreview
 }
 
 /**
@@ -247,10 +276,17 @@ export type ModelFormValues = z.infer<typeof modelFormSchema>
  */
 export const vendorFormSchema = z.object({
   id: z.number().optional(),
-  name: z.string().min(1, 'Vendor name is required'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Vendor name is required')
+    .max(128, 'Vendor name and icon must not exceed 128 characters.'),
   description: z.string().default(''),
-  icon: z.string().default(''),
-  status: z.number().default(1),
+  icon: z
+    .string()
+    .max(128, 'Vendor name and icon must not exceed 128 characters.')
+    .default(''),
+  version: z.string().optional(),
 })
 
 export type VendorFormValues = z.infer<typeof vendorFormSchema>
@@ -290,12 +326,12 @@ export type QuotaType = 0 | 1 // usage-based, per-call
 /**
  * Sync locale
  */
-export type SyncLocale = 'zh' | 'en' | 'ja'
+export type SyncLocale = 'zh' | 'zh-CN' | 'en' | 'ja'
 
 /**
  * Sync upstream source
  */
-export type SyncSource = 'official' | 'config'
+export type SyncSource = 'official'
 
 // ============================================================================
 // Model Deployments Types
@@ -304,7 +340,7 @@ export type SyncSource = 'official' | 'config'
 /**
  * Model tab type
  */
-export type ModelTabCategory = 'metadata' | 'deployments'
+export type ModelTabCategory = 'metadata' | 'vendors' | 'deployments'
 
 /**
  * Deployment entity from API

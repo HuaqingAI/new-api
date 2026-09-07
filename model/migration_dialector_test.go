@@ -41,6 +41,11 @@ type migrationConstraintV2 struct {
 	Name string `gorm:"size:64;unique"`
 }
 
+type migrationConstraintV3 struct {
+	ID   int    `gorm:"primaryKey"`
+	Name string `gorm:"size:64;uniqueIndex:idx_migration_constraint_name"`
+}
+
 type migrationDecimalV1 struct {
 	ID    int     `gorm:"primaryKey"`
 	Price float64 `gorm:"type:decimal(10,6);default:0"`
@@ -140,6 +145,24 @@ func TestMigrationSchemaStability(t *testing.T) {
 				require.NoError(t, db.Table(table).AutoMigrate(&migrationConstraintV1{}))
 				require.NoError(t, db.Table(table).Create(&migrationConstraintV1{Name: "existing"}).Error)
 			})
+
+			if dialect == "postgres" {
+				t.Run("legacy_named_unique_constraint", func(t *testing.T) {
+					const table = "migration_legacy_unique_test"
+					t.Cleanup(func() { _ = db.Migrator().DropTable(table) })
+					require.NoError(t, db.Table(table).AutoMigrate(&migrationConstraintV2{}))
+
+					conventionalConstraint := db.NamingStrategy.UniqueName(table, "name")
+					require.NoError(t, db.Exec(
+						"ALTER TABLE \"migration_legacy_unique_test\" RENAME CONSTRAINT \""+conventionalConstraint+"\" TO \"legacy_migration_unique_name\"",
+					).Error)
+
+					require.NoError(t, db.Table(table).AutoMigrate(&migrationConstraintV3{}))
+					require.True(t, db.Table(table).Migrator().HasIndex(&migrationConstraintV3{}, "idx_migration_constraint_name"))
+					require.NoError(t, db.Table(table).Create(&migrationConstraintV3{Name: "first"}).Error)
+					assert.Error(t, db.Table(table).Create(&migrationConstraintV3{Name: "first"}).Error)
+				})
+			}
 
 			if dialect == "mysql" {
 				t.Run("decimal_default_and_real_changes", func(t *testing.T) {

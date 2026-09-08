@@ -100,6 +100,19 @@ func (s *UsageAggregationService) GetUsageDashboardOverview(query UsageDashboard
 	if err != nil {
 		return UsageDashboardOverviewResult{Items: []UsageDepartmentSummaryItem{}}, err
 	}
+	if len(tenantSnapshots) == 0 {
+		var directSnapshots []entmodel.UsageSnapshot
+		if err := s.db.
+			Where("tenant_id = ? AND window_start >= ? AND window_end <= ?", query.TenantId, query.From, query.To).
+			Order("window_start ASC, id ASC").
+			Find(&directSnapshots).Error; err != nil {
+			return UsageDashboardOverviewResult{Items: []UsageDepartmentSummaryItem{}}, err
+		}
+		tenantAggregate, err = aggregateUsageSnapshots(directSnapshots)
+		if err != nil {
+			return UsageDashboardOverviewResult{Items: []UsageDepartmentSummaryItem{}}, err
+		}
+	}
 
 	rootIDs := make([]int, 0, len(rootDepartments))
 	for _, department := range rootDepartments {
@@ -162,6 +175,16 @@ func (s *UsageAggregationService) GetUsageDashboardOverview(query UsageDashboard
 		DataThrough:              dataThrough,
 	}
 	trend, err := usageScopeSnapshotsToTrend(tenantSnapshots)
+	if len(tenantSnapshots) == 0 {
+		var directSnapshots []entmodel.UsageSnapshot
+		if loadErr := s.db.
+			Where("tenant_id = ? AND window_start >= ? AND window_end <= ?", query.TenantId, query.From, query.To).
+			Order("window_start ASC, id ASC").
+			Find(&directSnapshots).Error; loadErr != nil {
+			return UsageDashboardOverviewResult{Items: []UsageDepartmentSummaryItem{}}, loadErr
+		}
+		trend, err = usageSnapshotsToTrend(directSnapshots)
+	}
 	if err != nil {
 		return UsageDashboardOverviewResult{Items: []UsageDepartmentSummaryItem{}}, err
 	}
@@ -296,7 +319,24 @@ func (s *UsageAggregationService) loadUsageScopeAggregates(tenantId int, departm
 	result := make(map[int]usageSnapshotAggregate, len(departmentIDs))
 	dataThrough := int64(0)
 	for _, departmentID := range departmentIDs {
-		aggregate, err := aggregateUsageScopeSnapshots(byDepartment[departmentID])
+		scopeSnapshots := byDepartment[departmentID]
+		var aggregate usageSnapshotAggregate
+		var err error
+		if len(scopeSnapshots) > 0 {
+			aggregate, err = aggregateUsageScopeSnapshots(scopeSnapshots)
+		} else {
+			resolvedScope, resolveErr := ResolveDepartmentScope(s.db, tenantId, &departmentID, true)
+			if resolveErr != nil {
+				return nil, 0, resolveErr
+			}
+			directAggregates, _, loadErr := s.loadDirectUsageAggregates(tenantId, resolvedScope.DepartmentIds, from, to)
+			if loadErr != nil {
+				return nil, 0, loadErr
+			}
+			for _, directAggregate := range directAggregates {
+				aggregate = mergeUsageSnapshotAggregates(aggregate, directAggregate)
+			}
+		}
 		if err != nil {
 			return nil, 0, err
 		}
@@ -306,6 +346,27 @@ func (s *UsageAggregationService) loadUsageScopeAggregates(tenantId int, departm
 		}
 	}
 	return result, dataThrough, nil
+}
+
+func mergeUsageSnapshotAggregates(left usageSnapshotAggregate, right usageSnapshotAggregate) usageSnapshotAggregate {
+	if left.users == nil {
+		left.users = map[int]struct{}{}
+	}
+	left.requestCount += right.requestCount
+	left.promptTokens += right.promptTokens
+	left.completionTokens += right.completionTokens
+	left.quota += right.quota
+	if left.windowStart == 0 || (right.windowStart > 0 && right.windowStart < left.windowStart) {
+		left.windowStart = right.windowStart
+	}
+	if right.windowEnd > left.windowEnd {
+		left.windowEnd = right.windowEnd
+	}
+	for userID := range right.users {
+		left.users[userID] = struct{}{}
+	}
+	left.models = mergeUsageModelStats(left.models, right.models)
+	return left
 }
 
 func (s *UsageAggregationService) loadDirectUsageAggregates(tenantId int, departmentIDs []int, from int64, to int64) (map[int]usageSnapshotAggregate, int64, error) {
@@ -389,6 +450,38 @@ func usageScopeSnapshotsToTrend(snapshots []entmodel.UsageScopeSnapshot) ([]Usag
 	sort.Slice(trend, func(i, j int) bool {
 		return trend[i].WindowStart < trend[j].WindowStart
 	})
+	return trend, nil
+}
+
+func usageSnapshotsToTrend(snapshots []entmodel.UsageSnapshot) ([]UsageDepartmentTrendPoint, error) {
+	byWindow := make(map[int64]*UsageDepartmentTrendPoint, len(snapshots))
+	usersByWindow := make(map[int64]map[int]struct{}, len(snapshots))
+	for _, snapshot := range snapshots {
+		point, exists := byWindow[snapshot.WindowStart]
+		if !exists {
+			point = &UsageDepartmentTrendPoint{WindowStart: snapshot.WindowStart, WindowEnd: snapshot.WindowEnd}
+			byWindow[snapshot.WindowStart] = point
+			usersByWindow[snapshot.WindowStart] = map[int]struct{}{}
+		}
+		point.RequestCount += snapshot.RequestCount
+		point.PromptTokens += snapshot.PromptTokens
+		point.CompletionTokens += snapshot.CompletionTokens
+		point.TokenCount = point.PromptTokens + point.CompletionTokens
+		point.Quota += snapshot.Quota
+		userIDs, err := snapshot.ParsedUserIds()
+		if err != nil {
+			return nil, err
+		}
+		for _, userID := range userIDs {
+			usersByWindow[snapshot.WindowStart][userID] = struct{}{}
+		}
+		point.UserCount = int64(len(usersByWindow[snapshot.WindowStart]))
+	}
+	trend := make([]UsageDepartmentTrendPoint, 0, len(byWindow))
+	for _, point := range byWindow {
+		trend = append(trend, *point)
+	}
+	sort.Slice(trend, func(i, j int) bool { return trend[i].WindowStart < trend[j].WindowStart })
 	return trend, nil
 }
 

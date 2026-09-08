@@ -527,7 +527,7 @@ export function EnterpriseUsageOverview() {
     to: resolvedRange.to,
     tenantId: search.tenant_id,
     departmentId: normalizedSearch.dept_id,
-    includeDescendants: normalizedSearch.include_descendants,
+    includeDescendants: normalizedSearch.dept_id !== undefined,
     summarySort: search.summary_sort,
     summaryOrder: search.summary_order,
     enabled: shouldRefreshDepartmentUsage,
@@ -537,7 +537,7 @@ export function EnterpriseUsageOverview() {
     from: resolvedRange.from,
     to: resolvedRange.to,
     tenantId: search.tenant_id,
-    includeDescendants: normalizedSearch.include_descendants,
+    includeDescendants: normalizedSearch.dept_id !== undefined,
   })
   const overviewQuery = useDepartmentUsageOverview({
     from: resolvedRange.from,
@@ -551,7 +551,7 @@ export function EnterpriseUsageOverview() {
     from: resolvedRange.from,
     to: resolvedRange.to,
     tenantId: search.tenant_id,
-    includeDescendants: normalizedSearch.include_descendants,
+    includeDescendants: normalizedSearch.dept_id !== undefined,
     summarySort: search.summary_sort,
     summaryOrder: search.summary_order,
   })
@@ -702,6 +702,7 @@ export function EnterpriseUsageOverview() {
       search: (prev) =>
         mergeEnterpriseUsageSearch(prev, {
           dept_id: deptId,
+          include_descendants: true,
           sort: nextSort,
           log_user: undefined,
         }),
@@ -749,7 +750,13 @@ export function EnterpriseUsageOverview() {
     setIsExporting(true)
     try {
       const { blob, fileName } = await exportDepartmentUsageCSV(
-        resolveDepartmentUsageExportParams(search, resolvedRange)
+        resolveDepartmentUsageExportParams(
+          {
+            ...search,
+            include_descendants: normalizedSearch.dept_id !== undefined,
+          },
+          resolvedRange
+        )
       )
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -867,7 +874,6 @@ export function EnterpriseUsageOverview() {
               rangeLabel={resolvedRange.rangeLabel}
               selectedDepartmentId={normalizedSearch.dept_id}
               currentDepartmentName={currentDepartment?.name ?? null}
-              includeDescendants={normalizedSearch.include_descendants ?? false}
               detail={detailQuery.data ?? null}
               detailLoading={detailQuery.isLoading}
               detailErrorMessage={
@@ -918,16 +924,6 @@ export function EnterpriseUsageOverview() {
               summarySort={search.summary_sort ?? 'requests'}
               summaryOrder={search.summary_order ?? 'desc'}
               onSummarySortChange={handleSummarySortChange}
-              onIncludeDescendantsChange={(includeDescendants) =>
-                navigate({
-                  to: '/enterprise-usage',
-                  search: (prev) =>
-                    mergeEnterpriseUsageSearch(prev, {
-                      include_descendants: includeDescendants,
-                      log_user: undefined,
-                    }),
-                })
-              }
               onExport={handleExport}
               exportLoading={isExporting}
               report={reportQuery.data ?? null}
@@ -1008,7 +1004,6 @@ type EnterpriseUsageContentProps = {
     summarySort: DepartmentUsageSummarySort,
     summaryOrder: UsageSortOrder
   ) => void
-  onIncludeDescendantsChange?: (value: boolean) => void
   onExport: () => void
   exportLoading: boolean
   report?: DepartmentUsageReportJobItem | null
@@ -1284,30 +1279,16 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                 </Button>
               </div>
               {hasSelectedDepartment ? (
-                <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
-                  <div className='space-y-1'>
-                    <div className='text-sm font-medium'>
-                      {t('Include descendants')}
-                    </div>
-                    <div className='text-muted-foreground text-xs'>
-                      {props.includeDescendants
-                        ? t(
-                            'Current scope: {{department}} and all descendant departments',
-                            {
-                              department: scopeLabel,
-                            }
-                          )
-                        : t('Current scope: {{department}} only', {
-                            department: scopeLabel,
-                          })}
-                    </div>
+                <div className='rounded-lg border px-3 py-2'>
+                  <div className='text-sm font-medium'>
+                    {t('Include descendants')}
                   </div>
-                  <Switch
-                    checked={props.includeDescendants ?? false}
-                    onCheckedChange={(value) =>
-                      props.onIncludeDescendantsChange?.(value)
-                    }
-                  />
+                  <div className='text-muted-foreground text-xs'>
+                    {t(
+                      'Current scope: {{department}} and all descendant departments',
+                      { department: scopeLabel }
+                    )}
+                  </div>
                 </div>
               ) : null}
               {!props.customRange.isValid ? (
@@ -1415,9 +1396,6 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                   {props.detail?.child_departments.length ? (
                     <DepartmentChildUsageTable
                       items={props.detail.child_departments}
-                      includeDescendants={
-                        props.detail.scope.include_descendants
-                      }
                       onSelectDepartment={props.onSelectDepartment}
                     />
                   ) : null}
@@ -1960,7 +1938,6 @@ function EnterpriseUsageTrendChart(props: {
 
 function DepartmentChildUsageTable(props: {
   items: DepartmentUsageSummaryItem[]
-  includeDescendants: boolean
   onSelectDepartment: (deptId: number | null) => void
 }) {
   const { t } = useTranslation()
@@ -1970,9 +1947,7 @@ function DepartmentChildUsageTable(props: {
       <CardHeader>
         <CardTitle>{t('Child Department Usage')}</CardTitle>
         <CardDescription>
-          {props.includeDescendants
-            ? t('Each child department includes its complete subtree usage.')
-            : t('Each child department shows direct usage only.')}
+          {t('Each child department includes its complete subtree usage.')}
         </CardDescription>
       </CardHeader>
       <CardContent className='overflow-x-auto'>

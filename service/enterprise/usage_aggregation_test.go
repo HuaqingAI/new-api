@@ -1170,3 +1170,48 @@ func TestUsageAggregationDeduplicatesDepartmentScopesAndBuildsDashboardViews(t *
 	assert.Equal(t, int64(2), exportResult.Rows[0].RequestCount)
 	assert.Equal(t, int64(2), exportResult.Rows[0].UserCount)
 }
+
+func TestUsageDashboardFallsBackToDirectSnapshotsWhenScopeSnapshotsAreMissing(t *testing.T) {
+	db := newUsageAggregationTestDB(t)
+	seedUsageTestDepartment(t, db, 1, "Engineering")
+	seedUsageTestDepartment(t, db, 2, "Platform")
+	parentID := 1
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("id = ?", 2).Update("parent_id", parentID).Error)
+
+	rootSnapshot := entmodel.UsageSnapshot{
+		TenantId: 0, DeptId: intPointer(1), DeptName: "Engineering",
+		WindowStart: 1700000000, WindowEnd: 1700003600,
+		RequestCount: 1, Quota: 10,
+	}
+	require.NoError(t, rootSnapshot.SetModelDistribution([]entmodel.UsageSnapshotModelStat{{ModelName: "gpt-4o", RequestCount: 1, Quota: 10}}))
+	require.NoError(t, rootSnapshot.SetUserIds([]int{101}))
+	childSnapshot := entmodel.UsageSnapshot{
+		TenantId: 0, DeptId: intPointer(2), DeptName: "Platform",
+		WindowStart: 1700000000, WindowEnd: 1700003600,
+		RequestCount: 1, Quota: 20,
+	}
+	require.NoError(t, childSnapshot.SetModelDistribution([]entmodel.UsageSnapshotModelStat{{ModelName: "gpt-4o", RequestCount: 1, Quota: 20}}))
+	require.NoError(t, childSnapshot.SetUserIds([]int{101}))
+	require.NoError(t, db.Create(&[]entmodel.UsageSnapshot{rootSnapshot, childSnapshot}).Error)
+
+	service := NewUsageAggregationService(db)
+	overview, err := service.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
+		TenantId: 0, From: 1700000000, To: 1700003600, Sort: DefaultUsageSummarySort(),
+	})
+	require.NoError(t, err)
+	require.Len(t, overview.Items, 1)
+	assert.Equal(t, int64(2), overview.Items[0].RequestCount)
+	assert.Equal(t, int64(1), overview.Items[0].UserCount)
+	require.Len(t, overview.SecondLevelItems, 1)
+	assert.Equal(t, int64(1), overview.SecondLevelItems[0].RequestCount)
+	assert.Equal(t, int64(1), overview.Metrics.UserCount)
+
+	departmentID := 1
+	detail, err := service.GetDepartmentDetail(UsageDetailQuery{
+		TenantId: 0, DeptId: &departmentID, From: 1700000000, To: 1700003600, IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), detail.RequestCount)
+	assert.Equal(t, int64(1), detail.UserCount)
+	assert.Equal(t, int64(2), detail.Scope.DepartmentCount)
+}

@@ -531,6 +531,20 @@ func (s *UsageAggregationService) getDepartmentDescendantDetail(query UsageDetai
 		Find(&snapshots).Error; err != nil {
 		return UsageDepartmentDetailResult{}, err
 	}
+	if len(snapshots) == 0 {
+		var directSnapshots []entmodel.UsageSnapshot
+		if err := s.db.
+			Where("tenant_id = ? AND dept_id IN ? AND window_start >= ? AND window_end <= ?", query.TenantId, resolvedScope.DepartmentIds, query.From, query.To).
+			Order("window_start ASC, id ASC").
+			Find(&directSnapshots).Error; err != nil {
+			return UsageDepartmentDetailResult{}, err
+		}
+		convertedSnapshots, convertErr := directSnapshotsToScopeSnapshots(directSnapshots, resolvedScope.DepartmentId, resolvedScope.DepartmentName)
+		if convertErr != nil {
+			return UsageDepartmentDetailResult{}, convertErr
+		}
+		snapshots = convertedSnapshots
+	}
 
 	result := UsageDepartmentDetailResult{
 		DeptId:            query.DeptId,
@@ -622,6 +636,67 @@ func (s *UsageAggregationService) getDepartmentDescendantDetail(query UsageDetai
 	result.UserRanking = userRanking
 	result.RecentLogsLink.Usernames = usernames
 	result.RecentLogsLink.UserOptions = userOptions
+	return result, nil
+}
+
+func directSnapshotsToScopeSnapshots(snapshots []entmodel.UsageSnapshot, departmentID *int, departmentName string) ([]entmodel.UsageScopeSnapshot, error) {
+	byWindow := make(map[int64]*entmodel.UsageScopeSnapshot, len(snapshots))
+	usersByWindow := make(map[int64]map[int]struct{}, len(snapshots))
+	for _, snapshot := range snapshots {
+		scopeSnapshot, exists := byWindow[snapshot.WindowStart]
+		if !exists {
+			scopeSnapshot = &entmodel.UsageScopeSnapshot{
+				TenantId:          snapshot.TenantId,
+				ScopeKey:          usageScopeDepartmentKey(*departmentID),
+				ScopeType:         entmodel.UsageScopeTypeDepartment,
+				DepartmentId:      departmentID,
+				DepartmentName:    departmentName,
+				WindowStart:       snapshot.WindowStart,
+				WindowEnd:         snapshot.WindowEnd,
+				ModelDistribution: "[]",
+			}
+			byWindow[snapshot.WindowStart] = scopeSnapshot
+			usersByWindow[snapshot.WindowStart] = map[int]struct{}{}
+		}
+		if snapshot.WindowEnd > scopeSnapshot.WindowEnd {
+			scopeSnapshot.WindowEnd = snapshot.WindowEnd
+		}
+		scopeSnapshot.RequestCount += snapshot.RequestCount
+		scopeSnapshot.PromptTokens += snapshot.PromptTokens
+		scopeSnapshot.CompletionTokens += snapshot.CompletionTokens
+		scopeSnapshot.Quota += snapshot.Quota
+		stats, err := snapshot.ParsedModelDistribution()
+		if err != nil {
+			return nil, err
+		}
+		mergedStats, err := scopeSnapshot.ParsedModelDistribution()
+		if err != nil {
+			return nil, err
+		}
+		if err := scopeSnapshot.SetModelDistribution(mergeUsageModelStats(mergedStats, stats)); err != nil {
+			return nil, err
+		}
+		userIDs, err := snapshot.ParsedUserIds()
+		if err != nil {
+			return nil, err
+		}
+		for _, userID := range userIDs {
+			usersByWindow[snapshot.WindowStart][userID] = struct{}{}
+		}
+	}
+	result := make([]entmodel.UsageScopeSnapshot, 0, len(byWindow))
+	for windowStart, snapshot := range byWindow {
+		userIDs := make([]int, 0, len(usersByWindow[windowStart]))
+		for userID := range usersByWindow[windowStart] {
+			userIDs = append(userIDs, userID)
+		}
+		sort.Ints(userIDs)
+		if err := snapshot.SetUserIds(userIDs); err != nil {
+			return nil, err
+		}
+		result = append(result, *snapshot)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].WindowStart < result[j].WindowStart })
 	return result, nil
 }
 

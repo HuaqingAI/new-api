@@ -160,6 +160,7 @@ import {
   uploadAgentPlatformAvatar,
   uploadAgentPlatformSkillPackage,
 } from './api'
+import { DepartmentGrantTreeOptions } from './components/department-grant-tree-options'
 
 type ResourceListCardProps = {
   badgeLabel: string
@@ -515,31 +516,22 @@ function grantOptionFromGrant(grant: AgentPlatformGrantRequest) {
   }
 }
 
-function flattenDepartmentGrantOptions(
-  nodes: DepartmentTreeNode[],
-  keyword: string
-) {
-  const normalizedKeyword = keyword.trim().toLowerCase()
+function getDepartmentGrantOptions(nodes: DepartmentTreeNode[]) {
   const options: GrantSelectOption[] = []
 
-  const visit = (items: DepartmentTreeNode[], path: string[]) => {
+  const visit = (items: DepartmentTreeNode[]) => {
     for (const item of items) {
       const label = item.name || `#${item.id}`
-      const nextPath = [...path, label]
-      const description = `#${item.id} · ${nextPath.join(' / ')}`
-      const haystack = `${item.id} ${label} ${description}`.toLowerCase()
-      if (!normalizedKeyword || haystack.includes(normalizedKeyword)) {
-        options.push({
-          value: String(item.id),
-          label,
-          description,
-        })
-      }
-      visit(item.children ?? [], nextPath)
+      options.push({
+        value: String(item.id),
+        label,
+        description: `#${item.id}`,
+      })
+      visit(item.children ?? [])
     }
   }
 
-  visit(nodes, [])
+  visit(nodes)
   return options
 }
 
@@ -1680,6 +1672,10 @@ function GrantSubjectMultiSelect(props: {
   searchValue: string
   selectedIds: string[]
   selectedOptions?: GrantSelectOption[]
+  renderOptions?: (params: {
+    selectedIds: string[]
+    toggleValue: (value: string) => void
+  }) => ReactNode
 }) {
   const { t } = useTranslation()
   const selectedOptions = props.selectedIds.map((id) => {
@@ -1701,6 +1697,49 @@ function GrantSubjectMultiSelect(props: {
       return
     }
     props.onSelectedIdsChange([...props.selectedIds, value])
+  }
+
+  let optionsContent: ReactNode
+  if (props.loading) {
+    optionsContent = (
+      <div className='text-muted-foreground px-3 py-6 text-center text-sm'>
+        {t('Loading')}
+      </div>
+    )
+  } else if (props.renderOptions) {
+    optionsContent = props.renderOptions({
+      selectedIds: props.selectedIds,
+      toggleValue,
+    })
+  } else {
+    optionsContent = (
+      <>
+        <CommandEmpty>{props.emptyLabel}</CommandEmpty>
+        <CommandGroup>
+          {props.options.map((option) => {
+            const selected = props.selectedIds.includes(option.value)
+            return (
+              <CommandItem
+                key={option.value}
+                value={`${option.label} ${option.description}`}
+                data-checked={selected}
+                onSelect={() => toggleValue(option.value)}
+              >
+                <Checkbox checked={selected} />
+                <span className='min-w-0 flex-1'>
+                  <span className='block truncate font-medium'>
+                    {option.label}
+                  </span>
+                  <span className='text-muted-foreground block truncate text-xs'>
+                    {option.description}
+                  </span>
+                </span>
+              </CommandItem>
+            )
+          })}
+        </CommandGroup>
+      </>
+    )
   }
 
   return (
@@ -1763,38 +1802,7 @@ function GrantSubjectMultiSelect(props: {
             onValueChange={props.onSearchChange}
             placeholder={props.searchPlaceholder}
           />
-          <CommandList>
-            {props.loading ? (
-              <div className='text-muted-foreground px-3 py-6 text-center text-sm'>
-                {t('Loading')}
-              </div>
-            ) : (
-              <CommandEmpty>{props.emptyLabel}</CommandEmpty>
-            )}
-            <CommandGroup>
-              {props.options.map((option) => {
-                const selected = props.selectedIds.includes(option.value)
-                return (
-                  <CommandItem
-                    key={option.value}
-                    value={`${option.label} ${option.description}`}
-                    data-checked={selected}
-                    onSelect={() => toggleValue(option.value)}
-                  >
-                    <Checkbox checked={selected} />
-                    <span className='min-w-0 flex-1'>
-                      <span className='block truncate font-medium'>
-                        {option.label}
-                      </span>
-                      <span className='text-muted-foreground block truncate text-xs'>
-                        {option.description}
-                      </span>
-                    </span>
-                  </CommandItem>
-                )
-              })}
-            </CommandGroup>
-          </CommandList>
+          <CommandList>{optionsContent}</CommandList>
         </Command>
       </PopoverContent>
     </Popover>
@@ -1845,12 +1853,8 @@ function PublishAgentDialog(props: {
     [usersQuery.data]
   )
   const departmentOptions = useMemo(
-    () =>
-      flattenDepartmentGrantOptions(
-        departmentsQuery.data ?? [],
-        departmentSearchValue
-      ),
-    [departmentsQuery.data, departmentSearchValue]
+    () => getDepartmentGrantOptions(departmentsQuery.data ?? []),
+    [departmentsQuery.data]
   )
   const mergeSelectedOptions = (
     ids: string[],
@@ -1950,6 +1954,15 @@ function PublishAgentDialog(props: {
                   searchValue={departmentSearchValue}
                   selectedIds={props.form.selectedDepartmentIds}
                   selectedOptions={props.form.selectedDepartmentOptions}
+                  renderOptions={({ selectedIds, toggleValue }) => (
+                    <DepartmentGrantTreeOptions
+                      emptyLabel={t('No departments found')}
+                      keyword={departmentSearchValue}
+                      nodes={departmentsQuery.data ?? []}
+                      selectedIds={selectedIds}
+                      onToggleSelected={toggleValue}
+                    />
+                  )}
                 />
               </div>
             </div>

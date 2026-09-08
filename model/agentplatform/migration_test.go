@@ -1,10 +1,17 @@
 package agentplatform
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -102,6 +109,111 @@ func TestMigrateBackfillsRecommendedPromptsAndRemovesLegacyBlocks(t *testing.T) 
 	require.Equal(t, "资源说明", resource.Description)
 }
 
+func TestMigrateClientPackageRolloutSQLite(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	testMigrateClientPackageRollout(t, db)
+}
+
+func TestMigrateClientPackageRolloutConfiguredDatabases(t *testing.T) {
+	tests := []struct {
+		name      string
+		env       string
+		dialector func(string) gorm.Dialector
+	}{
+		{name: "mysql", env: "TEST_MYSQL_DSN", dialector: func(dsn string) gorm.Dialector { return mysql.Open(dsn) }},
+		{name: "postgres", env: "TEST_POSTGRES_DSN", dialector: func(dsn string) gorm.Dialector {
+			return postgres.New(postgres.Config{DSN: dsn, PreferSimpleProtocol: true})
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dsn := strings.TrimSpace(os.Getenv(test.env))
+			if dsn == "" {
+				t.Skip(test.env + " is not configured")
+			}
+			db, err := gorm.Open(test.dialector(dsn), &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			testMigrateClientPackageRollout(t, db)
+		})
+	}
+}
+
+func testMigrateClientPackageRollout(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	require.NoError(t, db.Migrator().DropTable(&ClientPackageScope{}, &ClientPackage{}))
+
+	t.Run("fresh", func(t *testing.T) {
+		for range 2 {
+			require.NoError(t, Migrate(db))
+		}
+		require.True(t, db.Migrator().HasColumn(&ClientPackage{}, "rollout_mode"))
+		require.True(t, db.Migrator().HasTable(&ClientPackageScope{}))
+
+		pkg := ClientPackage{
+			Platform:    ClientPackagePlatformWindowsX64,
+			Version:     "1.0.0",
+			Status:      ClientPackageStatusPublished,
+			FileName:    "AionUi-1.0.0.exe",
+			FilePath:    "client-packages/1.0.0/AionUi-1.0.0.exe",
+			FileSha256:  strings.Repeat("a", 64),
+			FileSha512:  strings.Repeat("b", 128),
+			FileSize:    1,
+			ContentType: "application/octet-stream",
+			CreatedBy:   1,
+		}
+		require.NoError(t, db.Create(&pkg).Error)
+		assert.Equal(t, ClientPackageRolloutModeGlobal, pkg.RolloutMode)
+	})
+
+	require.NoError(t, db.Migrator().DropTable(&ClientPackageScope{}, &ClientPackage{}))
+
+	t.Run("upgrade", func(t *testing.T) {
+		require.NoError(t, db.AutoMigrate(&legacyClientPackage{}))
+		legacy := legacyClientPackage{
+			Platform:    ClientPackagePlatformWindowsX64,
+			Version:     fmt.Sprintf("legacy-%d", time.Now().UnixNano()),
+			Status:      ClientPackageStatusPublished,
+			FileName:    "AionUi-legacy.exe",
+			FilePath:    "client-packages/legacy/AionUi-legacy.exe",
+			FileSha256:  strings.Repeat("c", 64),
+			FileSha512:  strings.Repeat("d", 128),
+			FileSize:    1,
+			ContentType: "application/octet-stream",
+			CreatedBy:   1,
+		}
+		require.NoError(t, db.Create(&legacy).Error)
+
+		for range 2 {
+			require.NoError(t, Migrate(db))
+		}
+
+		var migrated ClientPackage
+		require.NoError(t, db.First(&migrated, legacy.Id).Error)
+		assert.Equal(t, legacy.Version, migrated.Version)
+		assert.Equal(t, legacy.FilePath, migrated.FilePath)
+		assert.Equal(t, ClientPackageRolloutModeGlobal, migrated.RolloutMode)
+
+		scope := ClientPackageScope{
+			ClientPackageId: migrated.Id,
+			SubjectType:     GrantSubjectTypeUser,
+			SubjectId:       "1",
+			CreatedBy:       1,
+		}
+		require.NoError(t, db.Create(&scope).Error)
+		assert.Error(t, db.Create(&ClientPackageScope{
+			ClientPackageId: migrated.Id,
+			SubjectType:     GrantSubjectTypeUser,
+			SubjectId:       "1",
+			CreatedBy:       1,
+		}).Error)
+	})
+}
+
 func createLegacyAgentPlatformTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.AutoMigrate(
@@ -121,6 +233,37 @@ type legacyAgentDef struct {
 	DependenciesJSON      string `gorm:"type:text"`
 	PromptMetadataJSON    string `gorm:"type:text"`
 	CompatibilityMetaJSON string `gorm:"type:text"`
+}
+
+type legacyClientPackage struct {
+	Id                     int    `gorm:"primaryKey"`
+	Platform               string `gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_status"`
+	Version                string `gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_version"`
+	Status                 string `gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_status"`
+	FileName               string `gorm:"type:varchar(255);not null"`
+	FilePath               string `gorm:"type:text;not null"`
+	FileSha256             string `gorm:"type:char(64);not null"`
+	FileSha512             string `gorm:"type:varchar(128);not null"`
+	FileSize               int64  `gorm:"type:bigint;not null"`
+	ContentType            string `gorm:"type:varchar(128);not null"`
+	UpdateFileName         string `gorm:"type:varchar(255);not null;default:''"`
+	UpdateFilePath         string `gorm:"type:text"`
+	UpdateFileSha256       string `gorm:"type:char(64);not null;default:''"`
+	UpdateFileSha512       string `gorm:"type:varchar(128);not null;default:''"`
+	UpdateFileSize         int64  `gorm:"type:bigint;not null;default:0"`
+	UpdateContentType      string `gorm:"type:varchar(128);not null;default:''"`
+	UpdateMetadataFileName string `gorm:"type:varchar(255);not null;default:''"`
+	UpdateMetadataFilePath string `gorm:"type:text"`
+	UpdateMetadataSha256   string `gorm:"type:char(64);not null;default:''"`
+	ReleaseNote            string `gorm:"type:text"`
+	CreatedBy              int    `gorm:"type:int;not null;index:idx_agent_platform_client_package_created_by"`
+	PublishedAt            *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+func (legacyClientPackage) TableName() string {
+	return ClientPackage{}.TableName()
 }
 
 func (legacyAgentDef) TableName() string {

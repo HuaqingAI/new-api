@@ -13,6 +13,7 @@ import (
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
+	"gorm.io/gorm"
 )
 
 const (
@@ -99,36 +100,77 @@ type grantSubject struct {
 }
 
 func platformGrantSubjects(userID int) ([]grantSubject, error) {
+	return platformGrantSubjectsForDB(model.DB, userID)
+}
+
+func platformGrantSubjectsForDB(db *gorm.DB, userID int) ([]grantSubject, error) {
+	if db == nil || userID <= 0 {
+		return []grantSubject{}, nil
+	}
 	subjects := []grantSubject{{Type: apmodel.GrantSubjectTypeUser, Id: strconv.Itoa(userID)}}
 	var memberships []entmodel.UserDepartment
-	if err := model.DB.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
+	if err := db.Where("user_id = ? AND status = ?", userID, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
 		return nil, err
 	}
-	departmentIDs := make(map[int]struct{}, len(memberships))
+	membershipDepartmentIDs := make(map[int]struct{}, len(memberships))
 	for _, membership := range memberships {
 		if membership.DepartmentId > 0 {
-			departmentIDs[membership.DepartmentId] = struct{}{}
+			membershipDepartmentIDs[membership.DepartmentId] = struct{}{}
 		}
 	}
-	parentIDs := make([]int, 0, len(departmentIDs))
-	for departmentID := range departmentIDs {
-		parentIDs = append(parentIDs, departmentID)
+	candidateIDs := make([]int, 0, len(membershipDepartmentIDs))
+	for departmentID := range membershipDepartmentIDs {
+		candidateIDs = append(candidateIDs, departmentID)
 	}
-	for len(parentIDs) > 0 {
+	departmentsByID := make(map[int]entmodel.Department, len(candidateIDs))
+	for len(candidateIDs) > 0 {
 		var departments []entmodel.Department
-		if err := model.DB.Select("id", "parent_id").Where("id IN ?", parentIDs).Find(&departments).Error; err != nil {
+		if err := db.Select("id", "parent_id", "status").Where("id IN ?", candidateIDs).Find(&departments).Error; err != nil {
 			return nil, err
 		}
-		parentIDs = parentIDs[:0]
+		candidateIDs = candidateIDs[:0]
 		for _, department := range departments {
+			if _, exists := departmentsByID[department.Id]; exists {
+				continue
+			}
+			departmentsByID[department.Id] = department
 			if department.ParentId == nil || *department.ParentId <= 0 {
 				continue
 			}
-			if _, exists := departmentIDs[*department.ParentId]; exists {
+			if _, exists := departmentsByID[*department.ParentId]; exists {
 				continue
 			}
-			departmentIDs[*department.ParentId] = struct{}{}
-			parentIDs = append(parentIDs, *department.ParentId)
+			candidateIDs = append(candidateIDs, *department.ParentId)
+		}
+	}
+	departmentIDs := make(map[int]struct{}, len(departmentsByID))
+	for membershipDepartmentID := range membershipDepartmentIDs {
+		chain := make([]int, 0, len(departmentsByID))
+		visited := make(map[int]struct{}, len(departmentsByID))
+		currentID := membershipDepartmentID
+		validChain := true
+		for currentID > 0 {
+			if _, seen := visited[currentID]; seen {
+				validChain = false
+				break
+			}
+			visited[currentID] = struct{}{}
+			department, exists := departmentsByID[currentID]
+			if !exists || department.Status != constant.DepartmentStatusEnabled {
+				validChain = false
+				break
+			}
+			chain = append(chain, currentID)
+			if department.ParentId == nil {
+				break
+			}
+			currentID = *department.ParentId
+		}
+		if !validChain {
+			continue
+		}
+		for _, departmentID := range chain {
+			departmentIDs[departmentID] = struct{}{}
 		}
 	}
 	for departmentID := range departmentIDs {

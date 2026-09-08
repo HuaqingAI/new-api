@@ -12,12 +12,122 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestClientPackageRolloutSelectsHighestEligibleDepartmentRelease(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&entmodel.Department{},
+		&entmodel.UserDepartment{},
+		&apmodel.ClientPackage{},
+		&apmodel.ClientPackageScope{},
+	))
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "member", Email: "member@example.com", Status: common.UserStatusEnabled}).Error)
+	parentID := 11
+	require.NoError(t, db.Create(&entmodel.Department{Id: parentID, Name: "Engineering", Status: constant.DepartmentStatusEnabled}).Error)
+	require.NoError(t, db.Create(&entmodel.Department{Id: 12, Name: "Desktop", ParentId: &parentID, Status: constant.DepartmentStatusEnabled}).Error)
+	require.NoError(t, db.Create(&entmodel.UserDepartment{
+		UserId:       7,
+		DepartmentId: 12,
+		Status:       constant.EnterpriseMembershipStatusActive,
+	}).Error)
+	publishedAt := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	packages := []apmodel.ClientPackage{
+		{
+			Platform: apmodel.ClientPackagePlatformWindowsX64, Version: "2.1.0", Status: apmodel.ClientPackageStatusPublished,
+			RolloutMode: apmodel.ClientPackageRolloutModeGlobal, FileName: "AionUi-2.1.0.exe", FilePath: "oss://test/2.1.0.exe",
+			FileSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FileSha512: "sha", FileSize: 1,
+			ContentType: "application/octet-stream", UpdateMetadataFileName: "latest.yml", UpdateMetadataFilePath: "oss://test/latest-2.1.0.yml",
+			UpdateMetadataSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CreatedBy: 1, PublishedAt: &publishedAt,
+		},
+		{
+			Platform: apmodel.ClientPackagePlatformWindowsX64, Version: "2.2.0", Status: apmodel.ClientPackageStatusPublished,
+			RolloutMode: apmodel.ClientPackageRolloutModeTargeted, FileName: "AionUi-2.2.0.exe", FilePath: "oss://test/2.2.0.exe",
+			FileSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FileSha512: "sha", FileSize: 1,
+			ContentType: "application/octet-stream", UpdateMetadataFileName: "latest.yml", UpdateMetadataFilePath: "oss://test/latest-2.2.0.yml",
+			UpdateMetadataSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", CreatedBy: 1, PublishedAt: &publishedAt,
+		},
+	}
+	require.NoError(t, db.Create(&packages).Error)
+	require.NoError(t, db.Create([]apmodel.ClientPackageScope{
+		{
+			ClientPackageId: packages[1].Id,
+			SubjectType:     apmodel.GrantSubjectTypeDepartment,
+			SubjectId:       "11",
+			CreatedBy:       1,
+		},
+		{
+			ClientPackageId: packages[1].Id,
+			SubjectType:     apmodel.GrantSubjectTypeDepartment,
+			SubjectId:       "12",
+			CreatedBy:       1,
+		},
+	}).Error)
+
+	service := NewClientPackageService(db)
+	release, found, err := service.latestEligiblePublished(7, apmodel.ClientPackagePlatformWindowsX64, true)
+
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "2.2.0", release.Version)
+
+	latest, err := service.ListLatest()
+	require.NoError(t, err)
+	require.NotNil(t, latest.Items[0].Release)
+	require.Equal(t, "2.1.0", latest.Items[0].Release.Version)
+
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("id = ?", parentID).Update("status", constant.DepartmentStatusDisabled).Error)
+	release, found, err = service.latestEligiblePublished(7, apmodel.ClientPackagePlatformWindowsX64, true)
+
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "2.1.0", release.Version)
+}
+
+func TestClientPackageArtifactCapabilityRejectsRevokedScope(t *testing.T) {
+	t.Setenv(ClientUpdateAccessModeEnv, ClientUpdateAccessModeEnforced)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &entmodel.UserDepartment{}, &apmodel.ClientPackage{}, &apmodel.ClientPackageScope{}))
+	require.NoError(t, db.Create(&model.User{Id: 9, Username: "pilot", Email: "pilot@example.com", Status: common.UserStatusEnabled}).Error)
+	publishedAt := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	pkg := apmodel.ClientPackage{
+		Platform: apmodel.ClientPackagePlatformWindowsX64, Version: "2.2.0", Status: apmodel.ClientPackageStatusPublished,
+		RolloutMode: apmodel.ClientPackageRolloutModeTargeted, FileName: "AionUi-2.2.0.exe", FilePath: "oss://test/2.2.0.exe",
+		FileSha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", FileSha512: "sha", FileSize: 1,
+		ContentType: "application/octet-stream", UpdateMetadataFileName: "latest.yml", UpdateMetadataFilePath: "oss://test/latest-2.2.0.yml",
+		UpdateMetadataSha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", CreatedBy: 1, PublishedAt: &publishedAt,
+	}
+	require.NoError(t, db.Create(&pkg).Error)
+	scope := apmodel.ClientPackageScope{ClientPackageId: pkg.Id, SubjectType: apmodel.GrantSubjectTypeUser, SubjectId: "9", CreatedBy: 1}
+	require.NoError(t, db.Create(&scope).Error)
+	store := newFakeClientPackageStore()
+	restore := apservice.SetArtifactStoreForTest(store)
+	t.Cleanup(restore)
+	service := NewClientPackageService(db)
+	access, err := service.PrepareUpdateAccess(9, "device-9", ClientUpdateAccessInput{
+		Platform:       apmodel.ClientPackagePlatformWindowsX64,
+		CurrentVersion: "2.1.0",
+	})
+
+	require.NoError(t, err)
+	require.True(t, access.Eligible)
+	require.NotEmpty(t, access.ArtifactCapability)
+	require.NoError(t, db.Delete(&scope).Error)
+	_, err = service.UpdateArtifactURLForCapability(access.ArtifactCapability, pkg.Version, pkg.FileName)
+	require.ErrorIs(t, err, ErrClientUpdateCapabilityInvalid)
+}
 
 func TestClientPackageUploadPublishesWindowsPackageWithMetadataFeed(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

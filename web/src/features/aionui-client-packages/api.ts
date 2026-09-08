@@ -22,11 +22,25 @@ export type AionUiClientPlatform = 'windows_x64' | 'mac_arm64' | 'mac_x64'
 
 export type AionUiClientPackageStatus = 'draft' | 'published' | 'disabled'
 
+export type AionUiClientPackageRolloutMode = 'global' | 'targeted'
+
+export type AionUiClientPackageScope = {
+  subject_type: 'user' | 'department'
+  subject_id: string
+}
+
+export type AionUiClientPackageRollout = {
+  rollout_mode: AionUiClientPackageRolloutMode
+  scopes: AionUiClientPackageScope[]
+}
+
 export type AionUiClientPackage = {
   id: number
   platform: AionUiClientPlatform
   version: string
   status: AionUiClientPackageStatus
+  rollout_mode: AionUiClientPackageRolloutMode
+  scope_count: number
   file_name: string
   file_sha256: string
   file_sha512: string
@@ -72,6 +86,8 @@ export type UploadClientPackagePayload = {
   version: string
   releaseNote: string
   publish: boolean
+  rolloutMode: AionUiClientPackageRolloutMode
+  scopes: AionUiClientPackageScope[]
   file: File | null
   updateFile: File | null
   updateMetadataFile: File | null
@@ -195,6 +211,8 @@ export async function uploadClientPackage(payload: UploadClientPackagePayload) {
       version: payload.version,
       release_note: payload.releaseNote,
       publish: payload.publish,
+      rollout_mode: payload.rolloutMode,
+      scopes: payload.scopes,
       file: initRes.data.data.files.find((item) => item.kind === 'download'),
       update_file: initRes.data.data.files.find(
         (item) => item.kind === 'update'
@@ -213,7 +231,7 @@ async function hashFile(
   encoding: 'base64' | 'hex'
 ) {
   const digest = await crypto.subtle.digest(algorithm, await file.arrayBuffer())
-  const bytes = Array.from(new Uint8Array(digest))
+  const bytes = [...new Uint8Array(digest)]
   if (encoding === 'hex') {
     return bytes.map((item) => item.toString(16).padStart(2, '0')).join('')
   }
@@ -235,11 +253,53 @@ export async function updateClientPackageStatus(
   return res.data
 }
 
+export async function getClientPackageRollout(id: number): Promise<{
+  success: boolean
+  message?: string
+  data?: AionUiClientPackageRollout
+}> {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: AionUiClientPackageRollout
+  }>(`/api/aionui/client-packages/${id}/rollout`)
+  return res.data
+}
+
+export async function updateClientPackageRollout(
+  id: number,
+  payload: AionUiClientPackageRollout
+): Promise<{
+  success: boolean
+  message?: string
+  data?: AionUiClientPackageRollout
+}> {
+  const res = await api.put<{
+    success: boolean
+    message?: string
+    data?: AionUiClientPackageRollout
+  }>(`/api/aionui/client-packages/${id}/rollout`, payload)
+  return res.data
+}
+
 export async function deleteClientPackage(id: number) {
   const res = await api.delete<{ success: boolean; message?: string }>(
     `/api/aionui/client-packages/${id}`
   )
   return res.data
+}
+
+export async function getClientPackageDownloadUrl(id: number): Promise<string> {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: { url?: string }
+  }>(`/api/aionui/client-packages/${id}/download-url`)
+  const url = res.data.data?.url
+  if (!res.data.success || !url) {
+    throw new Error(res.data.message || 'Failed to prepare download')
+  }
+  return url
 }
 
 export function clientPackageDownloadUrl(id: number) {

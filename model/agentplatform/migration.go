@@ -85,6 +85,7 @@ func Migrate(db *gorm.DB) error {
 		&ResourceGrant{},
 		&AdminAction{},
 		&ClientPackage{},
+		&ClientPackageScope{},
 	); err != nil {
 		return err
 	}

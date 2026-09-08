@@ -12,15 +12,16 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
+	"github.com/QuantumNous/new-api/model"
 	apmodel "github.com/QuantumNous/new-api/model/agentplatform"
 	apservice "github.com/QuantumNous/new-api/service/agentplatform"
+	"github.com/golang-jwt/jwt/v5"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
@@ -30,6 +31,10 @@ const (
 	defaultClientPackageMaxBytes   = 1 << 30
 	clientPackageDisplayTimeLayout = "2006-01-02 15:04:05"
 	clientPackageUploadExpires     = time.Hour
+	clientUpdateCapabilityTTL      = 10 * time.Minute
+	clientUpdateCapabilityIssuer   = "new-api"
+	clientUpdateCapabilityAudience = "aionui-client-update"
+	clientUpdateCapabilityPurpose  = "client_update_artifact"
 )
 
 var (
@@ -39,6 +44,8 @@ var (
 	ErrClientPackageNotPublished       = errors.New("aionui client package is not published")
 	ErrClientPackageMetadataRequired   = errors.New("aionui client package update metadata is required")
 	ErrClientPackageUpdateFileRequired = errors.New("aionui client package update file is required")
+	ErrClientPackageRolloutInvalid     = errors.New("aionui client package rollout is invalid")
+	ErrClientUpdateCapabilityInvalid   = errors.New("aionui client update capability is invalid")
 )
 
 type ClientPackageUploadInput struct {
@@ -53,6 +60,8 @@ type ClientPackageUploadInput struct {
 	UpdateMetadataFile     io.Reader
 	Publish                bool
 	ActorUserId            int
+	RolloutMode            string
+	Scopes                 []ClientPackageScopeInput
 }
 
 type ClientPackageDirectUploadInitInput struct {
@@ -72,6 +81,8 @@ type ClientPackageDirectUploadCompleteInput struct {
 	UpdateFile         ClientPackageDirectArtifactInput
 	UpdateMetadataFile ClientPackageDirectArtifactInput
 	ActorUserId        int
+	RolloutMode        string
+	Scopes             []ClientPackageScopeInput
 }
 
 type ClientPackageDirectArtifactInput struct {
@@ -81,6 +92,26 @@ type ClientPackageDirectArtifactInput struct {
 	Sha256    string
 	Sha512    string
 	Size      int64
+}
+
+type ClientPackageScopeInput struct {
+	SubjectType string
+	SubjectId   string
+}
+
+type ClientUpdateAccessInput struct {
+	Platform        string
+	CurrentVersion  string
+	ExpectedVersion string
+}
+
+type ClientUpdateAccessResult struct {
+	Mode               string
+	LegacyOpen         bool
+	Eligible           bool
+	Release            *dtoaionui.ClientUpdateAccessRelease
+	ArtifactCapability string
+	ExpiresAt          int64
 }
 
 type ClientPackageQuery struct {
@@ -96,6 +127,17 @@ type ClientUpdateFeed struct {
 	Sha512      string
 	Size        int64
 	ReleaseDate time.Time
+}
+
+type clientUpdateArtifactClaims struct {
+	Purpose         string   `json:"purpose"`
+	UserId          int      `json:"user_id"`
+	DeviceId        string   `json:"device_id"`
+	ClientPackageId int      `json:"client_package_id"`
+	Platform        string   `json:"platform"`
+	Version         string   `json:"version"`
+	Files           []string `json:"files"`
+	jwt.RegisteredClaims
 }
 
 type ClientPackageValidationError struct {
@@ -168,7 +210,7 @@ func NewClientPackageService(db *gorm.DB) *ClientPackageService {
 func (s *ClientPackageService) ListLatest() (dtoaionui.ClientPackageLatestResponse, error) {
 	items := make([]dtoaionui.ClientPackageLatestItem, 0, 3)
 	for _, platform := range clientPackagePlatforms() {
-		pkg, ok, err := s.latestPublished(platform, false)
+		pkg, ok, err := s.latestGlobalPublished(platform, false)
 		if err != nil {
 			return dtoaionui.ClientPackageLatestResponse{}, err
 		}
@@ -202,9 +244,32 @@ func (s *ClientPackageService) List(query ClientPackageQuery) (dtoaionui.ClientP
 	if err := dbQuery.Order("id desc").Limit(pageSize).Offset((page - 1) * pageSize).Find(&rows).Error; err != nil {
 		return dtoaionui.ClientPackageListResponse{}, err
 	}
+	scopeCounts := make(map[int]int, len(rows))
+	if len(rows) > 0 {
+		packageIDs := make([]int, 0, len(rows))
+		for _, row := range rows {
+			packageIDs = append(packageIDs, row.Id)
+		}
+		var counts []struct {
+			ClientPackageId int
+			ScopeCount      int
+		}
+		if err := s.db.Model(&apmodel.ClientPackageScope{}).
+			Select("client_package_id, COUNT(*) AS scope_count").
+			Where("client_package_id IN ?", packageIDs).
+			Group("client_package_id").
+			Scan(&counts).Error; err != nil {
+			return dtoaionui.ClientPackageListResponse{}, err
+		}
+		for _, count := range counts {
+			scopeCounts[count.ClientPackageId] = count.ScopeCount
+		}
+	}
 	items := make([]dtoaionui.ClientPackageItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, mapClientPackage(row))
+		item := mapClientPackage(row)
+		item.ScopeCount = scopeCounts[row.Id]
+		items = append(items, item)
 	}
 	return dtoaionui.ClientPackageListResponse{
 		Items:    items,
@@ -217,6 +282,9 @@ func (s *ClientPackageService) List(query ClientPackageQuery) (dtoaionui.ClientP
 func (s *ClientPackageService) Upload(input ClientPackageUploadInput) (dtoaionui.ClientPackageItem, error) {
 	input = normalizeClientPackageUploadInput(input)
 	if err := validateClientPackageUploadInput(input); err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	if err := validateClientPackageRollout(input.RolloutMode, input.Scopes); err != nil {
 		return dtoaionui.ClientPackageItem{}, err
 	}
 	if s == nil || s.db == nil {
@@ -284,6 +352,7 @@ func (s *ClientPackageService) Upload(input ClientPackageUploadInput) (dtoaionui
 		Platform:               input.Platform,
 		Version:                input.Version,
 		Status:                 apmodel.ClientPackageStatusDraft,
+		RolloutMode:            input.RolloutMode,
 		FileName:               fileArtifact.FileName,
 		FilePath:               fileArtifact.Path,
 		FileSha256:             fileArtifact.Sha256,
@@ -307,11 +376,15 @@ func (s *ClientPackageService) Upload(input ClientPackageUploadInput) (dtoaionui
 			s.deleteUploaded(uploaded)
 			return dtoaionui.ClientPackageItem{}, err
 		}
+		if err := validateClientPackagePublishedRollout(input.RolloutMode, input.Scopes); err != nil {
+			s.deleteUploaded(uploaded)
+			return dtoaionui.ClientPackageItem{}, err
+		}
 		now := s.now().UTC()
 		pkg.Status = apmodel.ClientPackageStatusPublished
 		pkg.PublishedAt = &now
 	}
-	if err := s.db.Create(&pkg).Error; err != nil {
+	if err := s.createClientPackageWithScopes(&pkg, input.Scopes); err != nil {
 		s.deleteUploaded(uploaded)
 		return dtoaionui.ClientPackageItem{}, err
 	}
@@ -379,6 +452,9 @@ func (s *ClientPackageService) CreateDirectUpload(input ClientPackageDirectUploa
 func (s *ClientPackageService) CompleteDirectUpload(input ClientPackageDirectUploadCompleteInput) (dtoaionui.ClientPackageItem, error) {
 	input = normalizeClientPackageDirectUploadCompleteInput(input)
 	if err := validateClientPackageDirectUploadCompleteInput(input); err != nil {
+		return dtoaionui.ClientPackageItem{}, err
+	}
+	if err := validateClientPackageRollout(input.RolloutMode, input.Scopes); err != nil {
 		return dtoaionui.ClientPackageItem{}, err
 	}
 	if s == nil || s.db == nil {
@@ -451,6 +527,7 @@ func (s *ClientPackageService) CompleteDirectUpload(input ClientPackageDirectUpl
 		Platform:               input.Platform,
 		Version:                input.Version,
 		Status:                 apmodel.ClientPackageStatusDraft,
+		RolloutMode:            input.RolloutMode,
 		FileName:               fileArtifact.FileName,
 		FilePath:               fileArtifact.Path,
 		FileSha256:             fileArtifact.Sha256,
@@ -473,11 +550,14 @@ func (s *ClientPackageService) CompleteDirectUpload(input ClientPackageDirectUpl
 		if err := validateClientPackagePublishable(pkg); err != nil {
 			return dtoaionui.ClientPackageItem{}, err
 		}
+		if err := validateClientPackagePublishedRollout(input.RolloutMode, input.Scopes); err != nil {
+			return dtoaionui.ClientPackageItem{}, err
+		}
 		now := s.now().UTC()
 		pkg.Status = apmodel.ClientPackageStatusPublished
 		pkg.PublishedAt = &now
 	}
-	if err := s.db.Create(&pkg).Error; err != nil {
+	if err := s.createClientPackageWithScopes(&pkg, input.Scopes); err != nil {
 		return dtoaionui.ClientPackageItem{}, err
 	}
 	completed = true
@@ -503,6 +583,15 @@ func (s *ClientPackageService) UpdateStatus(id int, status string) (dtoaionui.Cl
 	if status == apmodel.ClientPackageStatusPublished {
 		if err := validateClientPackagePublishable(pkg); err != nil {
 			return dtoaionui.ClientPackageItem{}, err
+		}
+		if normalizeClientPackageRolloutMode(pkg.RolloutMode) == apmodel.ClientPackageRolloutModeTargeted {
+			scopes, err := s.listScopes(pkg.Id)
+			if err != nil {
+				return dtoaionui.ClientPackageItem{}, err
+			}
+			if err := validateClientPackagePublishedRollout(pkg.RolloutMode, scopes); err != nil {
+				return dtoaionui.ClientPackageItem{}, err
+			}
 		}
 		if err := s.applyStoredUpdateMetadata(&pkg); err != nil {
 			return dtoaionui.ClientPackageItem{}, err
@@ -582,6 +671,23 @@ func (s *ClientPackageService) UpdateFeed(channel string) (ClientUpdateFeed, boo
 	if err != nil || !found {
 		return ClientUpdateFeed{}, false, err
 	}
+	return clientUpdateFeedForPackage(pkg), true, nil
+}
+
+func (s *ClientPackageService) UpdateFeedForUser(channel string, userID int) (ClientUpdateFeed, bool, error) {
+	platform, ok := platformForUpdateChannel(channel)
+	if !ok || userID <= 0 {
+		return ClientUpdateFeed{}, false, ErrClientPackageNotFound
+	}
+	pkg, found, err := s.latestEligiblePublished(userID, platform, true)
+	if err != nil || !found {
+		return ClientUpdateFeed{}, false, err
+	}
+	return clientUpdateFeedForPackage(pkg), true, nil
+}
+
+func clientUpdateFeedForPackage(pkg apmodel.ClientPackage) ClientUpdateFeed {
+	platform := pkg.Platform
 	path := pkg.FileName
 	sha512Value := pkg.FileSha512
 	size := pkg.FileSize
@@ -600,7 +706,7 @@ func (s *ClientPackageService) UpdateFeed(channel string) (ClientUpdateFeed, boo
 		Sha512:      sha512Value,
 		Size:        size,
 		ReleaseDate: releaseDate.UTC(),
-	}, true, nil
+	}
 }
 
 func (s *ClientPackageService) UpdateArtifactURL(version string, fileName string) (string, error) {
@@ -625,6 +731,77 @@ func (s *ClientPackageService) UpdateArtifactURL(version string, fileName string
 		}
 	}
 	return "", ErrClientPackageNotFound
+}
+
+func (s *ClientPackageService) PrepareUpdateAccess(userID int, deviceID string, input ClientUpdateAccessInput) (ClientUpdateAccessResult, error) {
+	input = normalizeClientUpdateAccessInput(input)
+	if userID <= 0 || strings.TrimSpace(deviceID) == "" || !validClientPackagePlatform(input.Platform) || !validClientPackageVersion(input.CurrentVersion) {
+		return ClientUpdateAccessResult{}, ErrClientPackageInvalidInput
+	}
+	if input.ExpectedVersion != "" && !validClientPackageVersion(input.ExpectedVersion) {
+		return ClientUpdateAccessResult{}, ErrClientPackageInvalidInput
+	}
+	mode := ClientUpdateAccessMode()
+	if mode != ClientUpdateAccessModeEnforced {
+		return ClientUpdateAccessResult{Mode: mode, LegacyOpen: true}, nil
+	}
+
+	pkg, found, err := s.latestEligiblePublished(userID, input.Platform, true)
+	if err != nil || !found {
+		return ClientUpdateAccessResult{Mode: mode}, err
+	}
+	if input.ExpectedVersion != "" {
+		if pkg.Version != input.ExpectedVersion {
+			return ClientUpdateAccessResult{Mode: mode}, nil
+		}
+	} else if compareClientPackageVersion(pkg.Version, input.CurrentVersion) <= 0 {
+		return ClientUpdateAccessResult{Mode: mode}, nil
+	}
+	capability, expiresAt, err := issueClientUpdateArtifactCapability(userID, deviceID, pkg, s.now())
+	if err != nil {
+		return ClientUpdateAccessResult{}, err
+	}
+	return ClientUpdateAccessResult{
+		Mode:     mode,
+		Eligible: true,
+		Release: &dtoaionui.ClientUpdateAccessRelease{
+			Version:  pkg.Version,
+			Platform: pkg.Platform,
+		},
+		ArtifactCapability: capability,
+		ExpiresAt:          expiresAt.Unix(),
+	}, nil
+}
+
+func (s *ClientPackageService) UpdateArtifactURLForCapability(capability string, version string, fileName string) (string, error) {
+	if s == nil || s.db == nil {
+		return "", ErrClientUpdateCapabilityInvalid
+	}
+	claims, err := parseClientUpdateArtifactCapability(capability, s.now())
+	if err != nil {
+		return "", err
+	}
+	version = strings.TrimSpace(version)
+	fileName = filepath.Base(strings.TrimSpace(fileName))
+	if version == "" || fileName == "" || strings.Contains(fileName, "..") || claims.Version != version || !clientUpdateCapabilityAllowsFile(claims.Files, fileName) {
+		return "", ErrClientUpdateCapabilityInvalid
+	}
+	var user model.User
+	if err := s.db.First(&user, claims.UserId).Error; err != nil || user.Status != common.UserStatusEnabled {
+		return "", ErrClientUpdateCapabilityInvalid
+	}
+	pkg, found, err := s.eligiblePublishedPackageByID(claims.UserId, claims.Platform, claims.ClientPackageId, true)
+	if err != nil || !found || pkg.Version != claims.Version {
+		return "", ErrClientUpdateCapabilityInvalid
+	}
+	switch fileName {
+	case pkg.FileName:
+		return s.presign(pkg.FilePath)
+	case pkg.UpdateFileName:
+		return s.presign(pkg.UpdateFilePath)
+	default:
+		return "", ErrClientUpdateCapabilityInvalid
+	}
 }
 
 func (s *ClientPackageService) ensureStore() error {
@@ -803,30 +980,37 @@ func (s *ClientPackageService) latestPublished(platform string, requireUpdate bo
 	if s == nil || s.db == nil {
 		return apmodel.ClientPackage{}, false, ErrClientPackageInvalidInput
 	}
-	var rows []apmodel.ClientPackage
-	query := s.db.Where("platform = ? AND status = ?", platform, apmodel.ClientPackageStatusPublished)
+	rows, err := s.publishedPackages(platform, requireUpdate)
+	if err != nil {
+		return apmodel.ClientPackage{}, false, err
+	}
+	if len(rows) == 0 {
+		return apmodel.ClientPackage{}, false, nil
+	}
+	sortClientPackages(rows)
+	return rows[0], true, nil
+}
+
+func (s *ClientPackageService) latestGlobalPublished(platform string, requireUpdate bool) (apmodel.ClientPackage, bool, error) {
+	if s == nil || s.db == nil {
+		return apmodel.ClientPackage{}, false, ErrClientPackageInvalidInput
+	}
+	query := s.db.Where("platform = ? AND status = ?", platform, apmodel.ClientPackageStatusPublished).
+		Where("rollout_mode = ? OR rollout_mode = ?", apmodel.ClientPackageRolloutModeGlobal, "")
 	if requireUpdate {
 		query = query.Where("update_metadata_file_path <> ?", "")
 		if platform != apmodel.ClientPackagePlatformWindowsX64 {
 			query = query.Where("update_file_path <> ?", "")
 		}
 	}
+	var rows []apmodel.ClientPackage
 	if err := query.Find(&rows).Error; err != nil {
 		return apmodel.ClientPackage{}, false, err
 	}
 	if len(rows) == 0 {
 		return apmodel.ClientPackage{}, false, nil
 	}
-	sort.Slice(rows, func(i int, j int) bool {
-		cmp := compareClientPackageVersion(rows[i].Version, rows[j].Version)
-		if cmp != 0 {
-			return cmp > 0
-		}
-		if rows[i].PublishedAt != nil && rows[j].PublishedAt != nil && !rows[i].PublishedAt.Equal(*rows[j].PublishedAt) {
-			return rows[i].PublishedAt.After(*rows[j].PublishedAt)
-		}
-		return rows[i].Id > rows[j].Id
-	})
+	sortClientPackages(rows)
 	return rows[0], true, nil
 }
 
@@ -982,6 +1166,8 @@ func normalizeClientPackageUploadInput(input ClientPackageUploadInput) ClientPac
 	input.FileName = safeClientPackageBaseName(input.FileName)
 	input.UpdateFileName = safeClientPackageBaseName(input.UpdateFileName)
 	input.UpdateMetadataFileName = safeClientPackageBaseName(input.UpdateMetadataFileName)
+	input.RolloutMode = normalizeClientPackageRolloutMode(input.RolloutMode)
+	input.Scopes = normalizeClientPackageScopeInputs(input.Scopes)
 	return input
 }
 
@@ -1001,6 +1187,8 @@ func normalizeClientPackageDirectUploadCompleteInput(input ClientPackageDirectUp
 	input.File = normalizeClientPackageDirectArtifactInput(input.File)
 	input.UpdateFile = normalizeClientPackageDirectArtifactInput(input.UpdateFile)
 	input.UpdateMetadataFile = normalizeClientPackageDirectArtifactInput(input.UpdateMetadataFile)
+	input.RolloutMode = normalizeClientPackageRolloutMode(input.RolloutMode)
+	input.Scopes = normalizeClientPackageScopeInputs(input.Scopes)
 	return input
 }
 
@@ -1357,6 +1545,7 @@ func mapClientPackage(pkg apmodel.ClientPackage) dtoaionui.ClientPackageItem {
 		Platform:               pkg.Platform,
 		Version:                pkg.Version,
 		Status:                 pkg.Status,
+		RolloutMode:            normalizeClientPackageRolloutMode(pkg.RolloutMode),
 		FileName:               pkg.FileName,
 		FileSha256:             pkg.FileSha256,
 		FileSha512:             pkg.FileSha512,

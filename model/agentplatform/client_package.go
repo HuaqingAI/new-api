@@ -10,6 +10,9 @@ const (
 	ClientPackageStatusDraft     = "draft"
 	ClientPackageStatusPublished = "published"
 	ClientPackageStatusDisabled  = "disabled"
+
+	ClientPackageRolloutModeGlobal   = "global"
+	ClientPackageRolloutModeTargeted = "targeted"
 )
 
 type ClientPackage struct {
@@ -17,6 +20,7 @@ type ClientPackage struct {
 	Platform               string     `json:"platform" gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_status"`
 	Version                string     `json:"version" gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_version"`
 	Status                 string     `json:"status" gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_platform_status"`
+	RolloutMode            string     `json:"rollout_mode" gorm:"type:varchar(16);not null;default:'global';index:idx_agent_platform_client_package_rollout_mode"`
 	FileName               string     `json:"file_name" gorm:"type:varchar(255);not null"`
 	FilePath               string     `json:"file_path" gorm:"type:text;not null"`
 	FileSha256             string     `json:"file_sha256" gorm:"type:char(64);not null"`
@@ -41,4 +45,18 @@ type ClientPackage struct {
 
 func (ClientPackage) TableName() string {
 	return "agent_platform_client_packages"
+}
+
+type ClientPackageScope struct {
+	Id              int       `json:"id" gorm:"primaryKey"`
+	ClientPackageId int       `json:"client_package_id" gorm:"not null;index:idx_agent_platform_client_package_scope_package_subject,priority:1;uniqueIndex:uq_agent_platform_client_package_scope"`
+	SubjectType     string    `json:"subject_type" gorm:"type:varchar(32);not null;index:idx_agent_platform_client_package_scope_package_subject,priority:2;uniqueIndex:uq_agent_platform_client_package_scope"`
+	SubjectId       string    `json:"subject_id" gorm:"type:varchar(128);not null;index:idx_agent_platform_client_package_scope_package_subject,priority:3;uniqueIndex:uq_agent_platform_client_package_scope"`
+	CreatedBy       int       `json:"created_by" gorm:"not null;index"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func (ClientPackageScope) TableName() string {
+	return "agent_platform_client_package_scopes"
 }

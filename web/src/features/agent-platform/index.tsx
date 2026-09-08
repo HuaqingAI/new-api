@@ -24,7 +24,6 @@ import {
   Boxes,
   CheckCircle2,
   Download,
-  ChevronsUpDown,
   Image,
   PanelRightOpen,
   Plus,
@@ -65,14 +64,6 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -96,11 +87,6 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import {
   Sheet,
   SheetContent,
@@ -161,6 +147,10 @@ import {
   uploadAgentPlatformSkillPackage,
 } from './api'
 import { DepartmentGrantTreeOptions } from './components/department-grant-tree-options'
+import {
+  GrantSubjectMultiSelect,
+  type GrantSelectOption,
+} from './components/grant-subject-multi-select'
 
 type ResourceListCardProps = {
   badgeLabel: string
@@ -243,12 +233,6 @@ type SummaryMetric = {
   value: string | number
   helper: string
   icon: ElementType
-}
-
-type GrantSelectOption = {
-  value: string
-  label: string
-  description: string
 }
 
 const RESOURCE_QUERY_KEYS = {
@@ -1658,154 +1642,6 @@ function AgentVersionPanel(props: {
         {grantsContent}
       </div>
     </div>
-  )
-}
-
-function GrantSubjectMultiSelect(props: {
-  emptyLabel: string
-  loading: boolean
-  onSearchChange: (value: string) => void
-  onSelectedIdsChange: (ids: string[]) => void
-  options: GrantSelectOption[]
-  placeholder: string
-  searchPlaceholder: string
-  searchValue: string
-  selectedIds: string[]
-  selectedOptions?: GrantSelectOption[]
-  renderOptions?: (params: {
-    selectedIds: string[]
-    toggleValue: (value: string) => void
-  }) => ReactNode
-}) {
-  const { t } = useTranslation()
-  const selectedOptions = props.selectedIds.map((id) => {
-    const option =
-      props.options.find((item) => item.value === id) ??
-      props.selectedOptions?.find((item) => item.value === id)
-    return (
-      option ?? {
-        value: id,
-        label: `#${id}`,
-        description: `#${id}`,
-      }
-    )
-  })
-
-  const toggleValue = (value: string) => {
-    if (props.selectedIds.includes(value)) {
-      props.onSelectedIdsChange(props.selectedIds.filter((id) => id !== value))
-      return
-    }
-    props.onSelectedIdsChange([...props.selectedIds, value])
-  }
-
-  let optionsContent: ReactNode
-  if (props.loading) {
-    optionsContent = (
-      <div className='text-muted-foreground px-3 py-6 text-center text-sm'>
-        {t('Loading')}
-      </div>
-    )
-  } else if (props.renderOptions) {
-    optionsContent = props.renderOptions({
-      selectedIds: props.selectedIds,
-      toggleValue,
-    })
-  } else {
-    optionsContent = (
-      <>
-        <CommandEmpty>{props.emptyLabel}</CommandEmpty>
-        <CommandGroup>
-          {props.options.map((option) => {
-            const selected = props.selectedIds.includes(option.value)
-            return (
-              <CommandItem
-                key={option.value}
-                value={`${option.label} ${option.description}`}
-                data-checked={selected}
-                onSelect={() => toggleValue(option.value)}
-              >
-                <Checkbox checked={selected} />
-                <span className='min-w-0 flex-1'>
-                  <span className='block truncate font-medium'>
-                    {option.label}
-                  </span>
-                  <span className='text-muted-foreground block truncate text-xs'>
-                    {option.description}
-                  </span>
-                </span>
-              </CommandItem>
-            )
-          })}
-        </CommandGroup>
-      </>
-    )
-  }
-
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button
-            variant='outline'
-            className='h-auto min-h-9 w-full justify-between px-3 py-2'
-          >
-            <span className='flex min-w-0 flex-1 flex-wrap gap-1 text-left'>
-              {selectedOptions.length === 0 ? (
-                <span className='text-muted-foreground'>
-                  {props.placeholder}
-                </span>
-              ) : (
-                selectedOptions.map((option) => (
-                  <Badge
-                    key={option.value}
-                    variant='secondary'
-                    className='max-w-[220px] gap-1 rounded-md'
-                  >
-                    <span className='truncate'>{option.label}</span>
-                    <span
-                      role='button'
-                      tabIndex={0}
-                      aria-label={t('Remove')}
-                      className='hover:bg-muted-foreground/20 inline-flex size-4 shrink-0 items-center justify-center rounded-full'
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        toggleValue(option.value)
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter' && event.key !== ' ') {
-                          return
-                        }
-                        event.preventDefault()
-                        event.stopPropagation()
-                        toggleValue(option.value)
-                      }}
-                    >
-                      <XCircle className='size-3' />
-                    </span>
-                  </Badge>
-                ))
-              )}
-            </span>
-            <ChevronsUpDown className='text-muted-foreground ml-2 size-4 shrink-0' />
-          </Button>
-        }
-      />
-      <PopoverContent
-        className='w-[420px] max-w-[calc(100vw-3rem)] p-0'
-        align='start'
-      >
-        <Command shouldFilter={false}>
-          <CommandInput
-            value={props.searchValue}
-            onValueChange={props.onSearchChange}
-            placeholder={props.searchPlaceholder}
-          />
-          <CommandList>{optionsContent}</CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   )
 }
 

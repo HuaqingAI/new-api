@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, RefreshCw, Trash2, Upload } from 'lucide-react'
+import {
+  Download,
+  RefreshCw,
+  SlidersHorizontal,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -43,12 +49,20 @@ import {
   type AionUiClientPackage,
   type AionUiClientPackageStatus,
   type AionUiClientPlatform,
-  clientPackageDownloadUrl,
   deleteClientPackage,
+  getClientPackageDownloadUrl,
   getClientPackages,
   updateClientPackageStatus,
   uploadClientPackage,
 } from './api'
+import {
+  ClientPackageRolloutDialog,
+  ClientPackageRolloutFields,
+} from './components/client-package-rollout'
+import {
+  clientPackageRolloutScopes,
+  defaultClientPackageRollout,
+} from './rollout'
 
 const PLATFORM_OPTIONS: Array<{
   value: AionUiClientPlatform
@@ -84,6 +98,7 @@ type UploadFormState = {
   platform: AionUiClientPlatform
   version: string
   releaseNote: string
+  rollout: typeof defaultClientPackageRollout
   file: File | null
   updateFile: File | null
   updateMetadataFile: File | null
@@ -93,6 +108,7 @@ const initialForm: UploadFormState = {
   platform: 'windows_x64',
   version: '',
   releaseNote: '',
+  rollout: defaultClientPackageRollout,
   file: null,
   updateFile: null,
   updateMetadataFile: null,
@@ -105,6 +121,9 @@ export function AionUiClientPackages() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<UploadFormState>(initialForm)
   const [uploadAction, setUploadAction] = useState<UploadAction | null>(null)
+  const [rolloutItem, setRolloutItem] = useState<AionUiClientPackage | null>(
+    null
+  )
   const uploadToastId = useRef<string | number | null>(null)
   const selectedPlatform =
     PLATFORM_OPTIONS.find((item) => item.value === form.platform) ??
@@ -129,6 +148,8 @@ export function AionUiClientPackages() {
         version: form.version.trim(),
         releaseNote: form.releaseNote,
         publish,
+        rolloutMode: form.rollout.rolloutMode,
+        scopes: clientPackageRolloutScopes(form.rollout),
         file: form.file,
         updateFile: form.updateFile,
         updateMetadataFile: form.updateMetadataFile,
@@ -180,8 +201,23 @@ export function AionUiClientPackages() {
     },
   })
 
+  const downloadMutation = useMutation({
+    mutationFn: getClientPackageDownloadUrl,
+    onSuccess: (url) => {
+      window.location.assign(url)
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to prepare download')
+      )
+    },
+  })
+
   const items = packagesQuery.data?.data?.items ?? []
   const isUploading = uploadMutation.isPending
+  const canSubmitRollout =
+    form.rollout.rolloutMode === 'global' ||
+    form.rollout.userIds.length + form.rollout.departmentIds.length > 0
 
   return (
     <SectionPageLayout>
@@ -293,17 +329,22 @@ export function AionUiClientPackages() {
                   }
                 />
               </Field>
+              <ClientPackageRolloutFields
+                disabled={isUploading}
+                onChange={(rollout) => setForm({ ...form, rollout })}
+                value={form.rollout}
+              />
               <div className='flex flex-wrap gap-2'>
                 <Button
                   variant='outline'
-                  disabled={isUploading}
+                  disabled={isUploading || !canSubmitRollout}
                   onClick={() => uploadMutation.mutate(false)}
                 >
                   <Upload className='size-4' />
                   {uploadAction === 'draft' ? t('Saving...') : t('Save draft')}
                 </Button>
                 <Button
-                  disabled={isUploading}
+                  disabled={isUploading || !canSubmitRollout}
                   onClick={() => uploadMutation.mutate(true)}
                 >
                   <Upload className='size-4' />
@@ -326,6 +367,7 @@ export function AionUiClientPackages() {
                     <TableHead>{t('Platform')}</TableHead>
                     <TableHead>{t('Version')}</TableHead>
                     <TableHead>{t('Status')}</TableHead>
+                    <TableHead>{t('Release rollout')}</TableHead>
                     <TableHead>{t('Files')}</TableHead>
                     <TableHead>{t('Published At')}</TableHead>
                     <TableHead className='text-right'>{t('Actions')}</TableHead>
@@ -340,11 +382,13 @@ export function AionUiClientPackages() {
                         statusMutation.mutate({ id: item.id, status })
                       }
                       onDelete={() => deleteMutation.mutate(item.id)}
+                      onDownload={() => downloadMutation.mutate(item.id)}
+                      onEditRollout={() => setRolloutItem(item)}
                     />
                   ))}
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className='text-center'>
+                      <TableCell colSpan={7} className='text-center'>
                         {packagesQuery.isLoading
                           ? t('Loading...')
                           : t('No data')}
@@ -356,6 +400,15 @@ export function AionUiClientPackages() {
             </CardContent>
           </Card>
         </div>
+        <ClientPackageRolloutDialog
+          item={rolloutItem}
+          onClose={() => setRolloutItem(null)}
+          onUpdated={() =>
+            queryClient.invalidateQueries({
+              queryKey: ['aionui-client-packages'],
+            })
+          }
+        />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
@@ -365,6 +418,8 @@ function ClientPackageRow(props: {
   item: AionUiClientPackage
   onSetStatus: (status: AionUiClientPackageStatus) => void
   onDelete: () => void
+  onDownload: () => void
+  onEditRollout: () => void
 }) {
   const { t } = useTranslation()
   return (
@@ -375,6 +430,13 @@ function ClientPackageRow(props: {
         <Badge variant='outline'>
           {clientPackageStatusLabel(props.item.status, t)}
         </Badge>
+      </TableCell>
+      <TableCell>
+        {clientPackageRolloutLabel(
+          props.item.rollout_mode,
+          props.item.scope_count,
+          t
+        )}
       </TableCell>
       <TableCell>
         <div className='space-y-1 text-xs'>
@@ -393,12 +455,21 @@ function ClientPackageRow(props: {
           <Button
             variant='outline'
             size='sm'
-            render={
-              <a href={clientPackageDownloadUrl(props.item.id)}>
-                <Download className='size-4' />
-              </a>
-            }
-          />
+            aria-label={t('Download installer')}
+            title={t('Download installer')}
+            onClick={props.onDownload}
+          >
+            <Download className='size-4' />
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            aria-label={t('Edit release rollout')}
+            title={t('Edit release rollout')}
+            onClick={props.onEditRollout}
+          >
+            <SlidersHorizontal className='size-4' />
+          </Button>
           {props.item.status !== 'published' ? (
             <Button size='sm' onClick={() => props.onSetStatus('published')}>
               {t('Publish')}
@@ -442,4 +513,15 @@ function clientPackageStatusLabel(
     default:
       return status
   }
+}
+
+function clientPackageRolloutLabel(
+  mode: 'global' | 'targeted',
+  scopeCount: number,
+  t: (key: string, values?: Record<string, number>) => string
+) {
+  if (mode === 'global') {
+    return t('All users')
+  }
+  return t('{{count}} targets', { count: scopeCount })
 }

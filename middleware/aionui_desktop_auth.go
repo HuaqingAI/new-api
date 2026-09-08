@@ -23,11 +23,59 @@ func AionUiDesktopAuth() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		c.Set("aionui_user_id", claims.UserId)
-		c.Set("aionui_username", claims.Username)
-		c.Set("aionui_email", claims.Email)
-		c.Set("aionui_device_id", claims.DeviceId)
-		c.Set("aionui_desktop_token", claims.Token)
+		setAionUiDesktopClaims(c, claims)
 		c.Next()
 	}
+}
+
+func AionUiOptionalDesktopAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetHeader("Authorization") == "" {
+			c.Next()
+			return
+		}
+		claims, err := serviceaionui.DefaultDesktopAuthService().ValidateAuthorization(c.GetHeader("Authorization"))
+		if err != nil {
+			status := http.StatusUnauthorized
+			if errors.Is(err, serviceaionui.ErrUserUnavailable) || errors.Is(err, serviceaionui.ErrEmailRequired) {
+				status = http.StatusForbidden
+			}
+			c.JSON(status, gin.H{"success": false, "message": err.Error()})
+			c.Abort()
+			return
+		}
+		setAionUiDesktopClaims(c, claims)
+		c.Next()
+	}
+}
+
+func AionUiClientUpdateFeedAuth() gin.HandlerFunc {
+	strictAuth := AionUiDesktopAuth()
+	optionalAuth := AionUiOptionalDesktopAuth()
+	return func(c *gin.Context) {
+		if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
+			strictAuth(c)
+			return
+		}
+		optionalAuth(c)
+	}
+}
+
+func AionUiClientPackageDownloadAuth() gin.HandlerFunc {
+	adminAuth := AdminAuth()
+	return func(c *gin.Context) {
+		if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
+			adminAuth(c)
+			return
+		}
+		c.Next()
+	}
+}
+
+func setAionUiDesktopClaims(c *gin.Context, claims serviceaionui.DesktopTokenClaims) {
+	c.Set("aionui_user_id", claims.UserId)
+	c.Set("aionui_username", claims.Username)
+	c.Set("aionui_email", claims.Email)
+	c.Set("aionui_device_id", claims.DeviceId)
+	c.Set("aionui_desktop_token", claims.Token)
 }

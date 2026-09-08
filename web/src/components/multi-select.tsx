@@ -62,6 +62,8 @@ interface MultiSelectProps {
   id?: string
   /** Disable the entire control. */
   disabled?: boolean
+  /** Reports current search text for remote option sources. */
+  onInputValueChange?: (value: string) => void
   /**
    * Limits rendered chips while keeping all values selected.
    * Hidden values remain searchable/removable from the dropdown.
@@ -164,7 +166,7 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
 
   const addValues = React.useCallback(
@@ -187,15 +189,18 @@ export function MultiSelect(props: MultiSelectProps) {
   const handleInputValueChange = (value: string) => {
     if (!props.allowCreate) {
       setInputValue(value)
+      props.onInputValueChange?.(value)
       return
     }
     const parsed = splitDraft(value)
     if (parsed.completed.length > 0) {
       addValues(parsed.completed)
       setInputValue(parsed.draft)
+      props.onInputValueChange?.(parsed.draft)
       return
     }
     setInputValue(value)
+    props.onInputValueChange?.(value)
   }
 
   const handleValueChange = (next: string[]) => {

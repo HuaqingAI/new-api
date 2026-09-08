@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
@@ -38,7 +39,14 @@ func DownloadClientPackage(c *gin.Context) {
 }
 
 func GetClientUpdateFeed(c *gin.Context) {
-	feed, ok, err := clientPackageService().UpdateFeed(filepath.Base(c.Request.URL.Path))
+	var feed serviceaionui.ClientUpdateFeed
+	var ok bool
+	var err error
+	if c.GetInt("aionui_user_id") > 0 {
+		feed, ok, err = clientPackageService().UpdateFeedForUser(filepath.Base(c.Request.URL.Path), c.GetInt("aionui_user_id"))
+	} else {
+		feed, ok, err = clientPackageService().UpdateFeed(filepath.Base(c.Request.URL.Path))
+	}
 	if err != nil {
 		writeClientPackageError(c, err)
 		return
@@ -52,12 +60,53 @@ func GetClientUpdateFeed(c *gin.Context) {
 }
 
 func DownloadClientUpdateArtifact(c *gin.Context) {
-	url, err := clientPackageService().UpdateArtifactURL(c.Param("version"), c.Param("file"))
+	var url string
+	var err error
+	if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
+		url, err = clientPackageService().UpdateArtifactURLForCapability(c.GetHeader("X-AionUi-Update-Capability"), c.Param("version"), c.Param("file"))
+	} else {
+		url, err = clientPackageService().UpdateArtifactURL(c.Param("version"), c.Param("file"))
+	}
 	if err != nil {
 		writeClientPackageError(c, err)
 		return
 	}
 	c.Redirect(http.StatusFound, url)
+}
+
+func PrepareClientUpdateAccess(c *gin.Context) {
+	var req dtoaionui.ClientUpdateAccessRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	mode := serviceaionui.ClientUpdateAccessMode()
+	userID := c.GetInt("aionui_user_id")
+	if userID <= 0 {
+		if mode == serviceaionui.ClientUpdateAccessModeEnforced {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "desktop authentication required"})
+			return
+		}
+		common.ApiSuccess(c, dtoaionui.ClientUpdateAccessResponse{Mode: mode, LegacyOpen: true})
+		return
+	}
+	result, err := clientPackageService().PrepareUpdateAccess(userID, c.GetString("aionui_device_id"), serviceaionui.ClientUpdateAccessInput{
+		Platform:        req.Platform,
+		CurrentVersion:  req.CurrentVersion,
+		ExpectedVersion: req.ExpectedVersion,
+	})
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, dtoaionui.ClientUpdateAccessResponse{
+		Mode:               result.Mode,
+		LegacyOpen:         result.LegacyOpen,
+		Eligible:           result.Eligible,
+		Release:            result.Release,
+		ArtifactCapability: result.ArtifactCapability,
+		ExpiresAt:          result.ExpiresAt,
+	})
 }
 
 func AdminListClientPackages(c *gin.Context) {
@@ -77,6 +126,20 @@ func AdminListClientPackages(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, result)
+}
+
+func AdminGetClientPackageDownloadURL(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	url, err := clientPackageService().DownloadURL(id)
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"url": url})
 }
 
 func AdminUploadClientPackage(c *gin.Context) {
@@ -108,6 +171,13 @@ func AdminUploadClientPackage(c *gin.Context) {
 	if metadataReader != nil {
 		defer metadataReader.Close()
 	}
+	var scopes []dtoaionui.ClientPackageScopeInput
+	if rawScopes := strings.TrimSpace(c.PostForm("scopes")); rawScopes != "" {
+		if err := common.UnmarshalJsonStr(rawScopes, &scopes); err != nil {
+			common.ApiErrorMsg(c, "invalid request params")
+			return
+		}
+	}
 
 	result, err := clientPackageService().Upload(serviceaionui.ClientPackageUploadInput{
 		Platform:               c.PostForm("platform"),
@@ -121,6 +191,8 @@ func AdminUploadClientPackage(c *gin.Context) {
 		UpdateMetadataFile:     metadataReader,
 		Publish:                c.PostForm("publish") == "true" || c.PostForm("publish") == "1",
 		ActorUserId:            c.GetInt("id"),
+		RolloutMode:            c.PostForm("rollout_mode"),
+		Scopes:                 mapClientPackageScopeInputs(scopes),
 	})
 	if err != nil {
 		writeClientPackageError(c, err)
@@ -170,11 +242,46 @@ func AdminCompleteClientPackageUpload(c *gin.Context) {
 		Version:            req.Version,
 		ReleaseNote:        req.ReleaseNote,
 		Publish:            req.Publish,
+		RolloutMode:        req.RolloutMode,
+		Scopes:             mapClientPackageScopeInputs(req.Scopes),
 		File:               mapClientPackageUploadTarget(req.File),
 		UpdateFile:         mapClientPackageUploadTarget(req.UpdateFile),
 		UpdateMetadataFile: mapClientPackageUploadTarget(req.UpdateMetadataFile),
 		ActorUserId:        c.GetInt("id"),
 	})
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminGetClientPackageRollout(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	result, err := clientPackageService().GetRollout(id)
+	if err != nil {
+		writeClientPackageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminUpdateClientPackageRollout(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	var req dtoaionui.ClientPackageRolloutRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "invalid request params")
+		return
+	}
+	result, err := clientPackageService().UpdateRollout(id, req.RolloutMode, mapClientPackageScopeInputs(req.Scopes), c.GetInt("id"))
 	if err != nil {
 		writeClientPackageError(c, err)
 		return
@@ -227,6 +334,10 @@ func writeClientPackageError(c *gin.Context, err error) {
 		common.ApiErrorMsg(c, "请求参数不正确")
 	case errors.Is(err, serviceaionui.ErrClientPackageDuplicateVersion):
 		common.ApiErrorMsg(c, "该客户端版本已存在")
+	case errors.Is(err, serviceaionui.ErrClientPackageRolloutInvalid):
+		common.ApiErrorMsg(c, "客户端发布范围无效")
+	case errors.Is(err, serviceaionui.ErrClientUpdateCapabilityInvalid):
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "client update access denied"})
 	case errors.Is(err, serviceaionui.ErrClientPackageMetadataRequired):
 		common.ApiErrorMsg(c, "发布时必须上传 electron-builder 产出的 latest*.yml 更新元数据文件")
 	case errors.Is(err, serviceaionui.ErrClientPackageUpdateFileRequired):
@@ -280,4 +391,12 @@ func mapClientPackageUploadTarget(input dtoaionui.ClientPackageDirectUploadTarge
 		Sha512:    input.Sha512,
 		Size:      input.Size,
 	}
+}
+
+func mapClientPackageScopeInputs(inputs []dtoaionui.ClientPackageScopeInput) []serviceaionui.ClientPackageScopeInput {
+	result := make([]serviceaionui.ClientPackageScopeInput, 0, len(inputs))
+	for _, input := range inputs {
+		result = append(result, serviceaionui.ClientPackageScopeInput{SubjectType: input.SubjectType, SubjectId: input.SubjectId})
+	}
+	return result
 }

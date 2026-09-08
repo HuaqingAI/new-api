@@ -11,6 +11,36 @@ type ClientPackageStatusRequest struct {
 	Status string `json:"status"`
 }
 
+type ClientPackageScopeInput struct {
+	SubjectType string `json:"subject_type"`
+	SubjectId   string `json:"subject_id"`
+}
+
+type ClientPackageRolloutRequest struct {
+	RolloutMode string                    `json:"rollout_mode"`
+	Scopes      []ClientPackageScopeInput `json:"scopes"`
+}
+
+type ClientUpdateAccessRequest struct {
+	Platform        string `json:"platform"`
+	CurrentVersion  string `json:"current_version"`
+	ExpectedVersion string `json:"expected_version"`
+}
+
+type ClientUpdateAccessRelease struct {
+	Version  string `json:"version"`
+	Platform string `json:"platform"`
+}
+
+type ClientUpdateAccessResponse struct {
+	Mode               string                     `json:"mode"`
+	LegacyOpen         bool                       `json:"legacy_open,omitempty"`
+	Eligible           bool                       `json:"eligible"`
+	Release            *ClientUpdateAccessRelease `json:"release,omitempty"`
+	ArtifactCapability string                     `json:"artifact_capability,omitempty"`
+	ExpiresAt          int64                      `json:"expires_at,omitempty"`
+}
+
 type ClientPackageDirectUploadFileRequest struct {
 	Kind     string `json:"kind"`
 	FileName string `json:"file_name"`
@@ -49,6 +79,8 @@ type ClientPackageDirectUploadCompleteRequest struct {
 	Version            string                          `json:"version"`
 	ReleaseNote        string                          `json:"release_note"`
 	Publish            bool                            `json:"publish"`
+	RolloutMode        string                          `json:"rollout_mode"`
+	Scopes             []ClientPackageScopeInput       `json:"scopes"`
 	File               ClientPackageDirectUploadTarget `json:"file"`
 	UpdateFile         ClientPackageDirectUploadTarget `json:"update_file"`
 	UpdateMetadataFile ClientPackageDirectUploadTarget `json:"update_metadata_file"`
@@ -59,6 +91,8 @@ type ClientPackageItem struct {
 	Platform               string  `json:"platform"`
 	Version                string  `json:"version"`
 	Status                 string  `json:"status"`
+	RolloutMode            string  `json:"rollout_mode"`
+	ScopeCount             int     `json:"scope_count"`
 	FileName               string  `json:"file_name"`
 	FileSha256             string  `json:"file_sha256"`
 	FileSha512             string  `json:"file_sha512"`

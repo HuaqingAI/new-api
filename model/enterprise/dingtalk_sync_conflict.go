@@ -4,6 +4,7 @@ type DingTalkSyncConflict struct {
 	Id              int    `json:"id" gorm:"primaryKey"`
 	TenantId        int    `json:"tenant_id" gorm:"type:int;not null;default:0;index;uniqueIndex:uq_enterprise_dingtalk_sync_conflict"`
 	TaskId          int    `json:"task_id" gorm:"type:int;not null;default:0;index"`
+	TriggerSource   string `json:"trigger_source" gorm:"type:varchar(32);not null;default:'full_sync';index"`
 	ExternalUserId  string `json:"external_user_id" gorm:"type:varchar(128);not null;default:'';index;uniqueIndex:uq_enterprise_dingtalk_sync_conflict"`
 	UnionId         string `json:"union_id" gorm:"type:varchar(128);not null;default:'';index"`
 	Mobile          string `json:"mobile" gorm:"type:varchar(64);not null;default:'';index"`

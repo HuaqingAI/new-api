@@ -71,6 +71,7 @@ type DingTalkSyncConflictItem struct {
 	Id              int    `json:"id"`
 	TenantId        int    `json:"tenant_id"`
 	TaskId          int    `json:"task_id"`
+	TriggerSource   string `json:"trigger_source"`
 	ExternalUserId  string `json:"external_user_id"`
 	UnionId         string `json:"union_id"`
 	Mobile          string `json:"mobile"`
@@ -177,6 +178,7 @@ func (s *DingTalkSyncService) RunTask(ctx context.Context, taskId int, config en
 	if taskId <= 0 {
 		return ErrDingTalkSyncTaskNotFound
 	}
+	defer ClearDingTalkScopeCache(config.TenantId)
 	now := time.Now().Unix()
 	if err := s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{
 		"status":     constant.DingTalkSyncTaskStatusRunning,
@@ -202,7 +204,7 @@ func (s *DingTalkSyncService) RunTask(ctx context.Context, taskId int, config en
 		rootDepartmentIds = []int64{1}
 	}
 	for _, rootDepartmentId := range rootDepartmentIds {
-		s.syncDepartmentTree(ctx, taskId, config.TenantId, accessToken, rootDepartmentId, nil, snapshot)
+		s.syncDepartmentTree(ctx, taskId, config.TenantId, config.CorpId, accessToken, rootDepartmentId, nil, snapshot)
 	}
 	s.disableStaleRecords(ctx, taskId, config.TenantId, snapshot)
 	return s.finishTask(ctx, taskId)

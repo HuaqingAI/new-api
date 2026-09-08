@@ -71,7 +71,7 @@ func (s *DingTalkSyncService) disableStaleRecords(ctx context.Context, taskId in
 	}
 }
 
-func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenantId int, dingTalkUser DingTalkDepartmentUserInfo, userId int) {
+func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenantId int, corpId string, dingTalkUser DingTalkDepartmentUserInfo, userId int) {
 	identityKey := dingtalkSyncIdentityKey(dingTalkUser)
 	if identityKey == "" {
 		return
@@ -84,6 +84,7 @@ func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenant
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		_ = s.db.WithContext(ctx).Create(&entmodel.DingTalkIdentity{
 			TenantId:       tenantId,
+			CorpId:         strings.TrimSpace(corpId),
 			IdentityKey:    identityKey,
 			UnionId:        strings.TrimSpace(dingTalkUser.UnionId),
 			ExternalUserId: strings.TrimSpace(dingTalkUser.UserId),
@@ -94,6 +95,7 @@ func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenant
 		return
 	}
 	_ = s.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
+		"corp_id":          strings.TrimSpace(corpId),
 		"identity_key":     identityKey,
 		"union_id":         strings.TrimSpace(dingTalkUser.UnionId),
 		"external_user_id": strings.TrimSpace(dingTalkUser.UserId),

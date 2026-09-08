@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *DingTalkSyncService) syncDepartmentTree(ctx context.Context, taskId int, tenantId int, accessToken string, dingTalkDepartmentId int64, localParentId *int, snapshot *dingTalkSyncSnapshot) {
+func (s *DingTalkSyncService) syncDepartmentTree(ctx context.Context, taskId int, tenantId int, corpId string, accessToken string, dingTalkDepartmentId int64, localParentId *int, snapshot *dingTalkSyncSnapshot) {
 	departments, err := s.client.ListSubDepartments(ctx, accessToken, dingTalkDepartmentId)
 	if err != nil {
 		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, strconv.FormatInt(dingTalkDepartmentId, 10), "department_list_failed")
@@ -27,9 +27,9 @@ func (s *DingTalkSyncService) syncDepartmentTree(ctx context.Context, taskId int
 		if !ok {
 			continue
 		}
-		s.syncDepartmentUsers(ctx, taskId, tenantId, accessToken, department.DeptId, localDepartment.Id, snapshot)
+		s.syncDepartmentUsers(ctx, taskId, tenantId, corpId, accessToken, department.DeptId, localDepartment.Id, snapshot)
 		childParentId := localDepartment.Id
-		s.syncDepartmentTree(ctx, taskId, tenantId, accessToken, department.DeptId, &childParentId, snapshot)
+		s.syncDepartmentTree(ctx, taskId, tenantId, corpId, accessToken, department.DeptId, &childParentId, snapshot)
 	}
 }
 
@@ -107,14 +107,14 @@ func (s *DingTalkSyncService) upsertDepartment(ctx context.Context, taskId int, 
 	return existing, true
 }
 
-func (s *DingTalkSyncService) syncDepartmentUsers(ctx context.Context, taskId int, tenantId int, accessToken string, dingTalkDepartmentId int64, localDepartmentId int, snapshot *dingTalkSyncSnapshot) {
+func (s *DingTalkSyncService) syncDepartmentUsers(ctx context.Context, taskId int, tenantId int, corpId string, accessToken string, dingTalkDepartmentId int64, localDepartmentId int, snapshot *dingTalkSyncSnapshot) {
 	users, err := s.client.ListDepartmentUsers(ctx, accessToken, dingTalkDepartmentId)
 	if err != nil {
 		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, strconv.FormatInt(dingTalkDepartmentId, 10), "department_users_failed")
 		return
 	}
 	for _, dingTalkUser := range users {
-		user, ok := s.upsertUser(ctx, taskId, tenantId, dingTalkUser)
+		user, ok := s.upsertUser(ctx, taskId, tenantId, corpId, dingTalkUser)
 		if !ok {
 			continue
 		}
@@ -148,7 +148,7 @@ func (s *DingTalkSyncService) upsertDingTalkDepartmentOwner(ctx context.Context,
 	s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectOwner, ObjectExternalId: externalUserId, Action: action, Status: constant.DingTalkSyncLogStatusSuccess, Message: message})
 }
 
-func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenantId int, dingTalkUser DingTalkDepartmentUserInfo) (*model.User, bool) {
+func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenantId int, corpId string, dingTalkUser DingTalkDepartmentUserInfo) (*model.User, bool) {
 	if strings.TrimSpace(dingTalkUser.UserId) == "" {
 		s.incrementTaskCounter(ctx, taskId, "skipped_count", 1)
 		return nil, false
@@ -168,7 +168,7 @@ func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenant
 			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, dingTalkUser.UserId, "bound_user_lookup_failed")
 			return nil, false
 		}
-		s.updateDingTalkIdentity(ctx, tenantId, dingTalkUser, existing.Id)
+		s.updateDingTalkIdentity(ctx, tenantId, corpId, dingTalkUser, existing.Id)
 		s.incrementTaskCounter(ctx, taskId, "users_updated", 1)
 		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectUser, ObjectExternalId: dingTalkUser.UserId, Action: constant.DingTalkSyncLogActionUpdated, Status: constant.DingTalkSyncLogStatusSuccess, Message: "user_identity_updated"})
 		return &existing, true
@@ -208,7 +208,7 @@ func (s *DingTalkSyncService) upsertUser(ctx context.Context, taskId int, tenant
 		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, dingTalkUser.UserId, "user_create_failed")
 		return nil, false
 	}
-	s.updateDingTalkIdentity(ctx, tenantId, dingTalkUser, user.Id)
+	s.updateDingTalkIdentity(ctx, tenantId, corpId, dingTalkUser, user.Id)
 	s.incrementTaskCounter(ctx, taskId, "users_created", 1)
 	s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectUser, ObjectExternalId: dingTalkUser.UserId, Action: constant.DingTalkSyncLogActionCreated, Status: constant.DingTalkSyncLogStatusSuccess, Message: "user_created"})
 	return &user, true
@@ -418,6 +418,7 @@ func (s *DingTalkSyncService) recordSyncConflict(ctx context.Context, taskId int
 	err := s.db.WithContext(ctx).Where("tenant_id = ? AND external_user_id = ? AND conflict_type = ?", tenantId, externalUserId, conflictType).First(&existing).Error
 	update := map[string]any{
 		"task_id":           taskId,
+		"trigger_source":    "full_sync",
 		"last_task_id":      taskId,
 		"union_id":          strings.TrimSpace(dingTalkUser.UnionId),
 		"mobile":            strings.TrimSpace(dingTalkUser.Mobile),
@@ -433,6 +434,7 @@ func (s *DingTalkSyncService) recordSyncConflict(ctx context.Context, taskId int
 		record := entmodel.DingTalkSyncConflict{
 			TenantId:        tenantId,
 			TaskId:          taskId,
+			TriggerSource:   "full_sync",
 			ExternalUserId:  externalUserId,
 			UnionId:         strings.TrimSpace(dingTalkUser.UnionId),
 			Mobile:          strings.TrimSpace(dingTalkUser.Mobile),

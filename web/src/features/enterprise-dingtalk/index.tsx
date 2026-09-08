@@ -105,9 +105,11 @@ const dingTalkConfigSchema = (t: (key: string) => string) =>
       sync_scope: z.string(),
       login_enabled: z.boolean(),
       sync_enabled: z.boolean(),
+      auto_sync_on_login: z.boolean(),
     })
     .superRefine((values, ctx) => {
-      const enabling = values.login_enabled || values.sync_enabled
+      const enabling =
+        values.login_enabled || values.sync_enabled || values.auto_sync_on_login
       const callbackUrl = values.callback_url.trim()
       if (callbackUrl) {
         try {
@@ -162,6 +164,7 @@ const emptyConfig: DingTalkConfig = {
   sync_scope: '',
   login_enabled: false,
   sync_enabled: false,
+  auto_sync_on_login: false,
   has_app_secret: false,
   created_at: 0,
   updated_at: 0,
@@ -176,6 +179,7 @@ function configToFormValues(config: DingTalkConfig): DingTalkConfigFormValues {
     sync_scope: config.sync_scope ?? '',
     login_enabled: Boolean(config.login_enabled),
     sync_enabled: Boolean(config.sync_enabled),
+    auto_sync_on_login: Boolean(config.auto_sync_on_login),
   }
 }
 
@@ -224,6 +228,7 @@ export function EnterpriseDingTalk() {
         sync_scope: values.sync_scope.trim(),
         login_enabled: values.login_enabled,
         sync_enabled: values.sync_enabled,
+        auto_sync_on_login: values.auto_sync_on_login,
       }
       const appSecret = values.app_secret.trim()
       const result = await saveDingTalkConfig(
@@ -595,7 +600,7 @@ export function EnterpriseDingTalk() {
                             )}
                       </p>
                     ) : null}
-                    <div className='grid gap-4 md:grid-cols-2'>
+                    <div className='grid gap-4 md:grid-cols-3'>
                       <FormField
                         control={form.control}
                         name='login_enabled'
@@ -622,6 +627,25 @@ export function EnterpriseDingTalk() {
                             )}
                             checked={field.value}
                             disabled={!canEdit}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='auto_sync_on_login'
+                        render={({ field }) => (
+                          <ToggleField
+                            label={t('Auto-sync new employees on login')}
+                            description={t(
+                              'Verify and add new in-scope employees during DingTalk login. Existing bindings keep working when this is off.'
+                            )}
+                            checked={field.value}
+                            disabled={
+                              !canEdit ||
+                              !formValues.login_enabled ||
+                              !formValues.sync_enabled
+                            }
                             onCheckedChange={field.onChange}
                           />
                         )}

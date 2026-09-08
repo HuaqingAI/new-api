@@ -31,14 +31,15 @@ func SaveDingTalkConfig(c *gin.Context) {
 	}
 
 	input := entservice.DingTalkConfigInput{
-		TenantId:     valueOrZero(req.TenantId),
-		CorpId:       req.CorpId,
-		AppKey:       req.AppKey,
-		AppSecret:    req.AppSecret,
-		CallbackUrl:  req.CallbackUrl,
-		SyncScope:    req.SyncScope,
-		LoginEnabled: boolValue(req.LoginEnabled),
-		SyncEnabled:  boolValue(req.SyncEnabled),
+		TenantId:        valueOrZero(req.TenantId),
+		CorpId:          req.CorpId,
+		AppKey:          req.AppKey,
+		AppSecret:       req.AppSecret,
+		CallbackUrl:     req.CallbackUrl,
+		SyncScope:       req.SyncScope,
+		LoginEnabled:    boolValue(req.LoginEnabled),
+		SyncEnabled:     boolValue(req.SyncEnabled),
+		AutoSyncOnLogin: req.AutoSyncOnLogin,
 	}
 
 	var result dtoenterprise.DingTalkConfigResponse
@@ -56,15 +57,16 @@ func SaveDingTalkConfig(c *gin.Context) {
 			ObjectId:    strconv.Itoa(result.TenantId),
 			DiffSummary: "Saved DingTalk enterprise app configuration",
 			Payload: map[string]any{
-				"tenant_id":      result.TenantId,
-				"corp_id":        result.CorpId,
-				"app_key":        result.AppKey,
-				"app_secret":     req.AppSecret,
-				"callback_url":   result.CallbackUrl,
-				"sync_scope":     result.SyncScope,
-				"login_enabled":  result.LoginEnabled,
-				"sync_enabled":   result.SyncEnabled,
-				"has_app_secret": result.HasAppSecret,
+				"tenant_id":          result.TenantId,
+				"corp_id":            result.CorpId,
+				"app_key":            result.AppKey,
+				"app_secret":         req.AppSecret,
+				"callback_url":       result.CallbackUrl,
+				"sync_scope":         result.SyncScope,
+				"login_enabled":      result.LoginEnabled,
+				"sync_enabled":       result.SyncEnabled,
+				"auto_sync_on_login": result.AutoSyncOnLogin,
+				"has_app_secret":     result.HasAppSecret,
 			},
 		})
 	})

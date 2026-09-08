@@ -152,9 +152,17 @@ type dingTalkDepartmentUserListResponse struct {
 }
 
 type dingTalkUserGetResponse struct {
-	ErrCode int                        `json:"errcode"`
-	ErrMsg  string                     `json:"errmsg"`
-	Result  DingTalkDepartmentUserInfo `json:"result"`
+	ErrCode int    `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+	Result  struct {
+		UserId     string  `json:"userid"`
+		UnionId    string  `json:"unionid"`
+		Name       string  `json:"name"`
+		Email      string  `json:"email"`
+		Mobile     string  `json:"mobile"`
+		Active     *bool   `json:"active"`
+		DeptIdList []int64 `json:"dept_id_list"`
+	} `json:"result"`
 }
 
 func (e *DingTalkAPIError) Error() string {
@@ -505,7 +513,15 @@ func (c *DingTalkClient) GetUserById(ctx context.Context, accessToken string, us
 	if payload.ErrCode != 0 {
 		return DingTalkDepartmentUserInfo{}, &DingTalkAPIError{Stage: "user_get", ErrCode: payload.ErrCode, HTTPStatus: resp.StatusCode, Summary: "user_get_failed"}
 	}
-	user := payload.Result
+	user := DingTalkDepartmentUserInfo{
+		UserId:     payload.Result.UserId,
+		UnionId:    payload.Result.UnionId,
+		Name:       payload.Result.Name,
+		Email:      payload.Result.Email,
+		Mobile:     payload.Result.Mobile,
+		Active:     payload.Result.Active,
+		DeptIdList: payload.Result.DeptIdList,
+	}
 	user.UserId = strings.TrimSpace(user.UserId)
 	user.UnionId = strings.TrimSpace(user.UnionId)
 	user.Email = strings.TrimSpace(user.Email)

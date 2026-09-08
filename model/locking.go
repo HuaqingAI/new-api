@@ -23,3 +23,9 @@ func lockForUpdate(tx *gorm.DB) *gorm.DB {
 	}
 	return tx.Clauses(clause.Locking{Strength: "UPDATE"})
 }
+
+// LockForUpdate applies the project's cross-database row-locking policy for
+// service-layer transactions that own enterprise records.
+func LockForUpdate(tx *gorm.DB) *gorm.DB {
+	return lockForUpdate(tx)
+}

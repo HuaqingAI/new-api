@@ -97,8 +97,15 @@ func HandleDingTalkOAuth(c *gin.Context) {
 	}
 	result, err := oauthService.LoginWithIdentity(c.Request.Context(), tenantId, identity, payload.AffiliateCode)
 	if err != nil {
+		var autoSyncErr *entservice.DingTalkAutoSyncError
+		if errors.As(err, &autoSyncErr) {
+			recordDingTalkAutoSyncAudit(c, nil, tenantId, dingTalkAutoSyncAuditResult(err), false, 0)
+		}
 		writeDingTalkOAuthError(c, err)
 		return
+	}
+	if result.AutoSynced {
+		recordDingTalkAutoSyncAudit(c, result.User, tenantId, result.LoginStatus, true, result.DepartmentCount)
 	}
 	if payload.DesktopRedirectURI != "" || payload.DesktopState != "" {
 		handleAionUiDesktopLogin(c, result.User, identity, payload.DesktopRedirectURI, payload.DesktopState)
@@ -120,26 +127,83 @@ func parseDingTalkOAuthTenantId(c *gin.Context) int {
 }
 
 func writeDingTalkOAuthError(c *gin.Context, err error) {
+	status := http.StatusOK
+	key := i18n.MsgDatabaseError
 	switch {
 	case errors.Is(err, entservice.ErrDingTalkOAuthNotEnabled), errors.Is(err, entservice.ErrDingTalkConfigNotFound):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthNotEnabled)
+		key = i18n.MsgEnterpriseDingTalkOAuthNotEnabled
 	case errors.Is(err, entservice.ErrDingTalkMissingCredentials):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkMissingCredentials)
+		key = i18n.MsgEnterpriseDingTalkMissingCredentials
 	case errors.Is(err, entservice.ErrDingTalkOAuthCodeMissing), errors.Is(err, entservice.ErrDingTalkOAuthIdentityMissing):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthInvalidIdentity)
+		status = http.StatusForbidden
+		key = i18n.MsgEnterpriseDingTalkOAuthInvalidIdentity
+	case errors.Is(err, entservice.ErrDingTalkOAuthEmployeeNotFound):
+		status = http.StatusForbidden
+		key = i18n.MsgEnterpriseDingTalkOAuthEmployeeUnverified
 	case errors.Is(err, entservice.ErrDingTalkOAuthProviderFailed):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthProviderFailed)
+		status = http.StatusServiceUnavailable
+		key = i18n.MsgEnterpriseDingTalkOAuthProviderFailed
 	case errors.Is(err, entservice.ErrDingTalkOAuthUserDisabled):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthUserDisabled)
+		status = http.StatusForbidden
+		key = i18n.MsgEnterpriseDingTalkOAuthUserDisabled
 	case errors.Is(err, entservice.ErrDingTalkOAuthOutOfScope):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthOutOfScope)
+		status = http.StatusForbidden
+		key = i18n.MsgEnterpriseDingTalkOAuthOutOfScope
 	case errors.Is(err, entservice.ErrDingTalkOAuthBindingConflict):
-		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkOAuthBindingConflict)
+		status = http.StatusConflict
+		key = i18n.MsgEnterpriseDingTalkOAuthBindingConflict
+	case errors.Is(err, entservice.ErrDingTalkAutoSyncDisabled):
+		status = http.StatusForbidden
+		key = i18n.MsgEnterpriseDingTalkAutoSyncDisabled
 	case errors.Is(err, entservice.ErrDingTalkOAuthRegistrationDisabled):
-		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
-	default:
-		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		key = i18n.MsgUserRegisterDisabled
 	}
+	c.JSON(status, gin.H{"success": false, "message": common.TranslateMessage(c, key)})
+}
+
+func dingTalkAutoSyncAuditResult(err error) string {
+	switch {
+	case errors.Is(err, entservice.ErrDingTalkOAuthOutOfScope):
+		return "out_of_scope"
+	case errors.Is(err, entservice.ErrDingTalkOAuthBindingConflict):
+		return "conflict"
+	case errors.Is(err, entservice.ErrDingTalkOAuthEmployeeNotFound):
+		return "employee_unverified"
+	case errors.Is(err, entservice.ErrDingTalkOAuthUserDisabled):
+		return "user_disabled"
+	case errors.Is(err, entservice.ErrDingTalkOAuthProviderFailed):
+		return "provider_error"
+	default:
+		return "failed"
+	}
+}
+
+func recordDingTalkAutoSyncAudit(c *gin.Context, user *model.User, tenantId int, result string, autoSynced bool, departmentCount int) {
+	userId := 0
+	username := ""
+	role := 0
+	if user != nil {
+		userId = user.Id
+		username = user.Username
+		role = user.Role
+	}
+	model.RecordAuditLog(c, model.AuditLog{
+		UserId:    userId,
+		Username:  username,
+		ActorRole: role,
+		Category:  model.AuditCategorySecurity,
+		Action:    "enterprise.dingtalk.auto_sync",
+		Success:   autoSynced,
+		Other: model.AuditOther{Op: &model.AuditOperation{
+			Action: "enterprise.dingtalk.auto_sync",
+			Params: model.AuditFields{
+				"tenant_id":        tenantId,
+				"result":           result,
+				"auto_synced":      autoSynced,
+				"department_count": departmentCount,
+			},
+		}},
+	})
 }
 
 func handleAionUiDesktopLogin(

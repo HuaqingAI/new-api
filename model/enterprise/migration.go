@@ -2,6 +2,22 @@ package enterprise
 
 import "gorm.io/gorm"
 
+type dingTalkConfigAutoSyncColumn struct {
+	AutoSyncOnLogin bool `gorm:"column:auto_sync_on_login;type:boolean;not null;default:false"`
+}
+
+func (dingTalkConfigAutoSyncColumn) TableName() string {
+	return DingTalkConfig{}.TableName()
+}
+
+type dingTalkSyncConflictTriggerSourceColumn struct {
+	TriggerSource string `gorm:"column:trigger_source;type:varchar(32);not null;default:'full_sync'"`
+}
+
+func (dingTalkSyncConflictTriggerSourceColumn) TableName() string {
+	return DingTalkSyncConflict{}.TableName()
+}
+
 func Migrate(db *gorm.DB) error {
 	if err := ensureDepartmentRoleOwnerColumnsAndIndexes(db); err != nil {
 		return err
@@ -21,7 +37,14 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureGovernanceNotificationDeliveryColumns(db); err != nil {
 		return err
 	}
-	if err := db.AutoMigrate(
+	dingTalkColumns, err := ensureDingTalkAutoSyncColumns(db)
+	if err != nil {
+		return err
+	}
+	// Existing DingTalk tables use explicit additive migrations above. SQLite
+	// rebuilds them when AutoMigrate sees the new defaults, dropping backfilled
+	// values during the copy.
+	models := []any{
 		&Department{},
 		&DepartmentBudget{},
 		&BudgetDelegation{},
@@ -37,18 +60,87 @@ func Migrate(db *gorm.DB) error {
 		&UsageSnapshot{},
 		&UsageScopeSnapshot{},
 		&UsageReportJob{},
-		&DingTalkConfig{},
 		&DingTalkIdentity{},
 		&DingTalkSyncTask{},
 		&DingTalkSyncLog{},
-		&DingTalkSyncConflict{},
-	); err != nil {
+	}
+	if !dingTalkColumns.configTableExists {
+		models = append(models, &DingTalkConfig{})
+	}
+	if !dingTalkColumns.conflictTableExists {
+		models = append(models, &DingTalkSyncConflict{})
+	}
+	if err := db.AutoMigrate(models...); err != nil {
+		return err
+	}
+	if err := backfillDingTalkAutoSyncColumns(db, dingTalkColumns); err != nil {
 		return err
 	}
 	if err := backfillAlertEventDepartmentTokens(db); err != nil {
 		return err
 	}
 	return normalizeDepartmentBudgetRemaining(db)
+}
+
+type dingTalkAutoSyncMigrationColumns struct {
+	autoSyncOnLogin     bool
+	triggerSource       bool
+	configTableExists   bool
+	conflictTableExists bool
+}
+
+func ensureDingTalkAutoSyncColumns(db *gorm.DB) (dingTalkAutoSyncMigrationColumns, error) {
+	if db == nil {
+		return dingTalkAutoSyncMigrationColumns{}, nil
+	}
+	columns := dingTalkAutoSyncMigrationColumns{}
+	columns.configTableExists = db.Migrator().HasTable(&DingTalkConfig{})
+	if columns.configTableExists && !db.Migrator().HasColumn(&DingTalkConfig{}, "auto_sync_on_login") {
+		columns.autoSyncOnLogin = true
+		if err := db.Migrator().AddColumn(&dingTalkConfigAutoSyncColumn{}, "auto_sync_on_login"); err != nil {
+			return dingTalkAutoSyncMigrationColumns{}, err
+		}
+	}
+	columns.conflictTableExists = db.Migrator().HasTable(&DingTalkSyncConflict{})
+	if columns.conflictTableExists && !db.Migrator().HasColumn(&DingTalkSyncConflict{}, "trigger_source") {
+		columns.triggerSource = true
+		if err := db.Migrator().AddColumn(&dingTalkSyncConflictTriggerSourceColumn{}, "trigger_source"); err != nil {
+			return dingTalkAutoSyncMigrationColumns{}, err
+		}
+	}
+	if columns.conflictTableExists && !db.Migrator().HasIndex(&DingTalkSyncConflict{}, "idx_enterprise_dingtalk_sync_conflicts_trigger_source") {
+		if err := db.Migrator().CreateIndex(&DingTalkSyncConflict{}, "TriggerSource"); err != nil {
+			return dingTalkAutoSyncMigrationColumns{}, err
+		}
+	}
+	return columns, nil
+}
+
+func backfillDingTalkAutoSyncColumns(db *gorm.DB, columns dingTalkAutoSyncMigrationColumns) error {
+	if columns.autoSyncOnLogin {
+		var configs []struct {
+			Id          int
+			SyncEnabled bool
+		}
+		if err := db.Table(DingTalkConfig{}.TableName()).Select("id", "sync_enabled").Find(&configs).Error; err != nil {
+			return err
+		}
+		for _, config := range configs {
+			if err := db.Table(DingTalkConfig{}.TableName()).
+				Where("id = ?", config.Id).
+				UpdateColumn("auto_sync_on_login", config.SyncEnabled).Error; err != nil {
+				return err
+			}
+		}
+	}
+	if columns.triggerSource {
+		if err := db.Model(&DingTalkSyncConflict{}).
+			Where("tenant_id >= ?", 0).
+			UpdateColumn("trigger_source", "full_sync").Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureGovernanceNotificationDeliveryColumns(db *gorm.DB) error {

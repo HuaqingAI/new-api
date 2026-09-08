@@ -123,3 +123,37 @@ func TestDingTalkConfigAllowsDraftWithoutCredentials(t *testing.T) {
 	require.False(t, saved.LoginEnabled)
 	require.False(t, saved.SyncEnabled)
 }
+
+func TestDingTalkConfigPersistsAutoSyncOnLoginIndependently(t *testing.T) {
+	svc, db := newDingTalkConfigTestService(t)
+	secret := "secret"
+	disabled := false
+
+	saved, err := svc.Save(entservice.DingTalkConfigInput{
+		CorpId:          "corp",
+		AppKey:          "key",
+		AppSecret:       &secret,
+		CallbackUrl:     "https://example.com/callback",
+		LoginEnabled:    true,
+		SyncEnabled:     true,
+		AutoSyncOnLogin: &disabled,
+	})
+	require.NoError(t, err)
+	require.False(t, saved.AutoSyncOnLogin)
+
+	enabled := true
+	updated, err := svc.Save(entservice.DingTalkConfigInput{
+		CorpId:          "corp",
+		AppKey:          "key",
+		CallbackUrl:     "https://example.com/callback",
+		LoginEnabled:    true,
+		SyncEnabled:     true,
+		AutoSyncOnLogin: &enabled,
+	})
+	require.NoError(t, err)
+	require.True(t, updated.AutoSyncOnLogin)
+
+	var config entmodel.DingTalkConfig
+	require.NoError(t, db.Where("tenant_id = ?", 0).First(&config).Error)
+	require.True(t, config.AutoSyncOnLogin)
+}

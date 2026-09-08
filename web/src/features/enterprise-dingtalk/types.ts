@@ -31,6 +31,7 @@ export type DingTalkConfig = {
   sync_scope: string
   login_enabled: boolean
   sync_enabled: boolean
+  auto_sync_on_login: boolean
   has_app_secret: boolean
   created_at: number
   updated_at: number
@@ -45,6 +46,7 @@ export type DingTalkConfigPayload = {
   sync_scope: string
   login_enabled?: boolean
   sync_enabled?: boolean
+  auto_sync_on_login?: boolean
 }
 
 export type DingTalkConnectivityCode =
@@ -110,6 +112,7 @@ export type DingTalkSyncConflict = {
   id: number
   tenant_id: number
   task_id: number
+  trigger_source: 'full_sync' | 'login'
   external_user_id: string
   union_id: string
   mobile: string

@@ -23,19 +23,29 @@ const (
 	DingTalkOAuthLoginStatusBound    = "bound"
 )
 
+type DingTalkOAuthClient interface {
+	DingTalkDirectoryClient
+	ExchangeOAuthCode(ctx context.Context, appKey string, appSecret string, code string) (DingTalkOAuthToken, error)
+	GetOAuthUserInfo(ctx context.Context, userAccessToken string) (DingTalkOAuthUserInfo, error)
+}
+
 type DingTalkOAuthIdentity struct {
-	UnionId        string
-	OpenId         string
-	ExternalUserId string
-	Name           string
-	Email          string
-	Mobile         string
-	Active         *bool
+	UnionId          string
+	OpenId           string
+	ExternalUserId   string
+	Name             string
+	Email            string
+	Mobile           string
+	Active           *bool
+	DepartmentIds    []int64
+	ScopeVerified    bool
+	oauthVerified    bool
+	verifiedByServer bool
 }
 
 type DingTalkOAuthService struct {
 	db     *gorm.DB
-	client *DingTalkClient
+	client DingTalkOAuthClient
 }
 
 type DingTalkOAuthResult struct {
@@ -45,9 +55,10 @@ type DingTalkOAuthResult struct {
 	DepartmentCount   int
 	LoginStatus       string
 	UsedLocalSnapshot bool
+	AutoSynced        bool
 }
 
-func NewDingTalkOAuthService(db *gorm.DB, client *DingTalkClient) *DingTalkOAuthService {
+func NewDingTalkOAuthService(db *gorm.DB, client DingTalkOAuthClient) *DingTalkOAuthService {
 	if client == nil {
 		client = NewDingTalkClient()
 	}
@@ -63,6 +74,8 @@ func (s *DingTalkOAuthService) ResolveIdentity(ctx context.Context, tenantId int
 	if err != nil {
 		return DingTalkOAuthIdentity{}, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, dingTalkDirectoryVerificationTimeout)
+	defer cancel()
 
 	token, err := s.client.ExchangeOAuthCode(ctx, config.AppKey, config.AppSecret, code)
 	if err != nil {
@@ -76,42 +89,17 @@ func (s *DingTalkOAuthService) ResolveIdentity(ctx context.Context, tenantId int
 	oauthUser, err := s.client.GetOAuthUserInfo(ctx, token.AccessToken)
 	if err != nil {
 		logDingTalkOAuthProviderError("oauth_userinfo", err)
-		if identity.UnionId == "" && identity.OpenId == "" {
-			return DingTalkOAuthIdentity{}, ErrDingTalkOAuthProviderFailed
-		}
 	} else {
 		identity.UnionId = firstNonEmpty(oauthUser.UnionId, identity.UnionId)
 		identity.OpenId = firstNonEmpty(oauthUser.OpenId, identity.OpenId)
-		identity.Name = strings.TrimSpace(oauthUser.Nick)
-		identity.Email = strings.TrimSpace(oauthUser.Email)
-		identity.Mobile = strings.TrimSpace(oauthUser.Mobile)
-	}
-	if identity.UnionId != "" {
-		appToken, err := s.client.GetAccessToken(ctx, config.AppKey, config.AppSecret)
-		if err != nil {
-			logDingTalkOAuthProviderError("access_token", err)
-			return identity, nil
-		}
-		contactUser, err := s.client.GetContactUserByUnionId(ctx, appToken, identity.UnionId)
-		if err != nil {
-			logDingTalkOAuthProviderError("contact_user", err)
-			return identity, nil
-		}
-		identity.ExternalUserId = strings.TrimSpace(contactUser.UserId)
-		identity.Active = contactUser.Active
-		if identity.Name == "" {
-			identity.Name = strings.TrimSpace(contactUser.Name)
-		}
-		if identity.Email == "" {
-			identity.Email = strings.TrimSpace(contactUser.Email)
-		}
-		if identity.Mobile == "" {
-			identity.Mobile = strings.TrimSpace(contactUser.Mobile)
-		}
 	}
 	if identity.UnionId == "" && identity.OpenId == "" {
 		return DingTalkOAuthIdentity{}, ErrDingTalkOAuthIdentityMissing
 	}
+	if identity.UnionId == "" {
+		return DingTalkOAuthIdentity{}, ErrDingTalkOAuthEmployeeNotFound
+	}
+	identity.oauthVerified = true
 	return identity, nil
 }
 
@@ -121,7 +109,7 @@ func logDingTalkOAuthProviderError(stage string, err error) {
 		common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed: stage=%s summary=%s http_status=%d err_code=%d network=%t", stage, apiErr.Stage, apiErr.Summary, apiErr.HTTPStatus, apiErr.ErrCode, apiErr.Network))
 		return
 	}
-	common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed: %s", stage, err.Error()))
+	common.SysError(fmt.Sprintf("[DingTalk OAuth] %s failed", stage))
 }
 
 func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId int, identity DingTalkOAuthIdentity, affiliateCode string) (DingTalkOAuthResult, error) {
@@ -130,104 +118,94 @@ func (s *DingTalkOAuthService) LoginWithIdentity(ctx context.Context, tenantId i
 		return DingTalkOAuthResult{}, err
 	}
 	identity = normalizeDingTalkOAuthIdentity(identity)
-	if identity.UnionId == "" && identity.OpenId == "" {
-		return DingTalkOAuthResult{}, ErrDingTalkOAuthIdentityMissing
-	}
-	if identity.Active != nil && !*identity.Active {
-		return DingTalkOAuthResult{}, ErrDingTalkOAuthUserDisabled
+	if !isOAuthVerifiedDingTalkIdentity(identity) {
+		return DingTalkOAuthResult{}, ErrDingTalkOAuthEmployeeNotFound
 	}
 
-	var result DingTalkOAuthResult
-	now := time.Now().Unix()
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		txSvc := &DingTalkOAuthService{db: tx, client: s.client}
-		binding, found, err := txSvc.findIdentityBinding(config.TenantId, identity)
-		if err != nil {
-			return err
-		}
+	result, foundBinding, err := s.loginWithLocalSnapshot(ctx, config, identity)
+	if err == nil {
+		return result, nil
+	}
+	if !errors.Is(err, ErrDingTalkOAuthOutOfScope) {
+		return DingTalkOAuthResult{}, err
+	}
 
-		user := &model.User{}
-		loginStatus := DingTalkOAuthLoginStatusExisting
-		if found {
-			if binding.Status != DingTalkIdentityStatusActive {
-				return ErrDingTalkOAuthUserDisabled
-			}
-			if err := tx.Where("id = ?", binding.UserId).First(user).Error; err != nil {
-				return err
-			}
-		} else {
-			user, loginStatus, err = txSvc.findOrCreateUserForIdentity(identity)
-			if err != nil {
-				return err
-			}
-			binding = entmodel.DingTalkIdentity{
-				TenantId:       config.TenantId,
-				CorpId:         config.CorpId,
-				IdentityKey:    dingTalkIdentityKey(identity),
-				UnionId:        identity.UnionId,
-				OpenId:         identity.OpenId,
-				ExternalUserId: identity.ExternalUserId,
-				Mobile:         identity.Mobile,
-				UserId:         user.Id,
-				Status:         DingTalkIdentityStatusActive,
-			}
-			if err := tx.Create(&binding).Error; err != nil {
-				return err
-			}
-		}
-
-		if user.Status != common.UserStatusEnabled {
-			return ErrDingTalkOAuthUserDisabled
-		}
-
-		bindingUpdate := map[string]any{
-			"corp_id":       config.CorpId,
-			"identity_key":  dingTalkIdentityKey(identity),
-			"open_id":       identity.OpenId,
-			"last_login_at": now,
-		}
-		if identity.UnionId != "" {
-			bindingUpdate["union_id"] = identity.UnionId
-		}
-		if identity.ExternalUserId != "" {
-			bindingUpdate["external_user_id"] = identity.ExternalUserId
-		}
-		if identity.Mobile != "" {
-			bindingUpdate["mobile"] = identity.Mobile
-		}
-		if err := tx.Model(&binding).Updates(bindingUpdate).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("id = ?", binding.Id).First(&binding).Error; err != nil {
-			return err
-		}
-
-		memberships, err := txSvc.readLocalDingTalkMembershipSnapshot(config.TenantId, user.Id, identity.ExternalUserId)
-		if err != nil {
-			return err
-		}
-		result = DingTalkOAuthResult{
-			User:              user,
-			Binding:           binding,
-			Memberships:       memberships,
-			DepartmentCount:   len(memberships),
-			LoginStatus:       loginStatus,
-			UsedLocalSnapshot: true,
-		}
-		return nil
+	autoResult, err := NewDingTalkDirectoryService(s.db, s.client).EnsureEmployeeSynced(ctx, DingTalkAutoSyncInput{
+		TenantId: tenantId,
+		Identity: identity,
 	})
 	if err != nil {
 		return DingTalkOAuthResult{}, err
 	}
-
-	if result.LoginStatus == DingTalkOAuthLoginStatusCreated && result.User != nil {
-		inviterId := 0
-		if strings.TrimSpace(affiliateCode) != "" {
-			inviterId, _ = model.GetUserIdByAffCode(strings.TrimSpace(affiliateCode))
-		}
-		result.User.FinalizeOAuthUserCreation(inviterId)
+	if autoResult.User == nil {
+		return DingTalkOAuthResult{}, ErrDingTalkOAuthOutOfScope
 	}
-	return result, nil
+	memberships, err := s.readLocalDingTalkMembershipSnapshot(config.TenantId, autoResult.User.Id, autoResult.Binding.ExternalUserId)
+	if err != nil {
+		return DingTalkOAuthResult{}, err
+	}
+	loginStatus := DingTalkOAuthLoginStatusBound
+	if autoResult.CreatedUser {
+		loginStatus = DingTalkOAuthLoginStatusCreated
+	} else if foundBinding {
+		loginStatus = DingTalkOAuthLoginStatusExisting
+	}
+	return DingTalkOAuthResult{
+		User:            autoResult.User,
+		Binding:         autoResult.Binding,
+		Memberships:     memberships,
+		DepartmentCount: len(memberships),
+		LoginStatus:     loginStatus,
+		AutoSynced:      true,
+	}, nil
+}
+
+func (s *DingTalkOAuthService) loginWithLocalSnapshot(ctx context.Context, config entmodel.DingTalkConfig, identity DingTalkOAuthIdentity) (DingTalkOAuthResult, bool, error) {
+	var binding entmodel.DingTalkIdentity
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND identity_key = ?", config.TenantId, dingTalkIdentityKey(identity)).First(&binding).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return DingTalkOAuthResult{}, false, ErrDingTalkOAuthOutOfScope
+		}
+		return DingTalkOAuthResult{}, false, err
+	}
+	if binding.Status != DingTalkIdentityStatusActive {
+		return DingTalkOAuthResult{}, true, ErrDingTalkOAuthUserDisabled
+	}
+	var user model.User
+	if err := s.db.WithContext(ctx).Where("id = ?", binding.UserId).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return DingTalkOAuthResult{}, true, ErrDingTalkOAuthOutOfScope
+		}
+		return DingTalkOAuthResult{}, true, err
+	}
+	if user.Status != common.UserStatusEnabled {
+		return DingTalkOAuthResult{}, true, ErrDingTalkOAuthUserDisabled
+	}
+	memberships, err := s.readLocalDingTalkMembershipSnapshot(config.TenantId, user.Id, binding.ExternalUserId)
+	if err != nil {
+		return DingTalkOAuthResult{}, true, err
+	}
+	updates := map[string]any{
+		"corp_id":       config.CorpId,
+		"last_login_at": time.Now().Unix(),
+	}
+	if identity.OpenId != "" {
+		updates["open_id"] = identity.OpenId
+	}
+	if err := s.db.WithContext(ctx).Model(&binding).Updates(updates).Error; err != nil {
+		return DingTalkOAuthResult{}, true, err
+	}
+	if err := s.db.WithContext(ctx).Where("id = ?", binding.Id).First(&binding).Error; err != nil {
+		return DingTalkOAuthResult{}, true, err
+	}
+	return DingTalkOAuthResult{
+		User:              &user,
+		Binding:           binding,
+		Memberships:       memberships,
+		DepartmentCount:   len(memberships),
+		LoginStatus:       DingTalkOAuthLoginStatusExisting,
+		UsedLocalSnapshot: true,
+	}, true, nil
 }
 
 func (s *DingTalkOAuthService) BindIdentityToUser(ctx context.Context, tenantId int, userId int, identity DingTalkOAuthIdentity) (entmodel.DingTalkIdentity, error) {
@@ -239,17 +217,20 @@ func (s *DingTalkOAuthService) BindIdentityToUser(ctx context.Context, tenantId 
 		return entmodel.DingTalkIdentity{}, err
 	}
 	identity = normalizeDingTalkOAuthIdentity(identity)
-	if identity.UnionId == "" && identity.OpenId == "" {
-		return entmodel.DingTalkIdentity{}, ErrDingTalkOAuthIdentityMissing
+	if !isOAuthVerifiedDingTalkIdentity(identity) {
+		return entmodel.DingTalkIdentity{}, ErrDingTalkOAuthEmployeeNotFound
 	}
-	if identity.Active != nil && !*identity.Active {
-		return entmodel.DingTalkIdentity{}, ErrDingTalkOAuthUserDisabled
+	ctx, cancel := context.WithTimeout(ctx, dingTalkDirectoryVerificationTimeout)
+	defer cancel()
+	identity, _, _, err = NewDingTalkDirectoryService(s.db, s.client).loadVerifiedEmployee(ctx, config, identity)
+	if err != nil {
+		return entmodel.DingTalkIdentity{}, err
 	}
 
 	var binding entmodel.DingTalkIdentity
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var user model.User
-		if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := model.LockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
 		if user.Status != common.UserStatusEnabled {
@@ -331,51 +312,6 @@ func (s *DingTalkOAuthService) findIdentityBinding(tenantId int, identity DingTa
 	return binding, true, nil
 }
 
-func (s *DingTalkOAuthService) findOrCreateUserForIdentity(identity DingTalkOAuthIdentity) (*model.User, string, error) {
-	if identity.Email != "" {
-		user, found, err := s.findUniqueUserByEmail(identity.Email)
-		if err != nil {
-			return nil, "", err
-		}
-		if found {
-			return user, DingTalkOAuthLoginStatusBound, nil
-		}
-	}
-	if !common.RegisterEnabled {
-		return nil, "", ErrDingTalkOAuthRegistrationDisabled
-	}
-
-	user := &model.User{
-		Username:    s.availableDingTalkUsername(identity),
-		DisplayName: firstNonEmpty(identity.Name, identity.Email, "DingTalk User"),
-		Email:       identity.Email,
-		Role:        common.RoleCommonUser,
-		Status:      common.UserStatusEnabled,
-	}
-	if err := user.InsertWithTx(s.db, 0); err != nil {
-		return nil, "", err
-	}
-	return user, DingTalkOAuthLoginStatusCreated, nil
-}
-
-func (s *DingTalkOAuthService) findUniqueUserByEmail(email string) (*model.User, bool, error) {
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return nil, false, nil
-	}
-	var users []model.User
-	if err := s.db.Unscoped().Where("email = ?", email).Limit(2).Find(&users).Error; err != nil {
-		return nil, false, err
-	}
-	if len(users) == 0 {
-		return nil, false, nil
-	}
-	if len(users) > 1 || users[0].DeletedAt.Valid {
-		return nil, false, ErrDingTalkOAuthBindingConflict
-	}
-	return &users[0], true, nil
-}
-
 func (s *DingTalkOAuthService) availableDingTalkUsername(identity DingTalkOAuthIdentity) string {
 	base := firstReadableEnterpriseUsername(
 		identity.Name,
@@ -395,15 +331,14 @@ func (s *DingTalkOAuthService) availableDingTalkUsername(identity DingTalkOAuthI
 	)
 }
 
-// AvailableReadableUsernameForTest exposes the current DingTalk username policy
-// to service-level tests without widening the production API surface.
 func (s *DingTalkOAuthService) AvailableReadableUsernameForTest(identity DingTalkOAuthIdentity) string {
 	return s.availableDingTalkUsername(identity)
 }
 
 func (s *DingTalkOAuthService) readLocalDingTalkMembershipSnapshot(tenantId int, userId int, externalUserId string) ([]UserDepartmentItem, error) {
-	if strings.TrimSpace(externalUserId) == "" {
-		return []UserDepartmentItem{}, nil
+	externalUserId = strings.TrimSpace(externalUserId)
+	if externalUserId == "" {
+		return nil, ErrDingTalkOAuthOutOfScope
 	}
 	query := MembershipQuery{
 		TenantId:       &tenantId,
@@ -414,10 +349,16 @@ func (s *DingTalkOAuthService) readLocalDingTalkMembershipSnapshot(tenantId int,
 	if err != nil {
 		return nil, err
 	}
-	if len(result.Items) == 0 && strings.TrimSpace(externalUserId) != "" {
+	memberships := make([]UserDepartmentItem, 0, len(result.Items))
+	for _, membership := range result.Items {
+		if strings.TrimSpace(membership.ExternalUserId) == externalUserId {
+			memberships = append(memberships, membership)
+		}
+	}
+	if len(memberships) == 0 {
 		return nil, ErrDingTalkOAuthOutOfScope
 	}
-	return result.Items, nil
+	return memberships, nil
 }
 
 func normalizeDingTalkOAuthIdentity(identity DingTalkOAuthIdentity) DingTalkOAuthIdentity {
@@ -427,7 +368,12 @@ func normalizeDingTalkOAuthIdentity(identity DingTalkOAuthIdentity) DingTalkOAut
 	identity.Name = strings.TrimSpace(identity.Name)
 	identity.Email = strings.TrimSpace(identity.Email)
 	identity.Mobile = strings.TrimSpace(identity.Mobile)
+	identity.DepartmentIds = normalizeDingTalkDepartmentUser(DingTalkDepartmentUserInfo{DeptIdList: identity.DepartmentIds}).DeptIdList
 	return identity
+}
+
+func isOAuthVerifiedDingTalkIdentity(identity DingTalkOAuthIdentity) bool {
+	return identity.oauthVerified && identity.UnionId != ""
 }
 
 func dingTalkIdentityKey(identity DingTalkOAuthIdentity) string {

@@ -2,303 +2,292 @@ package enterprise_test
 
 import (
 	"context"
-	"net/http"
+	"errors"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-func TestDingTalkOAuthLoginUsesExistingBindingAndLocalSnapshot(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	require.NoError(t, db.Create(&model.User{Id: 200, Username: "dingtalk-user", DisplayName: "Ding User", Status: common.UserStatusEnabled, Group: "vip", AffCode: "dt01"}).Error)
-	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
-		TenantId:       0,
-		CorpId:         "corp-id",
-		IdentityKey:    "union:union-1",
-		UnionId:        "union-1",
-		OpenId:         "open-1",
-		ExternalUserId: "staff-1",
-		UserId:         200,
-		Status:         entservice.DingTalkIdentityStatusActive,
-	}).Error)
-	require.NoError(t, db.Create(&entmodel.Department{Id: 10, TenantId: 0, Name: "Engineering", Status: constant.EnterpriseDepartmentStatusActive}).Error)
-	require.NoError(t, db.Create(&entmodel.Department{Id: 11, TenantId: 0, Name: "Security", Status: constant.EnterpriseDepartmentStatusActive}).Error)
-	require.NoError(t, db.Create(&[]entmodel.UserDepartment{
-		{
-			TenantId:       0,
-			UserId:         200,
-			DepartmentId:   10,
-			ExternalUserId: "staff-1",
-			ExternalSource: constant.EnterpriseExternalSourceDingTalk,
-			Status:         constant.EnterpriseMembershipStatusActive,
-		},
-		{
-			TenantId:       0,
-			UserId:         200,
-			DepartmentId:   11,
-			ExternalUserId: "staff-1",
-			ExternalSource: constant.EnterpriseExternalSourceDingTalk,
-			Status:         constant.EnterpriseMembershipStatusActive,
-		},
-	}).Error)
-
-	result, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId:        "union-1",
-		OpenId:         "open-updated",
-		ExternalUserId: "staff-1",
-	}, "")
-
-	require.NoError(t, err)
-	require.Equal(t, 200, result.User.Id)
-	require.Equal(t, 2, result.DepartmentCount)
-	require.True(t, result.UsedLocalSnapshot)
-
-	var count int64
-	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Where("user_id = ?", 200).Count(&count).Error)
-	require.Equal(t, int64(2), count)
+type fakeDingTalkOAuthClient struct {
+	contact      entservice.DingTalkContactUserInfo
+	canonical    entservice.DingTalkDepartmentUserInfo
+	children     map[int64][]entservice.DingTalkDepartmentInfo
+	err          error
+	directoryErr error
 }
 
-func TestDingTalkOAuthLoginBindsUniqueExistingEmail(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	require.NoError(t, db.Create(&model.User{Id: 201, Username: "alice", DisplayName: "Alice", Email: "alice@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "ali1"}).Error)
-	requireDingTalkMembershipSnapshot(t, db, 201, 13, "staff-email")
-
-	result, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId:        "union-email",
-		OpenId:         "open-email",
-		ExternalUserId: "staff-email",
-		Name:           "Alice Ding",
-		Email:          "alice@example.com",
-	}, "")
-
-	require.NoError(t, err)
-	require.Equal(t, 201, result.User.Id)
-	require.Equal(t, entservice.DingTalkOAuthLoginStatusBound, result.LoginStatus)
-
-	var binding entmodel.DingTalkIdentity
-	require.NoError(t, db.Where("identity_key = ?", "union:union-email").First(&binding).Error)
-	require.Equal(t, 201, binding.UserId)
-	require.Equal(t, "staff-email", binding.ExternalUserId)
+func (f *fakeDingTalkOAuthClient) GetAccessToken(context.Context, string, string) (string, error) {
+	if f.directoryErr != nil {
+		return "", f.directoryErr
+	}
+	return "app-token", nil
 }
 
-func TestDingTalkOAuthLoginRejectsEmailConflict(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	require.NoError(t, db.Create(&model.User{Id: 202, Username: "dup1", Email: "dup@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "dup1"}).Error)
-	require.NoError(t, db.Create(&model.User{Id: 203, Username: "dup2", Email: "dup@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "dup2"}).Error)
-
-	_, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId: "union-conflict",
-		OpenId:  "open-conflict",
-		Email:   "dup@example.com",
-	}, "")
-
-	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthBindingConflict)
+func (f *fakeDingTalkOAuthClient) ExchangeOAuthCode(context.Context, string, string, string) (entservice.DingTalkOAuthToken, error) {
+	if f.err != nil {
+		return entservice.DingTalkOAuthToken{}, f.err
+	}
+	return entservice.DingTalkOAuthToken{AccessToken: "user-token", UnionId: "union-1", OpenId: "open-1"}, nil
 }
 
-func TestDingTalkOAuthRejectsDisabledEmployeeAndDisabledBinding(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	disabled := false
-
-	_, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId: "union-disabled",
-		OpenId:  "open-disabled",
-		Active:  &disabled,
-	}, "")
-	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthUserDisabled)
-
-	require.NoError(t, db.Create(&model.User{Id: 204, Username: "disabled-bind", Status: common.UserStatusEnabled, Group: "default", AffCode: "db01"}).Error)
-	require.NoError(t, db.Create(&entmodel.DingTalkIdentity{
-		TenantId:    0,
-		CorpId:      "corp-id",
-		IdentityKey: "union:union-disabled-binding",
-		UnionId:     "union-disabled-binding",
-		UserId:      204,
-		Status:      entservice.DingTalkIdentityStatusDisabled,
-	}).Error)
-
-	_, err = svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId: "union-disabled-binding",
-	}, "")
-	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthUserDisabled)
+func (f *fakeDingTalkOAuthClient) GetOAuthUserInfo(context.Context, string) (entservice.DingTalkOAuthUserInfo, error) {
+	if f.err != nil {
+		return entservice.DingTalkOAuthUserInfo{}, f.err
+	}
+	return entservice.DingTalkOAuthUserInfo{UnionId: "union-1", OpenId: "open-1"}, nil
 }
 
-func TestDingTalkOAuthRejectsOutOfScopeWhenContactUserHasNoSnapshot(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	require.NoError(t, db.Create(&model.User{Id: 205, Username: "outscope", Email: "out@example.com", Status: common.UserStatusEnabled, Group: "default", AffCode: "out1"}).Error)
-
-	_, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId:        "union-out",
-		OpenId:         "open-out",
-		ExternalUserId: "staff-out",
-		Email:          "out@example.com",
-	}, "")
-
-	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthOutOfScope)
+func (f *fakeDingTalkOAuthClient) GetContactUserByUnionId(context.Context, string, string) (entservice.DingTalkContactUserInfo, error) {
+	if f.directoryErr != nil {
+		return entservice.DingTalkContactUserInfo{}, f.directoryErr
+	}
+	return f.contact, nil
 }
 
-func TestDingTalkOAuthCreatesUserWhenRegistrationEnabledAndNoContactSnapshot(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	previousRegisterEnabled := common.RegisterEnabled
-	common.RegisterEnabled = true
-	t.Cleanup(func() {
-		common.RegisterEnabled = previousRegisterEnabled
-	})
+func (f *fakeDingTalkOAuthClient) GetUserById(context.Context, string, string) (entservice.DingTalkDepartmentUserInfo, error) {
+	if f.directoryErr != nil {
+		return entservice.DingTalkDepartmentUserInfo{}, f.directoryErr
+	}
+	return f.canonical, nil
+}
 
-	result, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
-		UnionId: "union-new",
-		OpenId:  "open-new",
-		Name:    "New Employee",
-		Email:   "new.employee@example.com",
-	}, "")
+func (f *fakeDingTalkOAuthClient) ListSubDepartments(_ context.Context, _ string, departmentId int64) ([]entservice.DingTalkDepartmentInfo, error) {
+	if f.directoryErr != nil {
+		return nil, f.directoryErr
+	}
+	return f.children[departmentId], nil
+}
 
+func TestDingTalkOAuthLoginAutoSyncsVerifiedEmployee(t *testing.T) {
+	svc, db, _ := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
+
+	result, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
 	require.NoError(t, err)
 	require.Equal(t, entservice.DingTalkOAuthLoginStatusCreated, result.LoginStatus)
+	require.True(t, result.AutoSynced)
+	require.Equal(t, 1, result.DepartmentCount)
 	require.NotZero(t, result.User.Id)
-	require.Equal(t, "new_employee", result.User.Username)
-	require.NotContains(t, result.User.Username, "dt_")
 
 	var binding entmodel.DingTalkIdentity
-	require.NoError(t, db.Where("identity_key = ?", "union:union-new").First(&binding).Error)
+	require.NoError(t, db.Where("tenant_id = ? AND identity_key = ?", 0, "union:union-1").First(&binding).Error)
+	require.Equal(t, "corp-id", binding.CorpId)
 	require.Equal(t, result.User.Id, binding.UserId)
+
+	var departmentCount int64
+	require.NoError(t, db.Model(&entmodel.Department{}).Where("tenant_id = ?", 0).Count(&departmentCount).Error)
+	require.Equal(t, int64(2), departmentCount)
+	var membershipCount int64
+	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Where("user_id = ?", result.User.Id).Count(&membershipCount).Error)
+	require.Equal(t, int64(1), membershipCount)
 }
 
-func TestDingTalkOAuthBindIdentityToCurrentUser(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
-	require.NoError(t, db.Create(&model.User{Id: 206, Username: "current", Status: common.UserStatusEnabled, Group: "default", AffCode: "cur1"}).Error)
-	require.NoError(t, db.Create(&entmodel.Department{Id: 12, TenantId: 0, Name: "Product", Status: constant.EnterpriseDepartmentStatusActive}).Error)
-	require.NoError(t, db.Create(&entmodel.UserDepartment{
-		TenantId:       0,
-		UserId:         206,
-		DepartmentId:   12,
-		ExternalUserId: "staff-bind",
-		ExternalSource: constant.EnterpriseExternalSourceDingTalk,
-		Status:         constant.EnterpriseMembershipStatusActive,
-	}).Error)
+func TestDingTalkOAuthLoginAutoSyncIsIdempotent(t *testing.T) {
+	svc, db, client := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
 
-	binding, err := svc.BindIdentityToUser(context.Background(), 0, 206, entservice.DingTalkOAuthIdentity{
-		UnionId:        "union-bind",
-		OpenId:         "open-bind",
-		ExternalUserId: "staff-bind",
-	})
-
+	first, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
 	require.NoError(t, err)
-	require.Equal(t, 206, binding.UserId)
-	require.Equal(t, "union:union-bind", binding.IdentityKey)
-}
-
-func TestDingTalkOAuthResolveIdentityDoesNotRequireAddressBookLookup(t *testing.T) {
-	_, db := newDingTalkOAuthTestService(t)
-	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/gettoken":
-			return dingTalkJSONResponse(`{"errcode":0,"access_token":"app-token"}`), nil
-		case "/topapi/user/getbyunionid":
-			return dingTalkJSONResponse(`{"errcode":60020,"errmsg":"access denied"}`), nil
-		case "/v1.0/oauth2/userAccessToken":
-			return dingTalkJSONResponse(`{"accessToken":"user-token","openId":"open-1","unionId":"union-1"}`), nil
-		case "/v1.0/contact/users/me":
-			return dingTalkJSONResponse(`{"openId":"open-1","unionId":"union-1","nick":"Ding User"}`), nil
-		default:
-			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
-		}
-	})
-	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkOpenAPIBaseURL("https://openapi.example.test"),
-		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
-		entservice.WithDingTalkHTTPClient(&http.Client{
-			Timeout:   time.Second,
-			Transport: httpClient,
-		}),
-	)
-	svc := entservice.NewDingTalkOAuthService(db, client)
-
-	identity, err := svc.ResolveIdentity(context.Background(), 0, "code-1")
-
+	client.directoryErr = errors.New("directory unavailable")
+	identity = resolveDingTalkTestIdentity(t, svc)
+	second, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
 	require.NoError(t, err)
-	require.Equal(t, "union-1", identity.UnionId)
-	require.Equal(t, "open-1", identity.OpenId)
-	require.Equal(t, "", identity.ExternalUserId)
+	require.Equal(t, first.User.Id, second.User.Id)
+	require.Equal(t, entservice.DingTalkOAuthLoginStatusExisting, second.LoginStatus)
+	require.True(t, second.UsedLocalSnapshot)
+	assert.False(t, second.AutoSynced)
+
+	var identityCount int64
+	require.NoError(t, db.Model(&entmodel.DingTalkIdentity{}).Count(&identityCount).Error)
+	require.Equal(t, int64(1), identityCount)
+	var membershipCount int64
+	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Count(&membershipCount).Error)
+	require.Equal(t, int64(1), membershipCount)
 }
 
-func TestDingTalkOAuthResolveIdentityUsesTokenIdentityWhenUserInfoFails(t *testing.T) {
-	_, db := newDingTalkOAuthTestService(t)
-	httpClient := dingTalkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/v1.0/oauth2/userAccessToken":
-			return dingTalkJSONResponse(`{"accessToken":"user-token","openId":"open-token","unionId":"union-token"}`), nil
-		case "/v1.0/contact/users/me":
-			return dingTalkStatusResponse(http.StatusForbidden, `{"code":"Forbidden","message":"access denied"}`), nil
-		default:
-			return dingTalkStatusResponse(http.StatusNotFound, `{}`), nil
-		}
+func TestDingTalkOAuthLoginAutoSyncSerializesConcurrentFirstLogins(t *testing.T) {
+	svc, db, _ := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
+
+	errors := make(chan error, 2)
+	var group sync.WaitGroup
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+			errors <- err
+		}()
+	}
+	group.Wait()
+	close(errors)
+	for err := range errors {
+		require.NoError(t, err)
+	}
+
+	requireDingTalkLocalRows(t, db, 1, 1, 1)
+}
+
+func TestDingTalkOAuthRejectsDirectoryFailuresWithoutCreatingAnAccount(t *testing.T) {
+	svc, db, client := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
+	client.directoryErr = errors.New("directory unavailable")
+
+	_, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthEmployeeNotFound)
+
+	requireDingTalkLocalRows(t, db, 0, 0, 0)
+}
+
+func TestDingTalkOAuthRejectsDisabledAndOutOfScopeEmployees(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		svc, db, client := newDingTalkOAuthTestService(t)
+		identity := resolveDingTalkTestIdentity(t, svc)
+		disabled := false
+		client.canonical.Active = &disabled
+
+		_, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+		require.ErrorIs(t, err, entservice.ErrDingTalkOAuthUserDisabled)
+		requireDingTalkLocalRows(t, db, 0, 0, 0)
 	})
-	client := entservice.NewDingTalkClient(
-		entservice.WithDingTalkAPIBaseURL("https://api.example.test"),
-		entservice.WithDingTalkHTTPClient(&http.Client{
-			Timeout:   time.Second,
-			Transport: httpClient,
-		}),
-	)
-	svc := entservice.NewDingTalkOAuthService(db, client)
+	t.Run("out of scope", func(t *testing.T) {
+		svc, db, client := newDingTalkOAuthTestService(t)
+		identity := resolveDingTalkTestIdentity(t, svc)
+		client.canonical.DeptIdList = []int64{99}
 
-	identity, err := svc.ResolveIdentity(context.Background(), 0, "code-1")
+		_, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+		require.ErrorIs(t, err, entservice.ErrDingTalkOAuthOutOfScope)
+		requireDingTalkLocalRows(t, db, 0, 0, 0)
+	})
+}
 
+func TestDingTalkOAuthRejectsMismatchedDirectoryIdentity(t *testing.T) {
+	testCases := []struct {
+		name   string
+		mutate func(*fakeDingTalkOAuthClient)
+	}{
+		{
+			name: "contact union id",
+			mutate: func(client *fakeDingTalkOAuthClient) {
+				client.contact.UnionId = "union-other"
+			},
+		},
+		{
+			name: "canonical union id",
+			mutate: func(client *fakeDingTalkOAuthClient) {
+				client.canonical.UnionId = "union-other"
+			},
+		},
+		{
+			name: "canonical user id",
+			mutate: func(client *fakeDingTalkOAuthClient) {
+				client.canonical.UserId = "staff-other"
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			svc, db, client := newDingTalkOAuthTestService(t)
+			identity := resolveDingTalkTestIdentity(t, svc)
+			testCase.mutate(client)
+
+			_, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+			require.ErrorIs(t, err, entservice.ErrDingTalkOAuthEmployeeNotFound)
+			requireDingTalkLocalRows(t, db, 0, 0, 0)
+		})
+	}
+}
+
+func TestDingTalkOAuthRequiresOAuthVerifiedIdentity(t *testing.T) {
+	svc, db, _ := newDingTalkOAuthTestService(t)
+	enabled := true
+
+	_, err := svc.LoginWithIdentity(context.Background(), 0, entservice.DingTalkOAuthIdentity{
+		UnionId:        "union-1",
+		ExternalUserId: "staff-1",
+		Active:         &enabled,
+		DepartmentIds:  []int64{2},
+		ScopeVerified:  true,
+	}, "")
+	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthEmployeeNotFound)
+	requireDingTalkLocalRows(t, db, 0, 0, 0)
+}
+
+func TestDingTalkOAuthBindingStillRequiresDirectoryVerification(t *testing.T) {
+	svc, db, client := newDingTalkOAuthTestService(t)
+	target := &model.User{Username: "binding-target", Status: common.UserStatusEnabled, Group: "default", AffCode: "binding-target"}
+	require.NoError(t, db.Create(target).Error)
+	identity := resolveDingTalkTestIdentity(t, svc)
+	client.directoryErr = errors.New("directory unavailable")
+
+	_, err := svc.BindIdentityToUser(context.Background(), 0, target.Id, identity)
+
+	require.ErrorIs(t, err, entservice.ErrDingTalkOAuthEmployeeNotFound)
+	var bindingCount int64
+	require.NoError(t, db.Model(&entmodel.DingTalkIdentity{}).Count(&bindingCount).Error)
+	assert.Zero(t, bindingCount)
+}
+
+func TestDingTalkOAuthAllowsExistingMembershipWhenAutoSyncIsDisabled(t *testing.T) {
+	svc, db, _ := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
+	created, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
 	require.NoError(t, err)
-	require.Equal(t, "union-token", identity.UnionId)
-	require.Equal(t, "open-token", identity.OpenId)
+	require.NotZero(t, created.User.Id)
+	require.NoError(t, db.Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", 0).Update("auto_sync_on_login", false).Error)
+
+	result, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.NoError(t, err)
+	require.Equal(t, entservice.DingTalkOAuthLoginStatusExisting, result.LoginStatus)
+	require.True(t, result.UsedLocalSnapshot)
+
+	require.NoError(t, db.Where("id = ?", created.User.Id).Delete(&model.User{}).Error)
+	_, err = svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.ErrorIs(t, err, entservice.ErrDingTalkAutoSyncDisabled)
 }
 
-func newDingTalkOAuthTestService(t *testing.T) (*entservice.DingTalkOAuthService, *gorm.DB) {
-	t.Helper()
+func TestDingTalkOAuthExistingUserKeepsLocalMembershipSnapshot(t *testing.T) {
+	svc, db, client := newDingTalkOAuthTestService(t)
+	identity := resolveDingTalkTestIdentity(t, svc)
+	first, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.NoError(t, err)
 
-	_, db := newDingTalkConfigTestService(t)
-	model.DB = db
-	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}))
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
-	common.RedisEnabled = false
-	require.NoError(t, db.Create(&entmodel.DingTalkConfig{
-		TenantId:     0,
-		CorpId:       "corp-id",
-		AppKey:       "app-key",
-		AppSecret:    "plain-secret",
-		CallbackUrl:  "https://example.com/api/oauth/dingtalk",
-		LoginEnabled: true,
-		SyncEnabled:  true,
-	}).Error)
-	common.RegisterEnabled = true
+	client.contact.UserId = "staff-2"
+	client.canonical.UserId = "staff-2"
+	identity = resolveDingTalkTestIdentity(t, svc)
+	result, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.NoError(t, err)
+	require.False(t, result.AutoSynced)
+	require.True(t, result.UsedLocalSnapshot)
+	require.Equal(t, first.User.Id, result.User.Id)
 
-	return entservice.NewDingTalkOAuthService(db, nil), db
+	var membership entmodel.UserDepartment
+	require.NoError(t, db.Where("user_id = ?", result.User.Id).First(&membership).Error)
+	require.Equal(t, "staff-1", membership.ExternalUserId)
 }
 
-func requireDingTalkMembershipSnapshot(t *testing.T, db *gorm.DB, userId int, departmentId int, externalUserId string) {
-	t.Helper()
+func TestDingTalkOAuthAutoSyncCreatesEmployeeWhenPublicRegistrationIsDisabled(t *testing.T) {
+	svc, _, _ := newDingTalkOAuthTestService(t)
+	previousRegisterEnabled := common.RegisterEnabled
+	common.RegisterEnabled = false
+	t.Cleanup(func() { common.RegisterEnabled = previousRegisterEnabled })
 
-	require.NoError(t, db.Create(&entmodel.Department{
-		Id:       departmentId,
-		TenantId: 0,
-		Name:     "DingTalk Scope",
-		Status:   constant.EnterpriseDepartmentStatusActive,
-	}).Error)
-	require.NoError(t, db.Create(&entmodel.UserDepartment{
-		TenantId:       0,
-		UserId:         userId,
-		DepartmentId:   departmentId,
-		ExternalUserId: externalUserId,
-		ExternalSource: constant.EnterpriseExternalSourceDingTalk,
-		Status:         constant.EnterpriseMembershipStatusActive,
-	}).Error)
+	identity := resolveDingTalkTestIdentity(t, svc)
+	result, err := svc.LoginWithIdentity(context.Background(), 0, identity, "")
+	require.NoError(t, err)
+	require.Equal(t, entservice.DingTalkOAuthLoginStatusCreated, result.LoginStatus)
 }
 
 func TestDingTalkOAuthUsernameGenerationPrefersReadableIdentity(t *testing.T) {
-	svc, db := newDingTalkOAuthTestService(t)
+	svc, db, _ := newDingTalkOAuthTestService(t)
 	require.NoError(t, db.Create(&model.User{Id: 250, Username: "alice", DisplayName: "Alice", Status: common.UserStatusEnabled, Group: "default", AffCode: "a1"}).Error)
 
 	username := svc.AvailableReadableUsernameForTest(entservice.DingTalkOAuthIdentity{
@@ -308,4 +297,60 @@ func TestDingTalkOAuthUsernameGenerationPrefersReadableIdentity(t *testing.T) {
 	})
 
 	require.Equal(t, "alice_chen", username)
+}
+
+func newDingTalkOAuthTestService(t *testing.T) (*entservice.DingTalkOAuthService, *gorm.DB, *fakeDingTalkOAuthClient) {
+	t.Helper()
+
+	_, db := newDingTalkConfigTestService(t)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	common.RedisEnabled = false
+	active := true
+	client := &fakeDingTalkOAuthClient{
+		contact: entservice.DingTalkContactUserInfo{UserId: "staff-1", UnionId: "union-1", Active: &active},
+		canonical: entservice.DingTalkDepartmentUserInfo{
+			UserId: "staff-1", UnionId: "union-1", Name: "Ding Employee", Email: "ding.employee@example.com", Mobile: "13800000000", Active: &active, DeptIdList: []int64{2},
+		},
+		children: map[int64][]entservice.DingTalkDepartmentInfo{
+			1: {{DeptId: 2, Name: "Engineering", ParentId: 1}},
+			2: {},
+		},
+	}
+	require.NoError(t, db.Create(&entmodel.DingTalkConfig{
+		TenantId:        0,
+		CorpId:          "corp-id",
+		AppKey:          "app-key",
+		AppSecret:       "plain-secret",
+		CallbackUrl:     "https://example.com/api/oauth/dingtalk",
+		LoginEnabled:    true,
+		SyncEnabled:     true,
+		AutoSyncOnLogin: true,
+	}).Error)
+	common.RegisterEnabled = true
+	entservice.ClearDingTalkScopeCache(0)
+
+	return entservice.NewDingTalkOAuthService(db, client), db, client
+}
+
+func resolveDingTalkTestIdentity(t *testing.T, svc *entservice.DingTalkOAuthService) entservice.DingTalkOAuthIdentity {
+	t.Helper()
+	identity, err := svc.ResolveIdentity(context.Background(), 0, "code")
+	require.NoError(t, err)
+	return identity
+}
+
+func requireDingTalkLocalRows(t *testing.T, db *gorm.DB, users int64, identities int64, memberships int64) {
+	t.Helper()
+	var actualUsers int64
+	require.NoError(t, db.Model(&model.User{}).Count(&actualUsers).Error)
+	require.Equal(t, users, actualUsers)
+	var actualIdentities int64
+	require.NoError(t, db.Model(&entmodel.DingTalkIdentity{}).Count(&actualIdentities).Error)
+	require.Equal(t, identities, actualIdentities)
+	var actualMemberships int64
+	require.NoError(t, db.Model(&entmodel.UserDepartment{}).Count(&actualMemberships).Error)
+	require.Equal(t, memberships, actualMemberships)
 }

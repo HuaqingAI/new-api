@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +61,10 @@ func TestDingTalkOAuthCallbackLogsInWithAuthFlow(t *testing.T) {
 	fake := &fakeDingTalkOAuthService{
 		identity: entservice.DingTalkOAuthIdentity{UnionId: "union-login"},
 		login: entservice.DingTalkOAuthResult{
-			User: &model.User{Id: 300, Username: "ding-login", DisplayName: "Ding Login", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default"},
+			User:            &model.User{Id: 300, Username: "ding-login", DisplayName: "Ding Login", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1},
+			LoginStatus:     entservice.DingTalkOAuthLoginStatusCreated,
+			DepartmentCount: 1,
+			AutoSynced:      true,
 		},
 	}
 	router, state := setupDingTalkOAuthTestRouter(t, fake, model.AuthFlowIntentLogin)
@@ -71,6 +75,12 @@ func TestDingTalkOAuthCallbackLogsInWithAuthFlow(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 	require.Contains(t, recorder.Body.String(), `"username":"ding-login"`)
 	require.Equal(t, "invite-code", fake.affiliateCode)
+	var audit model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "enterprise.dingtalk.auto_sync").First(&audit).Error)
+	require.True(t, audit.Success)
+	result, ok := audit.Other.Op.Params["result"].(json.RawMessage)
+	require.True(t, ok)
+	require.JSONEq(t, `"created"`, string(result))
 	_, err := model.GetAuthFlow(state, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 	require.ErrorIs(t, err, model.ErrAuthFlowConsumed)
 }
@@ -138,13 +148,55 @@ func TestDingTalkOAuthCallbackRejectsInvalidState(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), "oauth.state_invalid")
 }
 
-func TestDingTalkOAuthCallbackMapsOutOfScope(t *testing.T) {
-	router, state := setupDingTalkOAuthTestRouter(t, &fakeDingTalkOAuthService{err: entservice.ErrDingTalkOAuthOutOfScope}, model.AuthFlowIntentLogin)
+func TestDingTalkOAuthCallbackMapsDingTalkErrors(t *testing.T) {
+	testCases := []struct {
+		name       string
+		err        error
+		statusCode int
+		messageKey string
+	}{
+		{
+			name:       "employee not verified",
+			err:        entservice.ErrDingTalkOAuthEmployeeNotFound,
+			statusCode: http.StatusForbidden,
+			messageKey: "enterprise.dingtalk.oauth_employee_unverified",
+		},
+		{
+			name:       "out of scope",
+			err:        entservice.ErrDingTalkOAuthOutOfScope,
+			statusCode: http.StatusForbidden,
+			messageKey: "enterprise.dingtalk.oauth_out_of_scope",
+		},
+		{
+			name:       "binding conflict",
+			err:        entservice.ErrDingTalkOAuthBindingConflict,
+			statusCode: http.StatusConflict,
+			messageKey: "enterprise.dingtalk.oauth_binding_conflict",
+		},
+		{
+			name:       "automatic sync disabled",
+			err:        entservice.ErrDingTalkAutoSyncDisabled,
+			statusCode: http.StatusForbidden,
+			messageKey: "enterprise.dingtalk.auto_sync_disabled",
+		},
+		{
+			name:       "provider failure",
+			err:        entservice.ErrDingTalkOAuthProviderFailed,
+			statusCode: http.StatusServiceUnavailable,
+			messageKey: "enterprise.dingtalk.oauth_provider_failed",
+		},
+	}
 
-	recorder := performDingTalkOAuthCallback(router, "/api/oauth/dingtalk?code=ok&state="+state, nil)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			router, state := setupDingTalkOAuthTestRouter(t, &fakeDingTalkOAuthService{err: testCase.err}, model.AuthFlowIntentLogin)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "enterprise.dingtalk.oauth_out_of_scope")
+			recorder := performDingTalkOAuthCallback(router, "/api/oauth/dingtalk?code=ok&state="+state, nil)
+
+			require.Equal(t, testCase.statusCode, recorder.Code)
+			require.Contains(t, recorder.Body.String(), testCase.messageKey)
+		})
+	}
 }
 
 func setupDingTalkOAuthTestRouter(t *testing.T, fake *fakeDingTalkOAuthService, intent string) (*gin.Engine, string) {
@@ -204,7 +256,15 @@ func newDingTalkOAuthControllerDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.UserSession{}, &model.AuthFlow{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Token{},
+		&model.UserSession{},
+		&model.AuthFlow{},
+		&model.TwoFA{},
+		&model.PasskeyCredential{},
+		&model.AuditLog{},
+	))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() {

@@ -6924,6 +6924,17 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Scheduled full sync": "定期フル同期",
+    "Run a complete DingTalk address book sync on a cron schedule.": "Cron スケジュールで DingTalk アドレス帳を完全同期します。",
+    "Enable scheduled full sync": "定期フル同期を有効化",
+    "The schedule requires address book sync to be enabled.": "スケジュールにはアドレス帳同期の有効化が必要です。",
+    "Cron expression": "Cron 式",
+    "Five fields: minute hour day month weekday.": "5 フィールド: 分 時 日 月 曜日。",
+    "Timezone": "タイムゾーン",
+    "Use an IANA timezone such as Asia/Shanghai or UTC.": "Asia/Shanghai や UTC などの IANA タイムゾーンを使用します。",
+    "Next run": "次回実行",
+    "No next run scheduled": "次回実行は未設定",
+    "Last status": "前回の状態"
   }
 }

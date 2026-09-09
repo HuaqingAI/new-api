@@ -13,24 +13,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const (
-	ClientUpdateAccessModeEnv      = "AIONUI_CLIENT_UPDATE_ACCESS_MODE"
-	ClientUpdateAccessModeLegacy   = "legacy_open"
-	ClientUpdateAccessModeObserve  = "observe"
-	ClientUpdateAccessModeEnforced = "enforced"
-)
-
-func ClientUpdateAccessMode() string {
-	mode := strings.TrimSpace(strings.ToLower(common.GetEnvOrDefaultString(ClientUpdateAccessModeEnv, ClientUpdateAccessModeLegacy)))
-	switch mode {
-	case ClientUpdateAccessModeLegacy, ClientUpdateAccessModeObserve, ClientUpdateAccessModeEnforced:
-		return mode
-	default:
-		common.SysError("invalid AIONUI_CLIENT_UPDATE_ACCESS_MODE; using legacy_open")
-		return ClientUpdateAccessModeLegacy
-	}
-}
-
 func normalizeClientUpdateAccessInput(input ClientUpdateAccessInput) ClientUpdateAccessInput {
 	input.Platform = strings.TrimSpace(strings.ToLower(input.Platform))
 	input.CurrentVersion = strings.TrimSpace(input.CurrentVersion)

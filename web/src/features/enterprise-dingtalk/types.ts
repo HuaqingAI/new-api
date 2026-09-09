@@ -32,6 +32,16 @@ export type DingTalkConfig = {
   login_enabled: boolean
   sync_enabled: boolean
   auto_sync_on_login: boolean
+  scheduled_full_sync_enabled?: boolean
+  scheduled_full_sync_cron?: string
+  scheduled_full_sync_timezone?: string
+  scheduled_full_sync_next_run_at?: number
+  scheduled_full_sync_last_run_at?: number
+  scheduled_full_sync_last_task_id?: number
+  scheduled_full_sync_last_status?: string
+  scheduled_full_sync_last_error?: string
+  scheduled_full_sync_revision?: number
+  scheduled_full_sync_updated_at?: number
   has_app_secret: boolean
   created_at: number
   updated_at: number
@@ -47,6 +57,9 @@ export type DingTalkConfigPayload = {
   login_enabled?: boolean
   sync_enabled?: boolean
   auto_sync_on_login?: boolean
+  scheduled_full_sync_enabled?: boolean
+  scheduled_full_sync_cron?: string
+  scheduled_full_sync_timezone?: string
 }
 
 export type DingTalkConnectivityCode =

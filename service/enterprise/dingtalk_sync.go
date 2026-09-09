@@ -32,27 +32,32 @@ type DingTalkSyncStartInput struct {
 }
 
 type DingTalkSyncTaskItem struct {
-	Id                  int    `json:"id"`
-	TenantId            int    `json:"tenant_id"`
-	Mode                string `json:"mode"`
-	Status              string `json:"status"`
-	Progress            int    `json:"progress"`
-	DepartmentsCreated  int    `json:"departments_created"`
-	DepartmentsUpdated  int    `json:"departments_updated"`
-	DepartmentsDisabled int    `json:"departments_disabled"`
-	UsersCreated        int    `json:"users_created"`
-	UsersUpdated        int    `json:"users_updated"`
-	MembershipsCreated  int    `json:"memberships_created"`
-	MembershipsUpdated  int    `json:"memberships_updated"`
-	MembershipsDisabled int    `json:"memberships_disabled"`
-	SkippedCount        int    `json:"skipped_count"`
-	FailedCount         int    `json:"failed_count"`
-	ErrorSummary        string `json:"error_summary"`
-	CreatedBy           int    `json:"created_by"`
-	StartedAt           int64  `json:"started_at"`
-	FinishedAt          int64  `json:"finished_at"`
-	CreatedAt           int64  `json:"created_at"`
-	UpdatedAt           int64  `json:"updated_at"`
+	Id                  int     `json:"id"`
+	TenantId            int     `json:"tenant_id"`
+	Mode                string  `json:"mode"`
+	Status              string  `json:"status"`
+	Progress            int     `json:"progress"`
+	DepartmentsCreated  int     `json:"departments_created"`
+	DepartmentsUpdated  int     `json:"departments_updated"`
+	DepartmentsDisabled int     `json:"departments_disabled"`
+	UsersCreated        int     `json:"users_created"`
+	UsersUpdated        int     `json:"users_updated"`
+	MembershipsCreated  int     `json:"memberships_created"`
+	MembershipsUpdated  int     `json:"memberships_updated"`
+	MembershipsDisabled int     `json:"memberships_disabled"`
+	SkippedCount        int     `json:"skipped_count"`
+	FailedCount         int     `json:"failed_count"`
+	ErrorSummary        string  `json:"error_summary"`
+	CreatedBy           int     `json:"created_by"`
+	StartedAt           int64   `json:"started_at"`
+	FinishedAt          int64   `json:"finished_at"`
+	CreatedAt           int64   `json:"created_at"`
+	UpdatedAt           int64   `json:"updated_at"`
+	TriggerSource       string  `json:"trigger_source"`
+	ScheduledFor        *int64  `json:"scheduled_for,omitempty"`
+	ScheduleRevision    int64   `json:"schedule_revision"`
+	ActiveKey           *string `json:"active_key,omitempty"`
+	RunnerId            string  `json:"runner_id"`
 }
 
 type DingTalkSyncLogItem struct {
@@ -131,6 +136,7 @@ type dingTalkSyncSnapshot struct {
 	seenDepartmentExternalIds map[string]struct{}
 	seenMembershipKeys        map[string]struct{}
 	seenOwnerKeys             map[string]struct{}
+	complete                  bool
 }
 
 func NewDingTalkSyncService(db *gorm.DB, client DingTalkSyncClient) *DingTalkSyncService {
@@ -148,14 +154,21 @@ func (s *DingTalkSyncService) StartFullSync(ctx context.Context, input DingTalkS
 	if err != nil {
 		return DingTalkSyncTaskItem{}, err
 	}
+	activeKey := "full"
 	task := entmodel.DingTalkSyncTask{
-		TenantId:  input.TenantId,
-		Mode:      constant.DingTalkSyncTaskModeFull,
-		Status:    constant.DingTalkSyncTaskStatusPending,
-		Progress:  0,
-		CreatedBy: input.ActorId,
+		TenantId:      input.TenantId,
+		Mode:          constant.DingTalkSyncTaskModeFull,
+		Status:        constant.DingTalkSyncTaskStatusPending,
+		Progress:      0,
+		CreatedBy:     input.ActorId,
+		TriggerSource: DingTalkManualTrigger,
+		ActiveKey:     &activeKey,
 	}
 	if err := s.db.WithContext(ctx).Create(&task).Error; err != nil {
+		var active entmodel.DingTalkSyncTask
+		if readErr := s.db.WithContext(ctx).Where("tenant_id = ? AND mode = ? AND status IN ?", input.TenantId, constant.DingTalkSyncTaskModeFull, []string{constant.DingTalkSyncTaskStatusPending, constant.DingTalkSyncTaskStatusRunning}).Order("id desc").First(&active).Error; readErr == nil {
+			return mapDingTalkSyncTask(active), nil
+		}
 		return DingTalkSyncTaskItem{}, err
 	}
 	if input.RunInline {
@@ -180,18 +193,24 @@ func (s *DingTalkSyncService) RunTask(ctx context.Context, taskId int, config en
 	}
 	defer ClearDingTalkScopeCache(config.TenantId)
 	now := time.Now().Unix()
-	if err := s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{
+	claim := s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ? AND status = ?", taskId, constant.DingTalkSyncTaskStatusPending).Updates(map[string]any{
 		"status":     constant.DingTalkSyncTaskStatusRunning,
 		"progress":   5,
 		"started_at": now,
-	}).Error; err != nil {
-		return err
+		"runner_id":  common.NodeName,
+	})
+	if claim.Error != nil {
+		return claim.Error
+	}
+	if claim.RowsAffected == 0 {
+		return nil
 	}
 
 	snapshot := &dingTalkSyncSnapshot{
 		seenDepartmentExternalIds: map[string]struct{}{},
 		seenMembershipKeys:        map[string]struct{}{},
 		seenOwnerKeys:             map[string]struct{}{},
+		complete:                  true,
 	}
 	accessToken, err := s.client.GetAccessToken(ctx, config.AppKey, config.AppSecret)
 	if err != nil {
@@ -204,9 +223,17 @@ func (s *DingTalkSyncService) RunTask(ctx context.Context, taskId int, config en
 		rootDepartmentIds = []int64{1}
 	}
 	for _, rootDepartmentId := range rootDepartmentIds {
+		if ctx.Err() != nil {
+			snapshot.complete = false
+			break
+		}
 		s.syncDepartmentTree(ctx, taskId, config.TenantId, config.CorpId, accessToken, rootDepartmentId, nil, snapshot)
 	}
-	s.disableStaleRecords(ctx, taskId, config.TenantId, snapshot)
+	var taskState entmodel.DingTalkSyncTask
+	_ = s.db.WithContext(ctx).Where("id = ?", taskId).First(&taskState).Error
+	if snapshot.complete && taskState.FailedCount == 0 && ctx.Err() == nil {
+		s.disableStaleRecords(ctx, taskId, config.TenantId, snapshot)
+	}
 	return s.finishTask(ctx, taskId)
 }
 

@@ -17,8 +17,13 @@ import (
 )
 
 func (s *DingTalkSyncService) syncDepartmentTree(ctx context.Context, taskId int, tenantId int, corpId string, accessToken string, dingTalkDepartmentId int64, localParentId *int, snapshot *dingTalkSyncSnapshot) {
+	if ctx.Err() != nil {
+		snapshot.complete = false
+		return
+	}
 	departments, err := s.client.ListSubDepartments(ctx, accessToken, dingTalkDepartmentId)
 	if err != nil {
+		snapshot.complete = false
 		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, strconv.FormatInt(dingTalkDepartmentId, 10), "department_list_failed")
 		return
 	}
@@ -108,8 +113,13 @@ func (s *DingTalkSyncService) upsertDepartment(ctx context.Context, taskId int, 
 }
 
 func (s *DingTalkSyncService) syncDepartmentUsers(ctx context.Context, taskId int, tenantId int, corpId string, accessToken string, dingTalkDepartmentId int64, localDepartmentId int, snapshot *dingTalkSyncSnapshot) {
+	if ctx.Err() != nil {
+		snapshot.complete = false
+		return
+	}
 	users, err := s.client.ListDepartmentUsers(ctx, accessToken, dingTalkDepartmentId)
 	if err != nil {
+		snapshot.complete = false
 		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectUser, strconv.FormatInt(dingTalkDepartmentId, 10), "department_users_failed")
 		return
 	}

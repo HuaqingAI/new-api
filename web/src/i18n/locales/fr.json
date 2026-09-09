@@ -6924,6 +6924,17 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Scheduled full sync": "Synchronisation complète planifiée",
+    "Run a complete DingTalk address book sync on a cron schedule.": "Exécuter une synchronisation complète du carnet DingTalk selon un calendrier Cron.",
+    "Enable scheduled full sync": "Activer la synchronisation complète planifiée",
+    "The schedule requires address book sync to be enabled.": "La planification nécessite l'activation de la synchronisation du carnet.",
+    "Cron expression": "Expression Cron",
+    "Five fields: minute hour day month weekday.": "Cinq champs : minute heure jour mois jour de la semaine.",
+    "Timezone": "Fuseau horaire",
+    "Use an IANA timezone such as Asia/Shanghai or UTC.": "Utilisez un fuseau IANA comme Asia/Shanghai ou UTC.",
+    "Next run": "Prochaine exécution",
+    "No next run scheduled": "Aucune prochaine exécution planifiée",
+    "Last status": "Dernier statut"
   }
 }

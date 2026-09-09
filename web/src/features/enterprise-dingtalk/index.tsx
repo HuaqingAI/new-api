@@ -106,10 +106,16 @@ const dingTalkConfigSchema = (t: (key: string) => string) =>
       login_enabled: z.boolean(),
       sync_enabled: z.boolean(),
       auto_sync_on_login: z.boolean(),
+      scheduled_full_sync_enabled: z.boolean(),
+      scheduled_full_sync_cron: z.string().max(128),
+      scheduled_full_sync_timezone: z.string().max(64),
     })
     .superRefine((values, ctx) => {
       const enabling =
-        values.login_enabled || values.sync_enabled || values.auto_sync_on_login
+        values.login_enabled ||
+        values.sync_enabled ||
+        values.auto_sync_on_login ||
+        values.scheduled_full_sync_enabled
       const callbackUrl = values.callback_url.trim()
       if (callbackUrl) {
         try {
@@ -165,6 +171,16 @@ const emptyConfig: DingTalkConfig = {
   login_enabled: false,
   sync_enabled: false,
   auto_sync_on_login: false,
+  scheduled_full_sync_enabled: false,
+  scheduled_full_sync_cron: '0 0 * * *',
+  scheduled_full_sync_timezone: 'Asia/Shanghai',
+  scheduled_full_sync_next_run_at: 0,
+  scheduled_full_sync_last_run_at: 0,
+  scheduled_full_sync_last_task_id: 0,
+  scheduled_full_sync_last_status: '',
+  scheduled_full_sync_last_error: '',
+  scheduled_full_sync_revision: 1,
+  scheduled_full_sync_updated_at: 0,
   has_app_secret: false,
   created_at: 0,
   updated_at: 0,
@@ -180,6 +196,9 @@ function configToFormValues(config: DingTalkConfig): DingTalkConfigFormValues {
     login_enabled: Boolean(config.login_enabled),
     sync_enabled: Boolean(config.sync_enabled),
     auto_sync_on_login: Boolean(config.auto_sync_on_login),
+    scheduled_full_sync_enabled: Boolean(config.scheduled_full_sync_enabled),
+    scheduled_full_sync_cron: config.scheduled_full_sync_cron || '0 0 * * *',
+    scheduled_full_sync_timezone: config.scheduled_full_sync_timezone || 'Asia/Shanghai',
   }
 }
 
@@ -214,7 +233,9 @@ export function EnterpriseDingTalk() {
   const mutation = useMutation({
     mutationFn: async (values: DingTalkConfigFormValues) => {
       if (
-        (values.login_enabled || values.sync_enabled) &&
+        (values.login_enabled ||
+          values.sync_enabled ||
+          values.scheduled_full_sync_enabled) &&
         !config.has_app_secret
       ) {
         if (!values.app_secret.trim()) {
@@ -229,6 +250,9 @@ export function EnterpriseDingTalk() {
         login_enabled: values.login_enabled,
         sync_enabled: values.sync_enabled,
         auto_sync_on_login: values.auto_sync_on_login,
+        scheduled_full_sync_enabled: values.scheduled_full_sync_enabled,
+        scheduled_full_sync_cron: values.scheduled_full_sync_cron.trim(),
+        scheduled_full_sync_timezone: values.scheduled_full_sync_timezone.trim(),
       }
       const appSecret = values.app_secret.trim()
       const result = await saveDingTalkConfig(
@@ -651,6 +675,70 @@ export function EnterpriseDingTalk() {
                         )}
                       />
                     </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t('Scheduled full sync')}</CardTitle>
+                    <CardDescription>
+                      {t('Run a complete DingTalk address book sync on a cron schedule.')}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className='grid gap-4'>
+                    <FormField
+                      control={form.control}
+                      name='scheduled_full_sync_enabled'
+                      render={({ field }) => (
+                        <ToggleField
+                          label={t('Enable scheduled full sync')}
+                          description={t('The schedule requires address book sync to be enabled.')}
+                          checked={field.value}
+                          disabled={!canEdit || !formValues.sync_enabled}
+                          onCheckedChange={field.onChange}
+                        />
+                      )}
+                    />
+                    <div className='grid gap-4 md:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='scheduled_full_sync_cron'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Cron expression')}</FormLabel>
+                            <FormControl>
+                              <Input placeholder='0 0 * * *' disabled={!canEdit} {...field} />
+                            </FormControl>
+                            <FormDescription>{t('Five fields: minute hour day month weekday.')}</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='scheduled_full_sync_timezone'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Timezone')}</FormLabel>
+                            <FormControl>
+                              <Input placeholder='Asia/Shanghai' disabled={!canEdit} {...field} />
+                            </FormControl>
+                            <FormDescription>{t('Use an IANA timezone such as Asia/Shanghai or UTC.')}</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    {config.scheduled_full_sync_enabled ? (
+                      <div className='text-muted-foreground text-sm'>
+                        {(config.scheduled_full_sync_next_run_at ?? 0) > 0
+                          ? `${t('Next run')}: ${new Date((config.scheduled_full_sync_next_run_at ?? 0) * 1000).toLocaleString()}`
+                          : t('No next run scheduled')}
+                        {config.scheduled_full_sync_last_status
+                          ? ` · ${t('Last status')}: ${config.scheduled_full_sync_last_status}`
+                          : ''}
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
 

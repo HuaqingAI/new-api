@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
@@ -86,27 +85,6 @@ func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
 	}
 	require.NoError(t, model.DB.Create(user).Error)
 	return user
-}
-
-func TestAionUiClientPackageDownloadAuthRequiresAdminWhenEnforced(t *testing.T) {
-	router := gin.New()
-	router.GET("/download", AionUiClientPackageDownloadAuth(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
-
-	t.Setenv(serviceaionui.ClientUpdateAccessModeEnv, serviceaionui.ClientUpdateAccessModeLegacy)
-	legacyRequest := httptest.NewRequest(http.MethodGet, "/download", nil)
-	legacyResponse := httptest.NewRecorder()
-	router.ServeHTTP(legacyResponse, legacyRequest)
-
-	assert.Equal(t, http.StatusNoContent, legacyResponse.Code)
-
-	t.Setenv(serviceaionui.ClientUpdateAccessModeEnv, serviceaionui.ClientUpdateAccessModeEnforced)
-	enforcedRequest := httptest.NewRequest(http.MethodGet, "/download", nil)
-	enforcedResponse := httptest.NewRecorder()
-	router.ServeHTTP(enforcedResponse, enforcedRequest)
-
-	assert.Equal(t, http.StatusUnauthorized, enforcedResponse.Code)
 }
 
 func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {

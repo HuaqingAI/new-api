@@ -6924,6 +6924,17 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Scheduled full sync": "排程完整同步",
+    "Run a complete DingTalk address book sync on a cron schedule.": "依照 Cron 排程完整同步釘釘通訊錄。",
+    "Enable scheduled full sync": "啟用排程完整同步",
+    "The schedule requires address book sync to be enabled.": "排程同步需要先啟用通訊錄同步。",
+    "Cron expression": "Cron 表達式",
+    "Five fields: minute hour day month weekday.": "五個欄位：分鐘 小時 日期 月份 星期。",
+    "Timezone": "時區",
+    "Use an IANA timezone such as Asia/Shanghai or UTC.": "使用 IANA 時區，例如 Asia/Shanghai 或 UTC。",
+    "Next run": "下次執行",
+    "No next run scheduled": "尚未排定下次執行",
+    "Last status": "最近狀態"
   }
 }

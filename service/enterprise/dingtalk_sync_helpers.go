@@ -131,11 +131,23 @@ func (s *DingTalkSyncService) finishTask(ctx context.Context, taskId int) error 
 	if task.FailedCount > 0 {
 		status = constant.DingTalkSyncTaskStatusFailed
 	}
-	return s.db.WithContext(ctx).Model(&task).Updates(map[string]any{"status": status, "progress": 100, "finished_at": time.Now().Unix()}).Error
+	if err := s.db.WithContext(ctx).Model(&task).Updates(map[string]any{"status": status, "progress": 100, "finished_at": time.Now().Unix(), "active_key": nil}).Error; err != nil {
+		return err
+	}
+	if task.TriggerSource == DingTalkScheduledTrigger {
+		updates := map[string]any{"scheduled_full_sync_last_status": status, "scheduled_full_sync_last_error": task.ErrorSummary}
+		_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", task.TenantId).Updates(updates).Error
+	}
+	return nil
 }
 
 func (s *DingTalkSyncService) finishTaskFailed(ctx context.Context, taskId int, summary string) {
-	_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{"status": constant.DingTalkSyncTaskStatusFailed, "progress": 100, "failed_count": gorm.Expr("failed_count + ?", 1), "error_summary": summary, "finished_at": time.Now().Unix()}).Error
+	var task entmodel.DingTalkSyncTask
+	_ = s.db.WithContext(ctx).Where("id = ?", taskId).First(&task).Error
+	_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{"status": constant.DingTalkSyncTaskStatusFailed, "progress": 100, "failed_count": gorm.Expr("failed_count + ?", 1), "error_summary": summary, "finished_at": time.Now().Unix(), "active_key": nil}).Error
+	if task.TriggerSource == DingTalkScheduledTrigger {
+		_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", task.TenantId).Updates(map[string]any{"scheduled_full_sync_last_status": constant.DingTalkSyncTaskStatusFailed, "scheduled_full_sync_last_error": summary}).Error
+	}
 }
 
 func (s *DingTalkSyncService) logSyncFailure(ctx context.Context, taskId int, tenantId int, objectType string, externalId string, message string) {

@@ -6924,6 +6924,17 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Scheduled full sync": "Плановая полная синхронизация",
+    "Run a complete DingTalk address book sync on a cron schedule.": "Выполнять полную синхронизацию адресной книги DingTalk по расписанию Cron.",
+    "Enable scheduled full sync": "Включить плановую полную синхронизацию",
+    "The schedule requires address book sync to be enabled.": "Для расписания необходимо включить синхронизацию адресной книги.",
+    "Cron expression": "Выражение Cron",
+    "Five fields: minute hour day month weekday.": "Пять полей: минута, час, день, месяц, день недели.",
+    "Timezone": "Часовой пояс",
+    "Use an IANA timezone such as Asia/Shanghai or UTC.": "Используйте часовой пояс IANA, например Asia/Shanghai или UTC.",
+    "Next run": "Следующий запуск",
+    "No next run scheduled": "Следующий запуск не запланирован",
+    "Last status": "Последний статус"
   }
 }

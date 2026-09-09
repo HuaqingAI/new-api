@@ -35,6 +35,7 @@ const (
 	clientUpdateCapabilityIssuer   = "new-api"
 	clientUpdateCapabilityAudience = "aionui-client-update"
 	clientUpdateCapabilityPurpose  = "client_update_artifact"
+	ClientUpdateCapabilityHeader   = "X-AionUi-Update-Capability"
 )
 
 var (
@@ -106,7 +107,6 @@ type ClientUpdateAccessInput struct {
 }
 
 type ClientUpdateAccessResult struct {
-	Mode               string
 	LegacyOpen         bool
 	Eligible           bool
 	Release            *dtoaionui.ClientUpdateAccessRelease
@@ -646,20 +646,39 @@ func (s *ClientPackageService) Delete(id int) error {
 }
 
 func (s *ClientPackageService) DownloadURL(id int) (string, error) {
+	pkg, err := s.publishedPackageByID(id)
+	if err != nil {
+		return "", err
+	}
+	if normalizeClientPackageRolloutMode(pkg.RolloutMode) != apmodel.ClientPackageRolloutModeGlobal {
+		return "", ErrClientPackageNotFound
+	}
+	return s.presign(pkg.FilePath)
+}
+
+func (s *ClientPackageService) AdminDownloadURL(id int) (string, error) {
+	pkg, err := s.publishedPackageByID(id)
+	if err != nil {
+		return "", err
+	}
+	return s.presign(pkg.FilePath)
+}
+
+func (s *ClientPackageService) publishedPackageByID(id int) (apmodel.ClientPackage, error) {
 	if s == nil || s.db == nil || id <= 0 {
-		return "", ErrClientPackageInvalidInput
+		return apmodel.ClientPackage{}, ErrClientPackageInvalidInput
 	}
 	var pkg apmodel.ClientPackage
 	if err := s.db.First(&pkg, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", ErrClientPackageNotFound
+			return apmodel.ClientPackage{}, ErrClientPackageNotFound
 		}
-		return "", err
+		return apmodel.ClientPackage{}, err
 	}
 	if pkg.Status != apmodel.ClientPackageStatusPublished {
-		return "", ErrClientPackageNotPublished
+		return apmodel.ClientPackage{}, ErrClientPackageNotPublished
 	}
-	return s.presign(pkg.FilePath)
+	return pkg, nil
 }
 
 func (s *ClientPackageService) UpdateFeed(channel string) (ClientUpdateFeed, bool, error) {
@@ -667,21 +686,29 @@ func (s *ClientPackageService) UpdateFeed(channel string) (ClientUpdateFeed, boo
 	if !ok {
 		return ClientUpdateFeed{}, false, ErrClientPackageNotFound
 	}
-	pkg, found, err := s.latestPublished(platform, true)
+	pkg, found, err := s.latestGlobalPublished(platform, true)
 	if err != nil || !found {
 		return ClientUpdateFeed{}, false, err
 	}
 	return clientUpdateFeedForPackage(pkg), true, nil
 }
 
-func (s *ClientPackageService) UpdateFeedForUser(channel string, userID int) (ClientUpdateFeed, bool, error) {
+func (s *ClientPackageService) UpdateFeedForCapability(channel string, capability string) (ClientUpdateFeed, bool, error) {
 	platform, ok := platformForUpdateChannel(channel)
-	if !ok || userID <= 0 {
+	if !ok {
 		return ClientUpdateFeed{}, false, ErrClientPackageNotFound
 	}
-	pkg, found, err := s.latestEligiblePublished(userID, platform, true)
-	if err != nil || !found {
-		return ClientUpdateFeed{}, false, err
+	claims, err := parseClientUpdateArtifactCapability(capability, s.now())
+	if err != nil || claims.Platform != platform {
+		return ClientUpdateFeed{}, false, ErrClientUpdateCapabilityInvalid
+	}
+	var user model.User
+	if err := s.db.First(&user, claims.UserId).Error; err != nil || user.Status != common.UserStatusEnabled {
+		return ClientUpdateFeed{}, false, ErrClientUpdateCapabilityInvalid
+	}
+	pkg, found, err := s.eligiblePublishedPackageByID(claims.UserId, claims.Platform, claims.ClientPackageId, true)
+	if err != nil || !found || pkg.Version != claims.Version {
+		return ClientUpdateFeed{}, false, ErrClientUpdateCapabilityInvalid
 	}
 	return clientUpdateFeedForPackage(pkg), true, nil
 }
@@ -719,7 +746,8 @@ func (s *ClientPackageService) UpdateArtifactURL(version string, fileName string
 		return "", ErrClientPackageInvalidInput
 	}
 	var rows []apmodel.ClientPackage
-	if err := s.db.Where("version = ? AND status = ?", version, apmodel.ClientPackageStatusPublished).Find(&rows).Error; err != nil {
+	if err := s.db.Where("version = ? AND status = ?", version, apmodel.ClientPackageStatusPublished).
+		Where("rollout_mode = ? OR rollout_mode = ?", apmodel.ClientPackageRolloutModeGlobal, "").Find(&rows).Error; err != nil {
 		return "", err
 	}
 	for _, row := range rows {
@@ -741,28 +769,22 @@ func (s *ClientPackageService) PrepareUpdateAccess(userID int, deviceID string, 
 	if input.ExpectedVersion != "" && !validClientPackageVersion(input.ExpectedVersion) {
 		return ClientUpdateAccessResult{}, ErrClientPackageInvalidInput
 	}
-	mode := ClientUpdateAccessMode()
-	if mode != ClientUpdateAccessModeEnforced {
-		return ClientUpdateAccessResult{Mode: mode, LegacyOpen: true}, nil
-	}
-
 	pkg, found, err := s.latestEligiblePublished(userID, input.Platform, true)
 	if err != nil || !found {
-		return ClientUpdateAccessResult{Mode: mode}, err
+		return ClientUpdateAccessResult{}, err
 	}
 	if input.ExpectedVersion != "" {
 		if pkg.Version != input.ExpectedVersion {
-			return ClientUpdateAccessResult{Mode: mode}, nil
+			return ClientUpdateAccessResult{}, nil
 		}
 	} else if compareClientPackageVersion(pkg.Version, input.CurrentVersion) <= 0 {
-		return ClientUpdateAccessResult{Mode: mode}, nil
+		return ClientUpdateAccessResult{}, nil
 	}
 	capability, expiresAt, err := issueClientUpdateArtifactCapability(userID, deviceID, pkg, s.now())
 	if err != nil {
 		return ClientUpdateAccessResult{}, err
 	}
 	return ClientUpdateAccessResult{
-		Mode:     mode,
 		Eligible: true,
 		Release: &dtoaionui.ClientUpdateAccessRelease{
 			Version:  pkg.Version,

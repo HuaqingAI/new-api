@@ -148,6 +148,42 @@ function renderTargetedRolloutFields(props?: { userIds?: string[] }) {
   )
 }
 
+function IndependentRolloutFields() {
+  const [uploadValue, setUploadValue] = useState<ClientPackageRolloutFormValue>(
+    {
+      rolloutMode: 'global',
+      userIds: [],
+      departmentIds: [],
+    }
+  )
+  const [editorValue, setEditorValue] = useState<ClientPackageRolloutFormValue>(
+    {
+      rolloutMode: 'global',
+      userIds: [],
+      departmentIds: [],
+    }
+  )
+
+  return (
+    <>
+      <output data-testid='upload-rollout-mode'>
+        {uploadValue.rolloutMode}
+      </output>
+      <ClientPackageRolloutFields
+        value={uploadValue}
+        onChange={setUploadValue}
+      />
+      <output data-testid='editor-rollout-mode'>
+        {editorValue.rolloutMode}
+      </output>
+      <ClientPackageRolloutFields
+        value={editorValue}
+        onChange={setEditorValue}
+      />
+    </>
+  )
+}
+
 describe('clientPackageRolloutScopes', () => {
   it('omits retained selections when rollout is global', () => {
     expect(
@@ -171,6 +207,38 @@ describe('clientPackageRolloutScopes', () => {
       { subject_type: 'user', subject_id: '9' },
       { subject_type: 'department', subject_id: '11' },
     ])
+  })
+
+  it('keeps the upload rollout unchanged when editing a second rollout form', async () => {
+    vi.mocked(searchUsers).mockResolvedValue({
+      success: true,
+      data: { items: [], total: 0, page: 1, page_size: 20 },
+    })
+    vi.mocked(getDepartmentTree).mockResolvedValue({
+      success: true,
+      data: departmentTree,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={i18n}>
+          <IndependentRolloutFields />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+
+    await user.click(screen.getAllByText('Selected users and departments')[1])
+
+    expect(screen.getByTestId('upload-rollout-mode')).toHaveTextContent(
+      'global'
+    )
+    expect(screen.getByTestId('editor-rollout-mode')).toHaveTextContent(
+      'targeted'
+    )
   })
 
   it('shows matching remote users while searching targeted rollout grants', async () => {

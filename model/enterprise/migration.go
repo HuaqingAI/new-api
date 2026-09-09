@@ -6,6 +6,31 @@ type dingTalkConfigAutoSyncColumn struct {
 	AutoSyncOnLogin bool `gorm:"column:auto_sync_on_login;type:boolean;not null;default:false"`
 }
 
+type dingTalkScheduleConfigColumns struct {
+	ScheduledFullSyncEnabled    bool   `gorm:"column:scheduled_full_sync_enabled;type:boolean;not null;default:false"`
+	ScheduledFullSyncCron       string `gorm:"column:scheduled_full_sync_cron;type:varchar(128);not null;default:'0 0 * * *'"`
+	ScheduledFullSyncTimezone   string `gorm:"column:scheduled_full_sync_timezone;type:varchar(64);not null;default:'Asia/Shanghai'"`
+	ScheduledFullSyncNextRunAt  int64  `gorm:"column:scheduled_full_sync_next_run_at;type:bigint;not null;default:0"`
+	ScheduledFullSyncLastRunAt  int64  `gorm:"column:scheduled_full_sync_last_run_at;type:bigint;not null;default:0"`
+	ScheduledFullSyncLastTaskId int    `gorm:"column:scheduled_full_sync_last_task_id;type:int;not null;default:0"`
+	ScheduledFullSyncLastStatus string `gorm:"column:scheduled_full_sync_last_status;type:varchar(32);not null;default:''"`
+	ScheduledFullSyncLastError  string `gorm:"column:scheduled_full_sync_last_error;type:varchar(1024);not null;default:''"`
+	ScheduledFullSyncRevision   int64  `gorm:"column:scheduled_full_sync_revision;type:bigint;not null;default:1"`
+	ScheduledFullSyncUpdatedAt  int64  `gorm:"column:scheduled_full_sync_updated_at;type:bigint;not null;default:0"`
+}
+
+func (dingTalkScheduleConfigColumns) TableName() string { return DingTalkConfig{}.TableName() }
+
+type dingTalkSyncTaskScheduleColumns struct {
+	TriggerSource    string  `gorm:"column:trigger_source;type:varchar(32);not null;default:'manual'"`
+	ScheduledFor     *int64  `gorm:"column:scheduled_for;type:bigint"`
+	ScheduleRevision int64   `gorm:"column:schedule_revision;type:bigint;not null;default:0"`
+	ActiveKey        *string `gorm:"column:active_key;type:varchar(32)"`
+	RunnerId         string  `gorm:"column:runner_id;type:varchar(128);not null;default:''"`
+}
+
+func (dingTalkSyncTaskScheduleColumns) TableName() string { return DingTalkSyncTask{}.TableName() }
+
 func (dingTalkConfigAutoSyncColumn) TableName() string {
 	return DingTalkConfig{}.TableName()
 }
@@ -39,6 +64,9 @@ func Migrate(db *gorm.DB) error {
 	}
 	dingTalkColumns, err := ensureDingTalkAutoSyncColumns(db)
 	if err != nil {
+		return err
+	}
+	if err := ensureDingTalkScheduleColumns(db); err != nil {
 		return err
 	}
 	// Existing DingTalk tables use explicit additive migrations above. SQLite
@@ -114,6 +142,64 @@ func ensureDingTalkAutoSyncColumns(db *gorm.DB) (dingTalkAutoSyncMigrationColumn
 		}
 	}
 	return columns, nil
+}
+
+func ensureDingTalkScheduleColumns(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	if db.Migrator().HasTable(&DingTalkConfig{}) {
+		for _, column := range []string{"scheduled_full_sync_enabled", "scheduled_full_sync_cron", "scheduled_full_sync_timezone", "scheduled_full_sync_next_run_at", "scheduled_full_sync_last_run_at", "scheduled_full_sync_last_task_id", "scheduled_full_sync_last_status", "scheduled_full_sync_last_error", "scheduled_full_sync_revision", "scheduled_full_sync_updated_at"} {
+			if db.Migrator().HasColumn(&DingTalkConfig{}, column) {
+				continue
+			}
+			if err := db.Migrator().AddColumn(&dingTalkScheduleConfigColumns{}, column); err != nil {
+				return err
+			}
+		}
+	}
+	if db.Migrator().HasTable(&DingTalkSyncTask{}) {
+		for _, column := range []string{"trigger_source", "scheduled_for", "schedule_revision", "active_key", "runner_id"} {
+			if db.Migrator().HasColumn(&DingTalkSyncTask{}, column) {
+				continue
+			}
+			if err := db.Migrator().AddColumn(&dingTalkSyncTaskScheduleColumns{}, column); err != nil {
+				return err
+			}
+		}
+	}
+	if db.Migrator().HasTable(&DingTalkConfig{}) {
+		if err := db.Table(DingTalkConfig{}.TableName()).Where("scheduled_full_sync_cron = '' OR scheduled_full_sync_cron IS NULL").UpdateColumn("scheduled_full_sync_cron", "0 0 * * *").Error; err != nil {
+			return err
+		}
+		if err := db.Table(DingTalkConfig{}.TableName()).Where("scheduled_full_sync_timezone = '' OR scheduled_full_sync_timezone IS NULL").UpdateColumn("scheduled_full_sync_timezone", "Asia/Shanghai").Error; err != nil {
+			return err
+		}
+		if err := db.Table(DingTalkConfig{}.TableName()).Where("scheduled_full_sync_revision IS NULL OR scheduled_full_sync_revision <= 0").UpdateColumn("scheduled_full_sync_revision", 1).Error; err != nil {
+			return err
+		}
+	}
+	if db.Migrator().HasTable(&DingTalkSyncTask{}) {
+		if err := db.Table(DingTalkSyncTask{}.TableName()).Where("trigger_source = '' OR trigger_source IS NULL").UpdateColumn("trigger_source", "manual").Error; err != nil {
+			return err
+		}
+		var duplicateTenants []struct{ TenantId int }
+		if err := db.Model(&DingTalkSyncTask{}).Select("tenant_id").Where("active_key IS NOT NULL AND status IN ?", []string{"pending", "running"}).Group("tenant_id").Having("COUNT(*) > 1").Scan(&duplicateTenants).Error; err != nil {
+			return err
+		}
+		for _, duplicate := range duplicateTenants {
+			var activeTasks []DingTalkSyncTask
+			if err := db.Where("tenant_id = ? AND active_key IS NOT NULL AND status IN ?", duplicate.TenantId, []string{"pending", "running"}).Order("updated_at DESC, id DESC").Find(&activeTasks).Error; err != nil {
+				return err
+			}
+			for _, stale := range activeTasks[1:] {
+				if err := db.Model(&DingTalkSyncTask{}).Where("id = ?", stale.Id).Updates(map[string]any{"status": "failed", "active_key": nil, "error_summary": "duplicate active task during migration"}).Error; err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func backfillDingTalkAutoSyncColumns(db *gorm.DB, columns dingTalkAutoSyncMigrationColumns) error {

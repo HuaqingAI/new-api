@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -55,6 +55,7 @@ export function ClientPackageRolloutFields(props: {
   value: ClientPackageRolloutFormValue
 }) {
   const { t } = useTranslation()
+  const rolloutFieldId = useId()
   const [userSearch, setUserSearch] = useState('')
   const [departmentSearch, setDepartmentSearch] = useState('')
   const [knownUserOptions, setKnownUserOptions] = useState<GrantSelectOption[]>(
@@ -186,18 +187,24 @@ export function ClientPackageRolloutFields(props: {
         className='gap-3'
       >
         <div className='flex items-center gap-2'>
-          <RadioGroupItem id='client-rollout-global' value='global' />
+          <RadioGroupItem
+            id={`client-rollout-global-${rolloutFieldId}`}
+            value='global'
+          />
           <Label
-            htmlFor='client-rollout-global'
+            htmlFor={`client-rollout-global-${rolloutFieldId}`}
             className='cursor-pointer font-normal'
           >
             {t('All users')}
           </Label>
         </div>
         <div className='flex items-center gap-2'>
-          <RadioGroupItem id='client-rollout-targeted' value='targeted' />
+          <RadioGroupItem
+            id={`client-rollout-targeted-${rolloutFieldId}`}
+            value='targeted'
+          />
           <Label
-            htmlFor='client-rollout-targeted'
+            htmlFor={`client-rollout-targeted-${rolloutFieldId}`}
             className='cursor-pointer font-normal'
           >
             {t('Selected users and departments')}

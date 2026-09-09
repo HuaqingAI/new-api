@@ -3,6 +3,7 @@ package enterprise
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	dtoenterprise "github.com/QuantumNous/new-api/dto/enterprise"
@@ -31,15 +32,30 @@ func SaveDingTalkConfig(c *gin.Context) {
 	}
 
 	input := entservice.DingTalkConfigInput{
-		TenantId:        valueOrZero(req.TenantId),
-		CorpId:          req.CorpId,
-		AppKey:          req.AppKey,
-		AppSecret:       req.AppSecret,
-		CallbackUrl:     req.CallbackUrl,
-		SyncScope:       req.SyncScope,
-		LoginEnabled:    boolValue(req.LoginEnabled),
-		SyncEnabled:     boolValue(req.SyncEnabled),
-		AutoSyncOnLogin: req.AutoSyncOnLogin,
+		TenantId:                  valueOrZero(req.TenantId),
+		CorpId:                    req.CorpId,
+		AppKey:                    req.AppKey,
+		AppSecret:                 req.AppSecret,
+		CallbackUrl:               req.CallbackUrl,
+		SyncScope:                 req.SyncScope,
+		LoginEnabled:              boolValue(req.LoginEnabled),
+		SyncEnabled:               boolValue(req.SyncEnabled),
+		AutoSyncOnLogin:           req.AutoSyncOnLogin,
+		ScheduledFullSyncEnabled:  req.ScheduledFullSyncEnabled,
+		ScheduledFullSyncCron:     req.ScheduledFullSyncCron,
+		ScheduledFullSyncTimezone: req.ScheduledFullSyncTimezone,
+	}
+	// Optional booleans are partial-update fields; preserve stored values when
+	// callers omit them.
+	if req.LoginEnabled == nil || req.SyncEnabled == nil {
+		if current, getErr := entservice.NewDingTalkConfigService(model.DB).Get(input.TenantId); getErr == nil {
+			if req.LoginEnabled == nil {
+				input.LoginEnabled = current.LoginEnabled
+			}
+			if req.SyncEnabled == nil {
+				input.SyncEnabled = current.SyncEnabled
+			}
+		}
 	}
 
 	var result dtoenterprise.DingTalkConfigResponse
@@ -57,16 +73,19 @@ func SaveDingTalkConfig(c *gin.Context) {
 			ObjectId:    strconv.Itoa(result.TenantId),
 			DiffSummary: "Saved DingTalk enterprise app configuration",
 			Payload: map[string]any{
-				"tenant_id":          result.TenantId,
-				"corp_id":            result.CorpId,
-				"app_key":            result.AppKey,
-				"app_secret":         req.AppSecret,
-				"callback_url":       result.CallbackUrl,
-				"sync_scope":         result.SyncScope,
-				"login_enabled":      result.LoginEnabled,
-				"sync_enabled":       result.SyncEnabled,
-				"auto_sync_on_login": result.AutoSyncOnLogin,
-				"has_app_secret":     result.HasAppSecret,
+				"tenant_id":                    result.TenantId,
+				"corp_id":                      result.CorpId,
+				"app_key":                      result.AppKey,
+				"app_secret_updated":           req.AppSecret != nil && strings.TrimSpace(*req.AppSecret) != "",
+				"callback_url":                 result.CallbackUrl,
+				"sync_scope":                   result.SyncScope,
+				"login_enabled":                result.LoginEnabled,
+				"sync_enabled":                 result.SyncEnabled,
+				"auto_sync_on_login":           result.AutoSyncOnLogin,
+				"scheduled_full_sync_enabled":  result.ScheduledFullSyncEnabled,
+				"scheduled_full_sync_cron":     result.ScheduledFullSyncCron,
+				"scheduled_full_sync_timezone": result.ScheduledFullSyncTimezone,
+				"has_app_secret":               result.HasAppSecret,
 			},
 		})
 	})
@@ -281,6 +300,8 @@ func writeDingTalkConfigError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkConfigNotFound)
 	case errors.Is(err, entservice.ErrDingTalkSyncNotEnabled):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncNotEnabled)
+	case errors.Is(err, entservice.ErrDingTalkScheduleCronInvalid), errors.Is(err, entservice.ErrDingTalkScheduleTimezoneInvalid):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrDingTalkSyncTaskNotFound):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseDingTalkSyncTaskNotFound)
 	case errors.Is(err, entservice.ErrDingTalkSyncConflictNotFound):

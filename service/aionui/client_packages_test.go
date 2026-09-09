@@ -95,8 +95,71 @@ func TestClientPackageRolloutSelectsHighestEligibleDepartmentRelease(t *testing.
 	require.Equal(t, "2.1.0", release.Version)
 }
 
+func TestClientPackageRolloutKeepsTargetedReleaseOutOfLegacyFeed(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&entmodel.UserDepartment{},
+		&apmodel.ClientPackage{},
+		&apmodel.ClientPackageScope{},
+	))
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "pilot", Email: "pilot@example.com", Status: common.UserStatusEnabled}).Error)
+	publishedAt := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	packages := []apmodel.ClientPackage{
+		{
+			Platform: apmodel.ClientPackagePlatformWindowsX64, Version: "2.1.0", Status: apmodel.ClientPackageStatusPublished,
+			RolloutMode: apmodel.ClientPackageRolloutModeGlobal, FileName: "AionUi-2.1.0.exe", FilePath: "oss://test/2.1.0.exe",
+			FileSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FileSha512: "sha", FileSize: 1,
+			ContentType: "application/octet-stream", UpdateMetadataFileName: "latest.yml", UpdateMetadataFilePath: "oss://test/latest-2.1.0.yml",
+			UpdateMetadataSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CreatedBy: 1, PublishedAt: &publishedAt,
+		},
+		{
+			Platform: apmodel.ClientPackagePlatformWindowsX64, Version: "2.2.0", Status: apmodel.ClientPackageStatusPublished,
+			RolloutMode: apmodel.ClientPackageRolloutModeTargeted, FileName: "AionUi-2.2.0.exe", FilePath: "oss://test/2.2.0.exe",
+			FileSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FileSha512: "sha", FileSize: 1,
+			ContentType: "application/octet-stream", UpdateMetadataFileName: "latest.yml", UpdateMetadataFilePath: "oss://test/latest-2.2.0.yml",
+			UpdateMetadataSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", CreatedBy: 1, PublishedAt: &publishedAt,
+		},
+	}
+	require.NoError(t, db.Create(&packages).Error)
+
+	service := NewClientPackageService(db)
+	rollout, err := service.UpdateRollout(packages[1].Id, apmodel.ClientPackageRolloutModeTargeted, []ClientPackageScopeInput{
+		{SubjectType: apmodel.GrantSubjectTypeUser, SubjectId: "7"},
+	}, 1)
+
+	require.NoError(t, err)
+	require.Equal(t, apmodel.ClientPackageRolloutModeTargeted, rollout.RolloutMode)
+	require.Len(t, rollout.Scopes, 1)
+	require.Equal(t, apmodel.GrantSubjectTypeUser, rollout.Scopes[0].SubjectType)
+	require.Equal(t, "7", rollout.Scopes[0].SubjectId)
+
+	feed, found, err := service.UpdateFeed("latest.yml")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "2.1.0", feed.Version)
+
+	access, err := service.PrepareUpdateAccess(7, "device-7", ClientUpdateAccessInput{
+		Platform:       apmodel.ClientPackagePlatformWindowsX64,
+		CurrentVersion: "2.1.0",
+	})
+	require.NoError(t, err)
+	require.True(t, access.Eligible)
+	require.Equal(t, "2.2.0", access.Release.Version)
+
+	scopedFeed, found, err := service.UpdateFeedForCapability("latest.yml", access.ArtifactCapability)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "2.2.0", scopedFeed.Version)
+
+	_, err = service.UpdateArtifactURL("2.2.0", packages[1].FileName)
+	require.ErrorIs(t, err, ErrClientPackageNotFound)
+	_, err = service.DownloadURL(packages[1].Id)
+	require.ErrorIs(t, err, ErrClientPackageNotFound)
+}
+
 func TestClientPackageArtifactCapabilityRejectsRevokedScope(t *testing.T) {
-	t.Setenv(ClientUpdateAccessModeEnv, ClientUpdateAccessModeEnforced)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &entmodel.UserDepartment{}, &apmodel.ClientPackage{}, &apmodel.ClientPackageScope{}))
@@ -124,7 +187,13 @@ func TestClientPackageArtifactCapabilityRejectsRevokedScope(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, access.Eligible)
 	require.NotEmpty(t, access.ArtifactCapability)
+	feed, found, err := service.UpdateFeedForCapability("latest.yml", access.ArtifactCapability)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, pkg.Version, feed.Version)
 	require.NoError(t, db.Delete(&scope).Error)
+	_, _, err = service.UpdateFeedForCapability("latest.yml", access.ArtifactCapability)
+	require.ErrorIs(t, err, ErrClientUpdateCapabilityInvalid)
 	_, err = service.UpdateArtifactURLForCapability(access.ArtifactCapability, pkg.Version, pkg.FileName)
 	require.ErrorIs(t, err, ErrClientUpdateCapabilityInvalid)
 }

@@ -49,29 +49,6 @@ func AionUiOptionalDesktopAuth() gin.HandlerFunc {
 	}
 }
 
-func AionUiClientUpdateFeedAuth() gin.HandlerFunc {
-	strictAuth := AionUiDesktopAuth()
-	optionalAuth := AionUiOptionalDesktopAuth()
-	return func(c *gin.Context) {
-		if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
-			strictAuth(c)
-			return
-		}
-		optionalAuth(c)
-	}
-}
-
-func AionUiClientPackageDownloadAuth() gin.HandlerFunc {
-	adminAuth := AdminAuth()
-	return func(c *gin.Context) {
-		if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
-			adminAuth(c)
-			return
-		}
-		c.Next()
-	}
-}
-
 func setAionUiDesktopClaims(c *gin.Context, claims serviceaionui.DesktopTokenClaims) {
 	c.Set("aionui_user_id", claims.UserId)
 	c.Set("aionui_username", claims.Username)

@@ -76,6 +76,8 @@ var (
 	ErrDingTalkOAuthRegistrationDisabled                 = errors.New("enterprise dingtalk oauth registration disabled")
 	ErrDingTalkAutoSyncDisabled                          = errors.New("enterprise dingtalk auto sync on login disabled")
 	ErrDingTalkSyncNotEnabled                            = errors.New("enterprise dingtalk sync not enabled")
+	ErrDingTalkScheduleCronInvalid                       = errors.New("enterprise dingtalk schedule cron invalid")
+	ErrDingTalkScheduleTimezoneInvalid                   = errors.New("enterprise dingtalk schedule timezone invalid")
 	ErrDingTalkSyncTaskNotFound                          = errors.New("enterprise dingtalk sync task not found")
 	ErrDingTalkSyncConflictNotFound                      = errors.New("enterprise dingtalk sync conflict not found")
 	ErrDingTalkSyncConflictNotPending                    = errors.New("enterprise dingtalk sync conflict not pending")

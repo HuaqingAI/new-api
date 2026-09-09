@@ -42,10 +42,11 @@ func GetClientUpdateFeed(c *gin.Context) {
 	var feed serviceaionui.ClientUpdateFeed
 	var ok bool
 	var err error
-	if c.GetInt("aionui_user_id") > 0 {
-		feed, ok, err = clientPackageService().UpdateFeedForUser(filepath.Base(c.Request.URL.Path), c.GetInt("aionui_user_id"))
+	channel := filepath.Base(c.Request.URL.Path)
+	if capability := c.GetHeader(serviceaionui.ClientUpdateCapabilityHeader); capability != "" {
+		feed, ok, err = clientPackageService().UpdateFeedForCapability(channel, capability)
 	} else {
-		feed, ok, err = clientPackageService().UpdateFeed(filepath.Base(c.Request.URL.Path))
+		feed, ok, err = clientPackageService().UpdateFeed(channel)
 	}
 	if err != nil {
 		writeClientPackageError(c, err)
@@ -62,8 +63,8 @@ func GetClientUpdateFeed(c *gin.Context) {
 func DownloadClientUpdateArtifact(c *gin.Context) {
 	var url string
 	var err error
-	if serviceaionui.ClientUpdateAccessMode() == serviceaionui.ClientUpdateAccessModeEnforced {
-		url, err = clientPackageService().UpdateArtifactURLForCapability(c.GetHeader("X-AionUi-Update-Capability"), c.Param("version"), c.Param("file"))
+	if capability := c.GetHeader(serviceaionui.ClientUpdateCapabilityHeader); capability != "" {
+		url, err = clientPackageService().UpdateArtifactURLForCapability(capability, c.Param("version"), c.Param("file"))
 	} else {
 		url, err = clientPackageService().UpdateArtifactURL(c.Param("version"), c.Param("file"))
 	}
@@ -80,14 +81,9 @@ func PrepareClientUpdateAccess(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request params")
 		return
 	}
-	mode := serviceaionui.ClientUpdateAccessMode()
 	userID := c.GetInt("aionui_user_id")
 	if userID <= 0 {
-		if mode == serviceaionui.ClientUpdateAccessModeEnforced {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "desktop authentication required"})
-			return
-		}
-		common.ApiSuccess(c, dtoaionui.ClientUpdateAccessResponse{Mode: mode, LegacyOpen: true})
+		common.ApiSuccess(c, dtoaionui.ClientUpdateAccessResponse{LegacyOpen: true})
 		return
 	}
 	result, err := clientPackageService().PrepareUpdateAccess(userID, c.GetString("aionui_device_id"), serviceaionui.ClientUpdateAccessInput{
@@ -100,7 +96,6 @@ func PrepareClientUpdateAccess(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, dtoaionui.ClientUpdateAccessResponse{
-		Mode:               result.Mode,
 		LegacyOpen:         result.LegacyOpen,
 		Eligible:           result.Eligible,
 		Release:            result.Release,
@@ -134,7 +129,7 @@ func AdminGetClientPackageDownloadURL(c *gin.Context) {
 		common.ApiErrorMsg(c, "invalid request params")
 		return
 	}
-	url, err := clientPackageService().DownloadURL(id)
+	url, err := clientPackageService().AdminDownloadURL(id)
 	if err != nil {
 		writeClientPackageError(c, err)
 		return

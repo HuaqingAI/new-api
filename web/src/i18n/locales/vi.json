@@ -6924,6 +6924,17 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Scheduled full sync": "Đồng bộ toàn bộ theo lịch",
+    "Run a complete DingTalk address book sync on a cron schedule.": "Chạy đồng bộ toàn bộ danh bạ DingTalk theo lịch Cron.",
+    "Enable scheduled full sync": "Bật đồng bộ toàn bộ theo lịch",
+    "The schedule requires address book sync to be enabled.": "Lịch chạy yêu cầu bật đồng bộ danh bạ.",
+    "Cron expression": "Biểu thức Cron",
+    "Five fields: minute hour day month weekday.": "Năm trường: phút giờ ngày tháng thứ.",
+    "Timezone": "Múi giờ",
+    "Use an IANA timezone such as Asia/Shanghai or UTC.": "Dùng múi giờ IANA như Asia/Shanghai hoặc UTC.",
+    "Next run": "Lần chạy tiếp theo",
+    "No next run scheduled": "Chưa lên lịch lần chạy tiếp theo",
+    "Last status": "Trạng thái gần nhất"
   }
 }

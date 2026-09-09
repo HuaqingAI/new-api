@@ -33,7 +33,6 @@ type ClientUpdateAccessRelease struct {
 }
 
 type ClientUpdateAccessResponse struct {
-	Mode               string                     `json:"mode"`
 	LegacyOpen         bool                       `json:"legacy_open,omitempty"`
 	Eligible           bool                       `json:"eligible"`
 	Release            *ClientUpdateAccessRelease `json:"release,omitempty"`

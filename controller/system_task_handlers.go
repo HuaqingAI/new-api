@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	enterpriseService "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
@@ -22,6 +23,27 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(dingTalkFullSyncDispatchHandler{})
+}
+
+type dingTalkFullSyncDispatchHandler struct{}
+
+func (dingTalkFullSyncDispatchHandler) Type() string {
+	return model.SystemTaskTypeDingTalkFullSyncDispatch
+}
+func (dingTalkFullSyncDispatchHandler) Enabled() bool           { return common.IsMasterNode }
+func (dingTalkFullSyncDispatchHandler) Interval() time.Duration { return 30 * time.Second }
+func (dingTalkFullSyncDispatchHandler) NewPayload() any         { return nil }
+func (dingTalkFullSyncDispatchHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	scheduleService := enterpriseService.NewDingTalkScheduleService(model.DB)
+	recovered, _ := scheduleService.RecoverPending(ctx)
+	result, err := scheduleService.DispatchDueFullSyncs(ctx, time.Now())
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	result.Recovered = recovered
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, result, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

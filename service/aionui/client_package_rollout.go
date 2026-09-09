@@ -72,13 +72,7 @@ func validateClientPackageRollout(mode string, scopes []ClientPackageScopeInput)
 }
 
 func validateClientPackagePublishedRollout(mode string, scopes []ClientPackageScopeInput) error {
-	if err := validateClientPackageRollout(mode, scopes); err != nil {
-		return err
-	}
-	if normalizeClientPackageRolloutMode(mode) == apmodel.ClientPackageRolloutModeTargeted && ClientUpdateAccessMode() != ClientUpdateAccessModeEnforced {
-		return ErrClientPackageRolloutInvalid
-	}
-	return nil
+	return validateClientPackageRollout(mode, scopes)
 }
 
 func (s *ClientPackageService) createClientPackageWithScopes(pkg *apmodel.ClientPackage, scopes []ClientPackageScopeInput) error {
@@ -193,9 +187,6 @@ func (s *ClientPackageService) UpdateRollout(id int, mode string, scopes []Clien
 				return ErrClientPackageNotFound
 			}
 			return err
-		}
-		if pkg.Status == apmodel.ClientPackageStatusPublished && mode == apmodel.ClientPackageRolloutModeTargeted && ClientUpdateAccessMode() != ClientUpdateAccessModeEnforced {
-			return ErrClientPackageRolloutInvalid
 		}
 		if err := tx.Model(&apmodel.ClientPackage{}).Where("id = ?", id).Update("rollout_mode", mode).Error; err != nil {
 			return err

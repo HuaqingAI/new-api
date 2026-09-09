@@ -73,6 +73,43 @@ func TestRedisIPRateLimiterThresholdTTLAndNamespace(t *testing.T) {
 	assert.True(t, redisServer.Exists(legacyKey), "the v2 counter must not touch an old list key")
 }
 
+func TestScopedCriticalRateLimitUsesIndependentCounters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+	previousEnabled := common.CriticalRateLimitEnable
+	previousLimit := common.CriticalRateLimitNum
+	previousDuration := common.CriticalRateLimitDuration
+	common.CriticalRateLimitEnable = true
+	common.CriticalRateLimitNum = 1
+	common.CriticalRateLimitDuration = 41
+	t.Cleanup(func() {
+		common.CriticalRateLimitEnable = previousEnabled
+		common.CriticalRateLimitNum = previousLimit
+		common.CriticalRateLimitDuration = previousDuration
+	})
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.GET("/auth/refresh", ScopedCriticalRateLimit("auth-session-refresh"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/oauth/dingtalk", ScopedCriticalRateLimit("oauth-dingtalk-callback"), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	remoteAddr := "192.0.2.70:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/auth/refresh", remoteAddr).Code)
+	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/auth/refresh", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/oauth/dingtalk", remoteAddr).Code)
+
+	refreshKey := redisIPRateLimitKey("CT:auth-session-refresh", "192.0.2.70")
+	dingTalkKey := redisIPRateLimitKey("CT:oauth-dingtalk-callback", "192.0.2.70")
+	assert.True(t, redisServer.Exists(refreshKey))
+	assert.True(t, redisServer.Exists(dingTalkKey))
+	assert.Equal(t, 41*time.Second, redisServer.TTL(refreshKey))
+	assert.Equal(t, 41*time.Second, redisServer.TTL(dingTalkKey))
+}
+
 func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	redisServer, _ := useRateLimitMiniRedis(t)

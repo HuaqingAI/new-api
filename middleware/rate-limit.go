@@ -178,6 +178,16 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// ScopedCriticalRateLimit reserves an independent IP quota for a critical
+// operation whose normal traffic must not be starved by another operation.
+// It retains the configured threshold and window of CriticalRateLimit.
+func ScopedCriticalRateLimit(scope string) func(c *gin.Context) {
+	if common.CriticalRateLimitEnable {
+		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT:"+scope)
+	}
+	return defNext
+}
+
 func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	if !common.CriticalRateLimitEnable {
 		return defNext

@@ -19,7 +19,6 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup())
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
-	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
@@ -46,7 +45,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)
 		// OAuth routes - specific routes must come before :provider wildcard
-		apiRouter.POST("/oauth/state", middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.TryUserAuth(), anonymousRequestBodyLimit, controller.GenerateOAuthCode)
+		apiRouter.POST("/oauth/state", middleware.ScopedCriticalRateLimit("oauth-state"), middleware.DisableCache(), middleware.TryUserAuth(), anonymousRequestBodyLimit, controller.GenerateOAuthCode)
 		apiRouter.POST("/oauth/email/bind/start", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("account-security"), middleware.EmailVerificationRateLimit(), middleware.DisableCache(), controller.EmailBindStart)
 		apiRouter.POST("/oauth/email/bind/resend", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("account-security"), middleware.EmailVerificationRateLimit(), middleware.DisableCache(), controller.EmailBindResend)
 		apiRouter.POST("/oauth/email/bind", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("account-security"), middleware.DisableCache(), controller.EmailBind)
@@ -56,7 +55,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TelegramLegacyAuth)
 		apiRouter.POST("/oauth/telegram/bind/start", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TelegramLegacyAuth)
 		apiRouter.GET("/oauth/telegram/bind/:flow_token", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TelegramLegacyAuth)
-		apiRouter.GET("/oauth/dingtalk", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.HandleDingTalkOAuth)
+		apiRouter.GET("/oauth/dingtalk", middleware.ScopedCriticalRateLimit("oauth-dingtalk-callback"), middleware.DisableCache(), controller.HandleDingTalkOAuth)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO, Telegram) - unified route
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.TryUserAuth(), controller.HandleOAuth)
 		RegisterAionUiDesktopAuthRouter(apiRouter)
@@ -78,8 +77,8 @@ func SetApiRouter(router *gin.Engine) {
 
 		userRoute := apiRouter.Group("/user")
 		{
-			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RefreshAuth)
-			userRoute.POST("/auth/logout", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.AuthLogout)
+			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.ScopedCriticalRateLimit("auth-session-refresh"), middleware.DisableCache(), controller.RefreshAuth)
+			userRoute.POST("/auth/logout", middleware.SessionCookieOriginGuard(), middleware.ScopedCriticalRateLimit("auth-session-logout"), middleware.DisableCache(), controller.AuthLogout)
 			userRoute.POST("/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Register)
 			userRoute.GET("/login/encryption-key", middleware.DisableCache(), controller.GetPasswordEncryptionKey)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Login)

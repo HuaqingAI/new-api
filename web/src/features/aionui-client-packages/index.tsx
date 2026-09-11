@@ -55,6 +55,7 @@ import {
   updateClientPackageStatus,
   uploadClientPackage,
 } from './api'
+import { ClientInstallations } from './components/client-installations'
 import {
   ClientPackageRolloutDialog,
   ClientPackageRolloutFields,
@@ -400,6 +401,7 @@ export function AionUiClientPackages() {
             </CardContent>
           </Card>
         </div>
+        <ClientInstallations />
         <ClientPackageRolloutDialog
           item={rolloutItem}
           onClose={() => setRolloutItem(null)}

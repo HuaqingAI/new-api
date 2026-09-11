@@ -81,6 +81,39 @@ export type ClientPackageLatestResponse = {
   }
 }
 
+export type AionUiClientInstallation = {
+  id: number
+  client_version: string
+  platform: AionUiClientPlatform
+  lan_ip: string
+  user_id: number
+  username: string
+  email: string
+  display_name: string
+  departments: string[]
+  first_heartbeat_at: string
+  last_heartbeat_at: string
+  is_active: boolean
+}
+
+export type ClientInstallationListResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: AionUiClientInstallation[]
+    total: number
+    page: number
+    page_size: number
+    summary: {
+      active_users: number
+      active_installations: number
+      total_users: number
+      total_installations: number
+      active_since: string
+    }
+  }
+}
+
 export type UploadClientPackagePayload = {
   platform: AionUiClientPlatform
   version: string
@@ -147,6 +180,28 @@ export async function getClientPackages(params: {
 export async function getLatestClientPackages() {
   const res = await api.get<ClientPackageLatestResponse>(
     '/api/aionui/client-packages/latest'
+  )
+  return res.data
+}
+
+export async function getClientInstallations(params: {
+  page: number
+  pageSize: number
+  keyword?: string
+  platform?: AionUiClientPlatform
+  version?: string
+}) {
+  const res = await api.get<ClientInstallationListResponse>(
+    '/api/aionui/clients',
+    {
+      params: {
+        page: params.page,
+        page_size: params.pageSize,
+        keyword: params.keyword || undefined,
+        platform: params.platform || undefined,
+        version: params.version || undefined,
+      },
+    }
   )
   return res.data
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	modelagentplatform "github.com/QuantumNous/new-api/model/agentplatform"
+	modelaionui "github.com/QuantumNous/new-api/model/aionui"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 
 	"github.com/glebarez/sqlite"
@@ -383,6 +384,9 @@ func migrateDB() error {
 		return err
 	}
 	if err := modelenterprise.Migrate(DB); err != nil {
+		return err
+	}
+	if err := modelaionui.Migrate(DB); err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {

@@ -50,6 +50,7 @@ func AionUiOptionalDesktopAuth() gin.HandlerFunc {
 }
 
 func setAionUiDesktopClaims(c *gin.Context, claims serviceaionui.DesktopTokenClaims) {
+	c.Set("id", claims.UserId)
 	c.Set("aionui_user_id", claims.UserId)
 	c.Set("aionui_username", claims.Username)
 	c.Set("aionui_email", claims.Email)

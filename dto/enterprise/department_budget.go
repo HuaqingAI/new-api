@@ -11,6 +11,18 @@ type CreateDepartmentBudgetRequest struct {
 	ExpiresAt      *int64 `json:"expires_at,omitempty"`
 }
 
+type CreatePublicBudgetRequest struct {
+	TenantId       *int   `json:"tenant_id,omitempty"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	TotalQuota     *int64 `json:"total_quota,omitempty"`
+	CycleQuota     *int64 `json:"cycle_quota,omitempty"`
+	CycleType      string `json:"cycle_type,omitempty"`
+	CycleStartedAt *int64 `json:"cycle_started_at,omitempty"`
+	CustomSeconds  *int64 `json:"custom_seconds,omitempty"`
+	ExpiresAt      *int64 `json:"expires_at,omitempty"`
+}
+
 type DepartmentBudgetLifecycleRequest struct {
 	TenantId *int `json:"tenant_id,omitempty"`
 }
@@ -38,6 +50,9 @@ type DepartmentBudgetItem struct {
 	TenantId       int     `json:"tenant_id"`
 	DepartmentId   int     `json:"department_id"`
 	DepartmentName string  `json:"department_name"`
+	ScopeType      string  `json:"scope_type"`
+	Name           string  `json:"name"`
+	IsPublic       bool    `json:"is_public"`
 	Type           string  `json:"type"`
 	Status         string  `json:"status"`
 	TotalQuota     int64   `json:"total_quota"`

@@ -213,6 +213,8 @@ func mapQuotaAllocationItemDTO(item entservice.QuotaAllocationItem) *dtoenterpri
 		ActorId:                item.ActorId,
 		CommittedQuota:         item.CommittedQuota,
 		BudgetTypeSnapshot:     item.BudgetTypeSnapshot,
+		BudgetScopeSnapshot:    item.BudgetScopeSnapshot,
+		BudgetNameSnapshot:     item.BudgetNameSnapshot,
 		CycleTypeSnapshot:      item.CycleTypeSnapshot,
 		CycleStartedAtSnapshot: item.CycleStartedAtSnapshot,
 		CustomSecondsSnapshot:  item.CustomSecondsSnapshot,
@@ -242,6 +244,8 @@ func writeQuotaAllocationError(c *gin.Context, err error) {
 		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationBudgetInactive)
 	case errors.Is(err, entservice.ErrQuotaAllocationQuotaInvalid):
 		common.ApiErrorMsg(c, i18n.MsgEnterpriseQuotaAllocationQuotaInvalid)
+	case errors.Is(err, entservice.ErrPublicBudgetManualAllocationDenied):
+		common.ApiErrorMsg(c, i18n.MsgInvalidParams)
 	case errors.Is(err, entservice.ErrQuotaAllocationBudgetInsufficient):
 		writeQuotaAllocationBudgetError(c, quotaAllocationBudgetReasonKey(err))
 	case errors.Is(err, entservice.ErrQuotaAllocationUserOutOfDepartment):

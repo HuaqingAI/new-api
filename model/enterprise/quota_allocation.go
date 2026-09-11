@@ -32,6 +32,8 @@ type QuotaAllocation struct {
 	ActorId                int    `json:"actor_id" gorm:"not null;default:0;index:idx_ent_quota_alloc_actor"`
 	CommittedQuota         int64  `json:"committed_quota" gorm:"type:bigint;not null;default:0"`
 	BudgetTypeSnapshot     string `json:"budget_type_snapshot" gorm:"type:varchar(32);not null;default:''"`
+	BudgetScopeSnapshot    string `json:"budget_scope_snapshot" gorm:"type:varchar(16);not null;default:''"`
+	BudgetNameSnapshot     string `json:"budget_name_snapshot" gorm:"type:varchar(128);not null;default:''"`
 	CycleTypeSnapshot      string `json:"cycle_type_snapshot" gorm:"type:varchar(16);not null;default:''"`
 	CycleStartedAtSnapshot int64  `json:"cycle_started_at_snapshot" gorm:"type:bigint;not null;default:0"`
 	CustomSecondsSnapshot  int64  `json:"custom_seconds_snapshot" gorm:"type:bigint;not null;default:0"`

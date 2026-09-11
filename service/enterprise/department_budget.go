@@ -64,6 +64,9 @@ type DepartmentBudgetItem struct {
 	TenantId       int                            `json:"tenant_id"`
 	DepartmentId   int                            `json:"department_id"`
 	DepartmentName string                         `json:"department_name"`
+	ScopeType      string                         `json:"scope_type"`
+	Name           string                         `json:"name"`
+	IsPublic       bool                           `json:"is_public"`
 	Type           string                         `json:"type"`
 	Status         string                         `json:"status"`
 	TotalQuota     int64                          `json:"total_quota"`
@@ -181,6 +184,7 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 		budget := entmodel.DepartmentBudget{
 			TenantId:     input.TenantId,
 			DepartmentId: departmentId,
+			ScopeType:    entmodel.DepartmentBudgetScopeDepartment,
 			Type:         budgetType,
 			Status:       entmodel.DepartmentBudgetStatusActive,
 			TotalQuota:   *input.TotalQuota,
@@ -211,6 +215,7 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 		budget := entmodel.DepartmentBudget{
 			TenantId:       input.TenantId,
 			DepartmentId:   departmentId,
+			ScopeType:      entmodel.DepartmentBudgetScopeDepartment,
 			Type:           budgetType,
 			Status:         entmodel.DepartmentBudgetStatusActive,
 			CycleQuota:     cycleQuota,
@@ -227,6 +232,181 @@ func (s *DepartmentBudgetService) Create(departmentId int, input CreateDepartmen
 	default:
 		return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidType
 	}
+}
+
+// CreatePublic creates a tenant-scoped budget pool that is not attached to a
+// department. Public pools are represented with department_id=0 so existing
+// non-null department associations remain compatible across databases.
+func (s *DepartmentBudgetService) CreatePublic(input CreateDepartmentBudgetInput, name string) (DepartmentBudgetItem, error) {
+	name = strings.TrimSpace(name)
+	if input.TenantId < 0 || name == "" || len([]rune(name)) > 128 {
+		return DepartmentBudgetItem{}, ErrPublicBudgetInvalidInput
+	}
+
+	budgetType := strings.TrimSpace(input.Type)
+	budget := entmodel.DepartmentBudget{
+		TenantId:     input.TenantId,
+		DepartmentId: 0,
+		ScopeType:    entmodel.DepartmentBudgetScopePublic,
+		Name:         name,
+		Type:         budgetType,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		ExpiresAt:    int64OrZero(input.ExpiresAt),
+	}
+	switch budgetType {
+	case entmodel.DepartmentBudgetTypeBalance:
+		if input.TotalQuota == nil || *input.TotalQuota <= 0 {
+			return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidQuota
+		}
+		budget.TotalQuota = *input.TotalQuota
+		budget.Remaining = *input.TotalQuota
+	case entmodel.DepartmentBudgetTypeSubscription:
+		cycleQuota := int64OrZero(input.CycleQuota)
+		if cycleQuota <= 0 {
+			return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidCycleQuota
+		}
+		cycleType := model.NormalizeResetPeriod(input.CycleType)
+		if cycleType == model.SubscriptionResetNever {
+			return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidCycleType
+		}
+		customSeconds := int64OrZero(input.CustomSeconds)
+		if cycleType == model.SubscriptionResetCustom && customSeconds <= 0 {
+			return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidCustomSeconds
+		}
+		cycleStartedAt := int64OrZero(input.CycleStartedAt)
+		if cycleStartedAt <= 0 {
+			return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidCycleStartedAt
+		}
+		budget.CycleQuota = cycleQuota
+		budget.Remaining = cycleQuota
+		budget.CycleType = cycleType
+		budget.CycleStartedAt = cycleStartedAt
+		budget.CustomSeconds = customSeconds
+	default:
+		return DepartmentBudgetItem{}, ErrDepartmentBudgetInvalidType
+	}
+	if err := s.db.Create(&budget).Error; err != nil {
+		return DepartmentBudgetItem{}, err
+	}
+	return s.mapDepartmentBudgetItem(budget, ""), nil
+}
+
+func (s *DepartmentBudgetService) ListPublic(tenantId int, includeInactive bool) ([]DepartmentBudgetItem, error) {
+	if tenantId < 0 {
+		return nil, ErrPublicBudgetInvalidInput
+	}
+	query := s.db.Where("tenant_id = ? AND department_id = ? AND scope_type = ?", tenantId, 0, entmodel.DepartmentBudgetScopePublic)
+	if !includeInactive {
+		query = query.Where("status = ?", entmodel.DepartmentBudgetStatusActive)
+	}
+	var budgets []entmodel.DepartmentBudget
+	if err := query.Order("id DESC").Find(&budgets).Error; err != nil {
+		return nil, err
+	}
+	items := make([]DepartmentBudgetItem, 0, len(budgets))
+	for _, budget := range budgets {
+		items = append(items, s.mapDepartmentBudgetItem(normalizeDepartmentBudgetForDisplay(budget), ""))
+	}
+	return items, nil
+}
+
+func (s *DepartmentBudgetService) GetPublic(tenantId int, budgetId int) (*DepartmentBudgetItem, error) {
+	if tenantId < 0 || budgetId <= 0 {
+		return nil, ErrPublicBudgetInvalidInput
+	}
+	var budget entmodel.DepartmentBudget
+	if err := s.db.Where("tenant_id = ? AND id = ? AND department_id = ? AND scope_type = ?", tenantId, budgetId, 0, entmodel.DepartmentBudgetScopePublic).First(&budget).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrPublicBudgetNotFound
+		}
+		return nil, err
+	}
+	item := s.mapDepartmentBudgetItem(budget, "")
+	return &item, nil
+}
+
+func (s *DepartmentBudgetService) UpdatePublicStatus(tenantId int, budgetId int, fromStatus string, toStatus string) (DepartmentBudgetItem, error) {
+	if tenantId < 0 || budgetId <= 0 {
+		return DepartmentBudgetItem{}, ErrPublicBudgetInvalidInput
+	}
+	var result DepartmentBudgetItem
+	err := withBudgetMutationRetry(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			var budget entmodel.DepartmentBudget
+			if err := model.LockForUpdate(tx).Where("tenant_id = ? AND id = ? AND department_id = ? AND scope_type = ?", tenantId, budgetId, 0, entmodel.DepartmentBudgetScopePublic).First(&budget).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return ErrPublicBudgetNotFound
+				}
+				return err
+			}
+			if budget.Status != fromStatus {
+				return ErrDepartmentBudgetStatusTransitionInvalid
+			}
+			budget.Status = toStatus
+			if err := tx.Save(&budget).Error; err != nil {
+				return err
+			}
+			result = s.mapDepartmentBudgetItem(budget, "")
+			return nil
+		})
+	})
+	return result, err
+}
+
+func (s *DepartmentBudgetService) ResizePublic(tenantId int, budgetId int, input ResizeDepartmentBudgetInput) (DepartmentBudgetItem, error) {
+	if tenantId < 0 || budgetId <= 0 {
+		return DepartmentBudgetItem{}, ErrPublicBudgetInvalidInput
+	}
+	var result DepartmentBudgetItem
+	err := withBudgetMutationRetry(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			var budget entmodel.DepartmentBudget
+			if err := model.LockForUpdate(tx).Where("tenant_id = ? AND id = ? AND department_id = ? AND scope_type = ?", tenantId, budgetId, 0, entmodel.DepartmentBudgetScopePublic).First(&budget).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return ErrPublicBudgetNotFound
+				}
+				return err
+			}
+			if budget.Status != entmodel.DepartmentBudgetStatusActive {
+				return ErrDepartmentBudgetStatusTransitionInvalid
+			}
+			switch budget.Type {
+			case entmodel.DepartmentBudgetTypeBalance:
+				if input.TotalQuota == nil || input.CycleQuota != nil {
+					return ErrDepartmentBudgetTypeImmutable
+				}
+				if *input.TotalQuota <= 0 {
+					return ErrDepartmentBudgetInvalidQuota
+				}
+				used := maxInt64(budget.TotalQuota-budget.Remaining, 0)
+				if *input.TotalQuota < used {
+					return ErrDepartmentBudgetResizeBelowCommitted
+				}
+				budget.TotalQuota = *input.TotalQuota
+				budget.Remaining = *input.TotalQuota - used
+			case entmodel.DepartmentBudgetTypeSubscription:
+				if input.CycleQuota == nil || input.TotalQuota != nil {
+					return ErrDepartmentBudgetTypeImmutable
+				}
+				if *input.CycleQuota <= 0 {
+					return ErrDepartmentBudgetInvalidCycleQuota
+				}
+				if *input.CycleQuota < budget.AllocatedTotal {
+					return ErrDepartmentBudgetResizeBelowCommitted
+				}
+				budget.CycleQuota = *input.CycleQuota
+				budget.Remaining = maxInt64(*input.CycleQuota-budget.AllocatedTotal, 0)
+			default:
+				return ErrDepartmentBudgetInvalidType
+			}
+			if err := tx.Save(&budget).Error; err != nil {
+				return err
+			}
+			result = s.mapDepartmentBudgetItem(budget, "")
+			return nil
+		})
+	})
+	return result, err
 }
 
 func (s *DepartmentBudgetService) Pause(departmentId int, budgetId int, tenantId int) (DepartmentBudgetItem, error) {
@@ -349,7 +529,7 @@ func (s *DepartmentBudgetService) updateStatus(departmentId int, budgetId int, t
 
 func (s *DepartmentBudgetService) lockBudget(tx *gorm.DB, tenantId int, departmentId int, budgetId int) (entmodel.DepartmentBudget, error) {
 	var budget entmodel.DepartmentBudget
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := model.LockForUpdate(tx).
 		Where("tenant_id = ? AND department_id = ? AND id = ?", tenantId, departmentId, budgetId).
 		First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -370,7 +550,7 @@ func (s *DepartmentBudgetService) ListByDepartment(departmentId int, tenantId in
 	}
 
 	var budgets []entmodel.DepartmentBudget
-	dbQuery := s.db.Where("tenant_id = ? AND department_id IN ?", tenantId, scope.DepartmentIds)
+	dbQuery := s.db.Where("tenant_id = ? AND department_id IN ? AND (scope_type = ? OR scope_type = '' OR scope_type IS NULL)", tenantId, scope.DepartmentIds, entmodel.DepartmentBudgetScopeDepartment)
 	if err := dbQuery.Find(&budgets).Error; err != nil {
 		return nil, err
 	}
@@ -489,6 +669,9 @@ func (s *DepartmentBudgetService) mapDepartmentBudgetItem(budget entmodel.Depart
 		TenantId:       budget.TenantId,
 		DepartmentId:   budget.DepartmentId,
 		DepartmentName: departmentName,
+		ScopeType:      budget.ScopeType,
+		Name:           budget.Name,
+		IsPublic:       budget.ScopeType == entmodel.DepartmentBudgetScopePublic,
 		Type:           budget.Type,
 		Status:         budget.Status,
 		TotalQuota:     budget.TotalQuota,
@@ -524,7 +707,7 @@ func (s *DepartmentBudgetService) loadDepartmentNames(tenantId int, departmentId
 
 func (s *DepartmentBudgetService) latestBudget(departmentId int, tenantId int) (*entmodel.DepartmentBudget, error) {
 	var budget entmodel.DepartmentBudget
-	err := s.db.Where("tenant_id = ? AND department_id = ?", tenantId, departmentId).Order("id DESC").First(&budget).Error
+	err := s.db.Where("tenant_id = ? AND department_id = ? AND (scope_type = ? OR scope_type = '' OR scope_type IS NULL)", tenantId, departmentId, entmodel.DepartmentBudgetScopeDepartment).Order("id DESC").First(&budget).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil

@@ -104,10 +104,7 @@ export function getDefaultExpandedDepartmentIds(
 ) {
   const lookup = createDepartmentLookup(nodes)
   const expanded = new Set<number>()
-  const selected =
-    departmentId && lookup.byId.has(departmentId)
-      ? lookup.byId.get(departmentId)!
-      : null
+  const selected = departmentId ? (lookup.byId.get(departmentId) ?? null) : null
 
   for (const ancestorId of getAncestorDepartmentIds(nodes, departmentId)) {
     expanded.add(ancestorId)
@@ -150,10 +147,8 @@ export function resolveDepartmentSelection(
   nodes: DepartmentTreeNode[],
   departmentId: number | null | undefined
 ): ResolvedDepartmentSelection {
-  const fallbackDepartmentId = getFirstVisibleDepartmentId(nodes)
   const selectedDepartment =
-    findDepartmentNode(nodes, departmentId) ??
-    findDepartmentNode(nodes, fallbackDepartmentId)
+    departmentId == null ? null : findDepartmentNode(nodes, departmentId)
 
   const normalizedDepartmentId = selectedDepartment?.id ?? null
 

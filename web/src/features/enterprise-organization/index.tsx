@@ -22,6 +22,8 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   Building2,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   Coins,
   CreditCard,
   History,
@@ -75,6 +77,7 @@ import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -106,6 +109,7 @@ import {
   decideQuotaRequest,
   deactivateDepartmentMember,
   createDepartmentBudget,
+  createPublicBudgetPool,
   denyDepartmentOwner,
   departmentBudgetDetailQueryScopeKey,
   departmentBudgetDetailQueryKey,
@@ -126,6 +130,7 @@ import {
   getQuotaAllocations,
   getQuotaRequestCapability,
   getQuotaRequests,
+  getPublicBudgetPools,
   governanceNotificationQueryKey,
   governanceTimelineQueryKey,
   getUserDepartments,
@@ -137,10 +142,14 @@ import {
   reclaimQuotaAllocation,
   renameDepartmentMember,
   resizeDepartmentBudget,
+  resizePublicBudgetPool,
   resumeDepartmentBudget,
+  resumePublicBudgetPool,
   resendGovernanceNotification,
   restoreDepartmentMember,
   pauseDepartmentBudget,
+  pausePublicBudgetPool,
+  publicBudgetPoolQueryKey,
   cancelQuotaAllocation,
   revokeDepartmentOwnerDeny,
   revokeDepartmentOwnerGrant,
@@ -273,7 +282,9 @@ export function normalizeEnterpriseOrganizationSearch(params: {
     params.search.dept_id
   )
   const normalizedDepartmentId = resolved.normalizedDepartmentId ?? undefined
-  const shouldResetBudget = params.search.dept_id !== normalizedDepartmentId
+  const shouldResetBudget =
+    params.search.dept_id !== normalizedDepartmentId ||
+    normalizedDepartmentId == null
 
   return {
     ...params.search,
@@ -445,7 +456,7 @@ export function createQuotaRequestSchema(t: (key: string) => string) {
       .positive({
         message: t('Choose a target budget pool'),
       }),
-    budget_mode: z.literal('department_budget'),
+    budget_mode: z.enum(['department_budget', 'public_budget']),
     requested_quota: z.coerce
       .number()
       .int()
@@ -697,7 +708,6 @@ export function EnterpriseOrganization() {
     if (!currentDepartment?.parent_id) return null
     return findDepartmentNode(departments, currentDepartment.parent_id)
   }, [currentDepartment, departments])
-
   const handleSelectDepartment = (departmentId: number) => {
     navigate({
       to: '/enterprise-organization',
@@ -804,6 +814,681 @@ export function EnterpriseOrganization() {
   )
 }
 
+function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const currentUser = useCurrentAuthUser()
+  const canManage = (currentUser?.role ?? 0) >= ROLE.ADMIN
+  const publicPoolsQuery = useQuery({
+    queryKey: publicBudgetPoolQueryKey(tenantId),
+    queryFn: async () => {
+      const result = await getPublicBudgetPools(tenantId, true)
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return result.data?.items ?? []
+    },
+    enabled: canManage,
+  })
+  const schema = useMemo(
+    () =>
+      z
+        .object({
+          name: z
+            .string()
+            .trim()
+            .min(1, t('Budget pool name is required'))
+            .max(128),
+          type: z.enum(['balance', 'subscription']),
+          total_quota: z.coerce.number().int().nonnegative(),
+          cycle_quota: z.coerce.number().int().nonnegative(),
+          cycle_type: z.enum(['daily', 'weekly', 'monthly', 'custom']),
+          cycle_started_at: z.string().trim(),
+          custom_seconds: z.coerce.number().int().nonnegative(),
+          expires_at: z.string().trim(),
+        })
+        .superRefine((value, ctx) => {
+          if (value.type === 'balance' && value.total_quota <= 0) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['total_quota'],
+              message: t('Budget pool capacity must be greater than 0'),
+            })
+          }
+          if (value.type === 'subscription') {
+            if (value.cycle_quota <= 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['cycle_quota'],
+                message: t('Budget pool capacity must be greater than 0'),
+              })
+            }
+            if (!value.cycle_started_at) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['cycle_started_at'],
+                message: t('Cycle start time is required'),
+              })
+            }
+            if (value.cycle_type === 'custom' && value.custom_seconds <= 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['custom_seconds'],
+                message: t('Custom cycle seconds must be greater than 0'),
+              })
+            }
+          }
+        }),
+    [t]
+  )
+  type PublicBudgetFormValues = z.infer<typeof schema>
+  const form = useForm<PublicBudgetFormValues>({
+    resolver: zodResolver(
+      schema
+    ) as unknown as Resolver<PublicBudgetFormValues>,
+    defaultValues: {
+      name: '',
+      type: 'balance',
+      total_quota: 0,
+      cycle_quota: 0,
+      cycle_type: 'monthly',
+      cycle_started_at: '',
+      custom_seconds: 0,
+      expires_at: '',
+    },
+  })
+  const budgetType = form.watch('type')
+  const createMutation = useMutation({
+    mutationFn: async (values: PublicBudgetFormValues) =>
+      createPublicBudgetPool({
+        tenant_id: tenantId,
+        name: values.name,
+        type: values.type,
+        total_quota: values.type === 'balance' ? values.total_quota : undefined,
+        cycle_quota:
+          values.type === 'subscription' ? values.cycle_quota : undefined,
+        cycle_type:
+          values.type === 'subscription' ? values.cycle_type : undefined,
+        cycle_started_at:
+          values.type === 'subscription' && values.cycle_started_at
+            ? Math.floor(new Date(values.cycle_started_at).getTime() / 1000)
+            : undefined,
+        custom_seconds:
+          values.type === 'subscription' ? values.custom_seconds : undefined,
+        expires_at: values.expires_at
+          ? Math.floor(new Date(values.expires_at).getTime() / 1000)
+          : undefined,
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      form.reset()
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: publicBudgetPoolQueryKey(tenantId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['enterprise', 'quota-request'],
+        }),
+      ])
+      toast.success(t('Public budget pool created'))
+    },
+  })
+  const statusMutation = useMutation({
+    mutationFn: async ({
+      id,
+      action,
+    }: {
+      id: number
+      action: 'pause' | 'resume'
+    }) =>
+      action === 'pause'
+        ? pausePublicBudgetPool(id, { tenant_id: tenantId })
+        : resumePublicBudgetPool(id, { tenant_id: tenantId }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: publicBudgetPoolQueryKey(tenantId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['enterprise', 'quota-request'],
+        }),
+      ])
+    },
+  })
+  const [resizeDrafts, setResizeDrafts] = useState<Record<number, string>>({})
+  const resizeMutation = useMutation({
+    mutationFn: async ({
+      poolId,
+      type,
+      quota,
+    }: {
+      poolId: number
+      type: string
+      quota: number
+    }) =>
+      resizePublicBudgetPool(poolId, {
+        tenant_id: tenantId,
+        ...(type === 'balance'
+          ? { total_quota: quota }
+          : { cycle_quota: quota }),
+      }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: publicBudgetPoolQueryKey(tenantId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['enterprise', 'quota-request'],
+        }),
+      ])
+      toast.success(t('Budget pool resized'))
+    },
+  })
+
+  if (!canManage) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('Public Budget Pools')}</CardTitle>
+        <CardDescription>
+          {t(
+            'Create and maintain tenant-wide budget pools for employee quota requests.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <Form {...form}>
+          <form
+            className='grid gap-3 md:grid-cols-2'
+            onSubmit={form.handleSubmit((values) =>
+              createMutation.mutate(values)
+            )}
+          >
+            <FormField
+              control={form.control}
+              name='name'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Name')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t('Public budget pool name')}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='type'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Type')}</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue>
+                          {formatBudgetType(field.value, t)}
+                        </SelectValue>
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value='balance'>
+                          {t('Balance Budget')}
+                        </SelectItem>
+                        <SelectItem value='subscription'>
+                          {t('Subscription Budget')}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {budgetType === 'balance' ? (
+              <FormField
+                control={form.control}
+                name='total_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Total Quota')}</FormLabel>
+                    <FormControl>
+                      <Input type='number' min={0} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <FormField
+                control={form.control}
+                name='cycle_quota'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Cycle Quota')}</FormLabel>
+                    <FormControl>
+                      <Input type='number' min={0} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            {budgetType === 'subscription' ? (
+              <>
+                <FormField
+                  control={form.control}
+                  name='cycle_type'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Cycle Type')}</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue>
+                              {formatBudgetCycleType(field.value, t)}
+                            </SelectValue>
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value='daily'>{t('Daily')}</SelectItem>
+                            <SelectItem value='weekly'>
+                              {t('Weekly')}
+                            </SelectItem>
+                            <SelectItem value='monthly'>
+                              {t('Monthly')}
+                            </SelectItem>
+                            <SelectItem value='custom'>
+                              {t('Custom')}
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='cycle_started_at'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Cycle Start Time')}</FormLabel>
+                      <FormControl>
+                        <Input type='datetime-local' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {form.watch('cycle_type') === 'custom' ? (
+                  <FormField
+                    control={form.control}
+                    name='custom_seconds'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
+                        <FormControl>
+                          <Input type='number' min={1} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            <FormField
+              control={form.control}
+              name='expires_at'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Expires At (optional)')}</FormLabel>
+                  <FormControl>
+                    <Input type='datetime-local' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className='flex items-end justify-end'>
+              <Button type='submit' disabled={createMutation.isPending}>
+                <Coins data-icon='inline-start' />
+                {t('Create Budget Pool')}
+              </Button>
+            </div>
+          </form>
+        </Form>
+        {publicPoolsQuery.isLoading ? (
+          <Skeleton className='h-24 w-full' />
+        ) : null}
+        {!publicPoolsQuery.isLoading &&
+        (publicPoolsQuery.data?.length ?? 0) === 0 ? (
+          <Empty className='min-h-[120px] border'>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <Landmark className='size-4' />
+              </EmptyMedia>
+              <EmptyTitle>{t('No public budget pools yet')}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        ) : null}
+        {(publicPoolsQuery.data?.length ?? 0) > 0 ? (
+          <div className='space-y-2'>
+            {publicPoolsQuery.data?.map((pool) => (
+              <div
+                key={pool.id}
+                className='grid gap-4 rounded-lg border p-3 md:grid-cols-[minmax(200px,0.7fr)_minmax(420px,1.3fr)] md:items-center'
+              >
+                <div className='min-w-0'>
+                  <div className='truncate font-medium'>
+                    {pool.name ||
+                      t('Budget #{{budgetId}}', { budgetId: pool.id })}
+                  </div>
+                  <div className='text-muted-foreground text-xs'>
+                    {formatBudgetType(pool.type, t)} ·{' '}
+                    <QuotaAmountDisplay quota={pool.remaining} /> ·{' '}
+                    {enterpriseBudgetStatusLabel(pool.status, t)}
+                  </div>
+                </div>
+                <div className='grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end'>
+                  {pool.status === 'active' ? (
+                    <div className='min-w-0'>
+                      <Label className='text-xs'>
+                        {pool.type === 'balance'
+                          ? t('Total Quota')
+                          : t('Cycle Quota')}
+                      </Label>
+                      <QuotaAmountInput
+                        className='mt-1'
+                        value={
+                          resizeDrafts[pool.id] ??
+                          String(
+                            pool.type === 'balance'
+                              ? pool.total_quota
+                              : pool.cycle_quota
+                          )
+                        }
+                        onChange={(value) =>
+                          setResizeDrafts((current) => ({
+                            ...current,
+                            [pool.id]: value,
+                          }))
+                        }
+                        disabled={resizeMutation.isPending}
+                        ariaLabel={
+                          pool.type === 'balance'
+                            ? t('Total Quota')
+                            : t('Cycle Quota')
+                        }
+                      />
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        className='mt-1 w-full'
+                        disabled={resizeMutation.isPending}
+                        onClick={() => {
+                          const quota = Number(
+                            resizeDrafts[pool.id] ??
+                              (pool.type === 'balance'
+                                ? pool.total_quota
+                                : pool.cycle_quota)
+                          )
+                          if (Number.isSafeInteger(quota) && quota > 0) {
+                            resizeMutation.mutate({
+                              poolId: pool.id,
+                              type: pool.type,
+                              quota,
+                            })
+                          }
+                        }}
+                      >
+                        <Settings className='size-4' />
+                        {t('Resize budget pool')}
+                      </Button>
+                    </div>
+                  ) : null}
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant='outline'
+                    disabled={statusMutation.isPending}
+                    className='sm:self-end'
+                    onClick={() =>
+                      statusMutation.mutate({
+                        id: pool.id,
+                        action: pool.status === 'active' ? 'pause' : 'resume',
+                      })
+                    }
+                  >
+                    {pool.status === 'active' ? (
+                      <PauseCircle className='size-4' />
+                    ) : (
+                      <PlayCircle className='size-4' />
+                    )}
+                    {pool.status === 'active'
+                      ? t('Pause budget pool')
+                      : t('Resume budget pool')}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function QuotaApprovalInbox({
+  departmentId,
+  tenantId,
+}: {
+  departmentId: number | null
+  tenantId: number
+}) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const userRole = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const [page, setPage] = useState(1)
+  const pageSize = 20
+
+  useEffect(() => {
+    setPage(1)
+  }, [departmentId, tenantId])
+
+  const query = useQuery({
+    queryKey: [
+      ...quotaRequestQueryScopeKey(departmentId ?? 0, tenantId),
+      'approval-inbox',
+      page,
+      pageSize,
+    ],
+    queryFn: async () => {
+      const result = await getQuotaRequests({
+        tenant_id: tenantId,
+        department_id: departmentId ?? undefined,
+        view: 'approval',
+        status: 'submitted',
+        page,
+        page_size: pageSize,
+      })
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return (
+        result.data ?? {
+          items: [],
+          total: 0,
+          page,
+          page_size: pageSize,
+        }
+      )
+    },
+  })
+  const items = query.data?.items ?? []
+  const total = query.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const [drafts, setDrafts] = useState<
+    Record<
+      number,
+      { approvedQuota: string; approvalReason: string; rejectedReason: string }
+    >
+  >({})
+  const decisionMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      payload,
+    }: {
+      requestId: number
+      payload: Parameters<typeof decideQuotaRequest>[1]
+    }) => decideQuotaRequest(requestId, { ...payload, tenant_id: tenantId }),
+    onSuccess: async (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Request failed'))
+        return
+      }
+      await queryClient.invalidateQueries({
+        queryKey: [
+          ...quotaRequestQueryScopeKey(departmentId ?? 0, tenantId),
+          'approval-inbox',
+        ],
+      })
+      toast.success(t('Quota request processed'))
+    },
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {departmentId
+            ? t('Department quota approvals')
+            : t('Quota approvals')}
+        </CardTitle>
+        <CardDescription>
+          {departmentId
+            ? t('Pending requests for the selected department.')
+            : t('Pending requests in your approval scope.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <QuotaRequestTable
+          items={items}
+          loading={query.isLoading}
+          decisionDrafts={drafts}
+          onDecisionDraftChange={(requestId, patch) =>
+            setDrafts((current) => ({
+              ...current,
+              [requestId]: {
+                approvedQuota:
+                  patch.approvedQuota ??
+                  current[requestId]?.approvedQuota ??
+                  '',
+                approvalReason:
+                  patch.approvalReason ??
+                  current[requestId]?.approvalReason ??
+                  '',
+                rejectedReason:
+                  patch.rejectedReason ??
+                  current[requestId]?.rejectedReason ??
+                  '',
+              },
+            }))
+          }
+          onApprove={(item) => {
+            const draft = drafts[item.id]
+            decisionMutation.mutate({
+              requestId: item.id,
+              payload: {
+                action: 'approve',
+                approved_quota: Number(
+                  draft?.approvedQuota || item.requested_quota
+                ),
+                approval_reason:
+                  draft?.approvalReason || t('Approved in workspace'),
+              },
+            })
+          }}
+          onReject={(item) => {
+            const draft = drafts[item.id]
+            decisionMutation.mutate({
+              requestId: item.id,
+              payload: {
+                action: 'reject',
+                rejected_reason:
+                  draft?.rejectedReason || t('Rejected in workspace'),
+              },
+            })
+          }}
+          pendingRequestId={
+            decisionMutation.isPending
+              ? (decisionMutation.variables?.requestId ?? null)
+              : null
+          }
+          canGovern={userRole >= ROLE.ADMIN || items.length > 0}
+        />
+        {total > pageSize ? (
+          <div className='mt-4 flex items-center justify-between border-t pt-3'>
+            <div className='text-muted-foreground text-sm'>
+              {t('Page {{current}} of {{total}}', {
+                current: page,
+                total: totalPages,
+              })}
+            </div>
+            <div className='flex items-center gap-2'>
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                aria-label={t('Previous page')}
+                title={t('Previous page')}
+                disabled={page <= 1 || query.isFetching}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                <ChevronLeft className='size-4' />
+              </Button>
+              <Button
+                type='button'
+                variant='outline'
+                size='icon'
+                aria-label={t('Next page')}
+                title={t('Next page')}
+                disabled={page >= totalPages || query.isFetching}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+              >
+                <ChevronRight className='size-4' />
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function EnterpriseOrganizationOverview() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -829,6 +1514,8 @@ export function EnterpriseOrganizationOverview() {
     if (!currentDepartment?.parent_id) return null
     return findDepartmentNode(departments, currentDepartment.parent_id)
   }, [currentDepartment, departments])
+  const tenantId =
+    currentDepartment?.tenant_id ?? departments[0]?.tenant_id ?? 0
   const normalizedSearch = useMemo(
     () =>
       normalizeEnterpriseOrganizationSearch({
@@ -953,7 +1640,9 @@ export function EnterpriseOrganizationOverview() {
               </CardContent>
             </Card>
             <div className='min-h-0 space-y-4 overflow-y-auto pr-1'>
-              {currentDepartment ? (
+              {!currentDepartment ? (
+                <PublicBudgetPoolPanel tenantId={tenantId} />
+              ) : (
                 <>
                   <DepartmentSummaryCard
                     department={currentDepartment}
@@ -964,9 +1653,11 @@ export function EnterpriseOrganizationOverview() {
                     budgetId={search.budget_id ?? undefined}
                   />
                 </>
-              ) : (
-                <EnterpriseOrganizationEmptyState />
               )}
+              <QuotaApprovalInbox
+                departmentId={currentDepartment?.id ?? null}
+                tenantId={tenantId}
+              />
             </div>
           </div>
         )}
@@ -3711,11 +4402,22 @@ export function DepartmentBudgetPanel({
     }
     if (
       effectiveBudgetId &&
-      quotaRequestForm.getValues('department_budget_id') !== effectiveBudgetId
+      !quotaRequestForm.getValues('department_budget_id')
     ) {
       quotaRequestForm.setValue('department_budget_id', effectiveBudgetId)
     }
   }, [departmentId, effectiveBudgetId, quotaRequestForm, formTenantId])
+
+  useEffect(() => {
+    if (!selectedQuotaRequestBudget) return
+    quotaRequestForm.setValue(
+      'budget_mode',
+      selectedQuotaRequestBudget.is_public ||
+        selectedQuotaRequestBudget.scope_type === 'public'
+        ? 'public_budget'
+        : 'department_budget'
+    )
+  }, [quotaRequestForm, selectedQuotaRequestBudget])
 
   useEffect(() => {
     if (!selectedBudget) {
@@ -4446,6 +5148,7 @@ export function DepartmentBudgetPanel({
                   : null
               }
               canGovern={Boolean(quotaRequestCapabilityQuery.data?.can_govern)}
+              showActions={false}
             />
           </CardContent>
         </Card>
@@ -4599,18 +5302,24 @@ function DepartmentBudgetCreateCard(props: {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue />
+                            <SelectValue>
+                              {formatBudgetCycleType(field.value, t)}
+                            </SelectValue>
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value='daily'>{t('Daily')}</SelectItem>
-                          <SelectItem value='weekly'>{t('Weekly')}</SelectItem>
-                          <SelectItem value='monthly'>
-                            {t('Monthly')}
-                          </SelectItem>
-                          <SelectItem value='custom'>
-                            {t('Custom (seconds)')}
-                          </SelectItem>
+                          <SelectGroup>
+                            <SelectItem value='daily'>{t('Daily')}</SelectItem>
+                            <SelectItem value='weekly'>
+                              {t('Weekly')}
+                            </SelectItem>
+                            <SelectItem value='monthly'>
+                              {t('Monthly')}
+                            </SelectItem>
+                            <SelectItem value='custom'>
+                              {t('Custom (seconds)')}
+                            </SelectItem>
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -5135,6 +5844,11 @@ function governanceActionLabel(actionType: string, t: (key: string) => string) {
       'Department budget resized',
     'enterprise.organization.department_budget.resize.reject':
       'Department budget resize rejected',
+    'enterprise.organization.public_budget.create':
+      'Public budget pool created',
+    'enterprise.organization.public_budget.pause': 'Budget pool paused',
+    'enterprise.organization.public_budget.resume': 'Budget pool resumed',
+    'enterprise.organization.public_budget.resize': 'Budget pool resized',
     'enterprise.organization.budget_delegation.create':
       'Budget delegation created',
     'enterprise.organization.budget_delegation.supersede':
@@ -5204,6 +5918,7 @@ export function QuotaRequestTable({
   onReject,
   pendingRequestId,
   canGovern,
+  showActions = true,
 }: {
   items: QuotaRequestItem[]
   loading: boolean
@@ -5227,6 +5942,7 @@ export function QuotaRequestTable({
   onReject: (item: QuotaRequestItem) => void
   pendingRequestId?: number | null
   canGovern: boolean
+  showActions?: boolean
 }) {
   const { t } = useTranslation()
 
@@ -5262,7 +5978,7 @@ export function QuotaRequestTable({
           <TableHead>{t('Approved Quota')}</TableHead>
           <TableHead>{t('Fulfillment')}</TableHead>
           <TableHead>{t('Status')}</TableHead>
-          <TableHead>{t('Actions')}</TableHead>
+          {showActions !== false ? <TableHead>{t('Actions')}</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -5286,9 +6002,19 @@ export function QuotaRequestTable({
                 {item.department_name || `#${item.department_id}`}
               </TableCell>
               <TableCell>
-                {t('Budget #{{budgetId}}', {
-                  budgetId: item.department_budget_id,
-                })}
+                <div className='space-y-1'>
+                  <div>
+                    {item.budget_name ||
+                      t('Budget #{{budgetId}}', {
+                        budgetId: item.department_budget_id,
+                      })}
+                  </div>
+                  {item.budget_scope_type === 'public' ? (
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Public budget pool')}
+                    </div>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell>
                 <QuotaAmountDisplay quota={item.requested_quota} />
@@ -5310,67 +6036,69 @@ export function QuotaRequestTable({
                   {enterpriseBudgetStatusLabel(item.status, t)}
                 </Badge>
               </TableCell>
-              <TableCell>
-                <div className='flex min-w-[360px] flex-col gap-2'>
-                  <div className='flex flex-wrap items-start gap-2'>
-                    <QuotaAmountInput
-                      className='w-[220px] flex-none'
-                      value={draft.approvedQuota}
-                      onChange={(value) =>
+              {showActions !== false ? (
+                <TableCell>
+                  <div className='flex min-w-[360px] flex-col gap-2'>
+                    <div className='flex flex-wrap items-start gap-2'>
+                      <QuotaAmountInput
+                        className='w-[220px] flex-none'
+                        value={draft.approvedQuota}
+                        onChange={(value) =>
+                          onDecisionDraftChange(item.id, {
+                            approvedQuota: value,
+                          })
+                        }
+                        disabled={!actionable}
+                        ariaLabel={t('Approved Quota')}
+                      />
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        disabled={!actionable || pendingRequestId === item.id}
+                        onClick={() => onApprove(item)}
+                      >
+                        {t('Approve')}
+                      </Button>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='outline'
+                        disabled={!actionable || pendingRequestId === item.id}
+                        onClick={() => onReject(item)}
+                      >
+                        {t('Reject')}
+                      </Button>
+                    </div>
+                    <Input
+                      value={draft.approvalReason}
+                      onChange={(event) =>
                         onDecisionDraftChange(item.id, {
-                          approvedQuota: value,
+                          approvalReason: event.target.value,
                         })
                       }
                       disabled={!actionable}
-                      ariaLabel={t('Approved Quota')}
+                      placeholder={t('Approval reason is required')}
+                      aria-label={t('Approval reason is required')}
                     />
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!actionable || pendingRequestId === item.id}
-                      onClick={() => onApprove(item)}
-                    >
-                      {t('Approve')}
-                    </Button>
-                    <Button
-                      type='button'
-                      size='sm'
-                      variant='outline'
-                      disabled={!actionable || pendingRequestId === item.id}
-                      onClick={() => onReject(item)}
-                    >
-                      {t('Reject')}
-                    </Button>
+                    <Input
+                      value={draft.rejectedReason}
+                      onChange={(event) =>
+                        onDecisionDraftChange(item.id, {
+                          rejectedReason: event.target.value,
+                        })
+                      }
+                      disabled={!actionable}
+                      placeholder={t(
+                        'Rejected requests must include a reject reason'
+                      )}
+                      aria-label={t(
+                        'Rejected requests must include a reject reason'
+                      )}
+                    />
                   </div>
-                  <Input
-                    value={draft.approvalReason}
-                    onChange={(event) =>
-                      onDecisionDraftChange(item.id, {
-                        approvalReason: event.target.value,
-                      })
-                    }
-                    disabled={!actionable}
-                    placeholder={t('Approval reason is required')}
-                    aria-label={t('Approval reason is required')}
-                  />
-                  <Input
-                    value={draft.rejectedReason}
-                    onChange={(event) =>
-                      onDecisionDraftChange(item.id, {
-                        rejectedReason: event.target.value,
-                      })
-                    }
-                    disabled={!actionable}
-                    placeholder={t(
-                      'Rejected requests must include a reject reason'
-                    )}
-                    aria-label={t(
-                      'Rejected requests must include a reject reason'
-                    )}
-                  />
-                </div>
-              </TableCell>
+                </TableCell>
+              ) : null}
             </TableRow>
           )
         })}

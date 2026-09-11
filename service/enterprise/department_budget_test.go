@@ -62,6 +62,44 @@ func TestCreateDepartmentBudgetSubscription(t *testing.T) {
 	require.Equal(t, "monthly", item.CycleType)
 }
 
+func TestPublicBudgetPoolLifecycle(t *testing.T) {
+	svc, _ := newDepartmentBudgetTestService(t)
+	total := int64(1000)
+
+	created, err := svc.CreatePublic(entservice.CreateDepartmentBudgetInput{
+		TenantId:   0,
+		Type:       entmodel.DepartmentBudgetTypeBalance,
+		TotalQuota: &total,
+	}, "Company wide")
+	require.NoError(t, err)
+	require.Equal(t, 0, created.DepartmentId)
+	require.Equal(t, entmodel.DepartmentBudgetScopePublic, created.ScopeType)
+	require.True(t, created.IsPublic)
+	require.Equal(t, "Company wide", created.Name)
+
+	activePools, err := svc.ListPublic(0, false)
+	require.NoError(t, err)
+	require.Len(t, activePools, 1)
+
+	paused, err := svc.UpdatePublicStatus(0, created.Id, entmodel.DepartmentBudgetStatusActive, entmodel.DepartmentBudgetStatusPaused)
+	require.NoError(t, err)
+	require.Equal(t, entmodel.DepartmentBudgetStatusPaused, paused.Status)
+	activePools, err = svc.ListPublic(0, false)
+	require.NoError(t, err)
+	require.Empty(t, activePools)
+
+	_, err = svc.UpdatePublicStatus(1, created.Id, entmodel.DepartmentBudgetStatusPaused, entmodel.DepartmentBudgetStatusActive)
+	require.ErrorIs(t, err, entservice.ErrPublicBudgetNotFound)
+
+	_, err = svc.UpdatePublicStatus(0, created.Id, entmodel.DepartmentBudgetStatusPaused, entmodel.DepartmentBudgetStatusActive)
+	require.NoError(t, err)
+	resizedTotal := int64(1500)
+	resized, err := svc.ResizePublic(0, created.Id, entservice.ResizeDepartmentBudgetInput{TotalQuota: &resizedTotal})
+	require.NoError(t, err)
+	require.Equal(t, int64(1500), resized.TotalQuota)
+	require.Equal(t, int64(1500), resized.Remaining)
+}
+
 func TestCreateDepartmentBudgetRejectsInvalidInputs(t *testing.T) {
 	svc, _ := newDepartmentBudgetTestService(t)
 	zero := int64(0)

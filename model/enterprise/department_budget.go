@@ -11,6 +11,9 @@ const (
 	DepartmentBudgetTypeBalance      = "balance"
 	DepartmentBudgetTypeSubscription = "subscription"
 
+	DepartmentBudgetScopeDepartment = "department"
+	DepartmentBudgetScopePublic     = "public"
+
 	DepartmentBudgetStatusActive  = "active"
 	DepartmentBudgetStatusPaused  = "paused"
 	DepartmentBudgetStatusRevoked = "revoked"
@@ -21,6 +24,8 @@ type DepartmentBudget struct {
 	Id             int    `json:"id" gorm:"primaryKey"`
 	TenantId       int    `json:"tenant_id" gorm:"not null;default:0;index:idx_ent_dept_budgets_tenant"`
 	DepartmentId   int    `json:"department_id" gorm:"not null;index:idx_ent_dept_budgets_department"`
+	ScopeType      string `json:"scope_type" gorm:"type:varchar(16);not null;default:'department';index:idx_ent_dept_budgets_scope"`
+	Name           string `json:"name" gorm:"type:varchar(128);not null;default:''"`
 	Type           string `json:"type" gorm:"type:varchar(32);not null;index:idx_ent_dept_budgets_type"`
 	Status         string `json:"status" gorm:"type:varchar(32);not null;index:idx_ent_dept_budgets_status"`
 	TotalQuota     int64  `json:"total_quota" gorm:"type:bigint;not null;default:0"`
@@ -50,6 +55,9 @@ func (b *DepartmentBudget) BeforeCreate(tx *gorm.DB) error {
 	}
 	if b.Type == "" {
 		b.Type = DepartmentBudgetTypeBalance
+	}
+	if b.ScopeType == "" {
+		b.ScopeType = DepartmentBudgetScopeDepartment
 	}
 	if b.Status == "" {
 		b.Status = DepartmentBudgetStatusActive

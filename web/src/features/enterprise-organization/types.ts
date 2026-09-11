@@ -154,6 +154,9 @@ export type DepartmentBudgetItem = {
   tenant_id: number
   department_id: number
   department_name: string
+  scope_type?: 'department' | 'public' | string
+  name?: string
+  is_public?: boolean
   type: DepartmentBudgetType
   status: DepartmentBudgetStatus | string
   total_quota: number
@@ -227,6 +230,8 @@ export type QuotaAllocationItem = {
   actor_id: number
   committed_quota: number
   budget_type_snapshot: string
+  budget_scope_snapshot?: string
+  budget_name_snapshot?: string
   cycle_type_snapshot: string
   cycle_started_at_snapshot: number
   custom_seconds_snapshot: number
@@ -257,6 +262,8 @@ export type QuotaRequestItem = {
   department_id: number
   department_name: string
   department_budget_id: number
+  budget_scope_type?: string
+  budget_name?: string
   budget_mode: string
   requester_user_id: number
   requester_username: string
@@ -288,6 +295,10 @@ export type QuotaRequestResponse = {
 
 export type QuotaRequestListResponse = {
   items: QuotaRequestItem[]
+  total?: number
+  page?: number
+  page_size?: number
+  scope?: string
 }
 
 export type GovernanceTimelineTarget = {
@@ -446,6 +457,10 @@ export type CreateDepartmentBudgetPayload = {
   cycle_started_at?: number
   custom_seconds?: number
   expires_at?: number
+}
+
+export type CreatePublicBudgetPoolPayload = CreateDepartmentBudgetPayload & {
+  name: string
 }
 
 export type DepartmentBudgetLifecyclePayload = {

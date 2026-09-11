@@ -97,7 +97,7 @@ function createWalletQuotaRequestSchema(t: (key: string) => string) {
       .positive({
         message: t('Choose a target budget pool'),
       }),
-    budget_mode: z.literal('department_budget'),
+    budget_mode: z.enum(['department_budget', 'public_budget']),
     requested_quota: z.coerce
       .number()
       .int()
@@ -229,6 +229,20 @@ export function EmployeeQuotaRequestCard({
     if (selectedBudgetId && !resolvedBudgetId) {
       form.setValue('department_budget_id', 0)
     }
+  }, [budgets, form, selectedBudgetId])
+
+  useEffect(() => {
+    if (!selectedBudgetId) {
+      form.setValue('budget_mode', 'department_budget')
+      return
+    }
+    const selected = budgets.find((item) => item.id === selectedBudgetId)
+    form.setValue(
+      'budget_mode',
+      selected?.is_public || selected?.scope_type === 'public'
+        ? 'public_budget'
+        : 'department_budget'
+    )
   }, [budgets, form, selectedBudgetId])
 
   const submitMutation = useMutation({

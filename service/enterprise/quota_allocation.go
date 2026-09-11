@@ -85,6 +85,8 @@ type QuotaAllocationItem struct {
 	ActorId                int    `json:"actor_id"`
 	CommittedQuota         int64  `json:"committed_quota"`
 	BudgetTypeSnapshot     string `json:"budget_type_snapshot"`
+	BudgetScopeSnapshot    string `json:"budget_scope_snapshot"`
+	BudgetNameSnapshot     string `json:"budget_name_snapshot"`
 	CycleTypeSnapshot      string `json:"cycle_type_snapshot"`
 	CycleStartedAtSnapshot int64  `json:"cycle_started_at_snapshot"`
 	CustomSecondsSnapshot  int64  `json:"custom_seconds_snapshot"`
@@ -128,7 +130,7 @@ func (s *QuotaAllocationService) Create(input CreateQuotaAllocationInput) (Quota
 	var result QuotaAllocationItem
 	err := s.withAllocationRetry(func() error {
 		return s.db.Transaction(func(tx *gorm.DB) error {
-			allocation, err := s.createTx(tx, input)
+			allocation, err := s.createTx(tx, input, false)
 			if err != nil {
 				return err
 			}
@@ -139,15 +141,31 @@ func (s *QuotaAllocationService) Create(input CreateQuotaAllocationInput) (Quota
 	return result, err
 }
 
-func (s *QuotaAllocationService) createTx(tx *gorm.DB, input CreateQuotaAllocationInput) (QuotaAllocationItem, error) {
+func (s *QuotaAllocationService) createTx(tx *gorm.DB, input CreateQuotaAllocationInput, allowPublicBudget bool) (QuotaAllocationItem, error) {
 	var budget entmodel.DepartmentBudget
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
-		Where("id = ? AND tenant_id = ? AND department_id = ?", input.DepartmentBudgetId, input.TenantId, input.DepartmentId).
+	if err := model.LockForUpdate(tx).
+		Where("id = ? AND tenant_id = ?", input.DepartmentBudgetId, input.TenantId).
 		First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return QuotaAllocationItem{}, ErrQuotaAllocationBudgetNotFound
 		}
 		return QuotaAllocationItem{}, err
+	}
+	scopeType := budget.ScopeType
+	if scopeType == "" {
+		scopeType = entmodel.DepartmentBudgetScopeDepartment
+	}
+	if scopeType == entmodel.DepartmentBudgetScopeDepartment && budget.DepartmentId != input.DepartmentId {
+		return QuotaAllocationItem{}, ErrQuotaAllocationBudgetNotFound
+	}
+	if scopeType != entmodel.DepartmentBudgetScopeDepartment && scopeType != entmodel.DepartmentBudgetScopePublic {
+		return QuotaAllocationItem{}, ErrQuotaAllocationBudgetNotFound
+	}
+	if scopeType == entmodel.DepartmentBudgetScopePublic && budget.DepartmentId != 0 {
+		return QuotaAllocationItem{}, ErrQuotaAllocationBudgetNotFound
+	}
+	if scopeType == entmodel.DepartmentBudgetScopePublic && !allowPublicBudget {
+		return QuotaAllocationItem{}, ErrPublicBudgetManualAllocationDenied
 	}
 	if budget.Status != entmodel.DepartmentBudgetStatusActive {
 		return QuotaAllocationItem{}, ErrQuotaAllocationBudgetInactive
@@ -171,6 +189,8 @@ func (s *QuotaAllocationService) createTx(tx *gorm.DB, input CreateQuotaAllocati
 		ActorId:                input.ActorId,
 		CommittedQuota:         input.CommittedQuota,
 		BudgetTypeSnapshot:     budget.Type,
+		BudgetScopeSnapshot:    scopeType,
+		BudgetNameSnapshot:     budget.Name,
 		CycleTypeSnapshot:      budget.CycleType,
 		CycleStartedAtSnapshot: budget.CycleStartedAt,
 		CustomSecondsSnapshot:  budget.CustomSeconds,
@@ -264,6 +284,9 @@ func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) 
 			if err != nil {
 				return err
 			}
+			if allocation.BudgetScopeSnapshot == entmodel.DepartmentBudgetScopePublic || budget.ScopeType == entmodel.DepartmentBudgetScopePublic {
+				return ErrPublicBudgetManualAllocationDenied
+			}
 			if allocation.ProcessedAt > 0 || allocation.Status == entmodel.QuotaAllocationStatusSuperseded || allocation.Status == entmodel.QuotaAllocationStatusRevoked || allocation.Status == entmodel.QuotaAllocationStatusExpired || allocation.Status == entmodel.QuotaAllocationStatusClosed {
 				result = mapQuotaAllocationItem(allocation)
 				return nil
@@ -283,6 +306,10 @@ func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) 
 			if err := tx.Where("id = ?", budget.Id).First(&refreshedBudget).Error; err != nil {
 				return err
 			}
+			refreshedScopeType := refreshedBudget.ScopeType
+			if refreshedScopeType == "" {
+				refreshedScopeType = entmodel.DepartmentBudgetScopeDepartment
+			}
 			reservation, err := s.reserveBudgetQuota(tx, refreshedBudget, input.NewCommittedQuota)
 			if err != nil {
 				return err
@@ -300,6 +327,8 @@ func (s *QuotaAllocationService) Supersede(input SupersedeQuotaAllocationInput) 
 				ActorId:                input.ActorId,
 				CommittedQuota:         input.NewCommittedQuota,
 				BudgetTypeSnapshot:     refreshedBudget.Type,
+				BudgetScopeSnapshot:    refreshedScopeType,
+				BudgetNameSnapshot:     refreshedBudget.Name,
 				CycleTypeSnapshot:      refreshedBudget.CycleType,
 				CycleStartedAtSnapshot: refreshedBudget.CycleStartedAt,
 				CustomSecondsSnapshot:  refreshedBudget.CustomSeconds,
@@ -441,7 +470,7 @@ func (s *QuotaAllocationService) governProcessedAllocation(mode quotaAllocationG
 
 func (s *QuotaAllocationService) lockGovernedAllocation(tx *gorm.DB, tenantId int, departmentId int, allocationId int) (entmodel.QuotaAllocation, model.UserSubscription, entmodel.DepartmentBudget, error) {
 	var allocation entmodel.QuotaAllocation
-	query := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ? AND department_id = ?", allocationId, departmentId)
+	query := model.LockForUpdate(tx).Where("id = ? AND department_id = ?", allocationId, departmentId)
 	if tenantId > 0 {
 		query = query.Where("tenant_id = ?", tenantId)
 	}
@@ -452,8 +481,8 @@ func (s *QuotaAllocationService) lockGovernedAllocation(tx *gorm.DB, tenantId in
 		return entmodel.QuotaAllocation{}, model.UserSubscription{}, entmodel.DepartmentBudget{}, err
 	}
 	var budget entmodel.DepartmentBudget
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
-		Where("id = ? AND department_id = ?", allocation.DepartmentBudgetId, allocation.DepartmentId).
+	if err := model.LockForUpdate(tx).
+		Where("id = ? AND tenant_id = ?", allocation.DepartmentBudgetId, allocation.TenantId).
 		First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return entmodel.QuotaAllocation{}, model.UserSubscription{}, entmodel.DepartmentBudget{}, ErrQuotaAllocationBudgetNotFound
@@ -461,7 +490,7 @@ func (s *QuotaAllocationService) lockGovernedAllocation(tx *gorm.DB, tenantId in
 		return entmodel.QuotaAllocation{}, model.UserSubscription{}, entmodel.DepartmentBudget{}, err
 	}
 	var wallet model.UserSubscription
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := model.LockForUpdate(tx).
 		Where("id = ? AND source_allocation_id = ?", allocation.WalletId, allocation.Id).
 		First(&wallet).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -638,6 +667,8 @@ func mapQuotaAllocationItem(allocation entmodel.QuotaAllocation) QuotaAllocation
 		ActorId:                allocation.ActorId,
 		CommittedQuota:         allocation.CommittedQuota,
 		BudgetTypeSnapshot:     allocation.BudgetTypeSnapshot,
+		BudgetScopeSnapshot:    allocation.BudgetScopeSnapshot,
+		BudgetNameSnapshot:     allocation.BudgetNameSnapshot,
 		CycleTypeSnapshot:      allocation.CycleTypeSnapshot,
 		CycleStartedAtSnapshot: allocation.CycleStartedAtSnapshot,
 		CustomSecondsSnapshot:  allocation.CustomSecondsSnapshot,

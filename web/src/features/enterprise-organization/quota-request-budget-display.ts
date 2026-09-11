@@ -59,9 +59,15 @@ export function getQuotaRequestBudgetDisplayText(
   t: (key: string, options?: Record<string, unknown>) => string
 ): QuotaRequestBudgetDisplayText {
   const remaining = formatEnterpriseQuotaAmount(item.remaining, t)
+  const isPublic = item.is_public ?? item.scope_type === 'public'
+  const poolName = item.name?.trim() || `#${item.id}`
   return {
-    departmentName: item.department_name || `#${item.department_id}`,
-    identity: t('Budget #{{budgetId}}', { budgetId: item.id }),
+    departmentName: isPublic
+      ? t('Public budget pool')
+      : item.department_name || `#${item.department_id}`,
+    identity: item.name?.trim()
+      ? poolName
+      : t('Budget #{{budgetId}}', { budgetId: item.id }),
     typeLabel: formatBudgetType(item.type, t),
     remainingLabel: t('Remaining {{remaining}}', {
       remaining: remaining.quotaLabel,

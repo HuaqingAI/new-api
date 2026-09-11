@@ -19,11 +19,15 @@ type DecideQuotaRequestRequest struct {
 }
 
 type QuotaRequestListQuery struct {
-	TenantId        *int  `form:"tenant_id"`
-	DepartmentId    *int  `form:"department_id"`
-	RequesterUserId *int  `form:"requester_user_id"`
-	IncludePending  *bool `form:"include_pending,omitempty"`
-	Limit           *int  `form:"limit,omitempty"`
+	TenantId        *int   `form:"tenant_id"`
+	DepartmentId    *int   `form:"department_id"`
+	RequesterUserId *int   `form:"requester_user_id"`
+	IncludePending  *bool  `form:"include_pending,omitempty"`
+	Limit           *int   `form:"limit,omitempty"`
+	View            string `form:"view,omitempty"`
+	Status          string `form:"status,omitempty"`
+	Page            *int   `form:"page,omitempty"`
+	PageSize        *int   `form:"page_size,omitempty"`
 }
 
 type QuotaRequestItem struct {
@@ -32,6 +36,8 @@ type QuotaRequestItem struct {
 	DepartmentId         int    `json:"department_id"`
 	DepartmentName       string `json:"department_name"`
 	DepartmentBudgetId   int    `json:"department_budget_id"`
+	BudgetScopeType      string `json:"budget_scope_type"`
+	BudgetName           string `json:"budget_name"`
 	BudgetMode           string `json:"budget_mode"`
 	RequesterUserId      int    `json:"requester_user_id"`
 	RequesterUsername    string `json:"requester_username"`
@@ -62,7 +68,11 @@ type QuotaRequestResponse struct {
 }
 
 type QuotaRequestListResponse struct {
-	Items []QuotaRequestItem `json:"items"`
+	Items    []QuotaRequestItem `json:"items"`
+	Total    int64              `json:"total,omitempty"`
+	Page     int                `json:"page,omitempty"`
+	PageSize int                `json:"page_size,omitempty"`
+	Scope    string             `json:"scope,omitempty"`
 }
 
 type QuotaRequestCapabilityBudgetItem struct {
@@ -70,6 +80,9 @@ type QuotaRequestCapabilityBudgetItem struct {
 	TenantId       int     `json:"tenant_id"`
 	DepartmentId   int     `json:"department_id"`
 	DepartmentName string  `json:"department_name"`
+	ScopeType      string  `json:"scope_type"`
+	Name           string  `json:"name"`
+	IsPublic       bool    `json:"is_public"`
 	Type           string  `json:"type"`
 	Status         string  `json:"status"`
 	TotalQuota     int64   `json:"total_quota"`

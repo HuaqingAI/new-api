@@ -25,6 +25,7 @@ import type {
   BudgetDelegationResponse,
   CreateBudgetDelegationPayload,
   CreateDepartmentBudgetPayload,
+  CreatePublicBudgetPoolPayload,
   DepartmentBudgetLifecyclePayload,
   CreateQuotaAllocationPayload,
   DecideQuotaRequestPayload,
@@ -61,6 +62,14 @@ export const enterpriseOrganizationQueryKey = [
   'enterprise',
   'organization',
 ] as const
+
+export function publicBudgetPoolQueryKey(tenantId: number) {
+  return [
+    ...enterpriseOrganizationQueryKey,
+    'public-budget-pools',
+    tenantId,
+  ] as const
+}
 
 export function departmentBudgetQueryKey(
   departmentId: number,
@@ -421,6 +430,59 @@ export async function resizeDepartmentBudget(
   return res.data
 }
 
+export async function getPublicBudgetPools(
+  tenantId?: number,
+  includeInactive = true
+): Promise<ApiResponse<DepartmentBudgetListResponse>> {
+  const res = await api.get('/api/enterprise/public-budget-pools', {
+    params: {
+      ...(tenantId === undefined ? {} : { tenant_id: tenantId }),
+      include_inactive: includeInactive,
+    },
+  })
+  return res.data
+}
+
+export async function createPublicBudgetPool(
+  payload: CreatePublicBudgetPoolPayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post('/api/enterprise/public-budget-pools', payload)
+  return res.data
+}
+
+export async function pausePublicBudgetPool(
+  budgetId: number,
+  payload: DepartmentBudgetLifecyclePayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/public-budget-pools/${budgetId}/pause`,
+    payload
+  )
+  return res.data
+}
+
+export async function resumePublicBudgetPool(
+  budgetId: number,
+  payload: DepartmentBudgetLifecyclePayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/public-budget-pools/${budgetId}/resume`,
+    payload
+  )
+  return res.data
+}
+
+export async function resizePublicBudgetPool(
+  budgetId: number,
+  payload: ResizeDepartmentBudgetPayload
+): Promise<ApiResponse<DepartmentBudgetResponse>> {
+  const res = await api.post(
+    `/api/enterprise/public-budget-pools/${budgetId}/resize`,
+    payload
+  )
+  return res.data
+}
+
 export async function getQuotaAllocations(
   departmentBudgetId: number,
   tenantId: number | undefined,
@@ -493,6 +555,10 @@ export async function getQuotaRequests(params: {
   requester_user_id?: number
   include_pending?: boolean
   limit?: number
+  view?: 'history' | 'approval'
+  status?: string
+  page?: number
+  page_size?: number
 }): Promise<ApiResponse<QuotaRequestListResponse>> {
   const res = await api.get('/api/enterprise/quota-requests', {
     params,

@@ -14,6 +14,7 @@ import (
 
 const (
 	QuotaRequestBudgetModeDepartment = "department_budget"
+	QuotaRequestBudgetModePublic     = "public_budget"
 	QuotaRequestActionApprove        = "approve"
 	QuotaRequestActionReject         = "reject"
 )
@@ -50,6 +51,10 @@ type QuotaRequestListQuery struct {
 	ActorId         int
 	IncludePending  bool
 	Limit           int
+	View            string
+	Status          string
+	Page            int
+	PageSize        int
 }
 
 type QuotaRequestItem struct {
@@ -58,6 +63,8 @@ type QuotaRequestItem struct {
 	DepartmentId         int    `json:"department_id"`
 	DepartmentName       string `json:"department_name"`
 	DepartmentBudgetId   int    `json:"department_budget_id"`
+	BudgetScopeType      string `json:"budget_scope_type"`
+	BudgetName           string `json:"budget_name"`
 	BudgetMode           string `json:"budget_mode"`
 	RequesterUserId      int    `json:"requester_user_id"`
 	RequesterUsername    string `json:"requester_username"`
@@ -93,6 +100,11 @@ type QuotaRequestCapability struct {
 	Budgets   []DepartmentBudgetItem `json:"budgets"`
 }
 
+type QuotaRequestListResult struct {
+	Items []QuotaRequestItem `json:"items"`
+	Total int64              `json:"total"`
+}
+
 func NewQuotaRequestService(db *gorm.DB) *QuotaRequestService {
 	return &QuotaRequestService{db: db}
 }
@@ -105,7 +117,7 @@ func (s *QuotaRequestService) Submit(input SubmitQuotaRequestInput) (QuotaReques
 	if mode == "" {
 		return QuotaRequestItem{}, ErrQuotaRequestBudgetModeRequired
 	}
-	if mode != QuotaRequestBudgetModeDepartment {
+	if mode != QuotaRequestBudgetModeDepartment && mode != QuotaRequestBudgetModePublic {
 		return QuotaRequestItem{}, ErrQuotaRequestBudgetModeRequired
 	}
 	if err := s.ensureRequesterContext(input); err != nil {
@@ -129,22 +141,36 @@ func (s *QuotaRequestService) Submit(input SubmitQuotaRequestInput) (QuotaReques
 				return err
 			}
 		}
+		var budget entmodel.DepartmentBudget
+		if err := tx.Where("id = ? AND tenant_id = ?", input.DepartmentBudgetId, input.TenantId).First(&budget).Error; err != nil {
+			return ErrQuotaRequestBudgetPoolRequired
+		}
+		resolvedMode := QuotaRequestBudgetModeDepartment
+		scopeType := budget.ScopeType
+		if scopeType == "" {
+			scopeType = entmodel.DepartmentBudgetScopeDepartment
+		}
+		if scopeType == entmodel.DepartmentBudgetScopePublic {
+			resolvedMode = QuotaRequestBudgetModePublic
+		}
 		ownerCount, fallback, err := s.resolveApprovalRouteSnapshotTx(tx, input.TenantId, input.DepartmentId)
 		if err != nil {
 			return err
 		}
 		record := entmodel.QuotaRequest{
-			TenantId:           input.TenantId,
-			DepartmentId:       input.DepartmentId,
-			DepartmentBudgetId: input.DepartmentBudgetId,
-			BudgetMode:         mode,
-			RequesterUserId:    input.RequesterUserId,
-			RequestedQuota:     input.RequestedQuota,
-			RequestReason:      strings.TrimSpace(input.RequestReason),
-			Status:             entmodel.QuotaRequestStatusSubmitted,
-			IdempotencyKey:     strings.TrimSpace(input.IdempotencyKey),
-			OwnerCountSnapshot: ownerCount,
-			Fallback:           fallback,
+			TenantId:            input.TenantId,
+			DepartmentId:        input.DepartmentId,
+			DepartmentBudgetId:  input.DepartmentBudgetId,
+			BudgetMode:          resolvedMode,
+			BudgetScopeSnapshot: scopeType,
+			BudgetNameSnapshot:  budget.Name,
+			RequesterUserId:     input.RequesterUserId,
+			RequestedQuota:      input.RequestedQuota,
+			RequestReason:       strings.TrimSpace(input.RequestReason),
+			Status:              entmodel.QuotaRequestStatusSubmitted,
+			IdempotencyKey:      strings.TrimSpace(input.IdempotencyKey),
+			OwnerCountSnapshot:  ownerCount,
+			Fallback:            fallback,
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return err
@@ -180,6 +206,15 @@ func (s *QuotaRequestService) GetByID(tenantId int, requestId int, actorId int) 
 }
 
 func (s *QuotaRequestService) List(query QuotaRequestListQuery) ([]QuotaRequestItem, error) {
+	result, err := s.ListPage(query)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (s *QuotaRequestService) ListPage(query QuotaRequestListQuery) (QuotaRequestListResult, error) {
+	result := QuotaRequestListResult{Items: []QuotaRequestItem{}}
 	db := s.db.Model(&entmodel.QuotaRequest{})
 	if query.TenantId > 0 {
 		db = db.Where("enterprise_quota_requests.tenant_id = ?", query.TenantId)
@@ -200,30 +235,60 @@ func (s *QuotaRequestService) List(query QuotaRequestListQuery) ([]QuotaRequestI
 			entmodel.QuotaRequestStatusExpired,
 		})
 	}
+	approvalView := strings.EqualFold(strings.TrimSpace(query.View), "approval")
+	status := query.Status
+	if approvalView {
+		status = entmodel.QuotaRequestStatusSubmitted
+	}
+	if status != "" {
+		db = db.Where("enterprise_quota_requests.status = ?", status)
+	}
 	if query.ActorId > 0 && !model.IsAdmin(query.ActorId) {
 		manageable, err := NewPermissionService(s.db).ListManageableDepartmentIds(query.ActorId, query.TenantId)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
-		if len(manageable) == 0 {
+		if approvalView {
+			if len(manageable) == 0 {
+				return result, nil
+			}
+			db = db.Where("enterprise_quota_requests.department_id IN ?", manageable)
+		} else if len(manageable) == 0 {
 			db = db.Where("enterprise_quota_requests.requester_user_id = ?", query.ActorId)
 		} else {
 			db = db.Where("(enterprise_quota_requests.requester_user_id = ? OR enterprise_quota_requests.department_id IN ?)", query.ActorId, manageable)
 		}
 	}
 	limit := query.Limit
+	if query.PageSize > 0 {
+		limit = query.PageSize
+	}
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
+	if err := db.Count(&result.Total).Error; err != nil {
+		return result, err
+	}
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	const maxQuotaRequestPage = 1_000_000
+	if page > maxQuotaRequestPage {
+		page = maxQuotaRequestPage
+	}
+	if page > 1 {
+		db = db.Offset((page - 1) * limit)
+	}
 	rows, err := s.listRows(db.Order("enterprise_quota_requests.id DESC").Limit(limit))
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	items := make([]QuotaRequestItem, 0, len(rows))
+	result.Items = make([]QuotaRequestItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, mapQuotaRequestItem(row))
+		result.Items = append(result.Items, mapQuotaRequestItem(row))
 	}
-	return items, nil
+	return result, nil
 }
 
 func (s *QuotaRequestService) Approve(input DecideQuotaRequestInput) (QuotaRequestDecisionResult, error) {
@@ -266,11 +331,12 @@ func (s *QuotaRequestService) GetCapability(tenantId int, departmentId int, acto
 		}
 		capability.CanGovern = allowed
 	}
-	if !capability.CanSubmit && !capability.CanGovern {
+	if !capability.CanSubmit {
 		return capability, nil
 	}
 
-	budgets, err := NewDepartmentBudgetService(s.db).ListByDepartment(departmentId, tenantId, DepartmentBudgetListQuery{})
+	budgetService := NewDepartmentBudgetService(s.db)
+	budgets, err := budgetService.ListByDepartment(departmentId, tenantId, DepartmentBudgetListQuery{})
 	if err != nil {
 		return capability, err
 	}
@@ -283,6 +349,20 @@ func (s *QuotaRequestService) GetCapability(tenantId int, departmentId int, acto
 		}
 		capability.Budgets = append(capability.Budgets, item)
 	}
+	publicBudgets, err := budgetService.ListPublic(tenantId, false)
+	if err != nil {
+		return capability, err
+	}
+	capability.Budgets = append(capability.Budgets, publicBudgets...)
+	sort.SliceStable(capability.Budgets, func(i, j int) bool {
+		if capability.Budgets[i].IsPublic != capability.Budgets[j].IsPublic {
+			return !capability.Budgets[i].IsPublic
+		}
+		if capability.Budgets[i].Name != capability.Budgets[j].Name {
+			return capability.Budgets[i].Name < capability.Budgets[j].Name
+		}
+		return capability.Budgets[i].Id < capability.Budgets[j].Id
+	})
 	return capability, nil
 }
 
@@ -369,7 +449,7 @@ func (s *QuotaRequestService) decide(input DecideQuotaRequestInput) (QuotaReques
 				ActorId:            input.ActorId,
 				CommittedQuota:     approvedQuota,
 				Reason:             reason,
-			})
+			}, true)
 			if err != nil {
 				return err
 			}
@@ -424,12 +504,7 @@ func (s *QuotaRequestService) ensureRequesterContext(input SubmitQuotaRequestInp
 		return err
 	}
 	var budget entmodel.DepartmentBudget
-	if err := s.db.Where(
-		"id = ? AND tenant_id = ? AND department_id = ?",
-		input.DepartmentBudgetId,
-		input.TenantId,
-		input.DepartmentId,
-	).First(&budget).Error; err != nil {
+	if err := s.db.Where("id = ? AND tenant_id = ?", input.DepartmentBudgetId, input.TenantId).First(&budget).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrQuotaRequestBudgetPoolRequired
 		}
@@ -437,6 +512,25 @@ func (s *QuotaRequestService) ensureRequesterContext(input SubmitQuotaRequestInp
 	}
 	if budget.Status != entmodel.DepartmentBudgetStatusActive {
 		return ErrQuotaAllocationBudgetInactive
+	}
+	scopeType := budget.ScopeType
+	if scopeType == "" {
+		scopeType = entmodel.DepartmentBudgetScopeDepartment
+	}
+	if scopeType == entmodel.DepartmentBudgetScopePublic {
+		if budget.DepartmentId != 0 {
+			return ErrQuotaRequestBudgetScopeMismatch
+		}
+		if input.BudgetMode != "" && input.BudgetMode != QuotaRequestBudgetModePublic {
+			return ErrQuotaRequestBudgetScopeMismatch
+		}
+		return nil
+	}
+	if scopeType != entmodel.DepartmentBudgetScopeDepartment || budget.DepartmentId != input.DepartmentId {
+		return ErrQuotaRequestBudgetScopeMismatch
+	}
+	if input.BudgetMode != "" && input.BudgetMode != QuotaRequestBudgetModeDepartment {
+		return ErrQuotaRequestBudgetScopeMismatch
 	}
 	return nil
 }
@@ -495,7 +589,7 @@ func (s *QuotaRequestService) ensureActorCanView(item QuotaRequestItem, actorId 
 
 func (s *QuotaRequestService) lockRequest(tx *gorm.DB, tenantId int, requestId int) (entmodel.QuotaRequest, error) {
 	var record entmodel.QuotaRequest
-	query := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", requestId)
+	query := model.LockForUpdate(tx).Where("id = ?", requestId)
 	if tenantId > 0 {
 		query = query.Where("tenant_id = ?", tenantId)
 	}
@@ -569,6 +663,8 @@ func mapQuotaRequestItem(row quotaRequestListRow) QuotaRequestItem {
 		DepartmentName:       row.DepartmentName,
 		DepartmentBudgetId:   row.DepartmentBudgetId,
 		BudgetMode:           row.BudgetMode,
+		BudgetScopeType:      row.BudgetScopeSnapshot,
+		BudgetName:           row.BudgetNameSnapshot,
 		RequesterUserId:      row.RequesterUserId,
 		RequesterUsername:    row.RequesterUsername,
 		RequesterDisplayName: row.RequesterDisplayName,

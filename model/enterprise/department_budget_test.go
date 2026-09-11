@@ -10,6 +10,20 @@ import (
 	"gorm.io/gorm"
 )
 
+type legacyDepartmentBudgetScopeMigration struct {
+	Id           int `gorm:"primaryKey"`
+	TenantId     int
+	DepartmentId int
+	Type         string
+	Status       string
+	TotalQuota   int64
+	Remaining    int64
+}
+
+func (legacyDepartmentBudgetScopeMigration) TableName() string {
+	return DepartmentBudget{}.TableName()
+}
+
 func TestDepartmentBudgetBeforeCreateDefaultsBalance(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -23,6 +37,7 @@ func TestDepartmentBudgetBeforeCreateDefaultsBalance(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&budget).Error)
 	require.Equal(t, DepartmentBudgetStatusActive, budget.Status)
+	require.Equal(t, DepartmentBudgetScopeDepartment, budget.ScopeType)
 	require.Equal(t, int64(200), budget.Remaining)
 	require.Equal(t, "never", budget.CycleType)
 	require.NotZero(t, budget.CreatedAt)
@@ -55,6 +70,8 @@ func TestDepartmentBudgetMigrationCreatesExpectedColumns(t *testing.T) {
 	for _, column := range []string{
 		"tenant_id",
 		"department_id",
+		"scope_type",
+		"name",
 		"type",
 		"status",
 		"total_quota",
@@ -68,6 +85,29 @@ func TestDepartmentBudgetMigrationCreatesExpectedColumns(t *testing.T) {
 	} {
 		require.True(t, db.Migrator().HasColumn(&DepartmentBudget{}, column), column)
 	}
+}
+
+func TestDepartmentBudgetMigrationBackfillsLegacyScope(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&legacyDepartmentBudgetScopeMigration{}))
+	require.NoError(t, db.Create(&legacyDepartmentBudgetScopeMigration{
+		Id:           1,
+		TenantId:     2,
+		DepartmentId: 10,
+		Type:         DepartmentBudgetTypeBalance,
+		Status:       DepartmentBudgetStatusActive,
+		TotalQuota:   100,
+		Remaining:    100,
+	}).Error)
+
+	require.NoError(t, Migrate(db))
+	require.NoError(t, Migrate(db))
+
+	var budget DepartmentBudget
+	require.NoError(t, db.First(&budget, 1).Error)
+	require.Equal(t, DepartmentBudgetScopeDepartment, budget.ScopeType)
+	require.Empty(t, budget.Name)
 }
 
 func TestDepartmentBudgetTextFieldsDoNotDeclareDatabaseDefaults(t *testing.T) {

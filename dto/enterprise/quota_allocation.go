@@ -26,6 +26,8 @@ type QuotaAllocationItem struct {
 	ActorId                int    `json:"actor_id"`
 	CommittedQuota         int64  `json:"committed_quota"`
 	BudgetTypeSnapshot     string `json:"budget_type_snapshot"`
+	BudgetScopeSnapshot    string `json:"budget_scope_snapshot"`
+	BudgetNameSnapshot     string `json:"budget_name_snapshot"`
 	CycleTypeSnapshot      string `json:"cycle_type_snapshot"`
 	CycleStartedAtSnapshot int64  `json:"cycle_started_at_snapshot"`
 	CustomSecondsSnapshot  int64  `json:"custom_seconds_snapshot"`

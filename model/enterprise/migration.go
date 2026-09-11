@@ -6,6 +6,13 @@ type dingTalkConfigAutoSyncColumn struct {
 	AutoSyncOnLogin bool `gorm:"column:auto_sync_on_login;type:boolean;not null;default:false"`
 }
 
+type departmentBudgetScopeColumns struct {
+	ScopeType string `gorm:"column:scope_type;type:varchar(16);not null;default:'department';index:idx_ent_dept_budgets_scope"`
+	Name      string `gorm:"column:name;type:varchar(128);not null;default:''"`
+}
+
+func (departmentBudgetScopeColumns) TableName() string { return DepartmentBudget{}.TableName() }
+
 type dingTalkScheduleConfigColumns struct {
 	ScheduledFullSyncEnabled    bool   `gorm:"column:scheduled_full_sync_enabled;type:boolean;not null;default:false"`
 	ScheduledFullSyncCron       string `gorm:"column:scheduled_full_sync_cron;type:varchar(128);not null;default:'0 0 * * *'"`
@@ -44,6 +51,9 @@ func (dingTalkSyncConflictTriggerSourceColumn) TableName() string {
 }
 
 func Migrate(db *gorm.DB) error {
+	if err := ensureDepartmentBudgetScopeColumns(db); err != nil {
+		return err
+	}
 	if err := ensureDepartmentRoleOwnerColumnsAndIndexes(db); err != nil {
 		return err
 	}
@@ -108,6 +118,26 @@ func Migrate(db *gorm.DB) error {
 		return err
 	}
 	return normalizeDepartmentBudgetRemaining(db)
+}
+
+func ensureDepartmentBudgetScopeColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&DepartmentBudget{}) {
+		return nil
+	}
+	for _, column := range []string{"scope_type", "name"} {
+		if db.Migrator().HasColumn(&DepartmentBudget{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&departmentBudgetScopeColumns{}, column); err != nil {
+			return err
+		}
+	}
+	if err := db.Model(&DepartmentBudget{}).
+		Where("scope_type = '' OR scope_type IS NULL").
+		UpdateColumn("scope_type", DepartmentBudgetScopeDepartment).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 type dingTalkAutoSyncMigrationColumns struct {
@@ -436,6 +466,8 @@ func ensureQuotaAllocationLifecycleColumns(db *gorm.DB) error {
 		return nil
 	}
 	columns := []string{
+		"budget_scope_snapshot",
+		"budget_name_snapshot",
 		"superseded_by_id",
 		"supersedes_allocation_id",
 		"revoke_reason",
@@ -450,7 +482,9 @@ func ensureQuotaAllocationLifecycleColumns(db *gorm.DB) error {
 			return err
 		}
 	}
-	return nil
+	return db.Model(&QuotaAllocation{}).
+		Where("budget_scope_snapshot = '' OR budget_scope_snapshot IS NULL").
+		UpdateColumn("budget_scope_snapshot", DepartmentBudgetScopeDepartment).Error
 }
 
 func ensureQuotaRequestColumns(db *gorm.DB) error {
@@ -462,6 +496,8 @@ func ensureQuotaRequestColumns(db *gorm.DB) error {
 		"department_id",
 		"department_budget_id",
 		"budget_mode",
+		"budget_scope_snapshot",
+		"budget_name_snapshot",
 		"requester_user_id",
 		"requested_quota",
 		"approved_quota",
@@ -490,5 +526,7 @@ func ensureQuotaRequestColumns(db *gorm.DB) error {
 			return err
 		}
 	}
-	return nil
+	return db.Model(&QuotaRequest{}).
+		Where("budget_scope_snapshot = '' OR budget_scope_snapshot IS NULL").
+		UpdateColumn("budget_scope_snapshot", DepartmentBudgetScopeDepartment).Error
 }

@@ -613,7 +613,7 @@ describe('Enterprise organization department tree workflow', () => {
         treeLoaded: true,
       }),
       {
-        dept_id: 1,
+        dept_id: undefined,
         budget_id: undefined,
       }
     )
@@ -657,9 +657,9 @@ describe('Enterprise organization department tree workflow', () => {
     assert.deepEqual(resolved.requiredExpandedIds, [1, 2])
 
     const fallback = resolveDepartmentSelection(tree, 999)
-    assert.equal(fallback.selectedDepartmentId, 1)
-    assert.equal(fallback.normalizedDepartmentId, 1)
-    assert.deepEqual(fallback.requiredExpandedIds, [1])
+    assert.equal(fallback.selectedDepartmentId, null)
+    assert.equal(fallback.normalizedDepartmentId, null)
+    assert.deepEqual(fallback.requiredExpandedIds, [])
   })
 
   test('syncs and toggles expanded department state without dropping required ancestors', () => {
@@ -828,6 +828,24 @@ describe('Enterprise organization department tree workflow', () => {
         assert.match(html, new RegExp(escapeRegExp(expected)))
       }
     }
+
+    const publicBudget = departmentBudget({
+      id: 32,
+      department_id: 0,
+      department_name: '',
+      is_public: true,
+      name: 'Company wide',
+      type: 'balance',
+      remaining: 400,
+    })
+    assert.deepEqual(getQuotaRequestBudgetDisplayText(publicBudget, i18n.t), {
+      departmentName: 'Public budget pool',
+      identity: 'Company wide',
+      typeLabel: 'Balance Budget',
+      remainingLabel: 'Remaining 400 quota',
+      remainingAmountLabel: 'Approx. $0.0008',
+      statusLabel: 'Active',
+    })
   })
 
   test('formats subordinate budget options for both the list and selected value', () => {
@@ -2423,6 +2441,8 @@ describe('Enterprise organization department tree workflow', () => {
               id: 1,
               status: 'submitted',
               department_budget_id: 11,
+              budget_scope_type: 'public',
+              budget_name: 'Company wide',
             }),
             quotaRequest({
               id: 2,
@@ -2451,7 +2471,8 @@ describe('Enterprise organization department tree workflow', () => {
       'Requester',
       'Target Budget Pool',
       'Engineering',
-      'Budget #11',
+      'Company wide',
+      'Public budget pool',
       'Budget #12',
       'Budget #13',
       '120 quota',
@@ -2471,6 +2492,7 @@ describe('Enterprise organization department tree workflow', () => {
     assert.doesNotMatch(html, />fulfilled</)
     assert.doesNotMatch(html, />mystery_status</)
     assert.doesNotMatch(html, />#11</)
+    assert.doesNotMatch(html, /Budget #11/)
   })
 
   test('renders quota request governance surfaces with zh locale without internal status fallback', async () => {
@@ -2825,6 +2847,9 @@ function departmentBudget(
     tenant_id: overrides.tenant_id ?? 0,
     department_id: overrides.department_id ?? 2,
     department_name: overrides.department_name ?? 'Engineering',
+    scope_type: overrides.scope_type,
+    name: overrides.name,
+    is_public: overrides.is_public,
     type: overrides.type ?? 'subscription',
     status: overrides.status ?? 'active',
     total_quota: overrides.total_quota ?? 0,
@@ -2938,6 +2963,8 @@ function quotaRequest(
     department_id: overrides.department_id ?? 2,
     department_name: overrides.department_name ?? 'Engineering',
     department_budget_id: overrides.department_budget_id ?? 11,
+    budget_scope_type: overrides.budget_scope_type,
+    budget_name: overrides.budget_name,
     budget_mode: overrides.budget_mode ?? 'department_budget',
     requester_user_id: overrides.requester_user_id ?? 2001,
     requester_username: overrides.requester_username ?? 'alice',

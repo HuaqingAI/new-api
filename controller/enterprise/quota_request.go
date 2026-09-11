@@ -76,23 +76,41 @@ func ListQuotaRequests(c *gin.Context) {
 	if !ok {
 		return
 	}
-	items, err := entservice.NewQuotaRequestService(model.DB).List(entservice.QuotaRequestListQuery{
+	page := valueOrZero(query.Page)
+	if page <= 0 {
+		page = 1
+	}
+	if page > 1_000_000 {
+		page = 1_000_000
+	}
+	pageSize := valueOrZero(query.PageSize)
+	if pageSize <= 0 {
+		pageSize = valueOrZero(query.Limit)
+	}
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 100
+	}
+	pageResult, err := entservice.NewQuotaRequestService(model.DB).ListPage(entservice.QuotaRequestListQuery{
 		TenantId:        tenantId,
 		DepartmentId:    valueOrZero(query.DepartmentId),
 		RequesterUserId: valueOrZero(query.RequesterUserId),
 		ActorId:         c.GetInt("id"),
 		IncludePending:  query.IncludePending == nil || *query.IncludePending,
-		Limit:           valueOrZero(query.Limit),
+		Limit:           pageSize,
+		View:            query.View,
+		Status:          query.Status,
+		Page:            page,
+		PageSize:        pageSize,
 	})
 	if err != nil {
 		writeQuotaRequestError(c, err)
 		return
 	}
-	result := make([]dtoenterprise.QuotaRequestItem, 0, len(items))
-	for _, item := range items {
+	result := make([]dtoenterprise.QuotaRequestItem, 0, len(pageResult.Items))
+	for _, item := range pageResult.Items {
 		result = append(result, *mapQuotaRequestItemDTO(item))
 	}
-	common.ApiSuccess(c, dtoenterprise.QuotaRequestListResponse{Items: result})
+	common.ApiSuccess(c, dtoenterprise.QuotaRequestListResponse{Items: result, Total: pageResult.Total, Page: page, PageSize: pageSize, Scope: query.View})
 }
 
 func GetQuotaRequest(c *gin.Context) {
@@ -135,6 +153,9 @@ func GetQuotaRequestCapability(c *gin.Context) {
 			TenantId:       item.TenantId,
 			DepartmentId:   item.DepartmentId,
 			DepartmentName: item.DepartmentName,
+			ScopeType:      item.ScopeType,
+			Name:           item.Name,
+			IsPublic:       item.IsPublic,
 			Type:           item.Type,
 			Status:         item.Status,
 			TotalQuota:     item.TotalQuota,
@@ -249,6 +270,8 @@ func mapQuotaRequestItemDTO(item entservice.QuotaRequestItem) *dtoenterprise.Quo
 		DepartmentId:         item.DepartmentId,
 		DepartmentName:       item.DepartmentName,
 		DepartmentBudgetId:   item.DepartmentBudgetId,
+		BudgetScopeType:      item.BudgetScopeType,
+		BudgetName:           item.BudgetName,
 		BudgetMode:           item.BudgetMode,
 		RequesterUserId:      item.RequesterUserId,
 		RequesterUsername:    item.RequesterUsername,
@@ -283,6 +306,8 @@ func writeQuotaRequestError(c *gin.Context, err error) {
 	case errors.Is(err, entservice.ErrQuotaRequestBudgetModeRequired):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaRequestBudgetModeRequired)
 	case errors.Is(err, entservice.ErrQuotaRequestBudgetPoolRequired):
+		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaRequestBudgetPoolRequired)
+	case errors.Is(err, entservice.ErrQuotaRequestBudgetScopeMismatch):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaRequestBudgetPoolRequired)
 	case errors.Is(err, entservice.ErrQuotaRequestDepartmentMembershipRequired):
 		common.ApiErrorI18n(c, i18n.MsgEnterpriseQuotaRequestDepartmentMembershipRequired)

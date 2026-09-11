@@ -575,6 +575,31 @@ func TestSupersedeQuotaAllocationCreatesNewWalletAndClosesOldChain(t *testing.T)
 	require.Equal(t, int64(630), budget.Remaining)
 }
 
+func TestDirectPublicBudgetAllocationIsRejected(t *testing.T) {
+	svc, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           4,
+		TenantId:     0,
+		DepartmentId: 0,
+		ScopeType:    entmodel.DepartmentBudgetScopePublic,
+		Name:         "Company wide",
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   1000,
+		Remaining:    1000,
+	}).Error)
+
+	_, err := svc.Create(entservice.CreateQuotaAllocationInput{
+		TenantId:           0,
+		DepartmentBudgetId: 4,
+		DepartmentId:       1,
+		TargetUserId:       2001,
+		ActorId:            1001,
+		CommittedQuota:     300,
+	})
+	require.ErrorIs(t, err, entservice.ErrPublicBudgetManualAllocationDenied)
+}
+
 func TestCancelQuotaAllocationRefundsOnlyRecoverableBalance(t *testing.T) {
 	svc, db := newQuotaAllocationTestService(t)
 

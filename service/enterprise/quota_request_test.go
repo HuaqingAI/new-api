@@ -359,6 +359,198 @@ func TestQuotaRequestCapabilityReturnsMixedActiveBudgetPools(t *testing.T) {
 	require.Equal(t, entmodel.DepartmentBudgetStatusActive, resumedByID[3])
 }
 
+func TestQuotaRequestPublicBudgetPoolCanBeRequestedAndAllocated(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           4,
+		TenantId:     0,
+		DepartmentId: 0,
+		ScopeType:    entmodel.DepartmentBudgetScopePublic,
+		Name:         "Company wide",
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   500,
+		Remaining:    500,
+	}).Error)
+	reqSvc := entservice.NewQuotaRequestService(db)
+
+	capability, err := reqSvc.GetCapability(0, 1, 2001)
+	require.NoError(t, err)
+	require.Len(t, capability.Budgets, 2)
+	require.Equal(t, 1, capability.Budgets[0].Id)
+	require.Equal(t, 4, capability.Budgets[1].Id)
+	require.True(t, capability.Budgets[1].IsPublic)
+	require.Equal(t, "Company wide", capability.Budgets[1].Name)
+
+	item, err := reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 4,
+		BudgetMode:         entservice.QuotaRequestBudgetModePublic,
+		RequesterUserId:    2001,
+		RequestedQuota:     120,
+	})
+	require.NoError(t, err)
+	require.Equal(t, entservice.QuotaRequestBudgetModePublic, item.BudgetMode)
+	require.Equal(t, entmodel.DepartmentBudgetScopePublic, item.BudgetScopeType)
+	require.Equal(t, "Company wide", item.BudgetName)
+
+	result, err := reqSvc.Approve(entservice.DecideQuotaRequestInput{
+		TenantId:       0,
+		RequestId:      item.Id,
+		ActorId:        1001,
+		ApprovedQuota:  quotaRequestInt64Ptr(120),
+		ApprovalReason: "approved from public pool",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.Allocation)
+	require.Equal(t, entmodel.DepartmentBudgetScopePublic, result.Allocation.BudgetScopeSnapshot)
+	require.Equal(t, "Company wide", result.Allocation.BudgetNameSnapshot)
+
+	_, err = entservice.NewQuotaAllocationService(db).Supersede(entservice.SupersedeQuotaAllocationInput{
+		TenantId:          0,
+		DepartmentId:      1,
+		AllocationId:      result.Allocation.Id,
+		ActorId:           1001,
+		NewCommittedQuota: 100,
+	})
+	require.ErrorIs(t, err, entservice.ErrPublicBudgetManualAllocationDenied)
+
+	var publicBudget entmodel.DepartmentBudget
+	require.NoError(t, db.Where("id = ?", 4).First(&publicBudget).Error)
+	require.Equal(t, int64(380), publicBudget.Remaining)
+}
+
+func TestQuotaRequestPublicBudgetRequiresMatchingModeAndMembership(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Create(&entmodel.DepartmentBudget{
+		Id:           4,
+		TenantId:     0,
+		DepartmentId: 0,
+		ScopeType:    entmodel.DepartmentBudgetScopePublic,
+		Name:         "Company wide",
+		Type:         entmodel.DepartmentBudgetTypeBalance,
+		Status:       entmodel.DepartmentBudgetStatusActive,
+		TotalQuota:   500,
+		Remaining:    500,
+	}).Error)
+	reqSvc := entservice.NewQuotaRequestService(db)
+
+	_, err := reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 4,
+		BudgetMode:         entservice.QuotaRequestBudgetModeDepartment,
+		RequesterUserId:    2001,
+		RequestedQuota:     100,
+	})
+	require.ErrorIs(t, err, entservice.ErrQuotaRequestBudgetScopeMismatch)
+
+	require.NoError(t, db.Delete(&entmodel.UserDepartment{}, "tenant_id = ? AND user_id = ? AND department_id = ?", 0, 2001, 1).Error)
+	capability, err := reqSvc.GetCapability(0, 1, 2001)
+	require.NoError(t, err)
+	require.False(t, capability.CanSubmit)
+	require.Empty(t, capability.Budgets)
+
+	_, err = reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 4,
+		BudgetMode:         entservice.QuotaRequestBudgetModePublic,
+		RequesterUserId:    2001,
+		RequestedQuota:     100,
+	})
+	require.ErrorIs(t, err, entservice.ErrQuotaRequestDepartmentMembershipRequired)
+}
+
+func TestQuotaRequestApprovalViewRestrictsDepartmentOwnerScope(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	seedQuotaAllocationMember(t, db, 2002, 1)
+	require.NoError(t, db.Create(&model.User{
+		Id:       3001,
+		Username: "dept-owner",
+		Password: "pwd",
+		Group:    "default",
+		AffCode:  "dept-owner-aff",
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.DepartmentRole{
+		TenantId:     0,
+		UserId:       3001,
+		DepartmentId: 1,
+		Role:         constant.EnterpriseDepartmentRoleDeptAdmin,
+		Source:       constant.EnterpriseDepartmentRoleSourceManualGrant,
+		Effect:       constant.EnterpriseDepartmentRoleEffectAllow,
+		Status:       constant.EnterpriseDepartmentRoleStatusActive,
+	}).Error)
+
+	reqSvc := entservice.NewQuotaRequestService(db)
+	item, err := reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 1,
+		BudgetMode:         entservice.QuotaRequestBudgetModeDepartment,
+		RequesterUserId:    2002,
+		RequestedQuota:     100,
+	})
+	require.NoError(t, err)
+
+	second, err := reqSvc.Submit(entservice.SubmitQuotaRequestInput{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 1,
+		BudgetMode:         entservice.QuotaRequestBudgetModeDepartment,
+		RequesterUserId:    2002,
+		RequestedQuota:     120,
+	})
+	require.NoError(t, err)
+
+	items, err := reqSvc.List(entservice.QuotaRequestListQuery{
+		TenantId: 0,
+		ActorId:  3001,
+		View:     "approval",
+		Status:   entmodel.QuotaRequestStatusSubmitted,
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	require.Equal(t, second.Id, items[0].Id)
+
+	page, err := reqSvc.ListPage(entservice.QuotaRequestListQuery{
+		TenantId: 0,
+		ActorId:  3001,
+		View:     "approval",
+		Status:   entmodel.QuotaRequestStatusFulfilled,
+		Page:     1,
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), page.Total)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, second.Id, page.Items[0].Id)
+	require.Equal(t, entmodel.QuotaRequestStatusSubmitted, page.Items[0].Status)
+
+	page, err = reqSvc.ListPage(entservice.QuotaRequestListQuery{
+		TenantId: 0,
+		ActorId:  3001,
+		View:     "approval",
+		Page:     2,
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), page.Total)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, item.Id, page.Items[0].Id)
+
+	items, err = reqSvc.List(entservice.QuotaRequestListQuery{
+		TenantId:     0,
+		DepartmentId: 999,
+		ActorId:      3001,
+		View:         "approval",
+		Status:       entmodel.QuotaRequestStatusSubmitted,
+	})
+	require.NoError(t, err)
+	require.Empty(t, items)
+}
+
 func init() {
 	common.RedisEnabled = false
 }

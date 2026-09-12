@@ -814,26 +814,16 @@ export function EnterpriseOrganization() {
   )
 }
 
-function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
+export function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const currentUser = useCurrentAuthUser()
   const canManage = (currentUser?.role ?? 0) >= ROLE.ADMIN
-  const publicPoolsQuery = useQuery({
-    queryKey: publicBudgetPoolQueryKey(tenantId),
-    queryFn: async () => {
-      const result = await getPublicBudgetPools(tenantId, true)
-      if (!result.success) {
-        throw new Error(result.message || t('Request failed'))
-      }
-      return result.data?.items ?? []
-    },
-    enabled: canManage,
-  })
   const schema = useMemo(
     () =>
       z
         .object({
+          tenant_id: z.coerce.number().int().nonnegative(),
           name: z
             .string()
             .trim()
@@ -887,6 +877,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       schema
     ) as unknown as Resolver<PublicBudgetFormValues>,
     defaultValues: {
+      tenant_id: tenantId,
       name: '',
       type: 'balance',
       total_quota: 0,
@@ -897,11 +888,29 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       expires_at: '',
     },
   })
+  useEffect(() => {
+    if (form.getValues('tenant_id') !== tenantId) {
+      form.setValue('tenant_id', tenantId)
+    }
+  }, [form, tenantId])
+  const formTenantId = form.watch('tenant_id')
+  const normalizedTenantId = Number(formTenantId) || 0
+  const publicPoolsQuery = useQuery({
+    queryKey: publicBudgetPoolQueryKey(normalizedTenantId),
+    queryFn: async () => {
+      const result = await getPublicBudgetPools(normalizedTenantId, true)
+      if (!result.success) {
+        throw new Error(result.message || t('Request failed'))
+      }
+      return result.data?.items ?? []
+    },
+    enabled: canManage,
+  })
   const budgetType = form.watch('type')
   const createMutation = useMutation({
     mutationFn: async (values: PublicBudgetFormValues) =>
       createPublicBudgetPool({
-        tenant_id: tenantId,
+        tenant_id: Number(values.tenant_id),
         name: values.name,
         type: values.type,
         total_quota: values.type === 'balance' ? values.total_quota : undefined,
@@ -919,15 +928,26 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
           ? Math.floor(new Date(values.expires_at).getTime() / 1000)
           : undefined,
       }),
-    onSuccess: async (result) => {
+    onSuccess: async (result, values) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
         return
       }
-      form.reset()
+      const createdTenantId = Number(values.tenant_id)
+      form.reset({
+        tenant_id: createdTenantId,
+        name: '',
+        type: 'balance',
+        total_quota: 0,
+        cycle_quota: 0,
+        cycle_type: 'monthly',
+        cycle_started_at: '',
+        custom_seconds: 0,
+        expires_at: '',
+      })
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: publicBudgetPoolQueryKey(tenantId),
+          queryKey: publicBudgetPoolQueryKey(createdTenantId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['enterprise', 'quota-request'],
@@ -945,8 +965,8 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       action: 'pause' | 'resume'
     }) =>
       action === 'pause'
-        ? pausePublicBudgetPool(id, { tenant_id: tenantId })
-        : resumePublicBudgetPool(id, { tenant_id: tenantId }),
+        ? pausePublicBudgetPool(id, { tenant_id: normalizedTenantId })
+        : resumePublicBudgetPool(id, { tenant_id: normalizedTenantId }),
     onSuccess: async (result) => {
       if (!result.success) {
         toast.error(result.message || t('Request failed'))
@@ -954,7 +974,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: publicBudgetPoolQueryKey(tenantId),
+          queryKey: publicBudgetPoolQueryKey(normalizedTenantId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['enterprise', 'quota-request'],
@@ -974,7 +994,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       quota: number
     }) =>
       resizePublicBudgetPool(poolId, {
-        tenant_id: tenantId,
+        tenant_id: normalizedTenantId,
         ...(type === 'balance'
           ? { total_quota: quota }
           : { cycle_quota: quota }),
@@ -986,7 +1006,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: publicBudgetPoolQueryKey(tenantId),
+          queryKey: publicBudgetPoolQueryKey(normalizedTenantId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['enterprise', 'quota-request'],
@@ -1011,11 +1031,24 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
       <CardContent className='space-y-4'>
         <Form {...form}>
           <form
-            className='grid gap-3 md:grid-cols-2'
+            className='flex flex-col gap-4'
             onSubmit={form.handleSubmit((values) =>
               createMutation.mutate(values)
             )}
           >
+            <FormField
+              control={form.control}
+              name='tenant_id'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Tenant ID')}</FormLabel>
+                  <FormControl>
+                    <Input inputMode='numeric' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name='name'
@@ -1037,7 +1070,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
               name='type'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Type')}</FormLabel>
+                  <FormLabel>{t('Budget Type')}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
@@ -1069,7 +1102,11 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                   <FormItem>
                     <FormLabel>{t('Total Quota')}</FormLabel>
                     <FormControl>
-                      <Input type='number' min={0} {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Total Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1083,7 +1120,11 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                   <FormItem>
                     <FormLabel>{t('Cycle Quota')}</FormLabel>
                     <FormControl>
-                      <Input type='number' min={0} {...field} />
+                      <QuotaAmountInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        ariaLabel={t('Cycle Quota')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1119,7 +1160,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                               {t('Monthly')}
                             </SelectItem>
                             <SelectItem value='custom'>
-                              {t('Custom')}
+                              {t('Custom (seconds)')}
                             </SelectItem>
                           </SelectGroup>
                         </SelectContent>
@@ -1135,7 +1176,11 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                     <FormItem>
                       <FormLabel>{t('Cycle Start Time')}</FormLabel>
                       <FormControl>
-                        <Input type='datetime-local' {...field} />
+                        <Input
+                          placeholder='2026-05-29T12:00'
+                          type='datetime-local'
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1149,7 +1194,7 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                       <FormItem>
                         <FormLabel>{t('Custom Cycle Seconds')}</FormLabel>
                         <FormControl>
-                          <Input type='number' min={1} {...field} />
+                          <Input inputMode='numeric' {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1171,12 +1216,10 @@ function PublicBudgetPoolPanel({ tenantId }: { tenantId: number }) {
                 </FormItem>
               )}
             />
-            <div className='flex items-end justify-end'>
-              <Button type='submit' disabled={createMutation.isPending}>
-                <Coins data-icon='inline-start' />
-                {t('Create Budget Pool')}
-              </Button>
-            </div>
+            <Button type='submit' disabled={createMutation.isPending}>
+              <Coins data-icon='inline-start' />
+              {t('Create Budget Pool')}
+            </Button>
           </form>
         </Form>
         {publicPoolsQuery.isLoading ? (

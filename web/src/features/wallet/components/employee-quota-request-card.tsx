@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* oxlint-disable react/only-export-components */
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   useMutation,
@@ -167,13 +168,17 @@ export function EmployeeQuotaRequestCard({
     queryFn: async () => {
       if (!user?.id) return []
       const result = await getUserDepartments(user.id)
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return getEmployeeQuotaRequestDepartmentOptions(result.data?.items ?? [])
     },
     enabled: Boolean(user?.id),
   })
-  const departments = departmentsQuery.data ?? []
+  const departments = useMemo(
+    () => departmentsQuery.data ?? [],
+    [departmentsQuery.data]
+  )
   const currentDepartment = useMemo(
     () =>
       departments.find((item) => item.department_id === selectedDepartmentId) ??
@@ -207,15 +212,19 @@ export function EmployeeQuotaRequestCard({
         selectedDepartmentId,
         tenantId || undefined
       )
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return (
         result.data ?? { can_submit: false, can_govern: false, budgets: [] }
       )
     },
     enabled: Boolean(selectedDepartmentId),
   })
-  const budgets = capabilityQuery.data?.budgets ?? []
+  const budgets = useMemo(
+    () => capabilityQuery.data?.budgets ?? [],
+    [capabilityQuery.data?.budgets]
+  )
   const selectedBudget = useMemo(
     () => budgets.find((item) => item.id === selectedBudgetId) ?? null,
     [budgets, selectedBudgetId]
@@ -423,6 +432,7 @@ export function EmployeeQuotaRequestCard({
                       value={field.value}
                       onChange={field.onChange}
                       ariaLabel={t('Requested Quota')}
+                      fixedMode='amount'
                     />
                   </FormControl>
                   <FormMessage />

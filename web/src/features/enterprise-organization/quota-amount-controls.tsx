@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* oxlint-disable react/only-export-components */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -125,15 +126,19 @@ export function QuotaAmountInput({
   disabled,
   ariaLabel,
   className,
+  fixedMode,
 }: {
   value: number | string | null | undefined
   onChange: (value: string) => void
   disabled?: boolean
   ariaLabel?: string
   className?: string
+  fixedMode?: QuotaAmountInputMode
 }) {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<QuotaAmountInputMode>('quota')
+  const [selectedMode, setSelectedMode] =
+    useState<QuotaAmountInputMode>('quota')
+  const mode = fixedMode ?? selectedMode
   const [draftValue, setDraftValue] = useState(String(value ?? ''))
   const quotaValue = useMemo(() => normalizeQuotaNumber(value), [value])
   const display = formatEnterpriseQuotaAmount(quotaValue, t)
@@ -149,13 +154,13 @@ export function QuotaAmountInput({
   }, [display.amount, draftValue, mode, quotaValue, value])
 
   const handleModeChange = (nextMode: QuotaAmountInputMode) => {
-    if (nextMode === mode) return
+    if (fixedMode || nextMode === mode) return
     const converted = convertEnterpriseQuotaInputMode({
       value: draftValue,
       from: mode,
       to: nextMode,
     })
-    setMode(nextMode)
+    setSelectedMode(nextMode)
     setDraftValue(converted.value)
     if (converted.quota != null) {
       onChange(String(converted.quota))
@@ -164,36 +169,44 @@ export function QuotaAmountInput({
 
   return (
     <div className={cn('space-y-2', className)}>
-      <div className='grid grid-cols-2 rounded-md border p-0.5'>
-        <button
-          type='button'
-          className={cn(
-            'h-8 rounded-sm px-2 text-xs font-medium transition-colors',
-            mode === 'quota'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted'
-          )}
-          disabled={disabled}
-          aria-pressed={mode === 'quota'}
-          onClick={() => handleModeChange('quota')}
-        >
-          {t('Quota view')}
-        </button>
-        <button
-          type='button'
-          className={cn(
-            'h-8 rounded-sm px-2 text-xs font-medium transition-colors',
-            mode === 'amount'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted'
-          )}
-          disabled={disabled}
-          aria-pressed={mode === 'amount'}
-          onClick={() => handleModeChange('amount')}
-        >
-          {t('Amount view')}
-        </button>
-      </div>
+      {fixedMode ? (
+        <div className='grid rounded-md border p-0.5'>
+          <div className='bg-primary text-primary-foreground flex h-8 items-center justify-center rounded-sm px-2 text-xs font-medium'>
+            {t(mode === 'amount' ? 'Amount view' : 'Quota view')}
+          </div>
+        </div>
+      ) : (
+        <div className='grid grid-cols-2 rounded-md border p-0.5'>
+          <button
+            type='button'
+            className={cn(
+              'h-8 rounded-sm px-2 text-xs font-medium transition-colors',
+              mode === 'quota'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            )}
+            disabled={disabled}
+            aria-pressed={mode === 'quota'}
+            onClick={() => handleModeChange('quota')}
+          >
+            {t('Quota view')}
+          </button>
+          <button
+            type='button'
+            className={cn(
+              'h-8 rounded-sm px-2 text-xs font-medium transition-colors',
+              mode === 'amount'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            )}
+            disabled={disabled}
+            aria-pressed={mode === 'amount'}
+            onClick={() => handleModeChange('amount')}
+          >
+            {t('Amount view')}
+          </button>
+        </div>
+      )}
       <Input
         inputMode={mode === 'amount' ? 'decimal' : 'numeric'}
         value={draftValue}

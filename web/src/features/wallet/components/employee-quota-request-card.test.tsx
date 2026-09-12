@@ -203,7 +203,6 @@ describe('Employee quota request wallet entry', () => {
         '已选申请范围',
         '未选择预算池',
         '申请额度',
-        '额度视图',
         '金额视图',
         '按额度单位存储',
         '提交额度申请',
@@ -235,7 +234,6 @@ describe('Employee quota request wallet entry', () => {
       'Selected request scope',
       'No budget pool selected',
       'Requested Quota',
-      'Quota view',
       'Amount view',
       'Stored as quota units',
       'Submit quota request',
@@ -244,6 +242,20 @@ describe('Employee quota request wallet entry', () => {
     }
 
     assert.doesNotMatch(html, /Enterprise Organization/)
+  })
+
+  test('renders wallet quota request amounts as a fixed monetary input', () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nextProvider i18n={i18n}>
+          <EmployeeQuotaRequestCard user={userWallet()} />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+
+    assert.match(html, /inputMode="decimal"/)
+    assert.doesNotMatch(html, />Quota view</)
+    assert.match(html, />Amount view</)
   })
 
   test('reuses enterprise quota request endpoints and query scope from the wallet entry', async () => {
@@ -513,5 +525,5 @@ function quotaRequestResponse() {
 }
 
 function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

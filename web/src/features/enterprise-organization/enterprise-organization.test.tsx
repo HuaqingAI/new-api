@@ -53,6 +53,7 @@ import {
   DepartmentBudgetListCard,
   DepartmentBudgetOverviewCard,
   DepartmentBudgetStatusCard,
+  PublicBudgetPoolPanel,
   GovernanceActivityCard,
   QuotaRequestTable,
   QuotaAllocationTable,
@@ -553,6 +554,37 @@ describe('Enterprise organization department tree workflow', () => {
       assert.match(html, /Budget Type/)
       assert.match(html, /Balance Budget/)
       assert.doesNotMatch(html, />balance</)
+    } finally {
+      auth.setUser(previousUser)
+    }
+  })
+
+  test('public budget pool creation matches the department budget amount controls', () => {
+    const { auth } = useAuthStore.getState()
+    const previousUser = auth.user
+
+    try {
+      auth.setUser({
+        id: 1002,
+        username: 'enterprise-admin',
+        role: ROLE.ADMIN,
+      })
+      const html = renderToStaticMarkup(
+        <QueryClientProvider client={new QueryClient()}>
+          <I18nextProvider i18n={i18n}>
+            <PublicBudgetPoolPanel tenantId={42} />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+
+      for (const expected of [
+        'Tenant ID',
+        'Quota view',
+        'Amount view',
+        'Stored as quota units',
+      ]) {
+        assert.match(html, new RegExp(escapeRegExp(expected)))
+      }
     } finally {
       auth.setUser(previousUser)
     }

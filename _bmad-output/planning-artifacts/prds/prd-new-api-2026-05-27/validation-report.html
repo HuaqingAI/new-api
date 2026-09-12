@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>PRD Validation: {NEW_PRODUCT_NAME} V1 企业管控基线</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+
+    --grade-exc: #16a34a;
+    --grade-good: #65a30d;
+    --grade-fair: #d97706;
+    --grade-poor: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .grade-excellent { background: var(--grade-exc); }
+  .grade-good { background: var(--grade-good); }
+  .grade-fair { background: var(--grade-fair); }
+  .grade-poor { background: var(--grade-poor); }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="report-header">
+      <div class="title">
+        <h1>{NEW_PRODUCT_NAME} V1 企业管控基线 PRD — Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/prds/prd-new-api-2026-05-27/prd.md</div>
+      </div>
+      <div class="grade grade-poor">Poor</div>
+    </header>
+
+    <div class="synthesis">
+      <p>整体定位、范围与下游可用性立得住。四条 UJ 都带命名主角与边界情况、FR 与 UJ 双向绑定、棕地代码引用经抽查全部与代码一致（<code>User.Group</code>、<code>commonGroupCol</code>、<code>setting/sensitive.go</code>、<code>pkg/billingexpr/expr.md</code>）、FR-3 / FR-11 守住了"部门 ≠ Group"与"部门只消费 quota"两条最易出错的边界。Substance / Strategic coherence / Scope honesty / Downstream usability / Shape fit 五项均 strong。</p>
+      <p>核心风险集中在 Done-ness。FR-10 部门配额并发安全是 PRD 自己最重的承诺（addendum A-4 已点名"验收风险最高"），但 PRD 主体只写"不能造成超扣或漏扣"，没有给量化命题（并发度、终态偏差、时间窗）——下游 story 据此写不出 acceptance。这是单条 critical，但触发 grade=Poor 的不是结构性破产，而是"chain-top PRD 缺少一处可执行的验收基线"。FR-6、FR-19 等 high 项是同性质问题（时机、重试策略未定）。建议把 FR-10 的量化验证命题、FR-6 主部门时机、FR-19 重试策略、OQ-3 的扩旧表代价表四件事补完，本 PRD 即可上升到 Good。</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Decision-readiness</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Substance over theater</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Strategic coherence</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Done-ness clarity</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Scope honesty</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Downstream usability</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">strong</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Shape fit</div>
+        <div class="dim-verdict" style="color: var(--verdict-strong)">strong</div>
+      </div>
+    </div>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Decision-readiness</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>PRD 在多处把决策"做了"而不是"模糊掉"——FR-3 直接禁止把部门命名为 group，FR-11 明确部门只消费结算 quota，§5 非目标列表逐条点名 SaaS / LDAP / DeepWiki / 飞书企微 / License / 专用审计表，§9 把"不为 SaaS 公网注册牺牲 V1 交付"写成护栏。这些都是真决策。</p>
+            <p>但有两个真正的张力被推到 OQ：OQ-3（<code>tenant_id</code> 预留到新表 vs 旧表）是 V1 / V3 的取舍点，addendum A-2 已说明"扩旧表显著增加迁移、查询和索引改造成本"，但 PRD 主体只在 FR-4 写下"假设只在新增表预留"，没有让决策者看到"如果选扩旧表，V1 工期 / 复杂度的代价是什么"。OQ-2（无钉钉企业的本地组织 UI）通过 §11 风险表点出"6-8 周目标失控"做了反对面，但"6-8 周"从未在 PRD 主体出现。OQ-6（部门配额周期）和 OQ-7（多部门员工的主部门来源规则）会直接决定 FR-9 / FR-2 的可验收口径，应在故事拆分前关掉。</p>
+            <p>7 条 OQ + 3 条 ASSUMPTION 对一个被定位为"绿灯进入架构与 story"的 PRD 偏多；不至于 broken，但提示决策密度不足。</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">OQ-3 没有让取舍可比较</h3>
+              <span class="finding-location">§13 OQ-3 / §4.1 FR-4 / addendum A-2</span>
+            </header>
+            <div class="finding-note">OQ 只问"是否扩到旧表"，PRD 主体没有把两条路径在 V1 工期、迁移成本、索引改造、SaaS 切换难度上的代价摆出来。决策者读完仍要回到 addendum 才能判断。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 在 §4.1 FR-4 或 §13 OQ-3 下增补两行表格："只新表预留：V1 +X 张表 schema，SaaS 切换需补 Y。扩到旧表：迁移影响 <code>users</code>/<code>logs</code>/<code>quota_data</code>，索引改造 Z 项。"让决策可读。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">OQ-6 / OQ-7 决定 FR 验收口径却被推迟</h3>
+              <span class="finding-location">§13 OQ-6, OQ-7 / §4.3 FR-9 / §4.1 FR-2</span>
+            </header>
+            <div class="finding-note">FR-9"周期配额"未定义周期是自然月还是自定义，FR-2"主部门"未定义来自钉钉主部门字段还是首次同步。两个问题都进入 V1 故事拆分前必须解决，否则 acceptance 写不实。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 在进入 epic/story 之前由 PM 与 IT 林工对齐两条规则，回填到 FR-9 和 FR-2 的"可验证结果"。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">"6-8 周交付窗口"未在 PRD 内出现</h3>
+              <span class="finding-location">§11 风险表 / §6 MVP</span>
+            </header>
+            <div class="finding-note">风险表第 6 行写"6-8 周目标失控"暗示有窗口约束，但 PRD 主体未声明 V1 时间盒。读者只能从 brief 推断。</div>
+            <div class="finding-fix"><strong>Fix:</strong> §6 MVP 或 §12 发布与验收增一句"V1 目标交付窗口约 X 周（来自 brief）"。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Substance over theater</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>四个 UJ 都不是装饰：UJ-1 林工带出"无可靠匹配标识进入待处理"，UJ-2 王经理带出"多部门员工只走主部门"，UJ-3 陈总带出"历史日志缺部门快照应显示未归属而非反推"，UJ-4 赵安全带出"通知失败不阻断事件落库"——四条边界情况都直接转化为对应 FR 的"可验证结果"或非目标项。愿景段第二段（§1）专门点出"中国中型企业 + 钉钉为优先入口"，与"通用企业 AI 治理"区分开。NFR（§8）八条都给了具体动作，不是"系统必须可扩展"式 NFR theater。SM 段配套 SM-C1..SM-C3 反向指标，对治理类产品尤其重要："错误绑定比未绑定更危险"、"配额拦截是治理能力，不是业务价值"、"告警必须可追溯避免噪声"——三条 counter-metric 写得到位。</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Strategic coherence</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>PRD 有清晰的赌注（§1 第二段："中国中型企业引入 AI 的首要阻力不是有没有模型入口，而是企业 IT 能否知道谁在用、哪个部门在花钱"），五大 FR 子节（4.1 组织模型 / 4.2 钉钉 / 4.3 部门配额 / 4.4 看板 / 4.5 内容监控）都直接服务这个赌注。FR-3 / FR-11 / 护栏 §9 共同守"不替换现有 Group 与计费表达式语义"这条主轴。SM-1（部门同步连续 14 天）、SM-2（30 天无超额漏算）、SM-3（5 分钟定位）覆盖三大主能力，且都不是 DAU/MAU 式活动量指标——SM-2 直接验证"额度可信"这一治理价值。MVP 范围（§6）与非目标（§5）边界一致，没有把 V2 / V3 内容漏进 V1。</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Done-ness clarity</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>这是 PRD 最该被 unforgiving 的维度，也是最薄的一项。结构上每条 FR 都有"可验证结果"小节，但若干条仍藏在形容词里：FR-5 错误"可区分"未规定错误码；FR-10 并发安全只写"不能超扣或漏扣"无量化；FR-6"登录成功后主部门一致"对登录与同步并发不清晰；FR-12 接近耗尽阈值 punted 到"产品设置"未给默认；FR-15 CSV"一致"未规定排序/空值；FR-19 重试策略未定；FR-20 风险率口径未给。NFR §8 性能项"看板默认时间范围查询不得依赖逐条扫描全量日志"是好边界，但没给响应时间或数据量阈值。</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">FR-10 部门配额并发安全无可执行验证命题</h3>
+              <span class="finding-location">§4.3 FR-10</span>
+            </header>
+            <div class="finding-note">addendum A-4 已说"FR-10 验收风险最高，应优先出技术设计和并发测试"，但 FR-10 仅写"不能造成超扣或漏扣"。这是 PRD 的核心治理承诺，下游 story 据此写不出 acceptance。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 增加"在 ≥N 并发、跨同部门 M 个用户、含 <code>tiered_expr</code> 模型的混合负载下，连续 X 分钟无部门剩余额度负数、无用户 quota 与部门 quota 终态偏差超过 ε"之类量化条件；并明确预消费 vs 结算两条路径上的扣减时机（addendum A-4 已枚举候选）。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">FR-6 主部门一致性时机未定</h3>
+              <span class="finding-location">§4.2 FR-6</span>
+            </header>
+            <div class="finding-note">"登录成功后用户的主部门与最近一次有效同步结果一致"对登录与同步并发场景不清晰；当登录回调早于同步任务完成时主部门来源是缓存、上次同步还是钉钉本次返回？</div>
+            <div class="finding-fix"><strong>Fix:</strong> 写明读取顺序（如：登录时优先以钉钉返回 + 本地映射规则计算主部门；若同步进行中则使用上一次成功同步快照）。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">FR-19 告警重试策略空</h3>
+              <span class="finding-location">§4.5 FR-19 / §11 风险表"告警噪声"行</span>
+            </header>
+            <div class="finding-note">"成功、失败、重试状态可查询"未规定重试次数、间隔、最终失败的处理。FR-18 与 §11"默认低频"并未给出阈值数。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 给出 V1 默认重试次数（如 3 次指数退避），最终失败必须可在后台一键重发并标记。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">FR-5 错误"可区分"未给可观测形态</h3>
+              <span class="finding-location">§4.2 FR-5</span>
+            </header>
+            <div class="finding-note">测试人员无法仅凭描述判断是否达标。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 列出 V1 至少返回的 4 类错误码或后台标识。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">FR-15 CSV"一致"口径未定</h3>
+              <span class="finding-location">§4.4 FR-15</span>
+            </header>
+            <div class="finding-note">排序、空值、未归属部门的 CSV 行如何呈现未定，导出与看板差一行就是 acceptance 失败。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 明确"按当前筛选条件聚合后逐行输出，包含未归属部门行"；给一份示例字段顺序。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">FR-12 默认阈值缺省</h3>
+              <span class="finding-location">§4.3 FR-12</span>
+            </header>
+            <div class="finding-note">"接近耗尽默认阈值在产品设置中明确"——但 PRD 内并未给。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 给 V1 默认值（如 80% / 95% 两档）或转 OQ。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">FR-20 风险率口径定义缺失</h3>
+              <span class="finding-location">§4.5 FR-20</span>
+            </header>
+            <div class="finding-note">"在页面说明统计口径"是 UI 要求，PRD 自身缺少口径文字（按部门/时间窗，是否扣除被拦截请求等）。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 在 FR-20 写明"风险率 = 当周期内该部门触发风险事件请求数 / 部门请求总数；被拦截请求计入分子分母"。</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">§8 NFR 性能项未给数据量/响应时间阈值</h3>
+              <span class="finding-location">§8 NFR 性能</span>
+            </header>
+            <div class="finding-note">仅"不得逐条扫描全量日志"。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 给一个上限假设（如"100 万条 log 下 30 天看板查询 &lt; 3 s"），明确假设可由架构阶段调整。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Scope honesty</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>§5 非目标列表是真在工作：逐条点名 SaaS、LDAP/SAML/SCIM、飞书/企微登录、License、专用审计表、Group 替换。§6.2 MVP 范围外重申"本地组织管理 UI 仅作为开放问题"、"多部门用量分摊用主部门"、"上游开源贡献节奏不设 PRD 指标"——后者尤其诚实，承认了某些活动不应进入 SM。§14 假设索引覆盖了三条 ASSUMPTION，并在正文回链对应 §。OQ 集中在 §13，索引完整。唯一的弱点是 OQ 密度（7 条）+ ASSUMPTION（3 条）共 10 条 open items 对绿灯 PRD 偏高，但每一条都是真问题，可接受。</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">OQ 密度对绿灯 PRD 偏高</h3>
+              <span class="finding-location">§13</span>
+            </header>
+            <div class="finding-note">7 条 OQ 中 OQ-1（产品名）和 OQ-5（OAuth provider 选择）可在架构阶段处理；OQ-2 / OQ-3 / OQ-4 / OQ-6 / OQ-7 都直接影响 FR 验收。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 进入 epic/story 前由 PM 至少关掉 OQ-6 / OQ-7 / OQ-4，把 OQ-2 / OQ-3 显式标为"架构阶段决策，不阻塞 V1 起步"。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Downstream usability</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>PRD 与 addendum 联动是这份文档最强项之一。术语表（§3）覆盖 12 条核心名词，"<code>Group</code>" / "部门" / "主部门" / "组织同步"各自有清晰边界。FR-1..FR-20 / UJ-1..UJ-4 / SM-1..SM-5 / SM-C1..SM-C3 / OQ-1..OQ-7 全连续，cross-reference 全部用 ID。每个 FR 都明确写"实现 UJ-X"，反向 UJ → FR 关系也覆盖。每个 UJ 有命名主角（林工 / 王经理 / 陈总 / 赵安全）。</p>
+            <p>抽查棕地引用全部正确：<code>model/user.go:43</code> 确实是 <code>Group string</code>；<code>model/log.go:21-39</code> 含 PRD addendum 列出字段；<code>model/usedata.go:13</code> <code>QuotaData</code> 存在；<code>controller/relay.go:126</code> 有 <code>setting.ShouldCheckPromptSensitive()</code> 调用；<code>commonGroupCol</code> / <code>commonKeyCol</code> 在 <code>model/main.go</code> 真实存在；<code>pkg/billingexpr/expr.md</code> 真实存在；FR-11 引用的 <code>p</code>/<code>c</code>/<code>len</code> 与 <code>tiered_expr</code> 命名与该文件一致。下游 UX / 架构 / story 拆分都能从 §3 + §4 + addendum §3 / §4 抽出独立可读的片段。</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Shape fit</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>定位为"棕地企业自部署 + 多管理员侧 stakeholder + 中等规模 V1 + 链头（喂 UX、架构、story）"，所采用的 shape 与定位一致。多个管理员侧角色 → UJ 是 load-bearing 的，PRD 给了四条带命名主角与边界情况的 UJ。棕地 → §10 集成与依赖、§9 约束与护栏、addendum §2 棕地现状摘要全部覆盖；并明确"不替换 Group / 不重写计费表达式 / 不删除 new-api / QuantumNous 标识"。链头 → 下游可用性高，addendum §3 列出 7 项架构待决策项喂给架构阶段，§4 给出建议表/模块方向但显式标注"非最终设计"。没有过度形式化（4 个 UJ 不是 8 个），也没有欠形式化。</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li><strong>术语漂移：</strong>未发现关键漂移。"主部门" / "部门" / "<code>Group</code>"在 FR-2 / FR-3 / 术语表 / FR-11 / SM 中保持一致；"内容风险事件"在 FR-17 / FR-18 / FR-19 / FR-20 / SM-4 / 术语表中一致。</li>
+        <li><strong>ID 连续性：</strong>FR-1..FR-20 连续；UJ-1..UJ-4 连续；SM-1..SM-5 连续；SM-C1..SM-C3 连续；OQ-1..OQ-7 连续。无重号无跳号。</li>
+        <li><strong>Cross-reference 解析：</strong>抽查 FR → UJ 引用全部能解析；§7 SM 引用 FR 编号正确；§14 假设索引引用的 §4.1 / §4.1 FR-4 / §4.4 FR-16 全部能解析；§13 OQ-4 在 FR-18 处被反向引用，bidirectional 完整。</li>
+        <li><strong>Assumptions Index roundtrip：</strong>3 条 ASSUMPTION 全部既出现在内联也出现在 §14 假设索引；索引条目都在正文找得到。</li>
+        <li><strong>UJ 主角：</strong>UJ-1 林工、UJ-2 王经理、UJ-3 陈总、UJ-4 赵安全均命名且角色场景写清。无 floating UJ。</li>
+        <li><strong>必备段落：</strong>愿景 / 目标用户 / UJ / 术语表 / FR / 非目标 / MVP / SM / NFR / 约束 / 集成 / 风险 / 发布 / OQ / 假设索引 全部存在；frontmatter 含 status / created / updated / source_brief / source_addendum，链接路径在 .decision-log 中已修正。</li>
+        <li><strong>占位符：</strong><code>{NEW_PRODUCT_NAME}</code> 在标题、§0、§1、§3、UJ-1、FR-6 多处出现，OQ-1 已提示其确认时机；占位符使用一致，不构成漂移。</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: .claude/skills/bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-05-27T12:00:00+08:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

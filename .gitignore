@@ -1,4 +1,5 @@
 .idea
+.review
 .vscode
 .zed
 .history
@@ -7,11 +8,11 @@ upload
 *.db
 build
 *.db-journal
+*.db-shm
+*.db-wal
 logs
-web/default/dist
-web/classic/dist
-web/node_modules
 web/dist
+web/node_modules
 .env
 one-api
 new-api
@@ -23,15 +24,32 @@ tiktoken_cache
 .gomodcache/
 .cache
 plans
+# .claude
+.claude/launch.json
+.codex/hooks.json
+.plans
 .claude
 .cursor
 
 electron/node_modules
 electron/dist
-data/
+/data/
 .gomodcache/
 .gocache-temp
 .gopath
 .test
 token_estimator_test.go
 skills-lock.json
+.agents/.story-automator-active
+.tmp/
+
+__pycache__
+.claude/.story-automator-active
+.playwright-mcp
+
+# Local-only live probes and scratch test workspaces.
+.local-tests/
+relaykit/relayconvert/chat_responses_live_local_test.go
+service/openaicompat/chat_responses_live_local_test.go
+go.work
+go.work.sum

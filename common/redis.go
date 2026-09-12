@@ -78,6 +78,22 @@ func RedisGet(key string) (string, error) {
 	return val, err
 }
 
+func RedisGetDel(key string) (string, error) {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis GETDEL: key=%s", key))
+	}
+	ctx := context.Background()
+	result, err := RDB.Eval(ctx, `local value = redis.call("GET", KEYS[1]); if value then redis.call("DEL", KEYS[1]); end; return value`, []string{key}).Result()
+	if err != nil {
+		return "", err
+	}
+	value, ok := result.(string)
+	if !ok {
+		return "", errors.New("redis key missing")
+	}
+	return value, nil
+}
+
 //func RedisExpire(key string, expiration time.Duration) error {
 //	ctx := context.Background()
 //	return RDB.Expire(ctx, key, expiration).Err()

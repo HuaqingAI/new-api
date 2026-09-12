@@ -3,14 +3,21 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/service"
+	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -80,6 +87,9 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
+		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+			continue
+		}
 		value := common.Interface2String(v)
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
@@ -93,14 +103,24 @@ func GetOptions(c *gin.Context) {
 			Key:   k,
 			Value: value,
 		})
-		for _, optionKey := range completionRatioMetaOptionKeys {
-			if optionKey == k {
-				optionValues[k] = value
-				break
-			}
+		if slices.Contains(completionRatioMetaOptionKeys, k) {
+			optionValues[k] = value
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	// Display the same effective expressions used by pricing and settlement,
+	// including built-in defaults absent from persisted administrator options.
+	for key, values := range map[string]map[string]string{
+		"billing_setting.billing_mode": billing_setting.GetBillingModeCopy(),
+		"billing_setting.billing_expr": billing_setting.GetBillingExprCopy(),
+	} {
+		encoded, err := common.Marshal(values)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
+			return
+		}
+		options = append(options, &model.Option{Key: key, Value: string(encoded)})
+	}
 	options = append(options, &model.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
@@ -115,6 +135,35 @@ func GetOptions(c *gin.Context) {
 type OptionUpdateRequest struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+func parseEnterpriseBudgetThresholdValue(value string) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(value))
+}
+
+func validateEnterpriseBudgetThresholdOption(key string, value string) error {
+	quotaSetting := operation_setting.GetQuotaSetting()
+	warning := quotaSetting.EnterpriseBudgetWarningThreshold
+	critical := quotaSetting.EnterpriseBudgetCriticalThreshold
+
+	parsed, err := parseEnterpriseBudgetThresholdValue(value)
+	if err != nil {
+		return entservice.ErrDepartmentBudgetThresholdInvalid
+	}
+
+	switch key {
+	case "quota_setting.enterprise_budget_warning_threshold":
+		warning = parsed
+	case "quota_setting.enterprise_budget_critical_threshold":
+		critical = parsed
+	default:
+		return nil
+	}
+
+	if !operation_setting.IsEnterpriseBudgetThresholdsValid(warning, critical) {
+		return entservice.ErrDepartmentBudgetThresholdInvalid
+	}
+	return nil
 }
 
 func UpdateOption(c *gin.Context) {
@@ -137,6 +186,13 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if option.Key == "quota_setting.enterprise_budget_warning_threshold" ||
+		option.Key == "quota_setting.enterprise_budget_critical_threshold" {
+		if err := validateEnterpriseBudgetThresholdOption(option.Key, option.Value.(string)); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgEnterpriseDepartmentBudgetThresholdInvalid)
+			return
+		}
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
@@ -146,6 +202,12 @@ func UpdateOption(c *gin.Context) {
 	default:
 		if isPaymentComplianceOptionKey(option.Key) {
 			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+			return
+		}
+	}
+	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
+		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, err.Error())
 			return
 		}
 	}
@@ -208,23 +270,51 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "TelegramOAuthEnabled":
-		if option.Value == "true" && common.TelegramBotToken == "" {
+		if option.Value == "true" && !system_setting.GetTelegramSettings().IsConfigured() {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无法启用 Telegram OAuth，请先填入 Telegram Bot Token！",
+				"code":    "TELEGRAM_OAUTH_NOT_CONFIGURED",
+				"message": "Telegram OAuth is not configured or enabled. Please contact your administrator.",
 			})
 			return
 		}
 	case "theme.frontend":
-		if option.Value != "default" && option.Value != "classic" {
+		if option.Value != "default" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
+				"message": "Classic 前端已移除，主题只能设置为 default",
 			})
 			return
 		}
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "gemini.safety_settings":
+		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "claude.default_max_tokens":
+		err = model_setting.ValidateClaudeDefaultMaxTokens(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case operation_setting.ToolPriceOptionKey:
+		err = operation_setting.ValidateToolPricesJSON(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -295,6 +385,36 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "billing_setting.billing_expr":
+		expressions := make(map[string]string)
+		if err = common.UnmarshalJsonStr(option.Value.(string), &expressions); err != nil {
+			common.ApiErrorMsg(c, "计费表达式配置必须是模型到表达式的 JSON 对象: "+err.Error())
+			return
+		}
+		models := make([]string, 0, len(expressions))
+		for modelName := range expressions {
+			models = append(models, modelName)
+		}
+		sort.Strings(models)
+		generation := jsplugin.DefaultRegistry.Generation()
+		for _, modelName := range models {
+			expression := expressions[modelName]
+			if plugin, ok := generation.GetByModel(modelName); ok {
+				err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+			} else if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved {
+				if plugin, ok := generation.Get(target.PluginKey); ok {
+					err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+				} else {
+					err = billing_setting.SmokeTestExpr(expression)
+				}
+			} else {
+				err = billing_setting.SmokeTestExpr(expression)
+			}
+			if err != nil {
+				common.ApiErrorMsg(c, fmt.Sprintf("模型 %s 的计费表达式无效: %v", modelName, err))
+				return
+			}
+		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
@@ -337,6 +457,10 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
+	recordManageAudit(c, "option.update", map[string]interface{}{
+		"key": option.Key,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

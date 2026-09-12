@@ -1,20 +1,112 @@
 name: Publish Docker image (Multi-arch)
 
 on:
-  push:
-    tags:
-      - '*'
-      - '!nightly*'
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       tag:
         description: 'Tag name to build (e.g., v0.10.8-alpha.3)'
         required: true
         type: string
+      helm_rollback_revision:
+        description: 'Optional Helm revision to roll back to before deployment'
+        required: false
+        type: string
 
 jobs:
+  resolve_version:
+    name: Resolve release versions
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'nightly') }}
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      image_tag: ${{ steps.version.outputs.image_tag }}
+      new_api_official_version: ${{ steps.version.outputs.new_api_official_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: version
+        env:
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch)
+              RELEASE_TAG_VALUE="$DISPATCH_TAG"
+              ;;
+            release)
+              RELEASE_TAG_VALUE="$RELEASE_TAG"
+              ;;
+            *)
+              echo "::error::Unsupported event: $GITHUB_EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$RELEASE_TAG_VALUE" ] || [ "$RELEASE_TAG_VALUE" = "$GITHUB_REF" ]; then
+            echo "::error::Unable to resolve a release tag from this event"
+            exit 1
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/${RELEASE_TAG_VALUE}^{commit}" >/dev/null; then
+            echo "::error::Tag '$RELEASE_TAG_VALUE' does not exist"
+            exit 1
+          fi
+
+          git checkout --detach --quiet "refs/tags/${RELEASE_TAG_VALUE}"
+
+          if [ ! -f UPSTREAM_VERSION ]; then
+            echo "::error::UPSTREAM_VERSION is missing in tag '$RELEASE_TAG_VALUE'"
+            exit 1
+          fi
+
+          NEW_API_OFFICIAL_VERSION="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
+          if [ -z "$NEW_API_OFFICIAL_VERSION" ]; then
+            echo "::error::UPSTREAM_VERSION is empty in tag '$RELEASE_TAG_VALUE'"
+            exit 1
+          fi
+
+          sanitize_tag() {
+            printf '%s' "$1" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^-+//; s/-+$//'
+          }
+
+          release_tag_sanitized="$(sanitize_tag "$RELEASE_TAG_VALUE")"
+          official_version_sanitized="$(sanitize_tag "$NEW_API_OFFICIAL_VERSION")"
+          image_tag="${release_tag_sanitized}-newapi-${official_version_sanitized}"
+          app_version="${RELEASE_TAG_VALUE}+new-api.${NEW_API_OFFICIAL_VERSION}"
+
+          {
+            echo "app_version<<EOF"
+            echo "$app_version"
+            echo "EOF"
+            echo "image_tag=${image_tag}"
+            echo "new_api_official_version<<EOF"
+            echo "$NEW_API_OFFICIAL_VERSION"
+            echo "EOF"
+            echo "release_tag<<EOF"
+            echo "$RELEASE_TAG_VALUE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: ${RELEASE_TAG_VALUE}"
+          echo "Resolved official new-api version: ${NEW_API_OFFICIAL_VERSION}"
+          echo "Resolved image tag: ${image_tag}"
+
   build_single_arch:
     name: Build & push (${{ matrix.arch }})
+    needs: [resolve_version]
     strategy:
       fail-fast: false
       matrix:
@@ -26,116 +118,664 @@ jobs:
             platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
 
     permissions:
       packages: write
       contents: read
       id-token: write
 
+    env:
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || secrets.IMAGE_REGISTRY || 'docker.io' }}
+      IMAGE_REGISTRY_USERNAME: ${{ secrets.IMAGE_REGISTRY_USERNAME || secrets.DOCKERHUB_USERNAME }}
+      IMAGE_REGISTRY_PASSWORD: ${{ secrets.IMAGE_REGISTRY_PASSWORD || secrets.DOCKERHUB_TOKEN }}
+
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 1
+          ref: refs/tags/${{ needs.resolve_version.outputs.release_tag }}
 
-      - name: Resolve tag & write VERSION
+      - name: Resolve versions & write VERSION
         id: version
+        env:
+          APP_VERSION: ${{ needs.resolve_version.outputs.app_version }}
+          IMAGE_TAG: ${{ needs.resolve_version.outputs.image_tag }}
+          RELEASE_TAG: ${{ needs.resolve_version.outputs.release_tag }}
         run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-            if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "::error::Tag '$TAG' does not exist"
-              exit 1
-            fi
-          else
-            TAG=${GITHUB_REF#refs/tags/}
-          fi
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "${TAG}" > VERSION
-          echo "Building tag: ${TAG} for ${{ matrix.arch }}"
+          TAG="$IMAGE_TAG"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${APP_VERSION}" >> "$GITHUB_ENV"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "${APP_VERSION}" > VERSION
+          echo "Building image tag: ${TAG} for ${{ matrix.arch }}"
+          echo "Application version: ${APP_VERSION}"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Validate image registry configuration
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -z "${IMAGE_REPOSITORY}" ] && missing+=("variable or secret IMAGE_REPOSITORY")
+          [ -z "${IMAGE_REGISTRY}" ] && missing+=("variable or secret IMAGE_REGISTRY")
+          [ -z "${IMAGE_REGISTRY_USERNAME}" ] && missing+=("secret IMAGE_REGISTRY_USERNAME")
+          [ -z "${IMAGE_REGISTRY_PASSWORD}" ] && missing+=("secret IMAGE_REGISTRY_PASSWORD")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required image registry configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Log in to image registry
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.IMAGE_REGISTRY_USERNAME }}
+          password: ${{ env.IMAGE_REGISTRY_PASSWORD }}
 
       - name: Extract metadata (labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: calciumion/new-api
+          images: ${{ env.IMAGE_REPOSITORY }}
 
       - name: Build & push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            calciumion/new-api:${{ env.TAG }}-${{ matrix.arch }}
-            calciumion/new-api:latest-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.TAG }}-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_TAG }}-${{ matrix.arch }}
+            ${{ env.IMAGE_REPOSITORY }}:latest-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
+          provenance: false
+          sbom: false
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign image with cosign
-        run: cosign sign --yes calciumion/new-api@${{ steps.build.outputs.digest }}
+        continue-on-error: true
+        env:
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
+        run: cosign sign --yes "${IMAGE_REPOSITORY}@${{ steps.build.outputs.digest }}"
 
       - name: Image summary
         run: |
           echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "calciumion/new-api:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_REPOSITORY}:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_REPOSITORY}:${RELEASE_TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "VERSION=${APP_VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   create_manifests:
     name: Create multi-arch manifests
-    needs: [build_single_arch]
+    needs: [resolve_version, build_single_arch]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    if: needs.resolve_version.outputs.image_tag != ''
+
+    env:
+      IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || secrets.IMAGE_REGISTRY || 'docker.io' }}
+      IMAGE_REGISTRY_USERNAME: ${{ secrets.IMAGE_REGISTRY_USERNAME || secrets.DOCKERHUB_USERNAME }}
+      IMAGE_REGISTRY_PASSWORD: ${{ secrets.IMAGE_REGISTRY_PASSWORD || secrets.DOCKERHUB_TOKEN }}
+
+    permissions:
+      id-token: write
 
     steps:
       - name: Set version
-        run: echo "TAG=${{ needs.build_single_arch.outputs.tag }}" >> $GITHUB_ENV
+        env:
+          APP_VERSION: ${{ needs.resolve_version.outputs.app_version }}
+          IMAGE_TAG: ${{ needs.resolve_version.outputs.image_tag }}
+          RELEASE_TAG: ${{ needs.resolve_version.outputs.release_tag }}
+        run: |
+          echo "TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${APP_VERSION}" >> "$GITHUB_ENV"
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Validate image registry configuration
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -z "${IMAGE_REPOSITORY}" ] && missing+=("variable or secret IMAGE_REPOSITORY")
+          [ -z "${IMAGE_REGISTRY}" ] && missing+=("variable or secret IMAGE_REGISTRY")
+          [ -z "${IMAGE_REGISTRY_USERNAME}" ] && missing+=("secret IMAGE_REGISTRY_USERNAME")
+          [ -z "${IMAGE_REGISTRY_PASSWORD}" ] && missing+=("secret IMAGE_REGISTRY_PASSWORD")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required image registry configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Log in to image registry
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ env.IMAGE_REGISTRY_USERNAME }}
+          password: ${{ env.IMAGE_REGISTRY_PASSWORD }}
 
       - name: Create & push manifest (version)
         run: |
           docker buildx imagetools create \
-            -t calciumion/new-api:${TAG} \
-            calciumion/new-api:${TAG}-amd64 \
-            calciumion/new-api:${TAG}-arm64
+            -t "${IMAGE_REPOSITORY}:${TAG}" \
+            "${IMAGE_REPOSITORY}:${TAG}-amd64" \
+            "${IMAGE_REPOSITORY}:${TAG}-arm64"
+
+      - name: Create & push manifest (release tag)
+        run: |
+          docker buildx imagetools create \
+            -t "${IMAGE_REPOSITORY}:${RELEASE_TAG}" \
+            "${IMAGE_REPOSITORY}:${RELEASE_TAG}-amd64" \
+            "${IMAGE_REPOSITORY}:${RELEASE_TAG}-arm64"
 
       - name: Create & push manifest (latest)
         run: |
           docker buildx imagetools create \
-            -t calciumion/new-api:latest \
-            calciumion/new-api:latest-amd64 \
-            calciumion/new-api:latest-arm64
+            -t "${IMAGE_REPOSITORY}:latest" \
+            "${IMAGE_REPOSITORY}:latest-amd64" \
+            "${IMAGE_REPOSITORY}:latest-arm64"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign manifests with cosign
+        continue-on-error: true
+        env:
+          COSIGN_DOCKER_MEDIA_TYPES: "1"
+        run: |
+          cosign sign --yes "${IMAGE_REPOSITORY}:${TAG}"
+          cosign sign --yes "${IMAGE_REPOSITORY}:${RELEASE_TAG}"
+          cosign sign --yes "${IMAGE_REPOSITORY}:latest"
 
       - name: Manifest summary
         run: |
           echo "### Multi-arch Manifest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          docker buildx imagetools inspect calciumion/new-api:${TAG} >> $GITHUB_STEP_SUMMARY
+          echo "VERSION=${APP_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect "${IMAGE_REPOSITORY}:${TAG}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+  deploy_kubernetes:
+    name: Deploy to Kubernetes
+    needs: [resolve_version, create_manifests]
+    runs-on: ubuntu-latest
+    if: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && needs.create_manifests.result == 'success' }}
+
+    permissions:
+      contents: read
+
+    # Configure KUBE_CONFIG as a secret. The remaining KUBE_* values can be
+    # repository variables or secrets when their values should stay private.
+    env:
+      APP_VERSION: ${{ needs.resolve_version.outputs.app_version }}
+      NEW_API_OFFICIAL_VERSION: ${{ needs.resolve_version.outputs.new_api_official_version }}
+      RELEASE_TAG: ${{ needs.resolve_version.outputs.release_tag }}
+      TAG: ${{ needs.resolve_version.outputs.image_tag }}
+      KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+      KUBE_DEPLOY_STRATEGY: ${{ vars.KUBE_DEPLOY_STRATEGY || secrets.KUBE_DEPLOY_STRATEGY }}
+      KUBE_NAMESPACE: ${{ vars.KUBE_NAMESPACE || secrets.KUBE_NAMESPACE }}
+      KUBE_DEPLOYMENTS: ${{ vars.KUBE_DEPLOYMENTS || secrets.KUBE_DEPLOYMENTS || vars.KUBE_DEPLOYMENT || secrets.KUBE_DEPLOYMENT }}
+      KUBE_CONTAINER: ${{ vars.KUBE_CONTAINER || secrets.KUBE_CONTAINER }}
+      KUBE_IMAGE_REPOSITORY: ${{ vars.KUBE_IMAGE_REPOSITORY || secrets.KUBE_IMAGE_REPOSITORY || vars.IMAGE_REPOSITORY || secrets.IMAGE_REPOSITORY || 'calciumion/new-api' }}
+      KUBE_ROLLOUT_TIMEOUT: ${{ vars.KUBE_ROLLOUT_TIMEOUT || secrets.KUBE_ROLLOUT_TIMEOUT || '10m' }}
+      KUBE_COLLECT_POD_LOGS: ${{ vars.KUBE_COLLECT_POD_LOGS || secrets.KUBE_COLLECT_POD_LOGS || 'false' }}
+      HELM_RELEASE: ${{ vars.HELM_RELEASE || secrets.HELM_RELEASE }}
+      HELM_CHART: ${{ vars.HELM_CHART || secrets.HELM_CHART }}
+      HELM_NAMESPACE: ${{ vars.HELM_NAMESPACE || secrets.HELM_NAMESPACE }}
+      HELM_CREATE_NAMESPACE: ${{ vars.HELM_CREATE_NAMESPACE || secrets.HELM_CREATE_NAMESPACE }}
+      HELM_IMAGE_REPOSITORY_KEYS: ${{ vars.HELM_IMAGE_REPOSITORY_KEYS || secrets.HELM_IMAGE_REPOSITORY_KEYS || 'image.repository' }}
+      HELM_IMAGE_TAG_KEYS: ${{ vars.HELM_IMAGE_TAG_KEYS || secrets.HELM_IMAGE_TAG_KEYS || 'image.tag' }}
+      HELM_EXTRA_SET: ${{ vars.HELM_EXTRA_SET || secrets.HELM_EXTRA_SET }}
+      HELM_EXTRA_SET_TYPED: ${{ vars.HELM_EXTRA_SET_TYPED || secrets.HELM_EXTRA_SET_TYPED }}
+      HELM_RWO_ROLLOUT_MODE: ${{ vars.HELM_RWO_ROLLOUT_MODE || secrets.HELM_RWO_ROLLOUT_MODE || 'recreate' }}
+      HELM_ROLLBACK_REVISION: ${{ github.event.inputs.helm_rollback_revision }}
+      HELM_VALUES: ${{ secrets.HELM_VALUES }}
+      HELM_REPO_NAME: ${{ vars.HELM_REPO_NAME || secrets.HELM_REPO_NAME }}
+      HELM_REPO_URL: ${{ vars.HELM_REPO_URL || secrets.HELM_REPO_URL }}
+      HELM_REPO_USERNAME: ${{ secrets.HELM_REPO_USERNAME }}
+      HELM_REPO_PASSWORD: ${{ secrets.HELM_REPO_PASSWORD }}
+
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ vars.HELM_VERSION || 'v3.17.1' }}
+
+      - name: Prepare deployment configuration
+        id: deploy_config
+        run: |
+          set -euo pipefail
+
+          deploy_strategy="$KUBE_DEPLOY_STRATEGY"
+          if [ -z "$deploy_strategy" ]; then
+            if [ -n "$HELM_RELEASE" ] || [ -n "$HELM_CHART" ]; then
+              deploy_strategy="helm"
+            else
+              deploy_strategy="kubectl"
+            fi
+          fi
+
+          case "$deploy_strategy" in
+            helm|kubectl) ;;
+            *)
+              echo "::error::KUBE_DEPLOY_STRATEGY must be 'helm' or 'kubectl'"
+              exit 1
+              ;;
+          esac
+
+          if [ "$deploy_strategy" = "helm" ]; then
+            case "$HELM_RWO_ROLLOUT_MODE" in
+              recreate|warn|off) ;;
+              *)
+                echo "::error::HELM_RWO_ROLLOUT_MODE must be 'recreate', 'warn', or 'off'"
+                exit 1
+                ;;
+            esac
+          fi
+
+          missing=()
+          [ -z "${KUBE_CONFIG}" ] && missing+=("secret KUBE_CONFIG")
+          if [ "$deploy_strategy" = "helm" ]; then
+            [ -z "${HELM_RELEASE}" ] && missing+=("variable or secret HELM_RELEASE")
+            [ -z "${HELM_CHART}" ] && missing+=("variable or secret HELM_CHART")
+            if [ -z "${HELM_NAMESPACE}" ] && [ -z "${KUBE_NAMESPACE}" ]; then
+              missing+=("variable or secret HELM_NAMESPACE or KUBE_NAMESPACE")
+            fi
+            [ -z "${HELM_IMAGE_REPOSITORY_KEYS}" ] && missing+=("variable or secret HELM_IMAGE_REPOSITORY_KEYS")
+            [ -z "${HELM_IMAGE_TAG_KEYS}" ] && missing+=("variable or secret HELM_IMAGE_TAG_KEYS")
+          else
+            [ -z "${KUBE_NAMESPACE}" ] && missing+=("variable or secret KUBE_NAMESPACE")
+            [ -z "${KUBE_DEPLOYMENTS}" ] && missing+=("variable or secret KUBE_DEPLOYMENTS")
+            [ -z "${KUBE_CONTAINER}" ] && missing+=("variable or secret KUBE_CONTAINER")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required Kubernetes configuration: ${missing[*]}"
+            {
+              echo "### Kubernetes deployment"
+              echo ""
+              echo "Missing required configuration:"
+              printf -- "- %s\n" "${missing[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          kubeconfig="${RUNNER_TEMP}/kubeconfig"
+          if [[ "$KUBE_CONFIG" == *apiVersion:* ]]; then
+            printf '%s' "$KUBE_CONFIG" > "$kubeconfig"
+          else
+            if ! printf '%s' "$KUBE_CONFIG" | base64 --decode > "$kubeconfig"; then
+              echo "::error::KUBE_CONFIG must be raw kubeconfig YAML or base64-encoded kubeconfig content"
+              exit 1
+            fi
+          fi
+
+          if ! grep -q 'apiVersion:' "$kubeconfig"; then
+            echo "::error::Decoded KUBE_CONFIG does not look like kubeconfig YAML"
+            exit 1
+          fi
+
+          chmod 600 "$kubeconfig"
+          image="${KUBE_IMAGE_REPOSITORY}:${TAG}"
+          kube_namespace="${HELM_NAMESPACE:-${KUBE_NAMESPACE:-}}"
+
+          kube_access_error="${RUNNER_TEMP}/kube-access-error.txt"
+          if [ "$deploy_strategy" = "helm" ]; then
+            access_check=(kubectl --request-timeout=15s --namespace "$kube_namespace" auth can-i get secrets --quiet)
+          else
+            access_check=(kubectl --request-timeout=15s --namespace "$kube_namespace" auth can-i patch deployments --quiet)
+          fi
+
+          if ! KUBECONFIG="$kubeconfig" "${access_check[@]}" 2>"$kube_access_error"; then
+            echo "::error::KUBE_CONFIG cannot authenticate to the Kubernetes cluster or is not authorized for ${deploy_strategy} deployments in namespace '${kube_namespace}'. Update the KUBE_CONFIG secret with a non-interactive kubeconfig that is valid from GitHub Actions."
+            {
+              echo "### Kubernetes deployment"
+              echo ""
+              echo "Kubernetes access validation failed before deployment."
+              echo ""
+              echo "Check:"
+              printf '```text\n%s\n```\n' "${access_check[*]}"
+              echo ""
+              echo '```text'
+              sed -E 's/[[:cntrl:]]//g' "$kube_access_error"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "KUBECONFIG=${kubeconfig}" >> "$GITHUB_ENV"
+          echo "DEPLOY_STRATEGY=${deploy_strategy}" >> "$GITHUB_ENV"
+          echo "HELM_NAMESPACE=${kube_namespace}" >> "$GITHUB_ENV"
+          echo "IMAGE=${image}" >> "$GITHUB_ENV"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      - name: Recover pending Helm release
+        if: env.DEPLOY_STRATEGY == 'helm' && env.HELM_ROLLBACK_REVISION != ''
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$HELM_ROLLBACK_REVISION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::helm_rollback_revision must be a positive integer"
+            exit 1
+          fi
+
+          echo "Rolling back Helm release '${HELM_RELEASE}' in namespace '${HELM_NAMESPACE}' to revision ${HELM_ROLLBACK_REVISION}."
+          helm --namespace "$HELM_NAMESPACE" rollback \
+            "$HELM_RELEASE" \
+            "$HELM_ROLLBACK_REVISION" \
+            --cleanup-on-fail \
+            --wait \
+            --timeout "$KUBE_ROLLOUT_TIMEOUT"
+          helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE"
+
+      - name: Update Helm release image
+        if: env.DEPLOY_STRATEGY == 'helm'
+        run: |
+          set -euo pipefail
+
+          if [ -n "$HELM_REPO_NAME" ] || [ -n "$HELM_REPO_URL" ]; then
+            if [ -z "$HELM_REPO_NAME" ] || [ -z "$HELM_REPO_URL" ]; then
+              echo "::error::HELM_REPO_NAME and HELM_REPO_URL must be configured together"
+              exit 1
+            fi
+
+            repo_args=("$HELM_REPO_NAME" "$HELM_REPO_URL")
+            if [ -n "$HELM_REPO_USERNAME" ] || [ -n "$HELM_REPO_PASSWORD" ]; then
+              repo_args+=(--username "$HELM_REPO_USERNAME" --password "$HELM_REPO_PASSWORD")
+            fi
+            helm repo add "${repo_args[@]}"
+            helm repo update
+          fi
+
+          helm_args=(
+            upgrade "$HELM_RELEASE" "$HELM_CHART"
+            --install
+            --namespace "$HELM_NAMESPACE"
+            --reuse-values
+            --wait
+            --timeout "$KUBE_ROLLOUT_TIMEOUT"
+          )
+
+          if [ "$HELM_CREATE_NAMESPACE" = "true" ]; then
+            helm_args+=(--create-namespace)
+          fi
+
+          helm_value_args=()
+
+          maybe_scale_down_rwo_deployments() {
+            case "$HELM_RWO_ROLLOUT_MODE" in
+              off)
+                echo "RWO rollout pre-scale is disabled."
+                return 0
+                ;;
+            esac
+
+            selector="app.kubernetes.io/instance=${HELM_RELEASE}"
+            mapfile -t release_deployments < <(
+              kubectl --namespace "$HELM_NAMESPACE" get deployment \
+                -l "$selector" \
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true
+            )
+
+            if [ "${#release_deployments[@]}" -eq 0 ]; then
+              echo "No existing Helm release deployments found with selector ${selector}; skipping RWO rollout pre-check."
+              return 0
+            fi
+
+            rwo_deployments=()
+            pods_before_scale_down="${RUNNER_TEMP}/helm-rwo-pods-before-scale-down.txt"
+            : > "$pods_before_scale_down"
+
+            for deployment in "${release_deployments[@]}"; do
+              [ -z "$deployment" ] && continue
+
+              claims="$(
+                kubectl --namespace "$HELM_NAMESPACE" get deployment "$deployment" \
+                  -o jsonpath='{range .spec.template.spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}' 2>/dev/null || true
+              )"
+              [ -z "$claims" ] && continue
+
+              while IFS= read -r claim; do
+                [ -z "$claim" ] && continue
+
+                access_modes="$(
+                  kubectl --namespace "$HELM_NAMESPACE" get pvc "$claim" \
+                    -o jsonpath='{.spec.accessModes[*]}' 2>/dev/null || true
+                )"
+
+                if [[ " ${access_modes} " == *" ReadWriteOnce "* ]] || [[ " ${access_modes} " == *" ReadWriteOncePod "* ]]; then
+                  echo "Deployment ${deployment} uses ${access_modes:-unknown} PVC ${claim}."
+                  rwo_deployments+=("$deployment")
+
+                  pod_selector="$(
+                    kubectl --namespace "$HELM_NAMESPACE" get deployment "$deployment" \
+                      -o go-template='{{range $k, $v := .spec.selector.matchLabels}}{{printf "%s=%s," $k $v}}{{end}}' 2>/dev/null | sed 's/,$//' || true
+                  )"
+                  if [ -n "$pod_selector" ]; then
+                    kubectl --namespace "$HELM_NAMESPACE" get pod \
+                      -l "$pod_selector" \
+                      -o name 2>/dev/null >> "$pods_before_scale_down" || true
+                  fi
+                  break
+                fi
+              done <<< "$claims"
+            done
+
+            if [ "${#rwo_deployments[@]}" -eq 0 ]; then
+              echo "No RWO/RWOP PVC-backed Helm release deployments found; using normal Helm rolling upgrade."
+              return 0
+            fi
+
+            {
+              echo "### Helm RWO rollout handling"
+              echo ""
+              printf -- "- Mode: %s\n" "$HELM_RWO_ROLLOUT_MODE"
+              printf -- "- Deployment: %s\n" "${rwo_deployments[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$HELM_RWO_ROLLOUT_MODE" = "warn" ]; then
+              echo "::warning::RWO/RWOP PVC-backed deployments detected; normal rolling upgrade may wait on old pods terminating."
+              return 0
+            fi
+
+            echo "::notice::Scaling RWO/RWOP PVC-backed deployments down before Helm upgrade to avoid old/new pod volume conflicts."
+            for deployment in "${rwo_deployments[@]}"; do
+              kubectl --namespace "$HELM_NAMESPACE" scale "deployment/${deployment}" --replicas=0
+            done
+
+            for deployment in "${rwo_deployments[@]}"; do
+              kubectl --namespace "$HELM_NAMESPACE" rollout status \
+                "deployment/${deployment}" \
+                --timeout="$KUBE_ROLLOUT_TIMEOUT"
+            done
+
+            if [ -s "$pods_before_scale_down" ]; then
+              sort -u "$pods_before_scale_down" | \
+                xargs -r kubectl --namespace "$HELM_NAMESPACE" wait \
+                  --for=delete \
+                  --timeout="$KUBE_ROLLOUT_TIMEOUT"
+            fi
+          }
+
+          while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            helm_value_args+=(--set-string "${key}=${KUBE_IMAGE_REPOSITORY}")
+          done < <(printf '%s\n' "$HELM_IMAGE_REPOSITORY_KEYS" | tr ',' '\n')
+
+          while IFS= read -r key; do
+            [ -z "$key" ] && continue
+            helm_value_args+=(--set-string "${key}=${TAG}")
+          done < <(printf '%s\n' "$HELM_IMAGE_TAG_KEYS" | tr ',' '\n')
+
+          if [ -n "$HELM_VALUES" ]; then
+            values_file="${RUNNER_TEMP}/helm-values.yaml"
+            printf '%s' "$HELM_VALUES" > "$values_file"
+            helm_value_args+=(--values "$values_file")
+          fi
+
+          if [ -n "$HELM_EXTRA_SET" ]; then
+            while IFS= read -r item; do
+              [ -z "$item" ] && continue
+              helm_value_args+=(--set-string "$item")
+            done <<< "$HELM_EXTRA_SET"
+          fi
+
+          if [ -n "$HELM_EXTRA_SET_TYPED" ]; then
+            while IFS= read -r item; do
+              [ -z "$item" ] && continue
+              helm_value_args+=(--set "$item")
+            done <<< "$HELM_EXTRA_SET_TYPED"
+          fi
+
+          helm_args+=("${helm_value_args[@]}")
+
+          helm_dry_run_args=("${helm_args[@]}" --dry-run=server)
+          if ! helm "${helm_dry_run_args[@]}" >/dev/null; then
+            if [ "$HELM_RWO_ROLLOUT_MODE" = "recreate" ]; then
+              echo "::error::Helm server-side dry-run failed before RWO/RWOP pre-scale. Fix the Helm chart, values, or Kubernetes permissions before scaling down existing deployments."
+              exit 1
+            fi
+            echo "::warning::Helm server-side dry-run failed; continuing so the real upgrade can report server-side details."
+          fi
+          maybe_scale_down_rwo_deployments
+          helm "${helm_args[@]}"
+          helm --namespace "$HELM_NAMESPACE" status "$HELM_RELEASE"
+
+      - name: Update Kubernetes deployment image
+        if: env.DEPLOY_STRATEGY == 'kubectl'
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r deployment; do
+            [ -z "$deployment" ] && continue
+
+            kubectl --namespace "$KUBE_NAMESPACE" set image \
+              "deployment/${deployment}" \
+              "${KUBE_CONTAINER}=${IMAGE}"
+
+            kubectl --namespace "$KUBE_NAMESPACE" rollout status \
+              "deployment/${deployment}" \
+              --timeout="$KUBE_ROLLOUT_TIMEOUT"
+          done < <(printf '%s\n' "$KUBE_DEPLOYMENTS" | tr ',' '\n')
+
+      - name: Collect Kubernetes diagnostics
+        if: failure()
+        run: |
+          set +e
+
+          if [ -z "${KUBECONFIG:-}" ] || [ ! -f "${KUBECONFIG:-}" ]; then
+            echo "KUBECONFIG is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+
+          namespace="${HELM_NAMESPACE:-${KUBE_NAMESPACE:-}}"
+          if [ -z "$namespace" ]; then
+            echo "Kubernetes namespace is unavailable; skipping Kubernetes diagnostics."
+            exit 0
+          fi
+
+          append_command() {
+            title="$1"
+            shift
+
+            echo "::group::${title}"
+            {
+              echo ""
+              echo "#### ${title}"
+              echo '```text'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            "$@" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            status=${PIPESTATUS[0]}
+
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
+            return "$status"
+          }
+
+          {
+            echo "### Kubernetes diagnostics"
+            echo ""
+            echo "- Namespace: ${namespace}"
+            echo "- Strategy: ${DEPLOY_STRATEGY:-unset}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          append_command "Recent events" kubectl --namespace "$namespace" get events --sort-by=.lastTimestamp
+
+          if [ "${DEPLOY_STRATEGY:-}" = "helm" ]; then
+            selector="app.kubernetes.io/instance=${HELM_RELEASE}"
+
+            append_command "Helm status" helm --namespace "$namespace" status "$HELM_RELEASE"
+            append_command "Helm history" helm --namespace "$namespace" history "$HELM_RELEASE"
+            append_command "Deployments" kubectl --namespace "$namespace" get deployments -l "$selector" -o wide
+            append_command "Pods" kubectl --namespace "$namespace" get pods -l "$selector" -o wide
+            append_command "PVCs" kubectl --namespace "$namespace" get pvc -l "$selector" -o wide
+            append_command "Describe deployments" kubectl --namespace "$namespace" describe deployments -l "$selector"
+
+            pod_names="$(kubectl --namespace "$namespace" get pods -l "$selector" -o name 2>/dev/null)"
+            if [ -n "$pod_names" ]; then
+              append_command "Describe pods" kubectl --namespace "$namespace" describe $pod_names
+
+              if [ "$KUBE_COLLECT_POD_LOGS" = "true" ]; then
+                while IFS= read -r pod; do
+                  [ -z "$pod" ] && continue
+                  append_command "Logs ${pod}" kubectl --namespace "$namespace" logs "$pod" --all-containers --tail=100
+                done <<< "$pod_names"
+              fi
+            fi
+          elif [ "${DEPLOY_STRATEGY:-}" = "kubectl" ]; then
+            append_command "Deployments" kubectl --namespace "$namespace" get deployments -o wide
+            append_command "Pods" kubectl --namespace "$namespace" get pods -o wide
+
+            while IFS= read -r deployment; do
+              [ -z "$deployment" ] && continue
+              append_command "Describe deployment ${deployment}" kubectl --namespace "$namespace" describe "deployment/${deployment}"
+            done < <(printf '%s\n' "$KUBE_DEPLOYMENTS" | tr ',' '\n')
+          fi
+
+          exit 0
+
+      - name: Deployment summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "### Kubernetes deployment"
+            echo ""
+            echo "- Result: ${JOB_STATUS}"
+            echo "- Release tag: ${RELEASE_TAG}"
+            echo "- Official new-api version: ${NEW_API_OFFICIAL_VERSION}"
+            echo "- Application version: ${APP_VERSION}"
+            echo "- Image tag: ${TAG}"
+            echo "- Image: ${IMAGE:-${KUBE_IMAGE_REPOSITORY}:${TAG}}"
+            echo "- Strategy: ${DEPLOY_STRATEGY:-unset}"
+            echo "- Namespace: ${KUBE_NAMESPACE:-unset}"
+            echo "- Helm namespace: ${HELM_NAMESPACE:-unset}"
+            echo "- Helm create namespace: ${HELM_CREATE_NAMESPACE:-false}"
+            echo "- Helm RWO rollout mode: ${HELM_RWO_ROLLOUT_MODE:-unset}"
+            echo "- Helm rollback revision: ${HELM_ROLLBACK_REVISION:-unset}"
+            echo "- Helm release: ${HELM_RELEASE:-unset}"
+            echo "- Helm chart: ${HELM_CHART:-unset}"
+            echo "- Deployments: ${KUBE_DEPLOYMENTS:-unset}"
+            echo "- Container: ${KUBE_CONTAINER:-unset}"
+            echo "- Rollout timeout: ${KUBE_ROLLOUT_TIMEOUT}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/hot"
 	"github.com/tidwall/gjson"
@@ -641,6 +642,38 @@ func ShouldSkipRetryAfterChannelAffinityFailure(c *gin.Context) bool {
 	return meta.SkipRetry
 }
 
+func ClearCurrentChannelAffinityCache(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok || cacheKey == "" {
+		return false
+	}
+
+	cache := getChannelAffinityCache()
+	deleted, err := cache.DeleteMany([]string{cacheKey})
+	if err != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete current failed: err=%v", err))
+		return false
+	}
+	c.Set(ginKeyChannelAffinitySkipRetry, false)
+	for _, ok := range deleted {
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
+func ShouldKeepChannelAffinityOnChannelDisabled() bool {
+	setting := operation_setting.GetChannelAffinitySetting()
+	if setting == nil {
+		return false
+	}
+	return setting.KeepOnChannelDisabled
+}
+
 func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int) {
 	if c == nil || channelID <= 0 {
 		return
@@ -667,15 +700,15 @@ func MarkChannelAffinityUsed(c *gin.Context, selectedGroup string, channelID int
 	c.Set(ginKeyChannelAffinityLogInfo, info)
 }
 
-func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
-	if c == nil || adminInfo == nil {
+func AppendChannelAffinityAdminInfo(c *gin.Context, other *model.LogOther) {
+	if c == nil || other == nil {
 		return
 	}
 	anyInfo, ok := c.Get(ginKeyChannelAffinityLogInfo)
 	if !ok || anyInfo == nil {
 		return
 	}
-	adminInfo["channel_affinity"] = anyInfo
+	other.SetAdmin("channel_affinity", anyInfo)
 }
 
 func RecordChannelAffinity(c *gin.Context, channelID int) {

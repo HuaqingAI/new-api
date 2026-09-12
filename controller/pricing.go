@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -33,17 +34,16 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
-func GetPricing(c *gin.Context) {
+func buildPricingResponse(userID int, authenticated bool) gin.H {
 	pricing := model.GetPricing()
-	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
 	for s, f := range ratio_setting.GetGroupRatioCopy() {
 		groupRatio[s] = f
 	}
 	var group string
-	if exists {
-		user, err := model.GetUserCache(userId.(int))
+	if authenticated {
+		user, err := model.GetUserCache(userID)
 		if err == nil {
 			group = user.Group
 			for g := range groupRatio {
@@ -64,7 +64,7 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	c.JSON(200, gin.H{
+	return gin.H{
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
@@ -73,7 +73,39 @@ func GetPricing(c *gin.Context) {
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
-	})
+	}
+}
+
+func GetPricing(c *gin.Context) {
+	userID, authenticated := dashboardPricingUser(c)
+	c.JSON(200, buildPricingResponse(userID, authenticated))
+}
+
+func GetAionUiPricing(c *gin.Context) {
+	userID := c.GetInt("aionui_user_id")
+	if userID <= 0 {
+		c.JSON(401, gin.H{
+			"success": false,
+			"message": "Invalid AionUi desktop token",
+		})
+		return
+	}
+	response := buildPricingResponse(userID, true)
+	pricingGroup := serviceaionui.HTHBuddyPersonalAPIKeyGroup
+	if group, err := serviceaionui.GetPersonalAPIKeyGroup(userID); err == nil && group != "" {
+		pricingGroup = group
+	}
+	response["pricing_group"] = pricingGroup
+	c.JSON(200, response)
+}
+
+func dashboardPricingUser(c *gin.Context) (int, bool) {
+	value, exists := c.Get("id")
+	if !exists {
+		return 0, false
+	}
+	userID, ok := value.(int)
+	return userID, ok && userID > 0
 }
 
 func ResetModelRatio(c *gin.Context) {

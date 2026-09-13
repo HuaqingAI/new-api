@@ -229,6 +229,12 @@ var (
 	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
+
+	AionUiClientLogUploadEnabled              = true
+	AionUiClientLogMaxFileBytes         int64 = 20 * 1024 * 1024
+	AionUiClientLogMaxTotalBytes        int64 = 50 * 1024 * 1024
+	AionUiClientLogMaxFiles                   = 50
+	AionUiClientLogUploadTimeoutSeconds       = 120
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute

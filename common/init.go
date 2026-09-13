@@ -135,7 +135,57 @@ func InitEnv() {
 	SearchRateLimitEnable = GetEnvOrDefaultBool("SEARCH_RATE_LIMIT_ENABLE", true)
 	SearchRateLimitNum = GetEnvOrDefault("SEARCH_RATE_LIMIT", 10)
 	SearchRateLimitDuration = int64(GetEnvOrDefault("SEARCH_RATE_LIMIT_DURATION", 60))
+	initAionUiClientLogUploadSettings()
 	initConstantEnv()
+}
+
+func initAionUiClientLogUploadSettings() {
+	settings := []struct {
+		name     string
+		fallback int
+		target   *int
+	}{
+		{"AIONUI_CLIENT_LOG_MAX_FILE_BYTES", 20 * 1024 * 1024, new(int)},
+		{"AIONUI_CLIENT_LOG_MAX_TOTAL_BYTES", 50 * 1024 * 1024, new(int)},
+		{"AIONUI_CLIENT_LOG_MAX_FILES", 50, new(int)},
+		{"AIONUI_CLIENT_LOG_UPLOAD_TIMEOUT_SECONDS", 120, new(int)},
+	}
+	for index := range settings {
+		value := settings[index].fallback
+		if rawValue := strings.TrimSpace(os.Getenv(settings[index].name)); rawValue != "" {
+			parsed, err := strconv.Atoi(rawValue)
+			if err != nil {
+				AionUiClientLogUploadEnabled = false
+				SysError(fmt.Sprintf("%s must be an integer; AionUI client log upload is disabled", settings[index].name))
+				return
+			}
+			value = parsed
+		}
+		if value <= 0 {
+			AionUiClientLogUploadEnabled = false
+			SysError(fmt.Sprintf("%s must be positive; AionUI client log upload is disabled", settings[index].name))
+			return
+		}
+		*settings[index].target = value
+	}
+	AionUiClientLogMaxFileBytes = int64(*settings[0].target)
+	AionUiClientLogMaxTotalBytes = int64(*settings[1].target)
+	AionUiClientLogMaxFiles = *settings[2].target
+	AionUiClientLogUploadTimeoutSeconds = *settings[3].target
+	if AionUiClientLogMaxTotalBytes < AionUiClientLogMaxFileBytes {
+		AionUiClientLogUploadEnabled = false
+		SysError("AIONUI_CLIENT_LOG_MAX_TOTAL_BYTES must be at least AIONUI_CLIENT_LOG_MAX_FILE_BYTES; AionUI client log upload is disabled")
+		return
+	}
+	if AionUiClientLogMaxTotalBytes > math.MaxInt64-1024*1024 {
+		AionUiClientLogUploadEnabled = false
+		SysError("AIONUI_CLIENT_LOG_MAX_TOTAL_BYTES is too large; AionUI client log upload is disabled")
+		return
+	}
+	if int64(AionUiClientLogUploadTimeoutSeconds) > math.MaxInt64/int64(time.Second) {
+		AionUiClientLogUploadEnabled = false
+		SysError("AIONUI_CLIENT_LOG_UPLOAD_TIMEOUT_SECONDS is too large; AionUI client log upload is disabled")
+	}
 }
 
 func initUserSessionSettings() {

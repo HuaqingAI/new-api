@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   BookOpen,
   Bot,
@@ -46,6 +47,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { DataTablePagination, useDataTable } from '@/components/data-table'
 import {
   sideDrawerContentClassName,
   sideDrawerHeaderClassName,
@@ -241,6 +243,11 @@ const RESOURCE_QUERY_KEYS = {
   knowledge: ['agent-platform', 'knowledge', 'summary'] as const,
   agent: ['agent-platform', 'agents', 'summary'] as const,
 }
+
+const RESOURCE_TABLE_PAGINATION_COLUMNS: ColumnDef<
+  AgentPlatformItem,
+  unknown
+>[] = [{ accessorKey: 'resource_id' }]
 
 const MCP_CONFIG_JSON_PLACEHOLDER =
   '// Example JSON (stdio):\n' +
@@ -728,43 +735,56 @@ function ResourceTable(props: {
   typeLabel: string
 }) {
   const { t } = useTranslation()
+  const { table } = useDataTable({
+    data: props.items,
+    columns: RESOURCE_TABLE_PAGINATION_COLUMNS,
+    getRowId: (item) => item.resource_id,
+    initialPagination: { pageIndex: 0, pageSize: 20 },
+    withFilteredRowModel: false,
+    withSortedRowModel: false,
+    withFacetedRowModel: false,
+  })
+  const rows = table.getRowModel().rows
 
   return (
-    <div className='overflow-x-auto rounded-md border'>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('Resource')}</TableHead>
-            <TableHead>{t('Type')}</TableHead>
-            {props.showCliType ? (
-              <TableHead>{t('Agent CLI 类型')}</TableHead>
-            ) : null}
-            {props.showLatestVersion ? (
-              <TableHead>{t('Status')}</TableHead>
-            ) : null}
-            <TableHead>{t('Owner')}</TableHead>
-            {props.showLatestVersion ? (
-              <TableHead>{t('Latest version')}</TableHead>
-            ) : null}
-            <TableHead>{t('Tenant')}</TableHead>
-            <TableHead>{t('Updated At')}</TableHead>
-            <TableHead className='text-right'>{t('Actions')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {props.items.map((item) => (
-            <ResourceRow
-              key={item.resource_id}
-              item={item}
-              onOpenDetails={props.onOpenDetails}
-              onOpenEdit={props.onOpenEdit}
-              showCliType={props.showCliType}
-              showLatestVersion={props.showLatestVersion}
-              typeLabel={props.typeLabel}
-            />
-          ))}
-        </TableBody>
-      </Table>
+    <div className='space-y-3'>
+      <div className='overflow-x-auto rounded-md border'>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('Resource')}</TableHead>
+              <TableHead>{t('Type')}</TableHead>
+              {props.showCliType ? (
+                <TableHead>{t('Agent CLI 类型')}</TableHead>
+              ) : null}
+              {props.showLatestVersion ? (
+                <TableHead>{t('Status')}</TableHead>
+              ) : null}
+              <TableHead>{t('Owner')}</TableHead>
+              {props.showLatestVersion ? (
+                <TableHead>{t('Latest version')}</TableHead>
+              ) : null}
+              <TableHead>{t('Tenant')}</TableHead>
+              <TableHead>{t('Updated At')}</TableHead>
+              <TableHead className='text-right'>{t('Actions')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <ResourceRow
+                key={row.id}
+                item={row.original}
+                onOpenDetails={props.onOpenDetails}
+                onOpenEdit={props.onOpenEdit}
+                showCliType={props.showCliType}
+                showLatestVersion={props.showLatestVersion}
+                typeLabel={props.typeLabel}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <DataTablePagination table={table} showPageSize={false} />
     </div>
   )
 }

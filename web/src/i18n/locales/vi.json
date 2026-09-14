@@ -877,6 +877,7 @@
     "Budget delegation created": "Đã tạo ủy quyền ngân sách",
     "Budget delegation rejected": "Ủy quyền ngân sách bị từ chối",
     "Budget delegation revoked": "Ủy quyền ngân sách đã thu hồi",
+    "Budget organization: {{organization}}": "Tổ chức ngân sách: {{organization}}",
     "Budget pool capacity must be greater than 0": "Suc chua ngan sach phai lon hon 0",
     "Budget pool governance": "Quản trị nhóm ngân sách",
     "Budget Pool List": "Danh sách quỹ ngân sách",

@@ -65,6 +65,9 @@ type QuotaRequestItem struct {
 	DepartmentBudgetId   int    `json:"department_budget_id"`
 	BudgetScopeType      string `json:"budget_scope_type"`
 	BudgetName           string `json:"budget_name"`
+	BudgetType           string `json:"budget_type"`
+	BudgetDepartmentId   int    `json:"budget_department_id"`
+	BudgetDepartmentName string `json:"budget_department_name"`
 	BudgetMode           string `json:"budget_mode"`
 	RequesterUserId      int    `json:"requester_user_id"`
 	RequesterUsername    string `json:"requester_username"`
@@ -623,6 +626,11 @@ type quotaRequestListRow struct {
 	RequesterUsername    string
 	RequesterDisplayName string
 	ApproverUsername     string
+	BudgetScopeType      string
+	BudgetName           string
+	BudgetType           string
+	BudgetDepartmentId   int
+	BudgetDepartmentName string
 }
 
 func (s *QuotaRequestService) getByIDTx(tx *gorm.DB, requestId int) (QuotaRequestItem, error) {
@@ -644,10 +652,17 @@ func (s *QuotaRequestService) listRows(db *gorm.DB) ([]quotaRequestListRow, erro
 		"requester.username AS requester_username",
 		"requester.display_name AS requester_display_name",
 		"approver.username AS approver_username",
+		"budget.scope_type AS budget_scope_type",
+		"budget.name AS budget_name",
+		"budget.type AS budget_type",
+		"budget.department_id AS budget_department_id",
+		"budget_department.name AS budget_department_name",
 	).
 		Joins("LEFT JOIN enterprise_departments ON enterprise_departments.id = enterprise_quota_requests.department_id").
 		Joins("LEFT JOIN users AS requester ON requester.id = enterprise_quota_requests.requester_user_id").
 		Joins("LEFT JOIN users AS approver ON approver.id = enterprise_quota_requests.approver_user_id").
+		Joins("LEFT JOIN enterprise_department_budgets AS budget ON budget.id = enterprise_quota_requests.department_budget_id AND budget.tenant_id = enterprise_quota_requests.tenant_id").
+		Joins("LEFT JOIN enterprise_departments AS budget_department ON budget_department.id = budget.department_id AND budget_department.tenant_id = budget.tenant_id").
 		Find(&rows).Error
 	if err != nil {
 		return nil, err
@@ -656,6 +671,18 @@ func (s *QuotaRequestService) listRows(db *gorm.DB) ([]quotaRequestListRow, erro
 }
 
 func mapQuotaRequestItem(row quotaRequestListRow) QuotaRequestItem {
+	budgetScopeType := strings.TrimSpace(row.BudgetScopeSnapshot)
+	if budgetScopeType == "" {
+		budgetScopeType = strings.TrimSpace(row.BudgetScopeType)
+	}
+	if budgetScopeType == "" {
+		budgetScopeType = entmodel.DepartmentBudgetScopeDepartment
+	}
+	budgetName := strings.TrimSpace(row.BudgetNameSnapshot)
+	if budgetName == "" {
+		budgetName = strings.TrimSpace(row.BudgetName)
+	}
+
 	return QuotaRequestItem{
 		Id:                   row.Id,
 		TenantId:             row.TenantId,
@@ -663,8 +690,11 @@ func mapQuotaRequestItem(row quotaRequestListRow) QuotaRequestItem {
 		DepartmentName:       row.DepartmentName,
 		DepartmentBudgetId:   row.DepartmentBudgetId,
 		BudgetMode:           row.BudgetMode,
-		BudgetScopeType:      row.BudgetScopeSnapshot,
-		BudgetName:           row.BudgetNameSnapshot,
+		BudgetScopeType:      budgetScopeType,
+		BudgetName:           budgetName,
+		BudgetType:           row.BudgetType,
+		BudgetDepartmentId:   row.BudgetDepartmentId,
+		BudgetDepartmentName: row.BudgetDepartmentName,
 		RequesterUserId:      row.RequesterUserId,
 		RequesterUsername:    row.RequesterUsername,
 		RequesterDisplayName: row.RequesterDisplayName,

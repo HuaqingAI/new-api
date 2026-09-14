@@ -877,6 +877,7 @@
     "Budget delegation created": "Délégation budgétaire créée",
     "Budget delegation rejected": "Délégation de budget rejetée",
     "Budget delegation revoked": "Délégation de budget révoquée",
+    "Budget organization: {{organization}}": "Organisation du budget : {{organization}}",
     "Budget pool capacity must be greater than 0": "La capacite du budget doit etre superieure a 0",
     "Budget pool governance": "Gouvernance du pool budgétaire",
     "Budget Pool List": "Liste des budgets",

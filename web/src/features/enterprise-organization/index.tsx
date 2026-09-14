@@ -6045,18 +6045,30 @@ export function QuotaRequestTable({
                 {item.department_name || `#${item.department_id}`}
               </TableCell>
               <TableCell>
-                <div className='space-y-1'>
-                  <div>
+                <div className='min-w-[180px] space-y-1'>
+                  <div className='font-medium'>
                     {item.budget_name ||
                       t('Budget #{{budgetId}}', {
                         budgetId: item.department_budget_id,
                       })}
                   </div>
-                  {item.budget_scope_type === 'public' ? (
-                    <div className='text-muted-foreground text-xs'>
-                      {t('Public budget pool')}
-                    </div>
-                  ) : null}
+                  <div className='text-muted-foreground flex flex-wrap gap-x-2 gap-y-1 text-xs'>
+                    <span>{formatBudgetType(item.budget_type ?? '', t)}</span>
+                    <span>
+                      {t('Budget organization: {{organization}}', {
+                        organization:
+                          item.budget_scope_type === 'public'
+                            ? t('Public budget pool')
+                            : item.budget_department_name ||
+                              item.department_name ||
+                              t('Department #{{id}}', {
+                                id:
+                                  item.budget_department_id ??
+                                  item.department_id,
+                              }),
+                      })}
+                    </span>
+                  </div>
                 </div>
               </TableCell>
               <TableCell>

@@ -57,23 +57,21 @@ describe('Agent Platform shell', () => {
     queryClient.setQueryData(['agent-platform', 'mcps', 'summary'], {
       success: true,
       data: {
-        items: [
-          {
-            id: 1,
-            resource_id: 'mcp_translate',
-            resource_type: 'mcp',
-            display_name: 'Translate MCP',
-            description: 'stdio mcp server',
-            avatar: '',
-            owner_user_id: 7,
-            status: 'published',
-            latest_version: '1.0.0',
-            tenant_id: 0,
-            created_at: 1717113600,
-            updated_at: 1717117200,
-          },
-        ],
-        total: 1,
+        items: Array.from({ length: 21 }, (_, index) => ({
+          id: index + 1,
+          resource_id: `mcp_${index + 1}`,
+          resource_type: 'mcp' as const,
+          display_name: index === 0 ? 'Translate MCP' : `MCP ${index + 1}`,
+          description: 'stdio mcp server',
+          avatar: '',
+          owner_user_id: 7,
+          status: 'published',
+          latest_version: '1.0.0',
+          tenant_id: 0,
+          created_at: 1717113600,
+          updated_at: 1717117200,
+        })),
+        total: 21,
         page: 1,
         page_size: 100,
       },
@@ -104,7 +102,9 @@ describe('Agent Platform shell', () => {
     assert.match(html, /Agents/)
     assert.match(html, /Published Agents/)
     assert.match(html, /Translate MCP/)
-    assert.match(html, /mcp_translate/)
+    assert.match(html, /mcp_20/)
+    assert.doesNotMatch(html, /mcp_21/)
+    assert.match(html, /Go to page 2/)
     assert.doesNotMatch(html, /Latest version/)
     assert.match(html, /Details/)
     assert.match(html, /Edit/)

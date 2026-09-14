@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
@@ -38,6 +38,7 @@ import { cn, getPageNumbers } from '@/lib/utils'
 
 type DataTablePaginationProps<TData> = {
   table: Table<TData>
+  showPageSize?: boolean
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100] as const
@@ -48,6 +49,7 @@ const PAGE_SIZE_SELECT_ITEMS = PAGE_SIZE_OPTIONS.map((pageSize) => ({
 
 export function DataTablePagination<TData>({
   table,
+  showPageSize = true,
 }: DataTablePaginationProps<TData>) {
   const { t } = useTranslation()
   const pagination = table.getState().pagination
@@ -56,6 +58,16 @@ export function DataTablePagination<TData>({
   const totalPages = table.getPageCount()
   const totalRows = table.getRowCount()
   const pageNumbers = getPageNumbers(currentPage, totalPages)
+  const pageNumberItems = pageNumbers.reduce<
+    { key: string; pageNumber: number | string }[]
+  >((items, pageNumber) => {
+    const key =
+      pageNumber === '...'
+        ? `ellipsis-${items.filter((item) => item.pageNumber === '...').length}`
+        : `page-${pageNumber}`
+    items.push({ key, pageNumber })
+    return items
+  }, [])
 
   return (
     <div
@@ -72,31 +84,33 @@ export function DataTablePagination<TData>({
           </span>
         </div>
 
-        <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>
-          <p className='text-muted-foreground/80 hidden text-sm font-medium whitespace-nowrap @2xl/pagination:block'>
-            {t('Rows per page')}
-          </p>
-          <Select
-            items={PAGE_SIZE_SELECT_ITEMS}
-            value={`${pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value))
-            }}
-          >
-            <SelectTrigger className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'>
-              <SelectValue placeholder={pageSize} />
-            </SelectTrigger>
-            <SelectContent side='top' alignItemWithTrigger={false}>
-              <SelectGroup>
-                {PAGE_SIZE_OPTIONS.map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
+        {showPageSize ? (
+          <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>
+            <p className='text-muted-foreground/80 hidden text-sm font-medium whitespace-nowrap @2xl/pagination:block'>
+              {t('Rows per page')}
+            </p>
+            <Select
+              items={PAGE_SIZE_SELECT_ITEMS}
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                table.setPageSize(Number(value))
+              }}
+            >
+              <SelectTrigger className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'>
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent side='top' alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {PAGE_SIZE_OPTIONS.map((pageSize) => (
+                    <SelectItem key={pageSize} value={`${pageSize}`}>
+                      {pageSize}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
 
         <div className='flex min-w-0 shrink-0 items-center gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
           <Button
@@ -118,8 +132,8 @@ export function DataTablePagination<TData>({
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
-          {pageNumbers.map((pageNumber, index) => (
-            <div key={`${pageNumber}-${index}`} className='flex items-center'>
+          {pageNumberItems.map(({ key, pageNumber }) => (
+            <div key={key} className='flex items-center'>
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
                   ...

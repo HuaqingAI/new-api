@@ -38,6 +38,9 @@ type QuotaRequestItem struct {
 	DepartmentBudgetId   int    `json:"department_budget_id"`
 	BudgetScopeType      string `json:"budget_scope_type"`
 	BudgetName           string `json:"budget_name"`
+	BudgetType           string `json:"budget_type"`
+	BudgetDepartmentId   int    `json:"budget_department_id"`
+	BudgetDepartmentName string `json:"budget_department_name"`
 	BudgetMode           string `json:"budget_mode"`
 	RequesterUserId      int    `json:"requester_user_id"`
 	RequesterUsername    string `json:"requester_username"`

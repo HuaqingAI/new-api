@@ -877,6 +877,7 @@
     "Budget delegation created": "预算委派已创建",
     "Budget delegation rejected": "预算委托已拒绝",
     "Budget delegation revoked": "预算委托已撤销",
+    "Budget organization: {{organization}}": "所属组织：{{organization}}",
     "Budget pool capacity must be greater than 0": "预算池容量必须大于 0",
     "Budget pool governance": "预算池治理",
     "Budget Pool List": "预算池列表",

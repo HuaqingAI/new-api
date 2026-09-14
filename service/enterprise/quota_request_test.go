@@ -421,6 +421,35 @@ func TestQuotaRequestPublicBudgetPoolCanBeRequestedAndAllocated(t *testing.T) {
 	require.Equal(t, int64(380), publicBudget.Remaining)
 }
 
+func TestQuotaRequestListIncludesCurrentBudgetIdentityForLegacyRequests(t *testing.T) {
+	_, db := newQuotaAllocationTestService(t)
+	require.NoError(t, db.Model(&entmodel.DepartmentBudget{}).Where("id = ?", 1).Updates(map[string]any{
+		"name": "Engineering production",
+		"type": entmodel.DepartmentBudgetTypeBalance,
+	}).Error)
+	require.NoError(t, db.Create(&entmodel.QuotaRequest{
+		TenantId:           0,
+		DepartmentId:       1,
+		DepartmentBudgetId: 1,
+		BudgetMode:         entservice.QuotaRequestBudgetModeDepartment,
+		RequesterUserId:    2001,
+		RequestedQuota:     120,
+		Status:             entmodel.QuotaRequestStatusSubmitted,
+	}).Error)
+
+	items, err := entservice.NewQuotaRequestService(db).List(entservice.QuotaRequestListQuery{
+		TenantId: 0,
+		ActorId:  1001,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, "Engineering production", items[0].BudgetName)
+	require.Equal(t, entmodel.DepartmentBudgetTypeBalance, items[0].BudgetType)
+	require.Equal(t, 1, items[0].BudgetDepartmentId)
+	require.Equal(t, "Engineering", items[0].BudgetDepartmentName)
+}
+
 func TestQuotaRequestPublicBudgetRequiresMatchingModeAndMembership(t *testing.T) {
 	_, db := newQuotaAllocationTestService(t)
 	require.NoError(t, db.Create(&entmodel.DepartmentBudget{

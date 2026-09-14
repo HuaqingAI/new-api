@@ -264,6 +264,9 @@ export type QuotaRequestItem = {
   department_budget_id: number
   budget_scope_type?: string
   budget_name?: string
+  budget_type?: DepartmentBudgetType | string
+  budget_department_id?: number
+  budget_department_name?: string
   budget_mode: string
   requester_user_id: number
   requester_username: string

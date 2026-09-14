@@ -877,6 +877,7 @@
     "Budget delegation created": "Делегирование бюджета создано",
     "Budget delegation rejected": "Делегирование бюджета отклонено",
     "Budget delegation revoked": "Делегирование бюджета отозвано",
+    "Budget organization: {{organization}}": "Организация бюджета: {{organization}}",
     "Budget pool capacity must be greater than 0": "Емкость бюджетного пула должна быть больше 0",
     "Budget pool governance": "Управление бюджетным пулом",
     "Budget Pool List": "Список бюджетных пулов",

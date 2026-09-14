@@ -877,6 +877,7 @@
     "Budget delegation created": "予算委譲を作成しました",
     "Budget delegation rejected": "予算委任を拒否済み",
     "Budget delegation revoked": "予算委任を取り消し済み",
+    "Budget organization: {{organization}}": "予算の所属組織: {{organization}}",
     "Budget pool capacity must be greater than 0": "予算プール容量は0より大きくしてください",
     "Budget pool governance": "予算プールのガバナンス",
     "Budget Pool List": "予算プール一覧",

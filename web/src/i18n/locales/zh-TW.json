@@ -877,6 +877,7 @@
     "Budget delegation created": "Budget delegation created",
     "Budget delegation rejected": "Budget delegation rejected",
     "Budget delegation revoked": "Budget delegation revoked",
+    "Budget organization: {{organization}}": "所屬組織：{{organization}}",
     "Budget pool capacity must be greater than 0": "預算池容量必須大於 0",
     "Budget pool governance": "Budget pool governance",
     "Budget Pool List": "預算池清單",

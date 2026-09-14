@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "Department budget delegation was rejected",
     "enterprise.organization.budget_delegation_target_not_descendant": "Target department must be a descendant of the source department",
     "enterprise.organization.enterprise_budget_insufficient": "Department budget is insufficient",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "Allocation exceeds the subscription budget cycle commitment limit",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "This approval would exceed the subscription budget pool's cycle limit. Reduce the approved quota, expand the pool, or reclaim an existing allocation.",
     "enterprise.usage.more_models": "+{{count}} more models",
     "enterprise.usage.multi_dept_disclaimer": "Department totals cannot be added together across departments.",
     "Entrypoint (space separated)": "Entrypoint (space separated)",

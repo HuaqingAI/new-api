@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "预算委派被拒绝",
     "enterprise.organization.budget_delegation_target_not_descendant": "目标部门必须是来源部门的后代部门",
     "enterprise.organization.enterprise_budget_insufficient": "部门预算不足",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "分配额度超过周期预算池本周期可承诺额度",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "本次批准额度加上当前已分配额度，已超过订阅预算池的周期上限。请降低批准额度、扩容预算池，或回收现有分配。",
     "enterprise.usage.more_models": "+{{count}} 个更多模型",
     "enterprise.usage.multi_dept_disclaimer": "部门间数值不可加和。",
     "Entrypoint (space separated)": "入口点 (空格分隔)",

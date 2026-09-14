@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "Department budget delegation was rejected",
     "enterprise.organization.budget_delegation_target_not_descendant": "Target department must be a descendant of the source department",
     "enterprise.organization.enterprise_budget_insufficient": "Department budget is insufficient",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "Allocation exceeds the subscription budget cycle commitment limit",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "本次核准額度加上目前已分配額度，已超過訂閱預算池的週期上限。請降低核准額度、擴充預算池，或回收既有分配。",
     "enterprise.usage.more_models": "+{{count}} more models",
     "enterprise.usage.multi_dept_disclaimer": "Department totals cannot be added together across departments.",
     "Entrypoint (space separated)": "入口點 (空格分隔)",

@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "Ủy quyền ngân sách đã bị từ chối",
     "enterprise.organization.budget_delegation_target_not_descendant": "Phòng ban đích phải là hậu duệ của phòng ban nguồn",
     "enterprise.organization.enterprise_budget_insufficient": "Ngân sách phòng ban không đủ",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "Phân bổ vượt quá giới hạn cam kết của chu kỳ ngân sách thuê bao",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "Khoản phê duyệt này sẽ vượt giới hạn chu kỳ của nhóm ngân sách đăng ký. Hãy giảm hạn mức được phê duyệt, tăng nhóm ngân sách hoặc thu hồi một phân bổ hiện có.",
     "enterprise.usage.more_models": "+{{count}} mô hình khác",
     "enterprise.usage.multi_dept_disclaimer": "Không thể cộng trực tiếp số liệu giữa các phòng ban.",
     "Entrypoint (space separated)": "Entrypoint (cách nhau bằng dấu cách)",

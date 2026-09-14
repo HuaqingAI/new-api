@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "Делегирование бюджета отклонено",
     "enterprise.organization.budget_delegation_target_not_descendant": "Целевой отдел должен быть потомком исходного отдела",
     "enterprise.organization.enterprise_budget_insufficient": "Недостаточно бюджета отдела",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "Распределение превышает лимит обязательств циклического бюджета",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "Эта заявка превысит лимит цикла пула бюджета подписки. Уменьшите утверждаемую квоту, увеличьте пул или отзовите существующее распределение.",
     "enterprise.usage.more_models": "+ещё {{count}} моделей",
     "enterprise.usage.multi_dept_disclaimer": "Показатели разных отделов нельзя складывать между собой.",
     "Entrypoint (space separated)": "Точка входа (через пробелы)",

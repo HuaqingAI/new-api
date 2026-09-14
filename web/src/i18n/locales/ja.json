@@ -2284,7 +2284,7 @@
     "enterprise.organization.budget_delegation_rejected": "予算委譲が拒否されました",
     "enterprise.organization.budget_delegation_target_not_descendant": "対象部門は委譲元部門の子孫部門である必要があります",
     "enterprise.organization.enterprise_budget_insufficient": "部門予算が不足しています",
-    "enterprise.organization.subscription_cycle_allocated_exceeded": "割り当てがサブスクリプション予算サイクルのコミット上限を超えています",
+    "enterprise.organization.subscription_cycle_allocated_exceeded": "今回の承認額を現在の割り当て済み額に加えると、サブスクリプション予算プールの周期上限を超えます。承認額を減らすか、予算プールを拡張するか、既存の割り当てを回収してください。",
     "enterprise.usage.more_models": "+{{count}} 件の追加モデル",
     "enterprise.usage.multi_dept_disclaimer": "部署間の数値は単純に合算できません。",
     "Entrypoint (space separated)": "Entrypoint (スペース区切り)",

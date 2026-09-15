@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/QuantumNous/new-api/relay/constant"
 
@@ -78,14 +79,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
-		if strings.HasSuffix(request.Model, "-high") {
+		preserveSuffix := model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) || model_setting.ShouldPreserveThinkingSuffix(request.Model)
+		if !preserveSuffix && strings.HasSuffix(request.Model, "-high") {
 			request.ReasoningEffort = "high"
 			request.Model = strings.TrimSuffix(request.Model, "-high")
-		} else if strings.HasSuffix(request.Model, "-low") {
+		} else if !preserveSuffix && strings.HasSuffix(request.Model, "-low") {
 			request.ReasoningEffort = "low"
 			request.Model = strings.TrimSuffix(request.Model, "-low")
 		}
-		info.ReasoningEffort = request.ReasoningEffort
+		info.SetReasoningEffort(request.ReasoningEffort)
 		info.UpstreamModelName = request.Model
 	}
 	return request, nil
@@ -114,7 +116,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations, constant.RelayModeImagesEdits:
-		usage, err = openai.OpenaiHandlerWithUsage(c, info, resp)
+		usage, err = openai.OpenaiImageHandler(c, info, resp)
 	case constant.RelayModeResponses:
 		if info.IsStream {
 			usage, err = openai.OaiResponsesStreamHandler(c, info, resp)

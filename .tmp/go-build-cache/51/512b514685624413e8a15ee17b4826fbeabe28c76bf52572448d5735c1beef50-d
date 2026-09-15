@@ -1,0 +1,6 @@
+./client.go
+./container.go
+./deployment.go
+./hardware.go
+./jsonutil.go
+./types.go

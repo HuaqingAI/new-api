@@ -1,0 +1,71 @@
+{
+  "selectedCount": 6,
+  "stories": [
+    {
+      "storyId": "7.1",
+      "title": "建立部门负责人权限模型与生效优先级",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    },
+    {
+      "storyId": "7.2",
+      "title": "为预算/用量/告警 summary 增加包含子部门作用域",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    },
+    {
+      "storyId": "7.3",
+      "title": "支持上级预算池向后代部门预算池分配",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    },
+    {
+      "storyId": "7.4",
+      "title": "补齐成员 allocation 的调整、取消与回收治理",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    },
+    {
+      "storyId": "7.5",
+      "title": "支持员工额度申请、单步审批与自动分配",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    },
+    {
+      "storyId": "7.6",
+      "title": "建立治理动作审计时间线与钉钉通知",
+      "complexity": {
+        "score": 2,
+        "level": "Low",
+        "reasons": [
+          "High AC count (12)"
+        ]
+      }
+    }
+  ]
+}

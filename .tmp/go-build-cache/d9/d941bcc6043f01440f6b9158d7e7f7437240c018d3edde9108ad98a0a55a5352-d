@@ -1,0 +1,10 @@
+./admin_action_test.go
+./boundary_test.go
+./department_budget_test.go
+./department_membership_test.go
+./dingtalk_config_test.go
+./dingtalk_connectivity_test.go
+./dingtalk_oauth_test.go
+./dingtalk_sync_test.go
+./group_semantics_test.go
+./permission_test.go

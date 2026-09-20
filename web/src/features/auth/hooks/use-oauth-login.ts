@@ -21,7 +21,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { clearAuthentication } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
+import { createServerError } from '@/lib/server-error-message'
 
 import { createOAuthAuthorization, createOAuthFlow, logout } from '../api'
 import {
@@ -60,7 +62,7 @@ export function useOAuthLogin(
   const resetSession = async () => {
     const response = await logout()
     if (!response.success) {
-      throw new Error(response.message || t('Failed to sign out session'))
+      throw createServerError(response, t('Failed to sign out session'))
     }
     clearAuthentication()
   }
@@ -92,8 +94,10 @@ export function useOAuthLogin(
 
       const url = buildGitHubOAuthUrl(status.github_client_id, state)
       window.open(url, '_self')
-    } catch {
-      toast.error(t('Failed to start GitHub login'))
+    } catch (error) {
+      handleServerError(
+        AuthOperationError.from(error, t('Failed to start GitHub login'))
+      )
       if (githubTimeoutRef.current) {
         clearTimeout(githubTimeoutRef.current)
       }
@@ -114,8 +118,10 @@ export function useOAuthLogin(
 
       const url = buildDiscordOAuthUrl(status.discord_client_id, state)
       window.open(url, '_self')
-    } catch {
-      toast.error(t('Failed to start Discord login'))
+    } catch (error) {
+      handleServerError(
+        AuthOperationError.from(error, t('Failed to start Discord login'))
+      )
     } finally {
       setIsLoading(false)
     }
@@ -136,8 +142,10 @@ export function useOAuthLogin(
         state
       )
       window.open(url, '_self')
-    } catch {
-      toast.error(t('Failed to start OIDC login'))
+    } catch (error) {
+      handleServerError(
+        AuthOperationError.from(error, t('Failed to start OIDC login'))
+      )
     } finally {
       setIsLoading(false)
     }
@@ -154,8 +162,10 @@ export function useOAuthLogin(
 
       const url = buildLinuxDOOAuthUrl(status.linuxdo_client_id, state)
       window.open(url, '_self')
-    } catch {
-      toast.error(t('Failed to start LinuxDO login'))
+    } catch (error) {
+      handleServerError(
+        AuthOperationError.from(error, t('Failed to start LinuxDO login'))
+      )
     } finally {
       setIsLoading(false)
     }
@@ -202,7 +212,7 @@ export function useOAuthLogin(
       rememberOAuthLoginRedirect(authorization.state, redirectTo)
       window.open(authorization.authorizationUrl, '_self')
     } catch (error) {
-      toast.error(t(AuthOperationError.from(error).message))
+      handleServerError(AuthOperationError.from(error))
     } finally {
       setIsLoading(false)
     }
@@ -228,9 +238,12 @@ export function useOAuthLogin(
       }
 
       window.open(url.toString(), '_self')
-    } catch {
-      toast.error(
-        t('Failed to start {{provider}} login', { provider: provider.name })
+    } catch (error) {
+      handleServerError(
+        AuthOperationError.from(
+          error,
+          t('Failed to start {{provider}} login', { provider: provider.name })
+        )
       )
     } finally {
       setIsLoading(false)

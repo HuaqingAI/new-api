@@ -60,6 +60,9 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureAlertEventDepartmentTokensColumn(db); err != nil {
 		return err
 	}
+	if err := backfillAlertEventDepartmentTokens(db); err != nil {
+		return err
+	}
 	if err := ensureAlertDeliveryColumns(db); err != nil {
 		return err
 	}

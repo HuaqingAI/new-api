@@ -282,7 +282,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
-		updateMap := map[string]interface{}{
+		updateMap := map[string]any{
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
@@ -473,7 +473,7 @@ func AdminResetUserSubscriptionsByPlan(c *gin.Context) {
 		return
 	}
 	recordSubscriptionResetUserLogs(c, result, auditOperatorInfo(c))
-	recordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]interface{}{
+	recordManageAuditFor(c, userId, "subscription.user_plan_reset", map[string]any{
 		"target_user_id":     userId,
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
@@ -504,7 +504,7 @@ func AdminResetPlanSubscriptions(c *gin.Context) {
 	recordSubscriptionResetUserLogs(c, result, auditOperatorInfo(c))
 	common.SysLog(fmt.Sprintf("admin reset subscription plan %d quota: reset_count=%d user_count=%d advance_reset_time=%t",
 		result.PlanId, result.ResetCount, result.UserCount, result.AdvanceResetTime))
-	recordManageAudit(c, "subscription.plan_reset", map[string]interface{}{
+	recordManageAudit(c, "subscription.plan_reset", map[string]any{
 		"plan_id":            result.PlanId,
 		"plan_title":         result.PlanTitle,
 		"reset_count":        result.ResetCount,

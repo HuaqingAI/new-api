@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Add01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowRightLeft } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -41,6 +42,11 @@ import { cn } from '@/lib/utils'
 export type Option = {
   label: string
   value: string
+  /**
+   * Secondary text shown beside the option in the dropdown. Chips for hinted
+   * values also carry a marker icon whose tooltip repeats the hint.
+   */
+  hint?: string
 }
 
 interface MultiSelectProps {
@@ -141,6 +147,14 @@ export function MultiSelect(props: MultiSelectProps) {
     return map
   }, [props.options])
 
+  const hintMap = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const option of props.options) {
+      if (option.hint) map.set(option.value, option.hint)
+    }
+    return map
+  }, [props.options])
+
   const trimmedInput = inputValue.trim()
   const inputMatchesExisting =
     trimmedInput.length > 0 &&
@@ -201,6 +215,25 @@ export function MultiSelect(props: MultiSelectProps) {
     }
     setInputValue(value)
     props.onInputValueChange?.(value)
+  }
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>): void => {
+    if (!props.allowCreate || props.disabled) return
+
+    const pasted = event.clipboardData.getData('text/plain')
+    if (!COMMA_REGEX.test(pasted)) return
+
+    event.preventDefault()
+    const input = event.currentTarget
+    const value =
+      input.value.slice(0, input.selectionStart ?? input.value.length) +
+      pasted +
+      input.value.slice(input.selectionEnd ?? input.value.length)
+
+    // A pasted batch is complete, including its final value. Read the clipboard
+    // before the single-line input can strip newline separators.
+    addValues(value.split(COMMA_REGEX))
+    setInputValue('')
   }
 
   const handleValueChange = (next: string[]) => {
@@ -287,6 +320,7 @@ export function MultiSelect(props: MultiSelectProps) {
               <>
                 {visibleValues.map((value) => {
                   const label = labelMap.get(value) ?? value
+                  const hint = hintMap.get(value)
                   return (
                     <ComboboxChip key={value}>
                       {props.copyChipOnClick ? (
@@ -303,6 +337,15 @@ export function MultiSelect(props: MultiSelectProps) {
                         </button>
                       ) : (
                         <span className='max-w-[16rem] truncate'>{label}</span>
+                      )}
+                      {hint && (
+                        <span
+                          title={hint}
+                          aria-hidden='true'
+                          className='text-muted-foreground inline-flex shrink-0'
+                        >
+                          <ArrowRightLeft className='size-3' />
+                        </span>
                       )}
                     </ComboboxChip>
                   )
@@ -351,6 +394,7 @@ export function MultiSelect(props: MultiSelectProps) {
               : undefined
           }
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           aria-label={placeholder}
         />
       </ComboboxChips>
@@ -361,11 +405,13 @@ export function MultiSelect(props: MultiSelectProps) {
             {(item: string) => {
               const isCreate = canCreate && item === trimmedInput
               const label = labelMap.get(item) ?? item
+              const hint = hintMap.get(item)
               return (
                 <ComboboxItem
                   key={item}
                   value={item}
                   className={isCreate ? 'text-foreground' : undefined}
+                  aria-description={hint}
                 >
                   {isCreate ? (
                     <>
@@ -382,7 +428,17 @@ export function MultiSelect(props: MultiSelectProps) {
                       </span>
                     </>
                   ) : (
-                    <span className='truncate'>{label}</span>
+                    <>
+                      <span className='truncate'>{label}</span>
+                      {hint && (
+                        <span
+                          aria-hidden='true'
+                          className='text-muted-foreground ml-auto max-w-40 shrink-0 truncate text-xs'
+                        >
+                          {hint}
+                        </span>
+                      )}
+                    </>
                   )}
                 </ComboboxItem>
               )

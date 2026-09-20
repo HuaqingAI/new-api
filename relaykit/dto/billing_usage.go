@@ -1,6 +1,9 @@
 package dto
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 const (
 	BillingUsageSourceClaudeMessages = "claude_messages"
@@ -88,7 +91,8 @@ func HasOpenAIUsageTokens(usage *Usage) bool {
 		usage.ClaudeCacheCreation1hTokens != 0 {
 		return true
 	}
-	if usage.PromptTokensDetails.CachedTokens != 0 ||
+	if usage.PromptTokensDetails.CachedTokensDetails.HasTokens() ||
+		usage.PromptTokensDetails.CachedTokens != 0 ||
 		usage.PromptTokensDetails.CachedCreationTokens != 0 ||
 		usage.PromptTokensDetails.CacheWriteTokens != 0 ||
 		usage.PromptTokensDetails.TextTokens != 0 ||
@@ -105,7 +109,8 @@ func HasOpenAIUsageTokens(usage *Usage) bool {
 	if usage.InputTokensDetails == nil {
 		return false
 	}
-	return usage.InputTokensDetails.CachedTokens != 0 ||
+	return usage.InputTokensDetails.CachedTokensDetails.HasTokens() ||
+		usage.InputTokensDetails.CachedTokens != 0 ||
 		usage.InputTokensDetails.CachedCreationTokens != 0 ||
 		usage.InputTokensDetails.CacheWriteTokens != 0 ||
 		usage.InputTokensDetails.TextTokens != 0 ||
@@ -122,10 +127,7 @@ func NewEstimatedGeminiChatBillingUsage(usage *Usage) *BillingUsage {
 		return nil
 	}
 	reasoningTokens := usage.CompletionTokenDetails.ReasoningTokens
-	candidateTokens := usage.CompletionTokens - reasoningTokens
-	if candidateTokens < 0 {
-		candidateTokens = 0
-	}
+	candidateTokens := max(usage.CompletionTokens-reasoningTokens, 0)
 	totalTokens := usage.TotalTokens
 	if totalTokens == 0 {
 		totalTokens = usage.PromptTokens + usage.CompletionTokens
@@ -191,10 +193,7 @@ func CloneBillingUsageWithEstimatedCompletion(usage *BillingUsage, completionTok
 	case clone.GeminiUsageMetadata != nil:
 		metadata := clone.GeminiUsageMetadata
 		if metadata.CandidatesTokenCount == 0 {
-			candidateTokens := completionTokens - metadata.ThoughtsTokenCount
-			if candidateTokens < 0 {
-				candidateTokens = 0
-			}
+			candidateTokens := max(completionTokens-metadata.ThoughtsTokenCount, 0)
 			metadata.CandidatesTokenCount = candidateTokens
 			totalTokens := metadata.PromptTokenCount + metadata.ToolUsePromptTokenCount + metadata.CandidatesTokenCount + metadata.ThoughtsTokenCount
 			if metadata.TotalTokenCount < totalTokens {
@@ -293,8 +292,9 @@ func (usage *BillingUsage) canonicalOpenAIUsage() *Usage {
 		canonical.OutputTokens = canonical.CompletionTokens
 	}
 	if canonical.TotalTokens == 0 {
-		canonical.TotalTokens = canonical.PromptTokens + canonical.CompletionTokens
+		canonical.TotalTokens = addTokenCounts(canonical.PromptTokens, canonical.CompletionTokens)
 	}
+	normalizeUsageTokenCounts(canonical)
 	canonical.UsageSemantic = BillingUsageSemanticOpenAI
 	canonical.UsageSource = usage.Source
 	canonical.BillingUsage = CloneBillingUsage(usage)
@@ -308,43 +308,43 @@ func (usage *BillingUsage) canonicalClaudeUsage() *Usage {
 	// is the discriminator — a later sub-object that zeros 1h must win.
 	var cacheCreation5m, cacheCreation1h int
 	if claudeUsage.CacheCreation != nil {
-		cacheCreation5m = claudeUsage.GetCacheCreation5mTokens()
-		cacheCreation1h = claudeUsage.GetCacheCreation1hTokens()
+		cacheCreation5m = clampTokenCount(claudeUsage.GetCacheCreation5mTokens())
+		cacheCreation1h = clampTokenCount(claudeUsage.GetCacheCreation1hTokens())
 	} else {
-		cacheCreation5m = claudeUsage.ClaudeCacheCreation5mTokens
-		cacheCreation1h = claudeUsage.ClaudeCacheCreation1hTokens
+		cacheCreation5m = clampTokenCount(claudeUsage.ClaudeCacheCreation5mTokens)
+		cacheCreation1h = clampTokenCount(claudeUsage.ClaudeCacheCreation1hTokens)
 	}
 
 	canonical := &Usage{
-		PromptTokens:                claudeUsage.InputTokens,
-		CompletionTokens:            claudeUsage.OutputTokens,
-		TotalTokens:                 claudeUsage.InputTokens + claudeUsage.OutputTokens,
-		InputTokens:                 claudeUsage.InputTokens + claudeUsage.CacheReadInputTokens + claudeUsage.CacheCreationInputTokens,
-		OutputTokens:                claudeUsage.OutputTokens,
+		PromptTokens:                clampTokenCount(claudeUsage.InputTokens),
+		CompletionTokens:            clampTokenCount(claudeUsage.OutputTokens),
+		TotalTokens:                 addTokenCounts(claudeUsage.InputTokens, claudeUsage.OutputTokens),
+		InputTokens:                 addTokenCounts(claudeUsage.InputTokens, claudeUsage.CacheReadInputTokens, claudeUsage.CacheCreationInputTokens),
+		OutputTokens:                clampTokenCount(claudeUsage.OutputTokens),
 		UsageSemantic:               BillingUsageSemanticAnthropic,
 		UsageSource:                 BillingUsageSourceClaudeMessages,
 		BillingUsage:                CloneBillingUsage(usage),
 		ClaudeCacheCreation5mTokens: cacheCreation5m,
 		ClaudeCacheCreation1hTokens: cacheCreation1h,
 	}
-	canonical.PromptTokensDetails.CachedTokens = claudeUsage.CacheReadInputTokens
-	canonical.PromptTokensDetails.CachedCreationTokens = claudeUsage.CacheCreationInputTokens
+	canonical.PromptTokensDetails.CachedTokens = clampTokenCount(claudeUsage.CacheReadInputTokens)
+	canonical.PromptTokensDetails.CachedCreationTokens = clampTokenCount(claudeUsage.CacheCreationInputTokens)
 	return canonical
 }
 
 func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 	metadata := usage.GeminiUsageMetadata
-	promptTokens := metadata.PromptTokenCount + metadata.ToolUsePromptTokenCount
+	promptTokens := addTokenCounts(metadata.PromptTokenCount, metadata.ToolUsePromptTokenCount)
 	canonical := &Usage{
 		PromptTokens:     promptTokens,
-		CompletionTokens: metadata.CandidatesTokenCount + metadata.ThoughtsTokenCount,
-		TotalTokens:      metadata.TotalTokenCount,
+		CompletionTokens: addTokenCounts(metadata.CandidatesTokenCount, metadata.ThoughtsTokenCount),
+		TotalTokens:      clampTokenCount(metadata.TotalTokenCount),
 		UsageSemantic:    BillingUsageSemanticGemini,
 		UsageSource:      BillingUsageSourceGeminiChat,
 		BillingUsage:     CloneBillingUsage(usage),
 	}
-	canonical.CompletionTokenDetails.ReasoningTokens = metadata.ThoughtsTokenCount
-	canonical.PromptTokensDetails.CachedTokens = metadata.CachedContentTokenCount
+	canonical.CompletionTokenDetails.ReasoningTokens = clampTokenCount(metadata.ThoughtsTokenCount)
+	canonical.PromptTokensDetails.CachedTokens = clampTokenCount(metadata.CachedContentTokenCount)
 
 	for _, detail := range metadata.PromptTokensDetails {
 		addGeminiInputTokenDetail(&canonical.PromptTokensDetails, detail)
@@ -355,23 +355,25 @@ func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 	for _, detail := range metadata.CandidatesTokensDetails {
 		switch normalizeGeminiModality(detail.Modality) {
 		case "IMAGE":
-			canonical.CompletionTokenDetails.ImageTokens += detail.TokenCount
+			addTokenCount(&canonical.CompletionTokenDetails.ImageTokens, detail.TokenCount)
 		case "AUDIO":
-			canonical.CompletionTokenDetails.AudioTokens += detail.TokenCount
+			addTokenCount(&canonical.CompletionTokenDetails.AudioTokens, detail.TokenCount)
 		case "TEXT":
-			canonical.CompletionTokenDetails.TextTokens += detail.TokenCount
+			addTokenCount(&canonical.CompletionTokenDetails.TextTokens, detail.TokenCount)
 		}
 	}
 
 	if canonical.TotalTokens == 0 {
-		canonical.TotalTokens = canonical.PromptTokens + canonical.CompletionTokens
+		canonical.TotalTokens = addTokenCounts(canonical.PromptTokens, canonical.CompletionTokens)
 	} else if canonical.CompletionTokens <= 0 {
-		canonical.CompletionTokens = canonical.TotalTokens - canonical.PromptTokens
-		if canonical.CompletionTokens < 0 {
-			canonical.CompletionTokens = 0
-		}
+		canonical.CompletionTokens = max(canonical.TotalTokens-canonical.PromptTokens, 0)
 	}
-	if canonical.PromptTokens > 0 && canonical.PromptTokensDetails.TextTokens == 0 && canonical.PromptTokensDetails.AudioTokens == 0 {
+	minTotalTokens := addTokenCounts(canonical.PromptTokens, canonical.CompletionTokens)
+	if canonical.TotalTokens < minTotalTokens {
+		canonical.TotalTokens = minTotalTokens
+	}
+	if canonical.PromptTokens > 0 && canonical.PromptTokensDetails.TextTokens == 0 &&
+		canonical.PromptTokensDetails.AudioTokens == 0 && canonical.PromptTokensDetails.ImageTokens == 0 {
 		canonical.PromptTokensDetails.TextTokens = canonical.PromptTokens
 	}
 	return canonical
@@ -380,11 +382,90 @@ func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 func addGeminiInputTokenDetail(details *InputTokenDetails, detail GeminiPromptTokensDetails) {
 	switch normalizeGeminiModality(detail.Modality) {
 	case "AUDIO":
-		details.AudioTokens += detail.TokenCount
+		addTokenCount(&details.AudioTokens, detail.TokenCount)
 	case "IMAGE":
-		details.ImageTokens += detail.TokenCount
+		addTokenCount(&details.ImageTokens, detail.TokenCount)
 	case "TEXT":
-		details.TextTokens += detail.TokenCount
+		addTokenCount(&details.TextTokens, detail.TokenCount)
+	}
+}
+
+func clampTokenCount(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func addTokenCounts(values ...int) int {
+	total := 0
+	for _, value := range values {
+		value = clampTokenCount(value)
+		if value > math.MaxInt-total {
+			return math.MaxInt
+		}
+		total += value
+	}
+	return total
+}
+
+func addTokenCount(target *int, value int) {
+	if target == nil {
+		return
+	}
+	*target = addTokenCounts(*target, value)
+}
+
+func normalizeUsageTokenCounts(usage *Usage) {
+	if usage == nil {
+		return
+	}
+	usage.PromptTokens = clampTokenCount(usage.PromptTokens)
+	usage.CompletionTokens = clampTokenCount(usage.CompletionTokens)
+	usage.TotalTokens = clampTokenCount(usage.TotalTokens)
+	usage.InputTokens = clampTokenCount(usage.InputTokens)
+	usage.OutputTokens = clampTokenCount(usage.OutputTokens)
+	usage.PromptCacheHitTokens = clampTokenCount(usage.PromptCacheHitTokens)
+	usage.ClaudeCacheCreation5mTokens = clampTokenCount(usage.ClaudeCacheCreation5mTokens)
+	usage.ClaudeCacheCreation1hTokens = clampTokenCount(usage.ClaudeCacheCreation1hTokens)
+	normalizeInputTokenDetails(&usage.PromptTokensDetails)
+	normalizeOutputTokenDetails(&usage.CompletionTokenDetails)
+	if usage.InputTokensDetails != nil {
+		normalizeInputTokenDetails(usage.InputTokensDetails)
+	}
+}
+
+func normalizeInputTokenDetails(details *InputTokenDetails) {
+	if details == nil {
+		return
+	}
+	details.CachedTokens = clampTokenCount(details.CachedTokens)
+	details.CachedCreationTokens = clampTokenCount(details.CachedCreationTokens)
+	details.CacheWriteTokens = clampTokenCount(details.CacheWriteTokens)
+	details.TextTokens = clampTokenCount(details.TextTokens)
+	details.AudioTokens = clampTokenCount(details.AudioTokens)
+	details.ImageTokens = clampTokenCount(details.ImageTokens)
+	if details.CachedTokensDetails == nil {
+		return
+	}
+	clampTokenPointer(details.CachedTokensDetails.TextTokens)
+	clampTokenPointer(details.CachedTokensDetails.ImageTokens)
+	clampTokenPointer(details.CachedTokensDetails.AudioTokens)
+}
+
+func normalizeOutputTokenDetails(details *OutputTokenDetails) {
+	if details == nil {
+		return
+	}
+	details.TextTokens = clampTokenCount(details.TextTokens)
+	details.AudioTokens = clampTokenCount(details.AudioTokens)
+	details.ImageTokens = clampTokenCount(details.ImageTokens)
+	details.ReasoningTokens = clampTokenCount(details.ReasoningTokens)
+}
+
+func clampTokenPointer(value *int) {
+	if value != nil && *value < 0 {
+		*value = 0
 	}
 }
 
@@ -394,8 +475,9 @@ func cloneOpenAIUsage(usage *Usage) *Usage {
 	}
 	clone := *usage
 	clone.BillingUsage = nil
+	clone.PromptTokensDetails = usage.PromptTokensDetails.Clone()
 	if usage.InputTokensDetails != nil {
-		inputTokensDetails := *usage.InputTokensDetails
+		inputTokensDetails := usage.InputTokensDetails.Clone()
 		clone.InputTokensDetails = &inputTokensDetails
 	}
 	return &clone

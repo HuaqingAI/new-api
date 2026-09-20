@@ -46,6 +46,8 @@ import {
 } from '@/features/auth/lib/oauth-callback-mode'
 import type { LoginResponse } from '@/features/auth/types'
 import { api, refreshAuthentication } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
+import { AuthOperationError } from '@/lib/secure-verification'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
@@ -171,7 +173,7 @@ function OAuthCallback() {
           window.close()
           return
         }
-        toast.error(result.message || i18next.t('OAuth failed'))
+        handleServerError(result, i18next.t('OAuth failed'))
         delayedClose = window.setTimeout(() => window.close(), 1500)
       }
 
@@ -250,32 +252,25 @@ function OAuthCallback() {
           return
         }
         const messageKey = getServerErrorMessageKey(response.data)
-        toast.error(
+        handleServerError(
+          response.data,
           messageKey
             ? i18next.t(messageKey)
             : response.data?.message || i18next.t('OAuth failed')
         )
       } catch (error: unknown) {
-		if (!active) return
+        if (!active) return
         if (isLikelyDesktopLoopbackRedirectError(provider, error)) {
           const outcome = await refreshAuthentication()
+          if (!active) return
           if (outcome.kind === 'authenticated') {
             safeNavigate(search.redirect)
             return
           }
         }
-        const messageKey = getServerErrorMessageKey(error)
-        const responseMessage = (
-          error as { response?: { data?: { message?: string } } }
-        ).response?.data?.message
-        if (!messageKey) {
-          toast.error(
-            responseMessage ||
-              (error instanceof Error
-                ? error.message
-                : i18next.t('OAuth failed'))
-          )
-        }
+        handleServerError(
+          AuthOperationError.from(error, i18next.t('OAuth failed'))
+        )
       }
       safeNavigate('/sign-in', '/sign-in')
     })()

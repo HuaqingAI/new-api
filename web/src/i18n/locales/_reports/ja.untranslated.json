@@ -32,10 +32,12 @@
   "No published versions": "No published versions",
   "Published versions": "Published versions",
   "Recommended prompts": "Recommended prompts",
+  "Responses WebSocket": "Responses WebSocket",
   "Select at least one category": "Select at least one category",
   "Select at least one category for this agent.": "Select at least one category for this agent.",
   "Selected MCP definitions will be written into project opencode.jsonc.": "Selected MCP definitions will be written into project opencode.jsonc.",
   "Selected Skill packages will be copied into project .opencode/skills.": "Selected Skill packages will be copied into project .opencode/skills.",
+  "SGLang": "SGLang",
   "Upload image": "Upload image",
   "Uploading": "Uploading",
   "Usage report configured": "Usage report configured",
@@ -44,5 +46,6 @@
   "Webhook": "Webhook",
   "Windows": "Windows",
   "Windows 10 / 11": "Windows 10 / 11",
-  "Windows x64": "Windows x64"
+  "Windows x64": "Windows x64",
+  "Zhipu GLM": "Zhipu GLM"
 }

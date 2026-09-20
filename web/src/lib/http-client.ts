@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import axios, { type AxiosRequestConfig } from 'axios'
 import { t } from 'i18next'
-import { toast } from 'sonner'
 
 import {
   applyAuthRotation,
@@ -27,7 +26,11 @@ import {
   getFreshAuthHeaders,
   refreshAuthentication,
 } from '@/lib/auth-session'
-import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { handleServerError } from '@/lib/handle-server-error'
+import {
+  getServerErrorMessage,
+  safeServerErrorMessage,
+} from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 declare module 'axios' {
@@ -86,28 +89,12 @@ function hasAuthContext(): boolean {
   return Boolean(auth.accessToken || auth.session)
 }
 
-function notifySessionExpired(): void {
-  toast.error(t('Session expired!'), { id: 'auth-session-expired' })
-}
-
 api.interceptors.response.use(
   (response) => {
     if (response.config.acceptAuthRotation && response.data?.success === true) {
       applyAuthRotation(response.data.data)
     }
 
-    if (
-      !response.config.skipBusinessError &&
-      typeof response.data?.success === 'boolean' &&
-      !response.data.success
-    ) {
-      const messageKey = getServerErrorMessageKey(response.data)
-      toast.error(
-        messageKey
-          ? t(messageKey)
-          : response.data.message || t('Request failed')
-      )
-    }
     return response
   },
   async (error) => {
@@ -137,25 +124,34 @@ api.interceptors.response.use(
         }
 
         if (outcome.kind === 'anonymous' || outcome.kind === 'out_of_sync') {
-          if (!skipErrorHandler) notifySessionExpired()
+          if (!skipErrorHandler) {
+            handleServerError({
+              message: t('Session expired!'),
+              [safeServerErrorMessage]: true,
+              cause: error,
+            })
+          }
           redirectToSignIn()
         }
       } else if (config?.authRetry) {
         clearAuthentication(false)
-        if (!skipErrorHandler) notifySessionExpired()
+        if (!skipErrorHandler) {
+          handleServerError({
+            message: t('Session expired!'),
+            [safeServerErrorMessage]: true,
+            cause: error,
+          })
+        }
         redirectToSignIn()
       } else if (!skipErrorHandler) {
-        notifySessionExpired()
+        handleServerError({
+          message: t('Session expired!'),
+          [safeServerErrorMessage]: true,
+          cause: error,
+        })
       }
-    } else if (!skipErrorHandler) {
-      const messageKey = getServerErrorMessageKey(error)
-      const message = messageKey
-        ? t(messageKey)
-        : error?.response?.data?.message ||
-          error?.message ||
-          t('Request failed')
-      toast.error(message)
     }
+    if (axios.isAxiosError(error)) error.message = getServerErrorMessage(error)
     throw error
   }
 )

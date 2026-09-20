@@ -39,6 +39,7 @@ import { cn, getPageNumbers } from '@/lib/utils'
 type DataTablePaginationProps<TData> = {
   table: Table<TData>
   showPageSize?: boolean
+  compact?: boolean
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100] as const
@@ -50,6 +51,7 @@ const PAGE_SIZE_SELECT_ITEMS = PAGE_SIZE_OPTIONS.map((pageSize) => ({
 export function DataTablePagination<TData>({
   table,
   showPageSize = true,
+  compact = false,
 }: DataTablePaginationProps<TData>) {
   const { t } = useTranslation()
   const pagination = table.getState().pagination
@@ -68,6 +70,44 @@ export function DataTablePagination<TData>({
     items.push({ key, pageNumber })
     return items
   }, [])
+
+  if (compact) {
+    return (
+      <nav
+        aria-label={t('Page')}
+        className='flex w-full min-w-0 flex-wrap items-center justify-between gap-2 text-sm'
+      >
+        <span className='text-muted-foreground min-w-0 [overflow-wrap:anywhere]'>
+          {t('Total:')} {totalRows.toLocaleString()}
+        </span>
+        <div className='flex items-center gap-2'>
+          <Button
+            variant='outline'
+            size='icon'
+            className='size-11'
+            aria-label={t('Go to previous page')}
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <span className='tabular-nums' aria-live='polite'>
+            {currentPage} / {Math.max(1, totalPages)}
+          </span>
+          <Button
+            variant='outline'
+            size='icon'
+            className='size-11'
+            aria-label={t('Go to next page')}
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            <ChevronRightIcon />
+          </Button>
+        </div>
+      </nav>
+    )
+  }
 
   return (
     <div

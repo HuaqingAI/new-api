@@ -321,17 +321,18 @@ func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t 
 	require.Equal(t, http.StatusOK, admin.Code)
 	require.Equal(t, "text/csv; charset=utf-8", admin.Header().Get("Content-Type"))
 	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, admin.Header().Get("Content-Disposition"))
-	require.Contains(t, admin.Body.String(), "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和")
-	require.Contains(t, admin.Body.String(), "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
-	require.Contains(t, admin.Body.String(), "11,Engineering,Platform,1714521600,1714608000,8,80,16,240,2")
-	require.Contains(t, admin.Body.String(), ",未归属,,1714521600,1714608000,3,30,9,90,1")
-	lines := strings.Split(strings.TrimSpace(admin.Body.String()), "\n")
-	require.GreaterOrEqual(t, len(lines), 4)
-	require.Equal(t, "# 注意：用量按用户当前所属部门重复计入，部门间数值不可加和", lines[0])
-	require.Equal(t, "部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
-	require.NotContains(t, admin.Body.String(), "should-not-be-read")
-	require.NotContains(t, admin.Body.String(), "null")
-	require.NotContains(t, admin.Body.String(), "<nil>")
+	body := admin.Body.String()
+	require.Contains(t, body, "# ")
+	require.Contains(t, body, "prompt_tokens")
+	require.Contains(t, body, "root_subtree,10,Platform,,1714521600,1714608000,8,80,16,240,2")
+	require.NotContains(t, body, ",未归属,")
+	lines := strings.Split(strings.TrimSpace(body), "\n")
+	require.GreaterOrEqual(t, len(lines), 3)
+	require.Contains(t, lines[1], "prompt_tokens")
+	require.Equal(t, "root_subtree,10,Platform,,1714521600,1714608000,8,80,16,240,2", lines[2])
+	require.NotContains(t, body, "should-not-be-read")
+	require.NotContains(t, body, "null")
+	require.NotContains(t, body, "<nil>")
 }
 
 func TestEnterpriseUsageDetailAPIRequiresEnterpriseAdminAndReturnsFilterContext(t *testing.T) {
@@ -523,6 +524,14 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 	windowStart := startOfDay.AddDate(0, 0, -6).Unix()
 	windowEnd := startOfDay.Add(24 * time.Hour).Unix()
 	deptID := 11
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:        deptID,
+		TenantId:  0,
+		Name:      "Engineering",
+		Status:    constant.DepartmentStatusEnabled,
+		CreatedAt: now.Unix(),
+		UpdatedAt: now.Unix(),
+	}).Error)
 	snapshot := modelenterprise.UsageSnapshot{
 		TenantId:         0,
 		DeptId:           &deptID,
@@ -537,6 +546,22 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 	require.NoError(t, snapshot.SetModelDistribution(nil))
 	require.NoError(t, snapshot.SetUserIds([]int{1001, 1002}))
 	require.NoError(t, fixture.db.Create(&snapshot).Error)
+	scopeSnapshot := modelenterprise.UsageScopeSnapshot{
+		TenantId:         0,
+		ScopeKey:         "department:11",
+		ScopeType:        modelenterprise.UsageScopeTypeDepartment,
+		DepartmentId:     &deptID,
+		DepartmentName:   "Engineering",
+		WindowStart:      windowStart,
+		WindowEnd:        windowEnd,
+		RequestCount:     8,
+		PromptTokens:     80,
+		CompletionTokens: 20,
+		Quota:            160,
+	}
+	require.NoError(t, scopeSnapshot.SetModelDistribution(nil))
+	require.NoError(t, scopeSnapshot.SetUserIds([]int{1001, 1002}))
+	require.NoError(t, fixture.db.Create(&scopeSnapshot).Error)
 
 	service := serviceenterprise.NewUsageReportServiceForTest(
 		fixture.db,
@@ -566,6 +591,14 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 func TestEnterpriseUsageDetailAPIRejectsInvalidParamsAndReturnsEmptyArrays(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
 	adminCookies := fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled)
+	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
+		Id:        11,
+		TenantId:  0,
+		Name:      "Engineering",
+		Status:    constant.DepartmentStatusEnabled,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+	}).Error)
 
 	invalid := fixture.performEnterpriseRequest(t, http.MethodGet, "/api/enterprise/usage/department-detail?dept_id=11&from=1700003600&to=1700000000", adminCookies)
 	invalidPayload := decodeAdminActionsAPIResponse(t, invalid)

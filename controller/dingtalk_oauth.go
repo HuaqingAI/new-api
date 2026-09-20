@@ -111,7 +111,7 @@ func HandleDingTalkOAuth(c *gin.Context) {
 		handleAionUiDesktopLogin(c, result.User, identity, payload.DesktopRedirectURI, payload.DesktopState)
 		return
 	}
-	setupLogin(result.User, c)
+	setupLogin(result.User, nil, c)
 }
 
 func parseDingTalkOAuthTenantId(c *gin.Context) int {

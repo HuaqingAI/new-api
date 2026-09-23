@@ -1138,21 +1138,30 @@ func (s *UsageAggregationService) buildDepartmentUserRanking(query UsageDetailQu
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	currentUsers, err := loadCurrentUserIdentities(s.db, userIds)
-	if err != nil {
-		return nil, nil, nil, err
-	}
 
 	allowedDepartments := make(map[int]struct{}, len(departmentIDs))
 	for _, departmentID := range departmentIDs {
 		allowedDepartments[departmentID] = struct{}{}
 	}
-	ranking := make(map[int]*UsageDepartmentUserRankItem, len(userIds))
+	filteredLogs := make([]model.Log, 0, len(logs))
 	for _, logRow := range logs {
 		if !usageLogMatchesDepartment(logRow, allowedDepartments, memberships[logRow.UserId]) {
 			continue
 		}
+		filteredLogs = append(filteredLogs, logRow)
+	}
+	return buildUsageUserRankingItems(s.db, filteredLogs)
+}
 
+func buildUsageUserRankingItems(db *gorm.DB, logs []model.Log) ([]UsageDepartmentUserRankItem, []string, []UsageRecentLogsUserOption, error) {
+	userIDs := uniqueUsageUserIDs(logs)
+	currentUsers, err := loadCurrentUserIdentities(db, userIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	ranking := make(map[int]*UsageDepartmentUserRankItem, len(userIDs))
+	for _, logRow := range logs {
 		item, ok := ranking[logRow.UserId]
 		if !ok {
 			currentUser := currentUsers[logRow.UserId]

@@ -26,6 +26,7 @@ import type {
   DepartmentUsageReportConfigResponse,
   DepartmentUsageSummaryResponse,
   DepartmentUsageSummarySort,
+  DepartmentUsageUserRankSort,
   UsageSortOrder,
 } from './types'
 
@@ -198,8 +199,7 @@ export async function exportDepartmentUsageCSV(params: {
   tenantId?: number
   departmentId?: number
   includeDescendants?: boolean
-  summarySort?: DepartmentUsageSummarySort
-  summaryOrder?: UsageSortOrder
+  sort?: DepartmentUsageUserRankSort
 }) {
   const res = await api.get('/api/enterprise/usage/export', {
     params: {
@@ -212,12 +212,7 @@ export async function exportDepartmentUsageCSV(params: {
       ...(params.includeDescendants === undefined
         ? {}
         : { include_descendants: params.includeDescendants }),
-      ...(params.summarySort === undefined
-        ? {}
-        : { summary_sort: params.summarySort }),
-      ...(params.summaryOrder === undefined
-        ? {}
-        : { summary_order: params.summaryOrder }),
+      ...(params.sort === undefined ? {} : { sort: params.sort }),
     },
     responseType: 'blob',
     skipBusinessError: true,

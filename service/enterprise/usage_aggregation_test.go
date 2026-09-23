@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -326,10 +327,21 @@ func TestUsageAggregationIsIdempotentAndSortsModelDistribution(t *testing.T) {
 	require.Equal(t, "1700003600", watermark.Value)
 }
 
-func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
+func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testing.T) {
 	db := newUsageAggregationTestDB(t)
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	common.QuotaPerUnit = 100
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	t.Cleanup(func() {
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldQuotaDisplayType
+	})
+
 	parentID := 100
 	deptID := 101
+	seedUsageTestUser(t, db, 101, "alice")
+	seedUsageTestUser(t, db, 102, "bob")
 	seedUsageTestDepartment(t, db, parentID, "Platform")
 	require.NoError(t, db.Create(&entmodel.Department{
 		Id:          deptID,
@@ -340,6 +352,54 @@ func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
 		SourceType:  constant.DepartmentSourceTypeManual,
 		SyncStatus:  constant.DepartmentSyncStatusOK,
 		NameHistory: "[]",
+	}).Error)
+	require.NoError(t, db.Create(&[]entmodel.UserDepartment{
+		{
+			TenantId:       0,
+			UserId:         101,
+			DepartmentId:   deptID,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+		{
+			TenantId:       0,
+			UserId:         102,
+			DepartmentId:   deptID,
+			ExternalSource: constant.EnterpriseExternalSourceManual,
+			Status:         constant.EnterpriseMembershipStatusActive,
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			UserId:           101,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            100,
+			PromptTokens:     30,
+			CompletionTokens: 10,
+			CreatedAt:        1714521700,
+		},
+		{
+			UserId:           101,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            50,
+			PromptTokens:     20,
+			CompletionTokens: 10,
+			CreatedAt:        1714521800,
+		},
+		{
+			UserId:           102,
+			Username:         "bob-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            70,
+			PromptTokens:     15,
+			CompletionTokens: 5,
+			CreatedAt:        1714521900,
+		},
 	}).Error)
 
 	snapshotA := entmodel.UsageSnapshot{
@@ -392,32 +452,56 @@ func TestUsageExportBuildsCSVFromSummaryAndParentMappings(t *testing.T) {
 		TenantId: 0,
 		From:     1714521600,
 		To:       1714608000,
-		Sort: UsageSummarySort{
-			Field: UsageSummarySortByRequests,
-			Order: UsageSortOrderDesc,
-		},
+		Sort:     UsageUserRankSortByRequests,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "usage-department-20240501-20240501.csv", result.FileName)
-	require.Len(t, result.Rows, 1)
-	require.Equal(t, "root_subtree", result.Rows[0].MetricBasis)
-	require.Equal(t, "Platform", result.Rows[0].DeptName)
-	require.Equal(t, "", result.Rows[0].ParentDepartment)
+	require.Len(t, result.Rows, 2)
+	require.Equal(t, "tenant", result.Rows[0].MetricBasis)
+	require.Nil(t, result.Rows[0].DeptId)
+	require.Equal(t, "全公司", result.Rows[0].DeptName)
+	require.Equal(t, 101, result.Rows[0].UserId)
+	require.Equal(t, "alice", result.Rows[0].Username)
+	require.Equal(t, int64(2), result.Rows[0].RequestCount)
+	require.Equal(t, int64(150), result.Rows[0].Quota)
 
 	var buffer bytes.Buffer
 	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, result))
 	csvText := buffer.String()
-	require.Contains(t, csvText, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和")
-	require.Contains(t, csvText, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
-	require.Contains(t, csvText, "root_subtree,100,Platform,,1714521600,1714608000,5,60,30,150,2")
+	require.Contains(t, csvText, "# 注意：导出内容为全公司成员用户排行")
+	require.Contains(t, csvText, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度")
+	startDate := formatUnixDate(1714521600)
+	endDate := formatUnixDate(1714608000 - 1)
+	require.Contains(t, csvText, fmt.Sprintf(",全公司,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate))
 	require.NotContains(t, csvText, "null")
 	require.NotContains(t, csvText, "<nil>")
 
 	lines := strings.Split(strings.TrimSpace(csvText), "\n")
 	require.GreaterOrEqual(t, len(lines), 3)
-	require.Equal(t, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和", lines[0])
-	require.Equal(t, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
-	require.Equal(t, "root_subtree,100,Platform,,1714521600,1714608000,5,60,30,150,2", lines[2])
+	require.Equal(t, "# 注意：导出内容为全公司成员用户排行", lines[0])
+	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[1])
+	require.Equal(t, fmt.Sprintf(",全公司,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate), lines[2])
+
+	departmentResult, err := service.ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
+		TenantId:           0,
+		DepartmentId:       &parentID,
+		From:               1714521600,
+		To:                 1714608000,
+		Sort:               UsageUserRankSortByQuota,
+		IncludeDescendants: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, departmentResult.Rows, 2)
+	require.Equal(t, "subtree", departmentResult.Rows[0].MetricBasis)
+	require.Equal(t, parentID, *departmentResult.Rows[0].DeptId)
+	require.Equal(t, "Platform", departmentResult.Rows[0].DeptName)
+	require.Equal(t, 101, departmentResult.Rows[0].UserId)
+
+	buffer.Reset()
+	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, departmentResult))
+	departmentCSVText := buffer.String()
+	require.Contains(t, departmentCSVText, "# 注意：导出内容为当前组织范围内的成员用户排行")
+	require.Contains(t, departmentCSVText, fmt.Sprintf("100,Platform,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate))
 }
 
 func TestUsageExportSortsDepartmentNamesWithStableTieBreakers(t *testing.T) {
@@ -1163,12 +1247,14 @@ func TestUsageAggregationDeduplicatesDepartmentScopesAndBuildsDashboardViews(t *
 		From:               1700000000,
 		To:                 1700003600,
 		IncludeDescendants: true,
-		Sort:               DefaultUsageSummarySort(),
+		Sort:               UsageUserRankSortByQuota,
 	})
 	require.NoError(t, err)
-	require.Len(t, exportResult.Rows, 1)
-	assert.Equal(t, int64(2), exportResult.Rows[0].RequestCount)
-	assert.Equal(t, int64(2), exportResult.Rows[0].UserCount)
+	require.Len(t, exportResult.Rows, 2)
+	assert.Equal(t, "subtree", exportResult.Rows[0].MetricBasis)
+	assert.Equal(t, 101, exportResult.Rows[0].UserId)
+	assert.Equal(t, int64(100), exportResult.Rows[0].Quota)
+	assert.Equal(t, 102, exportResult.Rows[1].UserId)
 }
 
 func TestUsageDashboardFallsBackToDirectSnapshotsWhenScopeSnapshotsAreMissing(t *testing.T) {

@@ -198,7 +198,11 @@ func ExportDepartmentUsageCSV(c *gin.Context) {
 		return
 	}
 
-	sortConfig := entservice.NormalizeUsageSummarySort(readOptionalString(req.SummarySort), readOptionalString(req.SummaryOrder))
+	sortField := readOptionalString(req.Sort)
+	if sortField == "" {
+		sortField = readOptionalString(req.SummarySort)
+	}
+	sortConfig := entservice.NormalizeUsageUserRankSort(sortField)
 	exportResult, err := entservice.NewUsageExportService(model.DB).ExportDepartmentUsageCSV(entservice.DepartmentUsageExportQuery{
 		TenantId:           tenantId,
 		DepartmentId:       req.DepartmentId,

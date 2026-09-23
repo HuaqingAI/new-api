@@ -15,6 +15,7 @@ type DepartmentUsageExportQuery struct {
 	DepartmentId       *int    `form:"department_id,omitempty"`
 	From               int64   `form:"from"`
 	To                 int64   `form:"to"`
+	Sort               *string `form:"sort,omitempty"`
 	SummarySort        *string `form:"summary_sort,omitempty"`
 	SummaryOrder       *string `form:"summary_order,omitempty"`
 	IncludeDescendants *bool   `form:"include_descendants,omitempty"`

@@ -18,6 +18,7 @@ import (
 const (
 	usageReportGrowthThreshold = 0.5
 	usageReportTopDepartments  = 5
+	usageReportRootDisclaimer  = "注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和"
 )
 
 type UsageReportConfigInput struct {
@@ -509,7 +510,7 @@ func buildUsageReportSubject(rangeType string, windowStart int64, windowEnd int6
 func buildUsageReportHTML(snapshot *entmodel.UsageReportSnapshot) string {
 	var builder strings.Builder
 	builder.WriteString("<div>")
-	builder.WriteString(fmt.Sprintf("<p>%s</p>", html.EscapeString(usageRootExportDisclaimer)))
+	builder.WriteString(fmt.Sprintf("<p>%s</p>", html.EscapeString(usageReportRootDisclaimer)))
 	builder.WriteString(fmt.Sprintf("<p>统计周期：%s ~ %s</p>", time.Unix(snapshot.WindowStart, 0).Format("2006-01-02"), time.Unix(snapshot.WindowEnd-1, 0).Format("2006-01-02")))
 	builder.WriteString(fmt.Sprintf("<p>部门总览：部门数 %d，请求数 %d，Prompt Tokens %d，Completion Tokens %d，Quota %d，用户数 %d。</p>", snapshot.DepartmentCount, snapshot.RequestCount, snapshot.PromptTokens, snapshot.CompletionTokens, snapshot.Quota, snapshot.UserCount))
 	builder.WriteString("<p>Top 部门：</p><ul>")

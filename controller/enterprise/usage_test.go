@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -225,6 +227,14 @@ func TestUsageDashboardAndPeersAPIReadScopeSnapshots(t *testing.T) {
 
 func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	router, db := setupEnterpriseControllerTest(t)
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	common.QuotaPerUnit = 100
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	t.Cleanup(func() {
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldQuotaDisplayType
+	})
 
 	parentID := 9
 	require.NoError(t, db.Create(&entmodel.Department{
@@ -267,6 +277,38 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	require.NoError(t, snapshotB.SetUserIds([]int{999}))
 	require.NoError(t, db.Create(&snapshotA).Error)
 	require.NoError(t, db.Create(&snapshotB).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			UserId:           100,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            80,
+			PromptTokens:     30,
+			CompletionTokens: 10,
+			CreatedAt:        1714521700,
+		},
+		{
+			UserId:           100,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            40,
+			PromptTokens:     10,
+			CompletionTokens: 5,
+			CreatedAt:        1714521800,
+		},
+		{
+			UserId:           101,
+			Username:         "bob-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            200,
+			PromptTokens:     60,
+			CompletionTokens: 20,
+			CreatedAt:        1714521900,
+		},
+	}).Error)
 	rootScope := entmodel.UsageScopeSnapshot{
 		TenantId:         0,
 		ScopeKey:         "department:9",
@@ -288,7 +330,7 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 		t,
 		router,
 		http.MethodGet,
-		"/api/enterprise/usage/export?from=1714521600&to=1714608000&summary_sort=dept_name&summary_order=asc",
+		"/api/enterprise/usage/export?from=1714521600&to=1714608000&sort=requests",
 		nil,
 	)
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -296,14 +338,16 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, recorder.Header().Get("Content-Disposition"))
 
 	body := recorder.Body.String()
-	require.Contains(t, body, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和")
-	require.Contains(t, body, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数")
-	require.Contains(t, body, "root_subtree,9,Platform,,1714521600,1714608000,5,50,10,120,2")
+	require.Contains(t, body, "# 注意：导出内容为全公司成员用户排行")
+	require.Contains(t, body, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度")
+	startDate := time.Unix(1714521600, 0).Format("2006-01-02")
+	endDate := time.Unix(1714608000-1, 0).Format("2006-01-02")
+	require.Contains(t, body, ",全公司,"+startDate+","+endDate+",100,alice,Alice,2,40,15,55,$1.2")
 
 	lines := strings.Split(strings.TrimSpace(body), "\n")
-	require.GreaterOrEqual(t, len(lines), 4)
-	require.Equal(t, "# 注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和", lines[0])
-	require.Equal(t, "统计口径,部门 ID,部门名称,父部门,周期开始,周期结束,请求数,prompt_tokens,completion_tokens,quota,用户数", lines[1])
+	require.GreaterOrEqual(t, len(lines), 3)
+	require.Equal(t, "# 注意：导出内容为全公司成员用户排行", lines[0])
+	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[1])
 	require.NotContains(t, body, "null")
 	require.NotContains(t, body, "<nil>")
 }

@@ -248,8 +248,7 @@ export function resolveDepartmentUsageExportParams(
     tenantId: search.tenant_id,
     departmentId: search.dept_id,
     includeDescendants: search.include_descendants,
-    summarySort: search.summary_sort,
-    summaryOrder: search.summary_order,
+    sort: search.sort,
   }
 }
 
@@ -752,7 +751,7 @@ export function EnterpriseUsageOverview() {
       const { blob, fileName } = await exportDepartmentUsageCSV(
         resolveDepartmentUsageExportParams(
           {
-            ...search,
+            ...normalizedSearch,
             include_descendants: normalizedSearch.dept_id !== undefined,
           },
           resolvedRange

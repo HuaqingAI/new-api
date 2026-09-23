@@ -4,19 +4,21 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"gorm.io/gorm"
 )
 
 const (
-	usageDirectExportDisclaimer = "注意：直接部门用量按用户当前所属部门重复计入，部门间数值不可加和"
-	usageRootExportDisclaimer   = "注意：企业总览按一级部门完整子树展示，未归属用量仅计入企业总量，部门间数值不可加和"
+	usageTenantUserExportDisclaimer     = "注意：导出内容为全公司成员用户排行"
+	usageDepartmentUserExportDisclaimer = "注意：导出内容为当前组织范围内的成员用户排行"
 )
 
 type UsageSummarySortField string
@@ -37,12 +39,20 @@ type UsageSummarySort struct {
 	Order UsageSortOrder
 }
 
+type UsageUserRankSortField string
+
+const (
+	UsageUserRankSortByQuota    UsageUserRankSortField = "quota"
+	UsageUserRankSortByRequests UsageUserRankSortField = "requests"
+	UsageUserRankSortByTokens   UsageUserRankSortField = "tokens"
+)
+
 type DepartmentUsageExportQuery struct {
 	TenantId           int
 	DepartmentId       *int
 	From               int64
 	To                 int64
-	Sort               UsageSummarySort
+	Sort               UsageUserRankSortField
 	IncludeDescendants bool
 }
 
@@ -50,14 +60,16 @@ type DepartmentUsageExportRow struct {
 	MetricBasis      string
 	DeptId           *int
 	DeptName         string
-	ParentDepartment string
 	WindowStart      int64
 	WindowEnd        int64
+	UserId           int
+	Username         string
+	DisplayName      string
 	RequestCount     int64
 	PromptTokens     int64
 	CompletionTokens int64
+	TokenCount       int64
 	Quota            int64
-	UserCount        int64
 }
 
 type DepartmentUsageExportResult struct {
@@ -102,6 +114,77 @@ func NormalizeUsageSummarySort(field string, order string) UsageSummarySort {
 	}
 
 	return result
+}
+
+func NormalizeUsageUserRankSort(field string) UsageUserRankSortField {
+	switch UsageUserRankSortField(strings.TrimSpace(strings.ToLower(field))) {
+	case UsageUserRankSortByRequests, UsageUserRankSortByTokens:
+		return UsageUserRankSortField(strings.TrimSpace(strings.ToLower(field)))
+	default:
+		return UsageUserRankSortByQuota
+	}
+}
+
+func SortUsageUserRankItems(items []UsageDepartmentUserRankItem, sortField UsageUserRankSortField) []UsageDepartmentUserRankItem {
+	sorted := append([]UsageDepartmentUserRankItem{}, items...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return compareUsageUserRankItems(sorted[i], sorted[j], sortField) < 0
+	})
+	return sorted
+}
+
+func compareUsageUserRankItems(a UsageDepartmentUserRankItem, b UsageDepartmentUserRankItem, sortField UsageUserRankSortField) int {
+	compareNumeric := func(left int64, right int64) int {
+		if left < right {
+			return -1
+		}
+		if left > right {
+			return 1
+		}
+		return 0
+	}
+	compareText := func(left string, right string) int {
+		return strings.Compare(strings.ToLower(left), strings.ToLower(right))
+	}
+	applyDesc := func(value int) int {
+		return -value
+	}
+
+	var primary int
+	switch sortField {
+	case UsageUserRankSortByRequests:
+		primary = compareNumeric(a.RequestCount, b.RequestCount)
+	case UsageUserRankSortByTokens:
+		primary = compareNumeric(a.TokenCount, b.TokenCount)
+	default:
+		primary = compareNumeric(a.Quota, b.Quota)
+	}
+	if primary != 0 {
+		return applyDesc(primary)
+	}
+
+	if byQuota := compareNumeric(a.Quota, b.Quota); byQuota != 0 {
+		return -byQuota
+	}
+	if byRequests := compareNumeric(a.RequestCount, b.RequestCount); byRequests != 0 {
+		return -byRequests
+	}
+	if byTokens := compareNumeric(a.TokenCount, b.TokenCount); byTokens != 0 {
+		return -byTokens
+	}
+	if byDisplayName := compareText(a.DisplayName, b.DisplayName); byDisplayName != 0 {
+		return byDisplayName
+	}
+	if byUsername := compareText(a.Username, b.Username); byUsername != 0 {
+		return byUsername
+	}
+	if a.UserId < b.UserId {
+		return -1
+	}
+	if a.UserId > b.UserId {
+		return 1
+	}
+	return 0
 }
 
 func SortUsageDepartmentSummaryItems(items []UsageDepartmentSummaryItem, sortConfig UsageSummarySort) []UsageDepartmentSummaryItem {
@@ -189,22 +272,16 @@ func compareOptionalInt(left *int, right *int) int {
 }
 
 func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExportQuery) (DepartmentUsageExportResult, error) {
-	items := []UsageDepartmentSummaryItem{}
-	metricBasis := "direct"
-	disclaimer := usageDirectExportDisclaimer
+	ranking := []UsageDepartmentUserRankItem{}
+	metricBasis := "tenant"
+	deptName := "全公司"
+	disclaimer := usageTenantUserExportDisclaimer
 	if query.DepartmentId == nil {
-		overview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
-			TenantId: query.TenantId,
-			From:     query.From,
-			To:       query.To,
-			Sort:     query.Sort,
-		})
+		tenantRanking, err := s.buildTenantUserRanking(query)
 		if err != nil {
 			return DepartmentUsageExportResult{}, err
 		}
-		items = overview.Items
-		metricBasis = "root_subtree"
-		disclaimer = usageRootExportDisclaimer
+		ranking = tenantRanking
 	} else {
 		detail, err := s.aggregation.GetDepartmentDetail(UsageDetailQuery{
 			TenantId:           query.TenantId,
@@ -217,45 +294,31 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 			return DepartmentUsageExportResult{}, err
 		}
 		metricBasis = detail.Scope.MetricBasis
-		items = []UsageDepartmentSummaryItem{{
-			DeptId:            detail.DeptId,
-			DeptName:          detail.DeptName,
-			WindowStart:       detail.WindowStart,
-			WindowEnd:         detail.WindowEnd,
-			RequestCount:      detail.RequestCount,
-			PromptTokens:      detail.PromptTokens,
-			CompletionTokens:  detail.CompletionTokens,
-			Quota:             detail.Quota,
-			UserCount:         detail.UserCount,
-			ModelDistribution: detail.ModelDistribution,
-		}}
+		deptName = detail.DeptName
+		disclaimer = usageDepartmentUserExportDisclaimer
+		ranking = detail.UserRanking
 	}
 
-	parentNames, err := s.loadParentDepartmentNames(query.TenantId, items)
-	if err != nil {
-		return DepartmentUsageExportResult{}, err
-	}
-
-	rows := make([]DepartmentUsageExportRow, 0, len(items))
-	for _, item := range items {
+	ranking = SortUsageUserRankItems(ranking, query.Sort)
+	rows := make([]DepartmentUsageExportRow, 0, len(ranking))
+	for _, item := range ranking {
 		row := DepartmentUsageExportRow{
 			MetricBasis:      metricBasis,
-			DeptId:           item.DeptId,
-			DeptName:         item.DeptName,
-			ParentDepartment: "",
-			WindowStart:      item.WindowStart,
-			WindowEnd:        item.WindowEnd,
+			DeptName:         deptName,
+			WindowStart:      query.From,
+			WindowEnd:        query.To,
+			UserId:           item.UserId,
+			Username:         item.Username,
+			DisplayName:      item.DisplayName,
 			RequestCount:     item.RequestCount,
 			PromptTokens:     item.PromptTokens,
 			CompletionTokens: item.CompletionTokens,
+			TokenCount:       item.TokenCount,
 			Quota:            item.Quota,
-			UserCount:        item.UserCount,
 		}
-		if row.DeptId == nil {
-			row.DeptName = "未归属"
-		}
-		if row.DeptId != nil {
-			row.ParentDepartment = parentNames[*row.DeptId]
+		if query.DepartmentId != nil {
+			deptId := *query.DepartmentId
+			row.DeptId = &deptId
 		}
 		rows = append(rows, row)
 	}
@@ -274,34 +337,36 @@ func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result De
 		return err
 	}
 	if err := csvWriter.Write([]string{
-		"统计口径",
 		"部门 ID",
 		"部门名称",
-		"父部门",
 		"周期开始",
 		"周期结束",
+		"用户 ID",
+		"用户名",
+		"显示名称",
 		"请求数",
-		"prompt_tokens",
-		"completion_tokens",
-		"quota",
-		"用户数",
+		"输入 Tokens",
+		"输出 Tokens",
+		"总 Tokens",
+		"额度",
 	}); err != nil {
 		return err
 	}
 
 	for _, row := range result.Rows {
 		if err := csvWriter.Write([]string{
-			row.MetricBasis,
 			formatOptionalInt(row.DeptId),
 			row.DeptName,
-			row.ParentDepartment,
-			formatInt64(row.WindowStart),
-			formatInt64(row.WindowEnd),
+			formatUnixDate(row.WindowStart),
+			formatUnixDate(row.WindowEnd - 1),
+			formatInt(row.UserId),
+			row.Username,
+			row.DisplayName,
 			formatInt64(row.RequestCount),
 			formatInt64(row.PromptTokens),
 			formatInt64(row.CompletionTokens),
-			formatInt64(row.Quota),
-			formatInt64(row.UserCount),
+			formatInt64(row.TokenCount),
+			formatDisplayQuota(row.Quota),
 		}); err != nil {
 			return err
 		}
@@ -311,66 +376,26 @@ func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result De
 	return csvWriter.Error()
 }
 
-func (s *UsageExportService) loadParentDepartmentNames(tenantId int, items []UsageDepartmentSummaryItem) (map[int]string, error) {
-	deptIDs := make([]int, 0, len(items))
-	for _, item := range items {
-		if item.DeptId != nil {
-			deptIDs = append(deptIDs, *item.DeptId)
-		}
-	}
-	if len(deptIDs) == 0 {
-		return map[int]string{}, nil
-	}
-
-	var departments []entmodel.Department
-	if err := s.db.
-		Select("id", "parent_id").
-		Where("tenant_id = ? AND id IN ?", tenantId, deptIDs).
-		Find(&departments).Error; err != nil {
+func (s *UsageExportService) buildTenantUserRanking(query DepartmentUsageExportQuery) ([]UsageDepartmentUserRankItem, error) {
+	var logs []model.Log
+	if err := s.aggregation.logDB.
+		Select("user_id", "username", "quota", "prompt_tokens", "completion_tokens", "created_at").
+		Where("type = ? AND created_at >= ? AND created_at < ?", model.LogTypeConsume, query.From, query.To).
+		Order("created_at ASC, id ASC").
+		Find(&logs).Error; err != nil {
 		return nil, err
 	}
 
-	parentIDs := make([]int, 0)
-	parentSeen := map[int]struct{}{}
-	deptToParent := make(map[int]*int, len(departments))
-	for _, department := range departments {
-		deptToParent[department.Id] = department.ParentId
-		if department.ParentId != nil {
-			if _, ok := parentSeen[*department.ParentId]; !ok {
-				parentSeen[*department.ParentId] = struct{}{}
-				parentIDs = append(parentIDs, *department.ParentId)
-			}
-		}
-	}
-	if len(parentIDs) == 0 {
-		return map[int]string{}, nil
-	}
-
-	var parentDepartments []entmodel.Department
-	if err := s.db.
-		Select("id", "name", "status").
-		Where("tenant_id = ? AND id IN ?", tenantId, parentIDs).
-		Find(&parentDepartments).Error; err != nil {
+	userIDs := uniqueUsageUserIDs(logs)
+	memberships, _, err := s.aggregation.loadMembershipContext(query.TenantId, userIDs, query.From, query.To)
+	if err != nil {
 		return nil, err
 	}
-
-	parentNameByID := make(map[int]string, len(parentDepartments))
-	for _, parent := range parentDepartments {
-		if parent.Status == constant.DepartmentStatusEnabled {
-			parentNameByID[parent.Id] = parent.Name
-		}
+	ranking, _, _, err := buildUsageUserRankingItems(s.db, filterUsageLogsForTenant(query.TenantId, logs, memberships))
+	if err != nil {
+		return nil, err
 	}
-
-	result := make(map[int]string, len(deptToParent))
-	for deptID, parentID := range deptToParent {
-		if parentID == nil {
-			continue
-		}
-		if name, ok := parentNameByID[*parentID]; ok {
-			result[deptID] = name
-		}
-	}
-	return result, nil
+	return ranking, nil
 }
 
 func buildDepartmentUsageExportFileName(from int64, to int64) string {
@@ -386,6 +411,69 @@ func formatOptionalInt(value *int) string {
 	return fmt.Sprintf("%d", *value)
 }
 
+func formatInt(value int) string {
+	return fmt.Sprintf("%d", value)
+}
+
+func formatUnixDate(value int64) string {
+	return time.Unix(value, 0).Format("2006-01-02")
+}
+
 func formatInt64(value int64) string {
 	return fmt.Sprintf("%d", value)
+}
+
+func formatDisplayQuota(quota int64) string {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		return formatQuotaTokens(quota)
+	}
+	if common.QuotaPerUnit <= 0 || math.IsInf(common.QuotaPerUnit, 0) || math.IsNaN(common.QuotaPerUnit) {
+		return formatInt64(quota)
+	}
+
+	usd := float64(quota) / common.QuotaPerUnit
+	value := usd * operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
+	number := formatQuotaAmount(value)
+	symbol := operation_setting.GetCurrencySymbol()
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCustom {
+		return strings.TrimSpace(symbol + " " + number)
+	}
+	return symbol + number
+}
+
+func formatQuotaTokens(quota int64) string {
+	if quota == 0 {
+		return "0"
+	}
+
+	value := float64(quota)
+	if math.Abs(value) >= 1000 {
+		return formatQuotaDecimal(value/1000, 1) + "k"
+	}
+	return strconv.FormatInt(quota, 10)
+}
+
+func formatQuotaAmount(value float64) string {
+	digits := 4
+	if math.Abs(value) >= 1 {
+		digits = 2
+	}
+	threshold := math.Pow10(-digits)
+	if value != 0 && math.Abs(value) < threshold {
+		if value > 0 {
+			value = threshold
+		} else {
+			value = -threshold
+		}
+	}
+	return formatQuotaDecimal(value, digits)
+}
+
+func formatQuotaDecimal(value float64, digits int) string {
+	formatted := strconv.FormatFloat(value, 'f', digits, 64)
+	if strings.Contains(formatted, ".") {
+		formatted = strings.TrimRight(formatted, "0")
+		formatted = strings.TrimRight(formatted, ".")
+	}
+	return formatted
 }

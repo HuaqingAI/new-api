@@ -950,7 +950,7 @@ describe('Enterprise usage overview dashboard', () => {
     )
   })
 
-  test('exports csv with summary filters only and parses filename from headers', async () => {
+  test('exports csv with user ranking filters and parses filename from headers', async () => {
     const originalGet = api.get
     const calls: Array<{ url: string; params?: unknown }> = []
 
@@ -970,8 +970,7 @@ describe('Enterprise usage overview dashboard', () => {
         from: 1714521600,
         to: 1717113600,
         tenantId: 7,
-        summarySort: 'users',
-        summaryOrder: 'asc',
+        sort: 'requests',
       })
 
       assert.equal(result.fileName, 'usage-department-20240501-20240531.csv')
@@ -982,8 +981,7 @@ describe('Enterprise usage overview dashboard', () => {
           from: 1714521600,
           to: 1717113600,
           tenant_id: 7,
-          summary_sort: 'users',
-          summary_order: 'asc',
+          sort: 'requests',
         },
       })
       assert.ok(result.blob instanceof Blob)
@@ -1170,7 +1168,7 @@ describe('Enterprise usage overview dashboard', () => {
     )
   })
 
-  test('derives export params from summary filters without leaking detail-only search state', () => {
+  test('derives export params from user ranking scope without summary sorting', () => {
     assert.deepEqual(
       resolveDepartmentUsageExportParams(
         {
@@ -1195,8 +1193,7 @@ describe('Enterprise usage overview dashboard', () => {
         tenantId: 7,
         departmentId: 99,
         includeDescendants: undefined,
-        summarySort: 'users',
-        summaryOrder: 'asc',
+        sort: 'tokens',
       }
     )
   })

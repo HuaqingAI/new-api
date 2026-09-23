@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 	serviceenterprise "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,8 +261,22 @@ func TestEnterpriseUsageSummaryAPIPreservesMultiDepartmentAttributionAcrossWindo
 	require.Len(t, operations.ModelDistribution, 1)
 }
 
-func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t *testing.T) {
+func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsUserRankingCSV(t *testing.T) {
 	fixture := newEnterpriseDepartmentTreeAPIFixture(t)
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	common.QuotaPerUnit = 100
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	t.Cleanup(func() {
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldQuotaDisplayType
+	})
+
+	require.NoError(t, fixture.db.AutoMigrate(&model.Log{}))
+	require.NoError(t, fixture.db.Create(&[]model.User{
+		{Id: 101, Username: "alice", Password: "password123", DisplayName: "Alice", Group: "default", AffCode: "alice-export"},
+		{Id: 102, Username: "bob", Password: "password123", DisplayName: "Bob", Group: "default", AffCode: "bob-export"},
+	}).Error)
 	parentID := 10
 	deptID := 11
 
@@ -302,6 +317,38 @@ func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t 
 
 	require.NoError(t, fixture.db.Create(&snapshotA).Error)
 	require.NoError(t, fixture.db.Create(&snapshotB).Error)
+	require.NoError(t, fixture.db.Create(&[]model.Log{
+		{
+			UserId:           101,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            120,
+			PromptTokens:     40,
+			CompletionTokens: 10,
+			CreatedAt:        1714521700,
+		},
+		{
+			UserId:           101,
+			Username:         "alice-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            80,
+			PromptTokens:     30,
+			CompletionTokens: 10,
+			CreatedAt:        1714521800,
+		},
+		{
+			UserId:           102,
+			Username:         "bob-log",
+			Type:             model.LogTypeConsume,
+			ModelName:        "gpt-4o",
+			Quota:            300,
+			PromptTokens:     60,
+			CompletionTokens: 20,
+			CreatedAt:        1714521900,
+		},
+	}).Error)
 	commonUser := fixture.performEnterpriseRequest(
 		t,
 		http.MethodGet,
@@ -315,7 +362,7 @@ func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t 
 	admin := fixture.performEnterpriseRequest(
 		t,
 		http.MethodGet,
-		"/api/enterprise/usage/export?from=1714521600&to=1714608000&summary_sort=dept_name&summary_order=asc",
+		"/api/enterprise/usage/export?from=1714521600&to=1714608000&sort=requests",
 		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
 	)
 	require.Equal(t, http.StatusOK, admin.Code)
@@ -323,14 +370,14 @@ func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsSnapshotCSV(t 
 	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, admin.Header().Get("Content-Disposition"))
 	body := admin.Body.String()
 	require.Contains(t, body, "# ")
-	require.Contains(t, body, "prompt_tokens")
-	require.Contains(t, body, "root_subtree,10,Platform,,1714521600,1714608000,8,80,16,240,2")
-	require.NotContains(t, body, ",未归属,")
+	require.Contains(t, body, "输入 Tokens")
+	startDate := time.Unix(1714521600, 0).Format("2006-01-02")
+	endDate := time.Unix(1714608000-1, 0).Format("2006-01-02")
+	require.Contains(t, body, ",全公司,"+startDate+","+endDate+",101,alice,Alice,2,70,20,90,$2")
 	lines := strings.Split(strings.TrimSpace(body), "\n")
 	require.GreaterOrEqual(t, len(lines), 3)
-	require.Contains(t, lines[1], "prompt_tokens")
-	require.Equal(t, "root_subtree,10,Platform,,1714521600,1714608000,8,80,16,240,2", lines[2])
-	require.NotContains(t, body, "should-not-be-read")
+	require.Contains(t, lines[1], "输入 Tokens")
+	require.Equal(t, ",全公司,"+startDate+","+endDate+",101,alice,Alice,2,70,20,90,$2", lines[2])
 	require.NotContains(t, body, "null")
 	require.NotContains(t, body, "<nil>")
 }

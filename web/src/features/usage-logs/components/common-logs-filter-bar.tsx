@@ -92,6 +92,8 @@ function buildSearchSourceKey(values: {
   group?: unknown
   username?: unknown
   requestId?: unknown
+  clientRequestId?: unknown
+  inboundRequestId?: unknown
   upstreamRequestId?: unknown
   type?: unknown
 }) {
@@ -104,6 +106,8 @@ function buildSearchSourceKey(values: {
     values.group,
     values.username,
     values.requestId,
+    values.clientRequestId,
+    values.inboundRequestId,
     values.upstreamRequestId,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
@@ -156,6 +160,8 @@ export function CommonLogsFilterBar<TData>(
       group: searchParams.group,
       username: searchParams.username,
       requestId: searchParams.requestId,
+      clientRequestId: searchParams.clientRequestId,
+      inboundRequestId: searchParams.inboundRequestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       type: searchParams.type,
     }
@@ -177,6 +183,8 @@ export function CommonLogsFilterBar<TData>(
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
       requestId: searchParams.requestId || undefined,
+      clientRequestId: searchParams.clientRequestId || undefined,
+      inboundRequestId: searchParams.inboundRequestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
     }
     return {
@@ -195,6 +203,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.group,
     searchParams.username,
     searchParams.requestId,
+    searchParams.clientRequestId,
+    searchParams.inboundRequestId,
     searchParams.upstreamRequestId,
     searchParams.type,
   ])
@@ -277,6 +287,8 @@ export function CommonLogsFilterBar<TData>(
     !!filters.username ||
     !!filters.channel ||
     !!filters.requestId ||
+    !!filters.clientRequestId ||
+    !!filters.inboundRequestId ||
     !!filters.upstreamRequestId
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
@@ -288,6 +300,8 @@ export function CommonLogsFilterBar<TData>(
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
+    filters.clientRequestId,
+    filters.inboundRequestId,
     filters.upstreamRequestId,
   ].filter(Boolean).length
   const sensitiveInputClass = sensitiveVisible
@@ -479,6 +493,22 @@ export function CommonLogsFilterBar<TData>(
           placeholder={t('Request ID')}
           value={filters.requestId || ''}
           onChange={(e) => handleChange('requestId', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+      <LogsFilterField>
+        <LogsFilterInput
+          placeholder={t('Client Request ID')}
+          value={filters.clientRequestId || ''}
+          onChange={(e) => handleChange('clientRequestId', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+      <LogsFilterField>
+        <LogsFilterInput
+          placeholder={t('Inbound Request ID')}
+          value={filters.inboundRequestId || ''}
+          onChange={(e) => handleChange('inboundRequestId', e.target.value)}
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>

@@ -5491,6 +5491,8 @@
     "Request Header Overrides": "Remplacements d'en-têtes de requête",
     "Request headers must be a JSON object with string values.": "Les en-têtes doivent être un objet JSON dont les valeurs sont des chaînes.",
     "Request ID": "ID de requête",
+    "Client Request ID": "ID de requête client",
+    "Inbound Request ID": "ID de requête entrante",
     "Request Limits": "Limites de requêtes",
     "Request Model": "Modèle demandé",
     "Request Model Name": "Nom du modèle demandé",

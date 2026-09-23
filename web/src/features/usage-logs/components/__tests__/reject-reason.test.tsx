@@ -48,6 +48,8 @@ function makeLog(other: LogOtherData): UsageLog {
     ip: '',
     other: JSON.stringify(other),
     request_id: 'req-1',
+    client_request_id: '',
+    inbound_request_id: '',
     upstream_request_id: '',
   }
 }

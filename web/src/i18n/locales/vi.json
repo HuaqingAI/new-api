@@ -5491,6 +5491,8 @@
     "Request Header Overrides": "Ghi đè Tiêu đề Yêu cầu",
     "Request headers must be a JSON object with string values.": "Tiêu đề yêu cầu phải là đối tượng JSON có giá trị chuỗi.",
     "Request ID": "ID yêu cầu",
+    "Client Request ID": "ID yêu cầu máy khách",
+    "Inbound Request ID": "ID yêu cầu đầu vào",
     "Request Limits": "Hạn mức yêu cầu",
     "Request Model": "Mô hình yêu cầu",
     "Request Model Name": "Tên mô hình trong yêu cầu",

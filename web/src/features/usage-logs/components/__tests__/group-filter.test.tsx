@@ -154,6 +154,40 @@ it('loads all groups in the administrator view', async () => {
   expect(api.get).not.toHaveBeenCalledWith('/api/user/self/groups')
 })
 
+it('submits the client request id advanced filter', async () => {
+  const router = await renderFilter()
+  await userEvent.click(screen.getByRole('button', { name: /^Expand/ }))
+  await userEvent.type(
+    screen.getByPlaceholderText('Client Request ID'),
+    'thread-123'
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      clientRequestId: 'thread-123',
+      page: 1,
+    })
+  )
+})
+
+it('submits the inbound request id advanced filter', async () => {
+  const router = await renderFilter()
+  await userEvent.click(screen.getByRole('button', { name: /^Expand/ }))
+  await userEvent.type(
+    screen.getByPlaceholderText('Inbound Request ID'),
+    'codex-thread-123'
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      inboundRequestId: 'codex-thread-123',
+      page: 1,
+    })
+  )
+})
+
 it('confirms a keyboard choice before Enter submits the selected group', async () => {
   const router = await renderFilter()
   const input = screen.getByRole('combobox', { name: 'Group' })

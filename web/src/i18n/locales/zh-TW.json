@@ -5491,6 +5491,8 @@
     "Request Header Overrides": "請求頭覆蓋",
     "Request headers must be a JSON object with string values.": "請求標頭必須是值為字串的 JSON 物件。",
     "Request ID": "請求 ID",
+    "Client Request ID": "用戶端請求 ID",
+    "Inbound Request ID": "入站請求 ID",
     "Request Limits": "請求限制",
     "Request Model": "請求模型",
     "Request Model Name": "請求模型名稱",

@@ -176,6 +176,8 @@ describe('quota adjustment log localization', () => {
         group: '',
         ip: '',
         request_id: 'quota-request',
+        client_request_id: '',
+        inbound_request_id: '',
         upstream_request_id: '',
         other: JSON.stringify({
           op: { action: scenario.action, params: scenario.params },

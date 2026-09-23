@@ -44,6 +44,8 @@ export const usageLogsSearchSchema = z.object({
   group: z.string().optional().catch(''),
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
+  clientRequestId: z.string().optional().catch(''),
+  inboundRequestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
   startTime: z.coerce.number().int().optional().catch(undefined),
   endTime: z.coerce.number().int().optional().catch(undefined),

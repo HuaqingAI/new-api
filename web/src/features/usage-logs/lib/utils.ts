@@ -196,6 +196,12 @@ export function buildApiParams(config: {
     ...(searchParams.requestId
       ? { request_id: String(searchParams.requestId) }
       : {}),
+    ...(searchParams.clientRequestId
+      ? { client_request_id: String(searchParams.clientRequestId) }
+      : {}),
+    ...(searchParams.inboundRequestId
+      ? { inbound_request_id: String(searchParams.inboundRequestId) }
+      : {}),
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),

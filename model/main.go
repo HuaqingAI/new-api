@@ -428,7 +428,22 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	if err := ensureClickHouseLogColumns(); err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
+}
+
+func ensureClickHouseLogColumns() error {
+	for _, statement := range []string{
+		"ALTER TABLE logs ADD COLUMN IF NOT EXISTS client_request_id String DEFAULT ''",
+		"ALTER TABLE logs ADD COLUMN IF NOT EXISTS inbound_request_id String DEFAULT ''",
+	} {
+		if err := LOG_DB.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func clickHouseLogTTLDays() int {
@@ -475,6 +490,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',
 	request_id String DEFAULT '',
+	client_request_id String DEFAULT '',
+	inbound_request_id String DEFAULT '',
 	upstream_request_id String DEFAULT '',
 	other String DEFAULT ''
 )

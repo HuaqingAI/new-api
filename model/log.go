@@ -113,6 +113,8 @@ type Log struct {
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
+	ClientRequestId   string `json:"client_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_client_request_id;default:''"`
+	InboundRequestId  string `json:"inbound_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_inbound_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
 }
@@ -138,6 +140,22 @@ func ensureLogRequestId(log *Log) {
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
 	return LOG_DB.Create(log).Error
+}
+
+func applyLogIdentifierFilters(tx *gorm.DB, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string) *gorm.DB {
+	if requestId != "" {
+		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	}
+	if clientRequestId != "" {
+		tx = tx.Where("logs.client_request_id = ?", clientRequestId)
+	}
+	if inboundRequestId != "" {
+		tx = tx.Where("logs.inbound_request_id = ?", inboundRequestId)
+	}
+	return tx
 }
 
 func clickHouseLogOrder(prefix string) string {
@@ -317,6 +335,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
+	clientRequestId := c.GetString(common.ClientRequestIdKey)
+	inboundRequestId := c.GetString(common.InboundRequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
@@ -349,6 +369,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 			return ""
 		}(),
 		RequestId:         requestId,
+		ClientRequestId:   clientRequestId,
+		InboundRequestId:  inboundRequestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
 	}
@@ -380,6 +402,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
+	clientRequestId := c.GetString(common.ClientRequestIdKey)
+	inboundRequestId := c.GetString(common.InboundRequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := params.Other.JSONString()
@@ -413,6 +437,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			return ""
 		}(),
 		RequestId:         requestId,
+		ClientRequestId:   clientRequestId,
+		InboundRequestId:  inboundRequestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
 	}
@@ -498,7 +524,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -515,12 +541,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if tokenName != "" {
 		tx = tx.Where("logs.token_name = ?", tokenName)
 	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
-	}
-	if upstreamRequestId != "" {
-		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
-	}
+	tx = applyLogIdentifierFilters(tx, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
 	}
@@ -594,7 +615,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -608,12 +629,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if tokenName != "" {
 		tx = tx.Where("logs.token_name = ?", tokenName)
 	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
-	}
-	if upstreamRequestId != "" {
-		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
-	}
+	tx = applyLogIdentifierFilters(tx, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
 	}
@@ -648,7 +664,7 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -664,6 +680,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		tx = tx.Where("token_name = ?", tokenName)
 		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
 	}
+	tx = applyLogIdentifierFilters(tx, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
+	rpmTpmQuery = applyLogIdentifierFilters(rpmTpmQuery, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
 	}

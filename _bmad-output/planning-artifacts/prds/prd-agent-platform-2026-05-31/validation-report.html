@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>PRD Validation: new-api 通用 Agent 能力平台 PRD</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --grade-good: #65a30d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+    background: var(--grade-good);
+  }
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension { margin-bottom: 14px; }
+  section.dimension details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+    background: rgba(100, 116, 139, 0.12);
+    color: var(--sev-low);
+  }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="report-header">
+      <div class="title">
+        <h1>new-api 通用 Agent 能力平台 PRD — Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/prds/prd-agent-platform-2026-05-31/prd.md</div>
+      </div>
+      <div class="grade">Good</div>
+    </header>
+
+    <div class="synthesis">
+      <p>这份 PRD 现在已经达到可以更稳地进入 architecture freeze 的水平。它的核心产品论点、范围边界、角色责任、Glossary 和下游可抽取性都比较扎实，而且前一轮最关键的 Done-ness 问题已经被收敛：<code>Knowledge</code> 的 MVP 形态被锁死为 <code>retrieval</code>，缓存/撤销收敛规则也被量化到了统一窗口。</p>
+      <p>剩余问题主要是轻量级的文档打磨，而不是会阻塞架构或 Epic 拆分的结构性空洞。最值得继续留意的是：如果后续真要引入第二个消费者，<code>namespaced</code> 扩展边界和 <code>Agent</code> 的 detail 表达要继续按 DG-1 验证，避免再次回滑成“看起来通用、实际上偏某个客户端”的协议。</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card"><div class="dim-name">Decision-readiness</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Substance over theater</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Strategic coherence</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Done-ness clarity</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Scope honesty</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Downstream usability</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+    </div>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Decision-readiness</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>这份 PRD 已经把最关键的产品选择压成了明确决策。冻结前真正需要拍板的事项只剩客户端扩展边界、第二个验证消费者优先级和上线所需的审计/诊断粒度。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Substance over theater</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>角色矩阵、命名主角的用户旅程、Glossary 和 NFR 都在承担真实约束，没有明显模板家具。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Strategic coherence</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>统一资源治理与统一开放能力层的主线清楚且自洽；新增的 SM-6 / SM-C4 也让 Agent 不再停留在“在 scope 里但不被验证”的状态。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Done-ness clarity</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>`Knowledge` 的 MVP 形态和缓存/撤销收敛窗口都已被收紧到可执行要求，足以支撑 architecture、API 和测试团队提取稳定的完成定义。</p>
+            <p>剩余提升空间主要在 schema 草图和展示细节层面，更适合在 architecture 文档中继续落地，而不再是 PRD 层面的结构空洞。</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge">low</span>
+              <h3 class="finding-title">retrieval 结果结构仍建议在架构层补一个最小 schema 草图</h3>
+              <span class="finding-location">§4.4 FR-10</span>
+            </header>
+            <div class="finding-note">PRD 已经明确 Knowledge MVP 只支持 retrieval，并要求返回片段、来源元数据和排序信息。作为 PRD 这已经足够，但后续 architecture 若不补一个最小 detail/invoke 返回草图，客户端实现仍可能各自猜测字段细节。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 在后续 architecture 文档中补充 retrieval 最小返回结构示意，至少覆盖片段内容、来源标识、排序依据和可选分页语义。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Scope honesty</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>非目标和 Out of Scope 写得很直接，尤其把 Knowledge 扩展形态和复杂 Agent orchestration 明确排除在 MVP 之外，范围非常诚实。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Downstream usability</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment"><p>Glossary、编号系统、UJs、闭环定义、FR 和成功指标之间的口径已经对齐，下游 architecture / epics / stories 可以直接 source-extract。</p></div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge">low</span>
+              <h3 class="finding-title">FR-15 的插入位置略影响线性扫描</h3>
+              <span class="finding-location">§4.2-§4.6</span>
+            </header>
+            <div class="finding-note">编号唯一且无冲突，但读者按从小到大线性扫描 FR 时会遇到一次跳跃。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 若下一轮再修订 PRD，可考虑在不破坏稳定 ID 的前提下，在目录或章节引导中显式说明 FR-15 属于客户端标准层的补充约束。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Shape fit</h2>
+          <span class="verdict-pill verdict-strong">strong</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>对于一个多角色、强治理、强契约的平台产品，这份 PRD 的形状是合适的，同时没有过早承诺超出 MVP 的复杂 runtime。</p></div></div>
+      </details>
+    </section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li>Glossary 术语整体一致；`Knowledge Mode` 已纳入术语表。</li>
+        <li>UJ-1 到 UJ-4 均有命名主角，且主角携带场景上下文。</li>
+        <li>FR、UJ、SM、SM-C、DG 编号都唯一且连续；FR 的叙述顺序仍是 `FR-1..FR-6` 后插入 `FR-15` 再进入 `FR-7..FR-14`，合法但略影响顺序扫描。</li>
+        <li>Inline `[ASSUMPTION]` 与 Assumptions Index 现在一致，只保留仍未被正文吸收的两条假设。</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: .agents/skills/bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-05-31T15:48:43.2126831+08:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

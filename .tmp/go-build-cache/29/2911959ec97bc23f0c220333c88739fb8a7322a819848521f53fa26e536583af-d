@@ -1,0 +1,6 @@
+./base_resource.go
+./merchant_config_resource.go
+./order_resource.go
+./pay_method_config_resource.go
+./refund_resource.go
+./subscription_resource.go

@@ -1,0 +1,9 @@
+# test log
+getenv SQL_DSN
+getenv SQL_DSN
+getenv LOG_SQL_DSN
+getenv SQL_MAX_IDLE_CONNS
+getenv SQL_MAX_OPEN_CONNS
+getenv SQL_MAX_LIFETIME
+getenv TEST_MYSQL_DSN
+getenv TEST_POSTGRES_DSN

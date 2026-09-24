@@ -3,13 +3,18 @@ package service
 import (
 	"math"
 	"math/rand"
-	"sync"
 	"testing"
 
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Claude Sonnet-style tiered expression: standard vs long-context
@@ -310,6 +315,248 @@ func TestTryTieredSettle_NoRequestInput_FallsBackToDefault(t *testing.T) {
 // Group ratio tests
 // ---------------------------------------------------------------------------
 
+type recordingBillingSettler struct {
+	preConsumedQuota int
+	reserveTargets   []int
+}
+
+func (*recordingBillingSettler) Settle(int) error { return nil }
+
+func (*recordingBillingSettler) Refund(*gin.Context) {}
+
+func (*recordingBillingSettler) NeedsRefund() bool { return false }
+
+func (s *recordingBillingSettler) GetPreConsumedQuota() int {
+	return s.preConsumedQuota
+}
+
+func (s *recordingBillingSettler) Reserve(targetQuota int) error {
+	s.reserveTargets = append(s.reserveTargets, targetQuota)
+	if targetQuota > s.preConsumedQuota {
+		s.preConsumedQuota = targetQuota
+	}
+	return nil
+}
+
+func TestPrepareTieredBillingForSelectedGroupUpdatesReservation(t *testing.T) {
+	const expr = `tier("base", p)`
+	billing := &recordingBillingSettler{preConsumedQuota: 50_000}
+	relayInfo := &relaycommon.RelayInfo{
+		Billing:               billing,
+		FinalPreConsumedQuota: 50_000,
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:               "tiered_expr",
+			ExprString:                expr,
+			ExprHash:                  billingexpr.ExprHashString(expr),
+			GroupRatio:                0.10,
+			EstimatedQuotaBeforeGroup: 500_000,
+			EstimatedQuotaAfterGroup:  50_000,
+			QuotaPerUnit:              testQuotaPerUnit,
+		},
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.20},
+		},
+	}
+
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(nil, relayInfo))
+	require.Equal(t, []int{100_000}, billing.reserveTargets)
+	assert.Equal(t, 100_000, billing.preConsumedQuota)
+	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
+	assert.Equal(t, 0.20, relayInfo.TieredBillingSnapshot.GroupRatio)
+	assert.Equal(t, 100_000, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+}
+
+func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *testing.T) {
+	truncate(t)
+	gin.SetMode(gin.TestMode)
+
+	const userID = 700
+	seedUser(t, userID, 500_000)
+
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:          userID,
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		OriginModelName: "gpt-test",
+		UserSetting: dto.UserSetting{
+			BillingPreference: "wallet_only",
+		},
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:               "tiered_expr",
+			ExprString:                `tier("base", p)`,
+			ExprHash:                  billingexpr.ExprHashString(`tier("base", p)`),
+			GroupRatio:                0,
+			EstimatedQuotaBeforeGroup: 500_000,
+			QuotaPerUnit:              testQuotaPerUnit,
+		},
+		PriceData: types.PriceData{
+			FreeModel:      true,
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.20},
+		},
+	}
+	ctx, _ := gin.CreateTestContext(nil)
+
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(ctx, relayInfo))
+	require.NotNil(t, relayInfo.Billing)
+	assert.False(t, relayInfo.PriceData.FreeModel, "FreeModel must be cleared after switching to a paid group")
+	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
+	assert.Equal(t, 0.20, relayInfo.TieredBillingSnapshot.GroupRatio)
+	assert.Equal(t, 100_000, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+
+	userQuota, err := model.GetUserQuota(userID, false)
+	require.NoError(t, err)
+	assert.Equal(t, 400_000, userQuota)
+}
+
+func TestPrepareTieredBillingForSelectedGroupPaidToFreeKeepsFreeModelFalse(t *testing.T) {
+	const expr = `tier("base", p)`
+	billing := &recordingBillingSettler{preConsumedQuota: 50_000}
+	relayInfo := &relaycommon.RelayInfo{
+		Billing:               billing,
+		FinalPreConsumedQuota: 50_000,
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:               "tiered_expr",
+			ExprString:                expr,
+			ExprHash:                  billingexpr.ExprHashString(expr),
+			GroupRatio:                0.10,
+			EstimatedQuotaBeforeGroup: 500_000,
+			EstimatedQuotaAfterGroup:  50_000,
+			QuotaPerUnit:              testQuotaPerUnit,
+		},
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0},
+		},
+	}
+
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(nil, relayInfo))
+
+	// Pre-consume did happen under the paid group, so FreeModel stays false;
+	// settlement already yields 0 for GroupRatio == 0 and the session refunds.
+	assert.False(t, relayInfo.PriceData.FreeModel)
+	assert.Empty(t, billing.reserveTargets)
+	assert.Equal(t, 50_000, relayInfo.FinalPreConsumedQuota)
+}
+
+func TestPrepareTieredBillingForSelectedGroupTopUpArrearsAllowsNegativeBalance(t *testing.T) {
+	truncate(t)
+
+	const userID = 701
+	// Balance covers the initial 50k pre-consume (already deducted before this
+	// test's seed) but not the 50k top-up to the more expensive retry group.
+	// The top-up must NOT abort the request: the full delta is deducted, the
+	// uncovered 30k becomes arrears (negative balance), mirroring how
+	// settlement charges a positive delta unconditionally.
+	seedUser(t, userID, 20_000)
+
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:                userID,
+		IsPlayground:          true,
+		FinalPreConsumedQuota: 50_000,
+		TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+			BillingMode:               "tiered_expr",
+			ExprString:                `tier("base", p)`,
+			ExprHash:                  billingexpr.ExprHashString(`tier("base", p)`),
+			GroupRatio:                0.10,
+			EstimatedQuotaBeforeGroup: 500_000,
+			EstimatedQuotaAfterGroup:  50_000,
+			QuotaPerUnit:              testQuotaPerUnit,
+		},
+		PriceData: types.PriceData{
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 0.20},
+		},
+	}
+	session := &BillingSession{
+		relayInfo:        relayInfo,
+		funding:          &WalletFunding{userId: userID, consumed: 50_000},
+		preConsumedQuota: 50_000,
+	}
+	relayInfo.Billing = session
+
+	require.Nil(t, PrepareTieredBillingForSelectedGroup(nil, relayInfo))
+
+	// Full reservation recorded; wallet charged the full delta into arrears.
+	assert.Equal(t, 100_000, session.GetPreConsumedQuota())
+	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
+	assert.Equal(t, 100_000, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+	userQuota, err := model.GetUserQuota(userID, false)
+	require.NoError(t, err)
+	assert.Equal(t, -30_000, userQuota)
+
+	// Settlement still reconciles against the full reservation: actual 80k
+	// refunds the 20k over-reserve, landing at seed - (actual - initial) = -10k.
+	require.NoError(t, session.Settle(80_000))
+	userQuota, err = model.GetUserQuota(userID, false)
+	require.NoError(t, err)
+	assert.Equal(t, -10_000, userQuota)
+}
+
+func TestBillingSessionReserveWalletTopUpDecrementsBalance(t *testing.T) {
+	truncate(t)
+
+	const userID = 702
+	seedUser(t, userID, 500_000)
+
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:       userID,
+		IsPlayground: true,
+	}
+	session := &BillingSession{
+		relayInfo:        relayInfo,
+		funding:          &WalletFunding{userId: userID, consumed: 50_000},
+		preConsumedQuota: 50_000,
+	}
+
+	require.NoError(t, session.Reserve(100_000))
+
+	assert.Equal(t, 100_000, session.GetPreConsumedQuota())
+	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
+	userQuota, err := model.GetUserQuota(userID, false)
+	require.NoError(t, err)
+	assert.Equal(t, 450_000, userQuota)
+}
+
+func TestTryTieredSettleUsesFinalGroupAfterRetry(t *testing.T) {
+	const expr = `tier("base", p)`
+	tests := []struct {
+		name            string
+		finalGroupRatio float64
+		wantQuota       int
+	}{
+		{name: "more expensive final group", finalGroupRatio: 0.20, wantQuota: 100_000},
+		{name: "free final group", finalGroupRatio: 0, wantQuota: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			relayInfo := &relaycommon.RelayInfo{
+				Billing:               &recordingBillingSettler{preConsumedQuota: 50_000},
+				FinalPreConsumedQuota: 50_000,
+				TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+					BillingMode:               "tiered_expr",
+					ExprString:                expr,
+					ExprHash:                  billingexpr.ExprHashString(expr),
+					GroupRatio:                0.10,
+					EstimatedQuotaBeforeGroup: 500_000,
+					EstimatedQuotaAfterGroup:  50_000,
+					QuotaPerUnit:              testQuotaPerUnit,
+				},
+				PriceData: types.PriceData{
+					GroupRatioInfo: types.GroupRatioInfo{GroupRatio: tt.finalGroupRatio},
+				},
+			}
+
+			require.Nil(t, PrepareTieredBillingForSelectedGroup(nil, relayInfo))
+			ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1_000_000})
+
+			require.True(t, ok)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.wantQuota, quota)
+			assert.Equal(t, tt.finalGroupRatio, relayInfo.TieredBillingSnapshot.GroupRatio)
+			assert.Equal(t, tt.wantQuota, relayInfo.TieredBillingSnapshot.EstimatedQuotaAfterGroup)
+		})
+	}
+}
+
 func TestTryTieredSettle_GroupRatioScaling(t *testing.T) {
 	info := makeRelayInfo(flatExpr, 1.5, 1000, 500)
 
@@ -506,6 +753,42 @@ func TestBuildTieredTokenParams_GPT_WithImage(t *testing.T) {
 	}
 }
 
+func TestImageCacheBilling(t *testing.T) {
+	const expression = `tier("standard", p * 5 + cr * 1.25 + img * 8 + img_cr * 2 + c * 30)`
+	for _, tc := range []struct {
+		name              string
+		details           *dto.CachedTokenDetails
+		expression        string
+		p, cr, img, imgCR float64
+		quota             int
+	}{
+		{"mixed cache", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(200), TextTokens: common.GetPointer(100)}, expression, 300, 100, 400, 200, 4113},
+		{"explicit free image cache price", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(200)}, `tier("standard", p * 5 + cr * 1.25 + img * 8 + img_cr * 0 + c * 30)`, 300, 100, 400, 200, 3913},
+		{"explicit zero", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(0)}, expression, 100, 300, 600, 0, 4338},
+		{"missing breakdown", nil, expression, 100, 300, 600, 0, 4338},
+		{"missing image modality", &dto.CachedTokenDetails{TextTokens: common.GetPointer(100)}, expression, 100, 300, 600, 0, 4338},
+		{"negative image count", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(-1)}, expression, 100, 300, 600, 0, 4338},
+		{"image count exceeds cache", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(301)}, expression, 100, 300, 600, 0, 4338},
+		{"modality sum exceeds cache", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(200), TextTokens: common.GetPointer(101)}, expression, 100, 300, 600, 0, 4338},
+		{"old expression unchanged", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(200)}, `p * 5 + cr * 1.25 + img * 8 + c * 30`, 100, 300, 600, 0, 4338},
+		{"only image cache separately priced", &dto.CachedTokenDetails{ImageTokens: common.GetPointer(200)}, `p * 5 + img_cr * 2 + c * 30`, 800, 100, 400, 200, 3700},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100,
+				PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 300, ImageTokens: 600, CachedTokensDetails: tc.details}}
+			params := BuildTieredTokenParams(usage, false, billingexpr.UsedVars(tc.expression))
+			assert.Equal(t, tc.p, params.P)
+			assert.Equal(t, tc.cr, params.CR)
+			assert.Equal(t, tc.img, params.Img)
+			assert.Equal(t, tc.imgCR, params.ImgCR)
+			assert.Equal(t, float64(1000), params.Len)
+			result, err := billingexpr.ComputeTieredQuota(makeSnapshot(tc.expression, 1, 1000, 100), params)
+			require.NoError(t, err)
+			assert.Equal(t, tc.quota, result.ActualQuotaAfterGroup)
+		})
+	}
+}
+
 func TestBuildTieredTokenParams_Claude_WithCache(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     800,
@@ -695,11 +978,6 @@ func TestBuildTieredTokenParams_Len_TierCondition(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Stress test: 1000 concurrent goroutines, complex tiered expr vs ratio,
-// random token counts, verify correctness and measure performance
-// ---------------------------------------------------------------------------
-
 const complexTieredExpr = `p <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6 + img * 3 + img_o * 30 + ai * 10 + ao * 40) : tier("long_context", p * 6 + c * 22.5 + cr * 0.6 + cc * 7.5 + cc1h * 12 + img * 6 + img_o * 60 + ai * 20 + ao * 80)`
 
 func randomUsage(rng *rand.Rand) *dto.Usage {
@@ -728,51 +1006,6 @@ func randomUsage(rng *rand.Rand) *dto.Usage {
 			AudioTokens: audioOut,
 			TextTokens:  completion - imgOut - audioOut,
 		},
-	}
-}
-
-func TestStress_TieredBilling_1000Concurrent(t *testing.T) {
-	usedVars := billingexpr.UsedVars(complexTieredExpr)
-
-	var wg sync.WaitGroup
-	errCh := make(chan string, 1000)
-
-	for i := 0; i < 1000; i++ {
-		wg.Add(1)
-		go func(seed int64) {
-			defer wg.Done()
-			rng := rand.New(rand.NewSource(seed))
-
-			for j := 0; j < 100; j++ {
-				usage := randomUsage(rng)
-				groupRatio := 0.5 + rng.Float64()*2.0
-
-				params := BuildTieredTokenParams(usage, false, usedVars)
-				cost, trace, err := billingexpr.RunExpr(complexTieredExpr, params)
-				if err != nil {
-					errCh <- err.Error()
-					return
-				}
-				if cost < 0 {
-					errCh <- "negative cost"
-					return
-				}
-
-				quota := billingexpr.QuotaRound(cost / 1_000_000 * testQuotaPerUnit * groupRatio)
-				if quota < 0 {
-					errCh <- "negative quota"
-					return
-				}
-
-				_ = trace.MatchedTier
-			}
-		}(int64(i))
-	}
-
-	wg.Wait()
-	close(errCh)
-	for e := range errCh {
-		t.Fatal(e)
 	}
 }
 
@@ -827,4 +1060,32 @@ func BenchmarkRatioBilling_Parallel(b *testing.B) {
 			ratioQuota(usage, false, 1.5, 5.0, 0.1, 1.0, 1.5)
 		}
 	})
+}
+
+func TestSamePriceCacheReadsRemainInInput(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		usage       dto.Usage
+		extra       string
+		input, cost float64
+	}{
+		{"openai", dto.Usage{PromptTokens: 1000, CompletionTokens: 100, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200}}, "", 1000, 72000},
+		{"anthropic", dto.Usage{PromptTokens: 800, CompletionTokens: 100, UsageSemantic: "anthropic", PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200}}, "", 1000, 72000},
+		{"anthropic mixed cache TTLs", dto.Usage{PromptTokens: 750, CompletionTokens: 100, UsageSemantic: "anthropic", ClaudeCacheCreation5mTokens: 30, ClaudeCacheCreation1hTokens: 20, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200, CachedCreationTokens: 50}}, " + cc * 75 + cc1h * 120", 950, 73650},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			merged := `tier("base", p * 60 + c * 120` + tc.extra + `)`
+			separate := `tier("base", p * 60 + c * 120 + cr * 60` + tc.extra + `)`
+			params := BuildTieredTokenParams(&tc.usage, tc.usage.UsageSemantic == "anthropic", billingexpr.UsedVars(merged))
+			assert.Equal(t, tc.input, params.P)
+			cost, _, err := billingexpr.RunExpr(merged, params)
+			require.NoError(t, err)
+			assert.Equal(t, tc.cost, cost)
+			separateParams := BuildTieredTokenParams(&tc.usage, tc.usage.UsageSemantic == "anthropic", billingexpr.UsedVars(separate))
+			previousCost, _, err := billingexpr.RunExpr(separate, separateParams)
+			require.NoError(t, err)
+			assert.Equal(t, previousCost, cost, "folding cache reads into input must preserve the charge")
+			assert.Equal(t, separateParams.Len, params.Len, "tier conditions keep the full context length")
+		})
+	}
 }

@@ -78,6 +78,22 @@ func RedisGet(key string) (string, error) {
 	return val, err
 }
 
+func RedisGetDel(key string) (string, error) {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis GETDEL: key=%s", key))
+	}
+	ctx := context.Background()
+	result, err := RDB.Eval(ctx, `local value = redis.call("GET", KEYS[1]); if value then redis.call("DEL", KEYS[1]); end; return value`, []string{key}).Result()
+	if err != nil {
+		return "", err
+	}
+	value, ok := result.(string)
+	if !ok {
+		return "", errors.New("redis key missing")
+	}
+	return value, nil
+}
+
 //func RedisExpire(key string, expiration time.Duration) error {
 //	ctx := context.Background()
 //	return RDB.Expire(ctx, key, expiration).Err()
@@ -104,13 +120,13 @@ func RedisDelKey(key string) error {
 	return RDB.Del(ctx, key).Err()
 }
 
-func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
+func RedisHSetObj(key string, obj any, expiration time.Duration) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HSET: key=%s, obj=%+v, expiration=%v", key, obj, expiration))
 	}
 	ctx := context.Background()
 
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 
 	// 使用反射遍历结构体字段
 	v := reflect.ValueOf(obj).Elem()
@@ -125,7 +141,7 @@ func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
 		}
 
 		// 处理指针类型
-		if value.Kind() == reflect.Ptr {
+		if value.Kind() == reflect.Pointer {
 			if value.IsNil() {
 				data[field.Name] = ""
 				continue
@@ -158,7 +174,7 @@ func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
 	return nil
 }
 
-func RedisHGetObj(key string, obj interface{}) error {
+func RedisHGetObj(key string, obj any) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HGETALL: key=%s", key))
 	}
@@ -175,7 +191,7 @@ func RedisHGetObj(key string, obj interface{}) error {
 
 	// Handle both pointer and non-pointer values
 	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Ptr {
+	if val.Kind() != reflect.Pointer {
 		return fmt.Errorf("obj must be a pointer to a struct, got %T", obj)
 	}
 
@@ -192,7 +208,7 @@ func RedisHGetObj(key string, obj interface{}) error {
 			fieldValue := v.Field(i)
 
 			// Handle pointer types
-			if fieldValue.Kind() == reflect.Ptr {
+			if fieldValue.Kind() == reflect.Pointer {
 				if value == "" {
 					continue
 				}
@@ -299,7 +315,7 @@ func RedisHIncrBy(key, field string, delta int64) error {
 	return nil
 }
 
-func RedisHSetField(key, field string, value interface{}) error {
+func RedisHSetField(key, field string, value any) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HSET field: key=%s, field=%s, value=%v", key, field, value))
 	}

@@ -1,0 +1,8 @@
+./doc.go
+./framechannelmode_string.go
+./frameemphasis_string.go
+./framelayer_string.go
+./frames.go
+./frameversion_string.go
+./header.go
+./silence.go

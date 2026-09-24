@@ -1,0 +1,5 @@
+./claude.go
+./gemini.go
+./global.go
+./grok.go
+./qwen.go

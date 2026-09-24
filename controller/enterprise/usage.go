@@ -218,7 +218,7 @@ func ExportDepartmentUsageCSV(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"usage-department.csv\"; filename*=UTF-8''%s", url.PathEscape(exportResult.FileName)))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"department-usage.csv\"; filename*=UTF-8''%s", url.PathEscape(exportResult.FileName)))
 	c.Status(http.StatusOK)
 	if err := entservice.NewUsageExportService(model.DB).WriteDepartmentUsageCSV(c.Writer, exportResult); err != nil {
 		_ = c.Error(err)

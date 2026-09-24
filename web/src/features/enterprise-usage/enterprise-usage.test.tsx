@@ -961,7 +961,7 @@ describe('Enterprise usage overview dashboard', () => {
         data: new Blob([Buffer.from('csv')], { type: 'text/csv' }),
         headers: {
           'content-disposition':
-            'attachment; filename="usage-department.csv"; filename*=UTF-8\'\'usage-department-%E4%BF%A1%E6%81%AF%E7%B3%BB%E7%BB%9F%E4%B8%AD%E5%BF%83-20240501-20240531.csv',
+            'attachment; filename="department-usage.csv"; filename*=UTF-8\'\'%E9%83%A8%E9%97%A8%E7%94%A8%E9%87%8F-%E4%BF%A1%E6%81%AF%E7%B3%BB%E7%BB%9F%E4%B8%AD%E5%BF%83-20240501-20240531.csv',
         },
       }
     }) as typeof api.get
@@ -976,7 +976,7 @@ describe('Enterprise usage overview dashboard', () => {
 
       assert.equal(
         result.fileName,
-        'usage-department-信息系统中心-20240501-20240531.csv'
+        '部门用量-信息系统中心-20240501-20240531.csv'
       )
       assert.equal(calls.length, 1)
       assert.deepEqual(calls[0], {

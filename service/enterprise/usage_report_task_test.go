@@ -184,7 +184,7 @@ func TestUsageReportEmailCopyUsesScopeNameAndReadableRange(t *testing.T) {
 		IncludeDescendants: true,
 		RangeType:          entmodel.UsageReportRangeLast7Days,
 	}
-	content := buildUsageReportEmailHTML(&job, windowStart, windowEnd, "usage-department-信息系统中心-20260916-20260922.csv", "信息系统中心")
+	content := buildUsageReportEmailHTML(&job, windowStart, windowEnd, "部门用量-信息系统中心-20260916-20260922.csv", "信息系统中心")
 	require.Contains(t, content, "范围：信息系统中心及其子组织")
 	require.Contains(t, content, "报告范围：最近7天")
 	require.NotContains(t, content, "组织 ID")

@@ -338,6 +338,9 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 }
 
 func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result DepartmentUsageExportResult) error {
+	if _, err := writer.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+		return err
+	}
 	csvWriter := csv.NewWriter(writer)
 
 	if err := csvWriter.Write([]string{
@@ -409,7 +412,7 @@ func buildDepartmentUsageExportFileName(scopeName string, from int64, to int64) 
 	}
 	start := time.Unix(from, 0).Format("20060102")
 	end := time.Unix(to-1, 0).Format("20060102")
-	return fmt.Sprintf("usage-department-%s-%s-%s.csv", scopeName, start, end)
+	return fmt.Sprintf("部门用量-%s-%s-%s.csv", scopeName, start, end)
 }
 
 func sanitizeUsageExportFileNamePart(value string) string {

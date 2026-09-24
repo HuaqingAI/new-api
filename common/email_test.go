@@ -507,7 +507,7 @@ func TestSendEmailWithAttachmentsEncodesUnicodeFilenames(t *testing.T) {
 		"<p>CSV 数据见附件</p>",
 		[]EmailAttachment{
 			{
-				Filename:    "usage-department-信息系统中心-20260916-20260922.csv",
+				Filename:    "部门用量-信息系统中心-20260916-20260922.csv",
 				ContentType: "text/csv; charset=utf-8",
 				Content:     []byte("部门名称\n信息系统中心\n"),
 			},
@@ -520,9 +520,9 @@ func TestSendEmailWithAttachmentsEncodesUnicodeFilenames(t *testing.T) {
 		require.Contains(t, message, "Content-Type: multipart/mixed;")
 		require.Contains(t, message, "Content-Type: text/csv;")
 		require.Contains(t, message, "charset=utf-8")
-		require.Contains(t, message, "name*=utf-8''usage-department-")
+		require.Contains(t, message, "name*=utf-8''%E9%83%A8%E9%97%A8%E7%94%A8%E9%87%8F-")
 		require.Contains(t, message, "Content-Disposition: attachment;")
-		require.Contains(t, message, "filename*=utf-8''usage-department-")
+		require.Contains(t, message, "filename*=utf-8''%E9%83%A8%E9%97%A8%E7%94%A8%E9%87%8F-")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for SMTP DATA")
 	}

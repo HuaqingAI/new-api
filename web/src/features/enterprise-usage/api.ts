@@ -241,8 +241,7 @@ export async function exportDepartmentUsageCSV(params: {
   const disposition = String(res.headers['content-disposition'] ?? '')
   return {
     blob,
-    fileName:
-      parseContentDispositionFileName(disposition) ?? 'usage-department.csv',
+    fileName: parseContentDispositionFileName(disposition) ?? '部门用量.csv',
   }
 }
 

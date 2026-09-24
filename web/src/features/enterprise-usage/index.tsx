@@ -30,6 +30,7 @@ import {
   LineChart,
   RefreshCw,
   Rows3,
+  Send,
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -80,6 +81,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -90,6 +92,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
 import { DepartmentTree } from '@/features/enterprise-organization/components/DepartmentTree'
 import { DepartmentTreeBulkActions } from '@/features/enterprise-organization/components/DepartmentTreeBulkActions'
@@ -117,6 +120,7 @@ import {
   exportDepartmentUsageCSV,
   getDepartmentUsageReportConfig,
   saveDepartmentUsageReportConfig,
+  sendDepartmentUsageReportNow,
 } from './api'
 import { useDepartmentUsageDetail } from './hooks/use-department-usage-detail'
 import { useDepartmentUsageOverview } from './hooks/use-department-usage-overview'
@@ -557,14 +561,30 @@ export function EnterpriseUsageOverview() {
 
   const customRangeState = getCustomRangeState(customFromDate, customToDate)
   const [isExporting, setIsExporting] = useState(false)
+  const reportDepartmentId = normalizedSearch.dept_id
+  const reportIncludeDescendants = reportDepartmentId !== undefined
+  const reportQueryKey = useMemo(
+    () =>
+      [
+        ...departmentUsageReportQueryKey,
+        {
+          tenantId: search.tenant_id,
+          departmentId: reportDepartmentId,
+          includeDescendants: reportIncludeDescendants,
+        },
+      ] as const,
+    [reportDepartmentId, reportIncludeDescendants, search.tenant_id]
+  )
+  const reportScope = `${search.tenant_id ?? 0}:${
+    reportDepartmentId ?? 'tenant'
+  }:${reportIncludeDescendants}`
   const reportQuery = useQuery({
-    queryKey:
-      search.tenant_id === undefined
-        ? departmentUsageReportQueryKey
-        : [...departmentUsageReportQueryKey, search.tenant_id],
+    queryKey: reportQueryKey,
     queryFn: async () => {
       const response = await getDepartmentUsageReportConfig({
         tenantId: search.tenant_id,
+        departmentId: reportDepartmentId,
+        includeDescendants: reportIncludeDescendants,
       })
       if (!response.success) {
         throw new Error(response.message || 'Request failed')
@@ -576,14 +596,9 @@ export function EnterpriseUsageOverview() {
     resolver: zodResolver(reportConfigSchema(t)),
     defaultValues: reportConfigToFormValues(),
   })
-  const lastReportScopeRef = useRef<string>(
-    String(search.tenant_id ?? reportQuery.data?.tenant_id ?? 0)
-  )
+  const lastReportScopeRef = useRef<string>(reportScope)
 
   useEffect(() => {
-    const reportScope = String(
-      search.tenant_id ?? reportQuery.data?.tenant_id ?? 0
-    )
     const scopeChanged = lastReportScopeRef.current !== reportScope
     lastReportScopeRef.current = reportScope
     if (!reportQuery.data) {
@@ -607,17 +622,14 @@ export function EnterpriseUsageOverview() {
     ) {
       reportForm.reset(reportConfigToFormValues(reportQuery.data))
     }
-  }, [
-    reportForm,
-    reportForm.formState.isDirty,
-    reportQuery.data,
-    search.tenant_id,
-  ])
+  }, [reportForm, reportForm.formState.isDirty, reportQuery.data, reportScope])
 
   const reportMutation = useMutation({
     mutationFn: async (values: ReportConfigFormValues) => {
       const response = await saveDepartmentUsageReportConfig({
         tenantId: search.tenant_id,
+        departmentId: reportDepartmentId,
+        includeDescendants: reportIncludeDescendants,
         receivers: values.receivers
           .split(/[\n,;]+/)
           .map((item) => item.trim())
@@ -633,13 +645,34 @@ export function EnterpriseUsageOverview() {
     },
     onSuccess: async (item) => {
       await queryClient.invalidateQueries({
-        queryKey:
-          search.tenant_id === undefined
-            ? departmentUsageReportQueryKey
-            : [...departmentUsageReportQueryKey, search.tenant_id],
+        queryKey: reportQueryKey,
       })
       reportForm.reset(reportConfigToFormValues(item))
       toast.success(t('Usage report configuration saved'))
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
+  const sendReportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await sendDepartmentUsageReportNow({
+        tenantId: search.tenant_id,
+        departmentId: reportDepartmentId,
+        includeDescendants: reportIncludeDescendants,
+      })
+      if (!response.success) {
+        throw new Error(response.message || 'Request failed')
+      }
+      return response.data.item
+    },
+    onSuccess: async (item) => {
+      queryClient.setQueryData(reportQueryKey, item)
+      await queryClient.invalidateQueries({
+        queryKey: reportQueryKey,
+      })
+      toast.success(t('Usage report sent'))
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t('Request failed'))
@@ -939,6 +972,8 @@ export function EnterpriseUsageOverview() {
                 )()
               }
               reportSaving={reportMutation.isPending}
+              onSendReportNow={() => sendReportMutation.mutate()}
+              reportSending={sendReportMutation.isPending}
               selectedLogUser={search.log_user}
               onOpenRecentLogs={handleOpenRecentLogs}
             />
@@ -1011,6 +1046,8 @@ type EnterpriseUsageContentProps = {
   reportForm?: UseFormReturn<ReportConfigFormValues>
   onSaveReport?: () => void
   reportSaving?: boolean
+  onSendReportNow?: () => void
+  reportSending?: boolean
   selectedLogUser?: string
   onOpenRecentLogs: (entry: DepartmentUsageLogEntryLink) => void
 }
@@ -1548,6 +1585,8 @@ export function EnterpriseUsageContent(props: EnterpriseUsageContentProps) {
                     form={props.reportForm}
                     onSave={props.onSaveReport}
                     saving={props.reportSaving ?? false}
+                    onSendNow={props.onSendReportNow}
+                    sending={props.reportSending ?? false}
                   />
                 </div>
               )}
@@ -2003,9 +2042,12 @@ function DepartmentUsageReportCard(props: {
   form?: UseFormReturn<ReportConfigFormValues>
   onSave?: () => void
   saving: boolean
+  onSendNow?: () => void
+  sending: boolean
 }) {
   const { t } = useTranslation()
   const form = props.form
+  const hasSavedReport = (props.report?.id ?? 0) > 0
 
   if (!form) {
     return null
@@ -2052,8 +2094,8 @@ function DepartmentUsageReportCard(props: {
                     <FormItem>
                       <FormLabel>{t('Report Receivers')}</FormLabel>
                       <FormControl>
-                        <textarea
-                          className='border-input bg-background min-h-[96px] w-full rounded-md border px-3 py-2 text-sm'
+                        <Textarea
+                          className='min-h-24'
                           placeholder={t('Enter one email per line')}
                           {...field}
                         />
@@ -2070,17 +2112,23 @@ function DepartmentUsageReportCard(props: {
                       <FormItem>
                         <FormLabel>{t('Report Frequency')}</FormLabel>
                         <FormControl>
-                          <select
-                            className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
+                          <NativeSelect
+                            className='w-full'
                             value={field.value}
                             onChange={(event) =>
                               field.onChange(event.target.value)
                             }
                           >
-                            <option value='daily'>{t('Daily')}</option>
-                            <option value='weekly'>{t('Weekly')}</option>
-                            <option value='monthly'>{t('Monthly')}</option>
-                          </select>
+                            <NativeSelectOption value='daily'>
+                              {t('Daily')}
+                            </NativeSelectOption>
+                            <NativeSelectOption value='weekly'>
+                              {t('Weekly')}
+                            </NativeSelectOption>
+                            <NativeSelectOption value='monthly'>
+                              {t('Monthly')}
+                            </NativeSelectOption>
+                          </NativeSelect>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -2093,17 +2141,23 @@ function DepartmentUsageReportCard(props: {
                       <FormItem>
                         <FormLabel>{t('Report Range')}</FormLabel>
                         <FormControl>
-                          <select
-                            className='border-input bg-background h-10 w-full rounded-md border px-3 text-sm'
+                          <NativeSelect
+                            className='w-full'
                             value={field.value}
                             onChange={(event) =>
                               field.onChange(event.target.value)
                             }
                           >
-                            <option value='today'>{t('Today')}</option>
-                            <option value='last7d'>{t('Last 7 Days')}</option>
-                            <option value='last30d'>{t('Last 30 Days')}</option>
-                          </select>
+                            <NativeSelectOption value='today'>
+                              {t('Last Day')}
+                            </NativeSelectOption>
+                            <NativeSelectOption value='last7d'>
+                              {t('Last 7 Days')}
+                            </NativeSelectOption>
+                            <NativeSelectOption value='last30d'>
+                              {t('Last 30 Days')}
+                            </NativeSelectOption>
+                          </NativeSelect>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -2132,10 +2186,31 @@ function DepartmentUsageReportCard(props: {
                     </FormItem>
                   )}
                 />
-                <Button type='submit' disabled={props.saving}>
-                  <RefreshCw className='size-4' />
-                  {props.saving ? t('Saving') : t('Save Report Configuration')}
-                </Button>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    type='submit'
+                    disabled={props.saving || props.sending}
+                  >
+                    <RefreshCw className='size-4' />
+                    {props.saving
+                      ? t('Saving')
+                      : t('Save Report Configuration')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    disabled={
+                      !hasSavedReport ||
+                      props.onSendNow == null ||
+                      props.saving ||
+                      props.sending
+                    }
+                    onClick={props.onSendNow}
+                  >
+                    <Send className='size-4' />
+                    {props.sending ? t('Sending Report') : t('Send Report Now')}
+                  </Button>
+                </div>
               </form>
             </Form>
             <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>

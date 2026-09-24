@@ -455,7 +455,7 @@ func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testi
 		Sort:     UsageUserRankSortByRequests,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "usage-department-20240501-20240501.csv", result.FileName)
+	require.Equal(t, "usage-department-全公司-20240501-20240502.csv", result.FileName)
 	require.Len(t, result.Rows, 2)
 	require.Equal(t, "tenant", result.Rows[0].MetricBasis)
 	require.Nil(t, result.Rows[0].DeptId)
@@ -468,7 +468,6 @@ func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testi
 	var buffer bytes.Buffer
 	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, result))
 	csvText := buffer.String()
-	require.Contains(t, csvText, "# 注意：导出内容为全公司成员用户排行")
 	require.Contains(t, csvText, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度")
 	startDate := formatUnixDate(1714521600)
 	endDate := formatUnixDate(1714608000 - 1)
@@ -477,10 +476,9 @@ func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testi
 	require.NotContains(t, csvText, "<nil>")
 
 	lines := strings.Split(strings.TrimSpace(csvText), "\n")
-	require.GreaterOrEqual(t, len(lines), 3)
-	require.Equal(t, "# 注意：导出内容为全公司成员用户排行", lines[0])
-	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[1])
-	require.Equal(t, fmt.Sprintf(",全公司,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate), lines[2])
+	require.GreaterOrEqual(t, len(lines), 2)
+	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[0])
+	require.Equal(t, fmt.Sprintf(",全公司,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate), lines[1])
 
 	departmentResult, err := service.ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
 		TenantId:           0,
@@ -491,6 +489,7 @@ func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testi
 		IncludeDescendants: true,
 	})
 	require.NoError(t, err)
+	require.Equal(t, "usage-department-Platform-20240501-20240502.csv", departmentResult.FileName)
 	require.Len(t, departmentResult.Rows, 2)
 	require.Equal(t, "subtree", departmentResult.Rows[0].MetricBasis)
 	require.Equal(t, parentID, *departmentResult.Rows[0].DeptId)
@@ -500,7 +499,7 @@ func TestUsageExportBuildsCSVFromUserRankingForTenantAndDepartmentScope(t *testi
 	buffer.Reset()
 	require.NoError(t, service.WriteDepartmentUsageCSV(&buffer, departmentResult))
 	departmentCSVText := buffer.String()
-	require.Contains(t, departmentCSVText, "# 注意：导出内容为当前组织范围内的成员用户排行")
+	require.NotContains(t, departmentCSVText, "# 注意")
 	require.Contains(t, departmentCSVText, fmt.Sprintf("100,Platform,%s,%s,101,alice,,2,50,20,70,$1.5", startDate, endDate))
 }
 

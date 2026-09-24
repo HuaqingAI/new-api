@@ -1,6 +1,7 @@
 package enterprise
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -22,11 +23,13 @@ const (
 )
 
 type UsageReportConfigInput struct {
-	TenantId  int
-	Receivers []string
-	Frequency string
-	RangeType string
-	Enabled   *bool
+	TenantId           int
+	DepartmentId       *int
+	IncludeDescendants bool
+	Receivers          []string
+	Frequency          string
+	RangeType          string
+	Enabled            *bool
 }
 
 type UsageReportSummary struct {
@@ -41,24 +44,27 @@ type UsageReportSummary struct {
 }
 
 type UsageReportJobResult struct {
-	Id              int
-	TenantId        int
-	Receivers       []string
-	Frequency       string
-	RangeType       string
-	Enabled         bool
-	Status          string
-	LastRunAt       int64
-	NextRunAt       int64
-	LastSuccessAt   int64
-	LastWindowStart int64
-	LastWindowEnd   int64
-	RunCount        int64
-	FailureCount    int64
-	ErrorReason     string
-	LastSnapshot    *entmodel.UsageReportSnapshot
-	CreatedAt       int64
-	UpdatedAt       int64
+	Id                 int
+	TenantId           int
+	DepartmentId       *int
+	ScopeKey           string
+	IncludeDescendants bool
+	Receivers          []string
+	Frequency          string
+	RangeType          string
+	Enabled            bool
+	Status             string
+	LastRunAt          int64
+	NextRunAt          int64
+	LastSuccessAt      int64
+	LastWindowStart    int64
+	LastWindowEnd      int64
+	RunCount           int64
+	FailureCount       int64
+	ErrorReason        string
+	LastSnapshot       *entmodel.UsageReportSnapshot
+	CreatedAt          int64
+	UpdatedAt          int64
 }
 
 type UsageReportDispatchResult struct {
@@ -67,13 +73,12 @@ type UsageReportDispatchResult struct {
 }
 
 type usageReportClock func() time.Time
-type usageReportEmailSender func(subject string, receiver string, content string) error
+type usageReportEmailSender func(subject string, receiver string, content string, attachments []common.EmailAttachment) error
 
 type UsageReportService struct {
-	db          *gorm.DB
-	aggregation *UsageAggregationService
-	now         usageReportClock
-	sendEmail   usageReportEmailSender
+	db        *gorm.DB
+	now       usageReportClock
+	sendEmail usageReportEmailSender
 }
 
 func NewUsageReportService(db *gorm.DB) *UsageReportService {
@@ -81,10 +86,9 @@ func NewUsageReportService(db *gorm.DB) *UsageReportService {
 		db = model.DB
 	}
 	return &UsageReportService{
-		db:          db,
-		aggregation: NewUsageAggregationService(db),
-		now:         time.Now,
-		sendEmail:   common.SendEmail,
+		db:        db,
+		now:       time.Now,
+		sendEmail: common.SendEmailWithAttachments,
 	}
 }
 
@@ -99,18 +103,23 @@ func NewUsageReportServiceForTest(db *gorm.DB, now usageReportClock, send usageR
 	return service
 }
 
-func (s *UsageReportService) GetConfig(tenantId int) (UsageReportJobResult, error) {
+func (s *UsageReportService) GetConfig(tenantId int, departmentId *int) (UsageReportJobResult, error) {
+	departmentId = normalizeUsageReportDepartmentId(departmentId)
+	scopeKey := entmodel.UsageReportScopeKey(departmentId)
 	var job entmodel.UsageReportJob
-	if err := s.db.Where("tenant_id = ?", tenantId).First(&job).Error; err != nil {
+	if err := s.db.Where("tenant_id = ? AND scope_key = ?", tenantId, scopeKey).First(&job).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return UsageReportJobResult{
-				TenantId:     tenantId,
-				Receivers:    []string{},
-				Frequency:    entmodel.UsageReportFrequencyDaily,
-				RangeType:    entmodel.UsageReportRangeLast7Days,
-				Enabled:      false,
-				Status:       entmodel.UsageReportStatusPending,
-				LastSnapshot: nil,
+				TenantId:           tenantId,
+				DepartmentId:       cloneOptionalInt(departmentId),
+				ScopeKey:           scopeKey,
+				IncludeDescendants: departmentId != nil,
+				Receivers:          []string{},
+				Frequency:          entmodel.UsageReportFrequencyDaily,
+				RangeType:          entmodel.UsageReportRangeLast7Days,
+				Enabled:            false,
+				Status:             entmodel.UsageReportStatusPending,
+				LastSnapshot:       nil,
 			}, nil
 		}
 		return UsageReportJobResult{}, err
@@ -125,9 +134,10 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 	}
 
 	now := s.now().Unix()
+	scopeKey := entmodel.UsageReportScopeKey(input.DepartmentId)
 
 	var existing entmodel.UsageReportJob
-	err := s.db.Where("tenant_id = ?", input.TenantId).First(&existing).Error
+	err := s.db.Where("tenant_id = ? AND scope_key = ?", input.TenantId, scopeKey).First(&existing).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return UsageReportJobResult{}, err
 	}
@@ -142,12 +152,14 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 			nextRunAt = computeUsageReportNextRunAt(input.Frequency, now)
 		}
 		job := entmodel.UsageReportJob{
-			TenantId:  input.TenantId,
-			Frequency: input.Frequency,
-			RangeType: input.RangeType,
-			Enabled:   enabled,
-			Status:    entmodel.UsageReportStatusPending,
-			NextRunAt: nextRunAt,
+			TenantId:           input.TenantId,
+			DepartmentId:       cloneOptionalInt(input.DepartmentId),
+			IncludeDescendants: input.IncludeDescendants,
+			Frequency:          input.Frequency,
+			RangeType:          input.RangeType,
+			Enabled:            enabled,
+			Status:             entmodel.UsageReportStatusPending,
+			NextRunAt:          nextRunAt,
 		}
 		if err := job.SetReceivers(input.Receivers); err != nil {
 			return UsageReportJobResult{}, err
@@ -166,9 +178,12 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 		enabled = *input.Enabled
 	}
 	updates := map[string]any{
-		"frequency":  input.Frequency,
-		"range_type": input.RangeType,
-		"enabled":    enabled,
+		"department_id":       cloneOptionalInt(input.DepartmentId),
+		"include_descendants": input.IncludeDescendants,
+		"scope_key":           scopeKey,
+		"frequency":           input.Frequency,
+		"range_type":          input.RangeType,
+		"enabled":             enabled,
 	}
 	if err := existing.SetReceivers(input.Receivers); err != nil {
 		return UsageReportJobResult{}, err
@@ -193,7 +208,7 @@ func (s *UsageReportService) SaveConfig(input UsageReportConfigInput) (UsageRepo
 	if err := s.db.Model(&existing).Updates(updates).Error; err != nil {
 		return UsageReportJobResult{}, err
 	}
-	if err := s.db.Where("tenant_id = ?", input.TenantId).First(&existing).Error; err != nil {
+	if err := s.db.Where("tenant_id = ? AND scope_key = ?", input.TenantId, scopeKey).First(&existing).Error; err != nil {
 		return UsageReportJobResult{}, err
 	}
 	return mapUsageReportJob(existing)
@@ -220,7 +235,35 @@ func (s *UsageReportService) RunDueReports(ctx context.Context) (UsageReportDisp
 	return result, nil
 }
 
+func (s *UsageReportService) SendNow(ctx context.Context, tenantId int, departmentId *int) (UsageReportJobResult, error) {
+	departmentId = normalizeUsageReportDepartmentId(departmentId)
+	if tenantId < 0 {
+		return UsageReportJobResult{}, ErrUsageReportInvalidInput
+	}
+
+	scopeKey := entmodel.UsageReportScopeKey(departmentId)
+	var job entmodel.UsageReportJob
+	if err := s.db.Where("tenant_id = ? AND scope_key = ?", tenantId, scopeKey).First(&job).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return UsageReportJobResult{}, ErrUsageReportNotConfigured
+		}
+		return UsageReportJobResult{}, err
+	}
+
+	if err := s.dispatchJobReport(ctx, &job, false); err != nil {
+		return UsageReportJobResult{}, err
+	}
+	if err := s.db.Where("tenant_id = ? AND scope_key = ?", tenantId, scopeKey).First(&job).Error; err != nil {
+		return UsageReportJobResult{}, err
+	}
+	return mapUsageReportJob(job)
+}
+
 func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageReportJob) error {
+	return s.dispatchJobReport(ctx, job, true)
+}
+
+func (s *UsageReportService) dispatchJobReport(ctx context.Context, job *entmodel.UsageReportJob, advanceNextRun bool) error {
 	now := s.now().Unix()
 	if err := s.db.Model(job).Updates(map[string]any{
 		"status":       entmodel.UsageReportStatusRunning,
@@ -231,17 +274,23 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 	job.Status = entmodel.UsageReportStatusRunning
 	job.ErrorReason = ""
 	windowStart, windowEnd := usageReportWindow(job.RangeType, now)
-	overview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
-		TenantId: job.TenantId,
-		From:     windowStart,
-		To:       windowEnd,
-		Sort: UsageSummarySort{
-			Field: UsageSummarySortByRequests,
-			Order: UsageSortOrderDesc,
-		},
+	exportResult, err := NewUsageExportService(s.db).ExportDepartmentUsageCSV(DepartmentUsageExportQuery{
+		TenantId:           job.TenantId,
+		DepartmentId:       job.DepartmentId,
+		From:               windowStart,
+		To:                 windowEnd,
+		Sort:               UsageUserRankSortByQuota,
+		IncludeDescendants: job.IncludeDescendants,
 	})
 	if err != nil {
-		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+		if markErr := s.markJobFailure(job, now, err, advanceNextRun); markErr != nil {
+			return markErr
+		}
+		return err
+	}
+	var csvBuffer bytes.Buffer
+	if err := NewUsageExportService(s.db).WriteDepartmentUsageCSV(&csvBuffer, exportResult); err != nil {
+		if markErr := s.markJobFailure(job, now, err, advanceNextRun); markErr != nil {
 			return markErr
 		}
 		return err
@@ -249,47 +298,38 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 
 	receivers, err := job.ParsedReceivers()
 	if err != nil {
-		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+		if markErr := s.markJobFailure(job, now, err, advanceNextRun); markErr != nil {
 			return markErr
 		}
 		return err
 	}
 	if len(receivers) == 0 {
-		if markErr := s.markJobFailure(job, now, ErrUsageReportNotConfigured); markErr != nil {
+		if markErr := s.markJobFailure(job, now, ErrUsageReportNotConfigured, advanceNextRun); markErr != nil {
 			return markErr
 		}
 		return ErrUsageReportNotConfigured
 	}
 
 	previousStart, previousEnd := previousUsageReportWindow(windowStart, windowEnd)
-	previousOverview, err := s.aggregation.GetUsageDashboardOverview(UsageDashboardOverviewQuery{
-		TenantId: job.TenantId,
-		From:     previousStart,
-		To:       previousEnd,
-		Sort: UsageSummarySort{
-			Field: UsageSummarySortByRequests,
-			Order: UsageSortOrderDesc,
+	snapshot := buildUsageReportSnapshotFromExport(exportResult, windowStart, windowEnd, previousStart, previousEnd)
+	subject := buildUsageReportSubject(exportResult.ScopeName, job.RangeType, windowStart, windowEnd)
+	content := buildUsageReportEmailHTML(job, windowStart, windowEnd, exportResult.FileName, exportResult.ScopeName)
+	attachments := []common.EmailAttachment{
+		{
+			Filename:    exportResult.FileName,
+			ContentType: "text/csv; charset=utf-8",
+			Content:     append([]byte{}, csvBuffer.Bytes()...),
 		},
-	})
-	if err != nil {
-		if markErr := s.markJobFailure(job, now, err); markErr != nil {
-			return markErr
-		}
-		return err
 	}
-
-	snapshot := buildUsageReportSnapshotFromOverview(overview, previousOverview, windowStart, windowEnd, previousStart, previousEnd)
-	subject := buildUsageReportSubject(job.RangeType, windowStart, windowEnd)
-	content := buildUsageReportHTML(snapshot)
-	if err := s.sendEmail(subject, strings.Join(receivers, ";"), content); err != nil {
-		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+	if err := s.sendEmail(subject, strings.Join(receivers, ";"), content, attachments); err != nil {
+		if markErr := s.markJobFailure(job, now, err, advanceNextRun); markErr != nil {
 			return markErr
 		}
 		return err
 	}
 
 	if err := job.SetLastSnapshot(snapshot); err != nil {
-		if markErr := s.markJobFailure(job, now, err); markErr != nil {
+		if markErr := s.markJobFailure(job, now, err, advanceNextRun); markErr != nil {
 			return markErr
 		}
 		return err
@@ -301,8 +341,7 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 	job.LastWindowStart = windowStart
 	job.LastWindowEnd = windowEnd
 	job.RunCount++
-	job.NextRunAt = computeUsageReportNextRunAt(job.Frequency, now)
-	if err := s.db.Model(job).Updates(map[string]any{
+	updates := map[string]any{
 		"status":            job.Status,
 		"error_reason":      job.ErrorReason,
 		"last_run_at":       job.LastRunAt,
@@ -310,36 +349,49 @@ func (s *UsageReportService) runJob(ctx context.Context, job *entmodel.UsageRepo
 		"last_window_start": job.LastWindowStart,
 		"last_window_end":   job.LastWindowEnd,
 		"run_count":         job.RunCount,
-		"next_run_at":       job.NextRunAt,
 		"last_snapshot":     job.LastSnapshot,
-	}).Error; err != nil {
+	}
+	if advanceNextRun {
+		job.NextRunAt = computeUsageReportNextRunAt(job.Frequency, now)
+		updates["next_run_at"] = job.NextRunAt
+	}
+	if err := s.db.Model(job).Updates(updates).Error; err != nil {
 		return err
 	}
 	_ = ctx
 	return nil
 }
 
-func (s *UsageReportService) markJobFailure(job *entmodel.UsageReportJob, now int64, failure error) error {
+func (s *UsageReportService) markJobFailure(job *entmodel.UsageReportJob, now int64, failure error, advanceNextRun bool) error {
 	job.Status = entmodel.UsageReportStatusFailed
 	job.LastRunAt = now
 	job.RunCount++
 	job.FailureCount++
 	job.ErrorReason = failure.Error()
-	job.NextRunAt = computeUsageReportNextRunAt(job.Frequency, now)
-	if err := s.db.Model(job).Updates(map[string]any{
+	updates := map[string]any{
 		"status":        job.Status,
 		"last_run_at":   job.LastRunAt,
 		"run_count":     job.RunCount,
 		"failure_count": job.FailureCount,
 		"error_reason":  job.ErrorReason,
-		"next_run_at":   job.NextRunAt,
-	}).Error; err != nil {
+	}
+	if advanceNextRun {
+		job.NextRunAt = computeUsageReportNextRunAt(job.Frequency, now)
+		updates["next_run_at"] = job.NextRunAt
+	}
+	if err := s.db.Model(job).Updates(updates).Error; err != nil {
 		return err
 	}
 	return failure
 }
 
 func normalizeUsageReportConfigInput(input UsageReportConfigInput) UsageReportConfigInput {
+	input.DepartmentId = normalizeUsageReportDepartmentId(input.DepartmentId)
+	if input.DepartmentId == nil {
+		input.IncludeDescendants = false
+	} else {
+		input.IncludeDescendants = true
+	}
 	receivers := make([]string, 0, len(input.Receivers))
 	for _, receiver := range input.Receivers {
 		value := strings.TrimSpace(receiver)
@@ -355,6 +407,9 @@ func normalizeUsageReportConfigInput(input UsageReportConfigInput) UsageReportCo
 
 func validateUsageReportConfigInput(input UsageReportConfigInput) error {
 	if input.TenantId < 0 {
+		return ErrUsageReportInvalidInput
+	}
+	if input.DepartmentId != nil && *input.DepartmentId <= 0 {
 		return ErrUsageReportInvalidInput
 	}
 	switch input.Frequency {
@@ -378,31 +433,59 @@ func validateUsageReportConfigInput(input UsageReportConfigInput) error {
 	return nil
 }
 
+func normalizeUsageReportDepartmentId(departmentId *int) *int {
+	if departmentId == nil || *departmentId <= 0 {
+		return nil
+	}
+	value := *departmentId
+	return &value
+}
+
+func cloneOptionalInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func computeUsageReportNextRunAt(frequency string, now int64) int64 {
 	current := time.Unix(now, 0).In(time.Local)
+	todayNine := time.Date(current.Year(), current.Month(), current.Day(), 9, 0, 0, 0, current.Location())
 	switch frequency {
 	case entmodel.UsageReportFrequencyWeekly:
-		next := current.AddDate(0, 0, 7)
-		return time.Date(next.Year(), next.Month(), next.Day(), 9, 0, 0, 0, next.Location()).Unix()
+		daysUntilMonday := (int(time.Monday) - int(current.Weekday()) + 7) % 7
+		next := todayNine.AddDate(0, 0, daysUntilMonday)
+		if !current.Before(next) {
+			next = next.AddDate(0, 0, 7)
+		}
+		return next.Unix()
 	case entmodel.UsageReportFrequencyMonthly:
-		next := current.AddDate(0, 1, 0)
-		return time.Date(next.Year(), next.Month(), 1, 9, 0, 0, 0, next.Location()).Unix()
+		next := time.Date(current.Year(), current.Month(), 1, 9, 0, 0, 0, current.Location())
+		if !current.Before(next) {
+			next = next.AddDate(0, 1, 0)
+		}
+		return next.Unix()
 	default:
-		next := current.AddDate(0, 0, 1)
-		return time.Date(next.Year(), next.Month(), next.Day(), 9, 0, 0, 0, next.Location()).Unix()
+		next := todayNine
+		if !current.Before(next) {
+			next = next.AddDate(0, 0, 1)
+		}
+		return next.Unix()
 	}
 }
 
 func usageReportWindow(rangeType string, now int64) (int64, int64) {
 	current := time.Unix(now, 0).In(time.Local)
 	startOfDay := time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, current.Location())
+	end := startOfDay
 	switch rangeType {
 	case entmodel.UsageReportRangeToday:
-		return startOfDay.Unix(), startOfDay.Add(24 * time.Hour).Unix()
+		return end.AddDate(0, 0, -1).Unix(), end.Unix()
 	case entmodel.UsageReportRangeLast30Days:
-		return startOfDay.AddDate(0, 0, -29).Unix(), startOfDay.Add(24 * time.Hour).Unix()
+		return end.AddDate(0, 0, -30).Unix(), end.Unix()
 	default:
-		return startOfDay.AddDate(0, 0, -6).Unix(), startOfDay.Add(24 * time.Hour).Unix()
+		return end.AddDate(0, 0, -7).Unix(), end.Unix()
 	}
 }
 
@@ -503,8 +586,14 @@ func calculateUsageGrowthRate(previous int64, current int64) float64 {
 	return float64(current-previous) / float64(previous)
 }
 
-func buildUsageReportSubject(rangeType string, windowStart int64, windowEnd int64) string {
-	return fmt.Sprintf("部门用量报告 %s (%s ~ %s)", rangeType, time.Unix(windowStart, 0).Format("2006-01-02"), time.Unix(windowEnd-1, 0).Format("2006-01-02"))
+func buildUsageReportSubject(scopeName string, rangeType string, windowStart int64, windowEnd int64) string {
+	return fmt.Sprintf(
+		"部门用量报告 %s %s (%s ~ %s)",
+		usageReportScopeName(scopeName),
+		usageReportRangeLabel(rangeType),
+		time.Unix(windowStart, 0).Format("2006-01-02"),
+		time.Unix(windowEnd-1, 0).Format("2006-01-02"),
+	)
 }
 
 func buildUsageReportHTML(snapshot *entmodel.UsageReportSnapshot) string {
@@ -531,6 +620,89 @@ func buildUsageReportHTML(snapshot *entmodel.UsageReportSnapshot) string {
 	return builder.String()
 }
 
+func buildUsageReportSnapshotFromExport(result DepartmentUsageExportResult, windowStart int64, windowEnd int64, previousStart int64, previousEnd int64) *entmodel.UsageReportSnapshot {
+	snapshot := &entmodel.UsageReportSnapshot{
+		WindowStart:         windowStart,
+		WindowEnd:           windowEnd,
+		PreviousWindowStart: previousStart,
+		PreviousWindowEnd:   previousEnd,
+		TopDepartments:      []entmodel.UsageReportTopDepartment{},
+		GrowthDepartments:   []entmodel.UsageReportGrowthDepartment{},
+	}
+	users := make(map[int]struct{}, len(result.Rows))
+	departments := make(map[string]entmodel.UsageReportTopDepartment)
+	for _, row := range result.Rows {
+		snapshot.RequestCount += row.RequestCount
+		snapshot.PromptTokens += row.PromptTokens
+		snapshot.CompletionTokens += row.CompletionTokens
+		snapshot.Quota += row.Quota
+		users[row.UserId] = struct{}{}
+
+		key := entmodel.UsageReportScopeKey(row.DeptId)
+		department := departments[key]
+		department.DeptId = row.DeptId
+		department.DeptName = row.DeptName
+		department.RequestCount += row.RequestCount
+		department.Quota += row.Quota
+		department.UserCount++
+		departments[key] = department
+	}
+	snapshot.UserCount = int64(len(users))
+	snapshot.DepartmentCount = int64(len(departments))
+	for _, item := range departments {
+		snapshot.TopDepartments = append(snapshot.TopDepartments, item)
+	}
+	sort.SliceStable(snapshot.TopDepartments, func(i, j int) bool {
+		if snapshot.TopDepartments[i].Quota != snapshot.TopDepartments[j].Quota {
+			return snapshot.TopDepartments[i].Quota > snapshot.TopDepartments[j].Quota
+		}
+		return snapshot.TopDepartments[i].RequestCount > snapshot.TopDepartments[j].RequestCount
+	})
+	if len(snapshot.TopDepartments) > usageReportTopDepartments {
+		snapshot.TopDepartments = snapshot.TopDepartments[:usageReportTopDepartments]
+	}
+	return snapshot
+}
+
+func buildUsageReportEmailHTML(job *entmodel.UsageReportJob, windowStart int64, windowEnd int64, fileName string, scopeName string) string {
+	scope := usageReportEmailScopeLabel(job, scopeName)
+	return fmt.Sprintf(
+		"<div><p>部门用量报告已生成。</p><p>范围：%s</p><p>报告范围：%s</p><p>统计周期：%s ~ %s</p><p>CSV 数据见附件：%s</p></div>",
+		html.EscapeString(scope),
+		html.EscapeString(usageReportRangeLabel(job.RangeType)),
+		time.Unix(windowStart, 0).Format("2006-01-02"),
+		time.Unix(windowEnd-1, 0).Format("2006-01-02"),
+		html.EscapeString(fileName),
+	)
+}
+
+func usageReportEmailScopeLabel(job *entmodel.UsageReportJob, scopeName string) string {
+	scopeName = usageReportScopeName(scopeName)
+	if job.DepartmentId != nil && job.IncludeDescendants {
+		return scopeName + "及其子组织"
+	}
+	return scopeName
+}
+
+func usageReportScopeName(scopeName string) string {
+	scopeName = strings.TrimSpace(scopeName)
+	if scopeName == "" {
+		return "全公司"
+	}
+	return scopeName
+}
+
+func usageReportRangeLabel(rangeType string) string {
+	switch rangeType {
+	case entmodel.UsageReportRangeToday:
+		return "近一天"
+	case entmodel.UsageReportRangeLast30Days:
+		return "最近30天"
+	default:
+		return "最近7天"
+	}
+}
+
 func mapUsageReportJob(job entmodel.UsageReportJob) (UsageReportJobResult, error) {
 	receivers, err := job.ParsedReceivers()
 	if err != nil {
@@ -541,23 +713,26 @@ func mapUsageReportJob(job entmodel.UsageReportJob) (UsageReportJobResult, error
 		return UsageReportJobResult{}, err
 	}
 	return UsageReportJobResult{
-		Id:              job.Id,
-		TenantId:        job.TenantId,
-		Receivers:       receivers,
-		Frequency:       job.Frequency,
-		RangeType:       job.RangeType,
-		Enabled:         job.Enabled,
-		Status:          job.Status,
-		LastRunAt:       job.LastRunAt,
-		NextRunAt:       job.NextRunAt,
-		LastSuccessAt:   job.LastSuccessAt,
-		LastWindowStart: job.LastWindowStart,
-		LastWindowEnd:   job.LastWindowEnd,
-		RunCount:        job.RunCount,
-		FailureCount:    job.FailureCount,
-		ErrorReason:     job.ErrorReason,
-		LastSnapshot:    snapshot,
-		CreatedAt:       job.CreatedAt,
-		UpdatedAt:       job.UpdatedAt,
+		Id:                 job.Id,
+		TenantId:           job.TenantId,
+		DepartmentId:       cloneOptionalInt(job.DepartmentId),
+		ScopeKey:           job.ScopeKey,
+		IncludeDescendants: job.IncludeDescendants,
+		Receivers:          receivers,
+		Frequency:          job.Frequency,
+		RangeType:          job.RangeType,
+		Enabled:            job.Enabled,
+		Status:             job.Status,
+		LastRunAt:          job.LastRunAt,
+		NextRunAt:          job.NextRunAt,
+		LastSuccessAt:      job.LastSuccessAt,
+		LastWindowStart:    job.LastWindowStart,
+		LastWindowEnd:      job.LastWindowEnd,
+		RunCount:           job.RunCount,
+		FailureCount:       job.FailureCount,
+		ErrorReason:        job.ErrorReason,
+		LastSnapshot:       snapshot,
+		CreatedAt:          job.CreatedAt,
+		UpdatedAt:          job.UpdatedAt,
 	}, nil
 }

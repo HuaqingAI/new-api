@@ -485,6 +485,49 @@ func TestSendEmailSkipsAuthWhenCredentialsAreIncomplete(t *testing.T) {
 	}
 }
 
+func TestSendEmailWithAttachmentsEncodesUnicodeFilenames(t *testing.T) {
+	server := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	defer server.close()
+	withSMTPSettings(t)
+
+	SMTPServer = server.host
+	SMTPPort = server.port
+	SMTPSSLEnabled = false
+	SMTPStartTLSEnabled = false
+	SMTPInsecureSkipVerify = false
+	SMTPForceAuthLogin = false
+	SMTPAccount = ""
+	SMTPFrom = "sender@example.com"
+	SMTPToken = ""
+	SystemName = "New API"
+
+	err := SendEmailWithAttachments(
+		"部门用量报告 信息系统中心",
+		"receiver@example.com",
+		"<p>CSV 数据见附件</p>",
+		[]EmailAttachment{
+			{
+				Filename:    "usage-department-信息系统中心-20260916-20260922.csv",
+				ContentType: "text/csv; charset=utf-8",
+				Content:     []byte("部门名称\n信息系统中心\n"),
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	select {
+	case message := <-server.messages:
+		require.Contains(t, message, "Content-Type: multipart/mixed;")
+		require.Contains(t, message, "Content-Type: text/csv;")
+		require.Contains(t, message, "charset=utf-8")
+		require.Contains(t, message, "name*=utf-8''usage-department-")
+		require.Contains(t, message, "Content-Disposition: attachment;")
+		require.Contains(t, message, "filename*=utf-8''usage-department-")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SMTP DATA")
+	}
+}
+
 func TestSendEmailUsesNTLMWhenServerOnlySupportsNTLM(t *testing.T) {
 	server := newFakeSMTPServer(t)
 	server.authMechanisms = []string{"NTLM"}

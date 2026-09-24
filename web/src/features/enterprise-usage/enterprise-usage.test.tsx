@@ -44,6 +44,7 @@ import {
   exportDepartmentUsageCSV,
   getDepartmentUsageReportConfig,
   saveDepartmentUsageReportConfig,
+  sendDepartmentUsageReportNow,
 } from './api'
 import {
   EnterpriseUsageContent,
@@ -960,7 +961,7 @@ describe('Enterprise usage overview dashboard', () => {
         data: new Blob([Buffer.from('csv')], { type: 'text/csv' }),
         headers: {
           'content-disposition':
-            'attachment; filename="usage-department-20240501-20240531.csv"',
+            'attachment; filename="usage-department.csv"; filename*=UTF-8\'\'usage-department-%E4%BF%A1%E6%81%AF%E7%B3%BB%E7%BB%9F%E4%B8%AD%E5%BF%83-20240501-20240531.csv',
         },
       }
     }) as typeof api.get
@@ -973,7 +974,10 @@ describe('Enterprise usage overview dashboard', () => {
         sort: 'requests',
       })
 
-      assert.equal(result.fileName, 'usage-department-20240501-20240531.csv')
+      assert.equal(
+        result.fileName,
+        'usage-department-信息系统中心-20240501-20240531.csv'
+      )
       assert.equal(calls.length, 1)
       assert.deepEqual(calls[0], {
         url: '/api/enterprise/usage/export',
@@ -1027,6 +1031,7 @@ describe('Enterprise usage overview dashboard', () => {
   test('loads and saves usage report configuration with expected payloads', async () => {
     const originalGet = api.get
     const originalPut = api.put
+    const originalPost = api.post
     const calls: Array<{ method: string; payload: unknown }> = []
 
     api.get = (async (_url: string, config?: Record<string, unknown>) => {
@@ -1039,6 +1044,9 @@ describe('Enterprise usage overview dashboard', () => {
             item: {
               id: 1,
               tenant_id: 7,
+              department_id: 9,
+              scope_key: 'department:9',
+              include_descendants: true,
               receivers: ['ops@example.com'],
               frequency: 'weekly',
               range_type: 'last7d',
@@ -1071,6 +1079,9 @@ describe('Enterprise usage overview dashboard', () => {
             item: {
               id: 1,
               tenant_id: 7,
+              department_id: 9,
+              scope_key: 'department:9',
+              include_descendants: true,
               receivers: ['ops@example.com', 'cto@example.com'],
               frequency: 'monthly',
               range_type: 'last30d',
@@ -1093,12 +1104,53 @@ describe('Enterprise usage overview dashboard', () => {
       }
     }) as typeof api.put
 
+    api.post = (async (_url: string, body?: unknown) => {
+      calls.push({ method: 'post', payload: body })
+      return {
+        data: {
+          success: true,
+          message: '',
+          data: {
+            item: {
+              id: 1,
+              tenant_id: 7,
+              department_id: 9,
+              scope_key: 'department:9',
+              include_descendants: true,
+              receivers: ['ops@example.com', 'cto@example.com'],
+              frequency: 'monthly',
+              range_type: 'last30d',
+              enabled: true,
+              status: 'success',
+              last_run_at: 1717117200,
+              next_run_at: 1719792000,
+              last_success_at: 1717117200,
+              last_window_start: 1714521600,
+              last_window_end: 1717113600,
+              run_count: 4,
+              failure_count: 0,
+              error_reason: '',
+              last_snapshot: null,
+              created_at: 1716500000,
+              updated_at: 1717117200,
+            },
+          },
+        },
+      }
+    }) as typeof api.post
+
     try {
-      const loaded = await getDepartmentUsageReportConfig({ tenantId: 7 })
+      const loaded = await getDepartmentUsageReportConfig({
+        tenantId: 7,
+        departmentId: 9,
+        includeDescendants: true,
+      })
       assert.equal(loaded.data.item.frequency, 'weekly')
 
       const saved = await saveDepartmentUsageReportConfig({
         tenantId: 7,
+        departmentId: 9,
+        includeDescendants: true,
         receivers: ['ops@example.com', 'cto@example.com'],
         frequency: 'monthly',
         rangeType: 'last30d',
@@ -1106,22 +1158,47 @@ describe('Enterprise usage overview dashboard', () => {
       })
       assert.equal(saved.data.item.range_type, 'last30d')
 
+      const sent = await sendDepartmentUsageReportNow({
+        tenantId: 7,
+        departmentId: 9,
+        includeDescendants: true,
+      })
+      assert.equal(sent.data.item.status, 'success')
+
       assert.deepEqual(calls, [
-        { method: 'get', payload: { tenant_id: 7 } },
+        {
+          method: 'get',
+          payload: {
+            tenant_id: 7,
+            department_id: 9,
+            include_descendants: true,
+          },
+        },
         {
           method: 'put',
           payload: {
             tenant_id: 7,
+            department_id: 9,
+            include_descendants: true,
             receivers: ['ops@example.com', 'cto@example.com'],
             frequency: 'monthly',
             range_type: 'last30d',
             enabled: true,
           },
         },
+        {
+          method: 'post',
+          payload: {
+            tenant_id: 7,
+            department_id: 9,
+            include_descendants: true,
+          },
+        },
       ])
     } finally {
       api.get = originalGet
       api.put = originalPut
+      api.post = originalPost
     }
   })
 
@@ -1340,6 +1417,8 @@ describe('Enterprise usage overview dashboard', () => {
           reportForm={form}
           onSaveReport={() => undefined}
           reportSaving={false}
+          onSendReportNow={() => undefined}
+          reportSending={false}
           selectedLogUser='alice'
           onOpenRecentLogs={() => undefined}
         />
@@ -1365,6 +1444,7 @@ describe('Enterprise usage overview dashboard', () => {
       'Scheduled Usage Reports',
       'Analysis Notes',
       'Save Report Configuration',
+      'Send Report Now',
       'Inspect top users, model mix, time trend, and recent logs.',
       'Alice Zhang',
       'alice_ops · User ID #1',
@@ -1541,6 +1621,8 @@ describe('Enterprise usage overview dashboard', () => {
           reportForm={form}
           onSaveReport={() => undefined}
           reportSaving={false}
+          onSendReportNow={() => undefined}
+          reportSending={false}
           selectedLogUser='alice'
           onOpenRecentLogs={() => undefined}
         />
@@ -1560,6 +1642,7 @@ describe('Enterprise usage overview dashboard', () => {
       'failed',
       '2',
       'Save Report Configuration',
+      'Send Report Now',
     ]) {
       assert.match(html, new RegExp(escapeRegExp(expected)))
     }
@@ -1849,6 +1932,9 @@ function reportUsageItem(
   return {
     id: 1,
     tenant_id: 0,
+    department_id: null,
+    scope_key: 'tenant',
+    include_descendants: false,
     receivers: ['ops@example.com'],
     frequency: 'daily',
     range_type: 'last7d',

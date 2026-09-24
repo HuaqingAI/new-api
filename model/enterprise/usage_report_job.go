@@ -1,6 +1,7 @@
 package enterprise
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,9 @@ const (
 	UsageReportStatusRunning = "running"
 	UsageReportStatusSuccess = "success"
 	UsageReportStatusFailed  = "failed"
+
+	UsageReportScopeTenant           = "tenant"
+	UsageReportScopeDepartmentPrefix = "department:"
 )
 
 type UsageReportTopDepartment struct {
@@ -58,28 +62,38 @@ type UsageReportSnapshot struct {
 }
 
 type UsageReportJob struct {
-	Id              int    `json:"id" gorm:"primaryKey"`
-	TenantId        int    `json:"tenant_id" gorm:"type:int;not null;default:0;uniqueIndex:uq_usage_report_job_tenant,priority:1"`
-	Receivers       string `json:"receivers" gorm:"type:text;not null"`
-	Frequency       string `json:"frequency" gorm:"type:varchar(32);not null;default:'daily'"`
-	RangeType       string `json:"range_type" gorm:"type:varchar(32);not null;default:'last7d'"`
-	Enabled         bool   `json:"enabled" gorm:"not null;default:true"`
-	Status          string `json:"status" gorm:"type:varchar(32);not null;default:'pending';index:idx_usage_report_jobs_status"`
-	LastRunAt       int64  `json:"last_run_at" gorm:"type:bigint;not null;default:0"`
-	NextRunAt       int64  `json:"next_run_at" gorm:"type:bigint;not null;default:0;index:idx_usage_report_jobs_next_run"`
-	LastSuccessAt   int64  `json:"last_success_at" gorm:"type:bigint;not null;default:0"`
-	LastWindowStart int64  `json:"last_window_start" gorm:"type:bigint;not null;default:0"`
-	LastWindowEnd   int64  `json:"last_window_end" gorm:"type:bigint;not null;default:0"`
-	RunCount        int64  `json:"run_count" gorm:"type:bigint;not null;default:0"`
-	FailureCount    int64  `json:"failure_count" gorm:"type:bigint;not null;default:0"`
-	ErrorReason     string `json:"error_reason" gorm:"type:text;not null"`
-	LastSnapshot    string `json:"last_snapshot" gorm:"type:text;not null"`
-	CreatedAt       int64  `json:"created_at" gorm:"type:bigint;not null;default:0"`
-	UpdatedAt       int64  `json:"updated_at" gorm:"type:bigint;not null;default:0"`
+	Id                 int    `json:"id" gorm:"primaryKey"`
+	TenantId           int    `json:"tenant_id" gorm:"type:int;not null;default:0;uniqueIndex:uq_usage_report_job_scope,priority:1"`
+	ScopeKey           string `json:"scope_key" gorm:"type:varchar(64);not null;default:'tenant';uniqueIndex:uq_usage_report_job_scope,priority:2"`
+	DepartmentId       *int   `json:"department_id" gorm:"type:int;index:idx_usage_report_jobs_department"`
+	IncludeDescendants bool   `json:"include_descendants" gorm:"not null;default:false"`
+	Receivers          string `json:"receivers" gorm:"type:text;not null"`
+	Frequency          string `json:"frequency" gorm:"type:varchar(32);not null;default:'daily'"`
+	RangeType          string `json:"range_type" gorm:"type:varchar(32);not null;default:'last7d'"`
+	Enabled            bool   `json:"enabled" gorm:"not null;default:true"`
+	Status             string `json:"status" gorm:"type:varchar(32);not null;default:'pending';index:idx_usage_report_jobs_status"`
+	LastRunAt          int64  `json:"last_run_at" gorm:"type:bigint;not null;default:0"`
+	NextRunAt          int64  `json:"next_run_at" gorm:"type:bigint;not null;default:0;index:idx_usage_report_jobs_next_run"`
+	LastSuccessAt      int64  `json:"last_success_at" gorm:"type:bigint;not null;default:0"`
+	LastWindowStart    int64  `json:"last_window_start" gorm:"type:bigint;not null;default:0"`
+	LastWindowEnd      int64  `json:"last_window_end" gorm:"type:bigint;not null;default:0"`
+	RunCount           int64  `json:"run_count" gorm:"type:bigint;not null;default:0"`
+	FailureCount       int64  `json:"failure_count" gorm:"type:bigint;not null;default:0"`
+	ErrorReason        string `json:"error_reason" gorm:"type:text;not null"`
+	LastSnapshot       string `json:"last_snapshot" gorm:"type:text;not null"`
+	CreatedAt          int64  `json:"created_at" gorm:"type:bigint;not null;default:0"`
+	UpdatedAt          int64  `json:"updated_at" gorm:"type:bigint;not null;default:0"`
 }
 
 func (UsageReportJob) TableName() string {
 	return "enterprise_usage_report_jobs"
+}
+
+func UsageReportScopeKey(departmentId *int) string {
+	if departmentId != nil && *departmentId > 0 {
+		return UsageReportScopeDepartmentPrefix + strconv.Itoa(*departmentId)
+	}
+	return UsageReportScopeTenant
 }
 
 func (j *UsageReportJob) BeforeCreate(tx *gorm.DB) error {
@@ -153,6 +167,13 @@ func (j UsageReportJob) ParsedLastSnapshot() (*UsageReportSnapshot, error) {
 }
 
 func (j *UsageReportJob) normalize() error {
+	if j.DepartmentId != nil && *j.DepartmentId <= 0 {
+		j.DepartmentId = nil
+	}
+	j.ScopeKey = UsageReportScopeKey(j.DepartmentId)
+	if j.DepartmentId == nil {
+		j.IncludeDescendants = false
+	}
 	if j.Receivers == "" {
 		if err := j.SetReceivers(nil); err != nil {
 			return err

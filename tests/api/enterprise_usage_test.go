@@ -367,17 +367,19 @@ func TestEnterpriseUsageExportAPIRequiresEnterpriseAdminAndStreamsUserRankingCSV
 	)
 	require.Equal(t, http.StatusOK, admin.Code)
 	require.Equal(t, "text/csv; charset=utf-8", admin.Header().Get("Content-Type"))
-	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, admin.Header().Get("Content-Disposition"))
+	contentDisposition := admin.Header().Get("Content-Disposition")
+	require.Contains(t, contentDisposition, `attachment; filename="usage-department.csv"`)
+	require.Contains(t, contentDisposition, `filename*=UTF-8''usage-department-%E5%85%A8%E5%85%AC%E5%8F%B8-20240501-20240502.csv`)
 	body := admin.Body.String()
-	require.Contains(t, body, "# ")
+	require.NotContains(t, body, "# 注意")
 	require.Contains(t, body, "输入 Tokens")
 	startDate := time.Unix(1714521600, 0).Format("2006-01-02")
 	endDate := time.Unix(1714608000-1, 0).Format("2006-01-02")
 	require.Contains(t, body, ",全公司,"+startDate+","+endDate+",101,alice,Alice,2,70,20,90,$2")
 	lines := strings.Split(strings.TrimSpace(body), "\n")
-	require.GreaterOrEqual(t, len(lines), 3)
-	require.Contains(t, lines[1], "输入 Tokens")
-	require.Equal(t, ",全公司,"+startDate+","+endDate+",101,alice,Alice,2,70,20,90,$2", lines[2])
+	require.GreaterOrEqual(t, len(lines), 2)
+	require.Contains(t, lines[0], "输入 Tokens")
+	require.Equal(t, ",全公司,"+startDate+","+endDate+",101,alice,Alice,2,70,20,90,$2", lines[1])
 	require.NotContains(t, body, "null")
 	require.NotContains(t, body, "<nil>")
 }
@@ -523,6 +525,28 @@ func TestEnterpriseUsageReportConfigAPIRequiresEnterpriseAdminAndPersists(t *tes
 	require.False(t, commonUserPayload.Success)
 	require.Contains(t, commonUserPayload.Message, "error.enterprise.permission.admin_required")
 
+	commonUserSend := fixture.performEnterpriseRequestWithBody(
+		t,
+		http.MethodPost,
+		"/api/enterprise/usage/reports/send",
+		fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled),
+		map[string]any{},
+	)
+	commonUserSendPayload := decodeAdminActionsAPIResponse(t, commonUserSend)
+	require.False(t, commonUserSendPayload.Success)
+	require.Contains(t, commonUserSendPayload.Message, "error.enterprise.permission.admin_required")
+
+	adminMissingConfig := fixture.performEnterpriseRequestWithBody(
+		t,
+		http.MethodPost,
+		"/api/enterprise/usage/reports/send",
+		fixture.login(t, common.RoleAdminUser, common.UserStatusEnabled),
+		map[string]any{},
+	)
+	adminMissingConfigPayload := decodeAdminActionsAPIResponse(t, adminMissingConfig)
+	require.False(t, adminMissingConfigPayload.Success)
+	require.Contains(t, adminMissingConfigPayload.Message, "enterprise.usage.report_not_configured")
+
 	admin := fixture.performEnterpriseRequestWithBody(
 		t,
 		http.MethodPut,
@@ -568,8 +592,8 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 	require.NoError(t, fixture.db.Create(&job).Error)
 
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	windowStart := startOfDay.AddDate(0, 0, -6).Unix()
-	windowEnd := startOfDay.Add(24 * time.Hour).Unix()
+	windowStart := startOfDay.AddDate(0, 0, -7).Unix()
+	windowEnd := startOfDay.Unix()
 	deptID := 11
 	require.NoError(t, fixture.db.Create(&modelenterprise.Department{
 		Id:        deptID,
@@ -609,11 +633,26 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 	require.NoError(t, scopeSnapshot.SetModelDistribution(nil))
 	require.NoError(t, scopeSnapshot.SetUserIds([]int{1001, 1002}))
 	require.NoError(t, fixture.db.Create(&scopeSnapshot).Error)
+	require.NoError(t, fixture.db.Create(&model.Log{
+		UserId:           1001,
+		Username:         "enterprise-admin",
+		Type:             model.LogTypeConsume,
+		ModelName:        "gpt-4o",
+		Quota:            160,
+		PromptTokens:     80,
+		CompletionTokens: 20,
+		CreatedAt:        windowStart + 60,
+	}).Error)
 
 	service := serviceenterprise.NewUsageReportServiceForTest(
 		fixture.db,
 		func() time.Time { return now },
-		func(subject string, receiver string, content string) error { return nil },
+		func(subject string, receiver string, content string, attachments []common.EmailAttachment) error {
+			require.Contains(t, content, "CSV 数据见附件")
+			require.Len(t, attachments, 1)
+			require.Contains(t, string(attachments[0].Content), "输入 Tokens")
+			return nil
+		},
 	)
 	result, err := service.RunDueReports(context.Background())
 	require.NoError(t, err)
@@ -632,7 +671,7 @@ func TestEnterpriseUsageReportConfigAPIReflectsJobStatusAfterRun(t *testing.T) {
 	require.Contains(t, string(getPayload.Data), `"last_success_at":`)
 	require.Contains(t, string(getPayload.Data), `"run_count":1`)
 	require.Contains(t, string(getPayload.Data), `"top_departments":[`)
-	require.Contains(t, string(getPayload.Data), `"dept_name":"Engineering"`)
+	require.Contains(t, string(getPayload.Data), `"dept_name":"全公司"`)
 }
 
 func TestEnterpriseUsageDetailAPIRejectsInvalidParamsAndReturnsEmptyArrays(t *testing.T) {

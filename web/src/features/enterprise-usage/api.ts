@@ -239,11 +239,32 @@ export async function exportDepartmentUsageCSV(params: {
   }
 
   const disposition = String(res.headers['content-disposition'] ?? '')
-  const match = disposition.match(/filename="?([^"]+)"?/)
   return {
     blob,
-    fileName: match?.[1] ?? 'usage-department.csv',
+    fileName:
+      parseContentDispositionFileName(disposition) ?? 'usage-department.csv',
   }
+}
+
+function parseContentDispositionFileName(disposition: string): string | null {
+  const encodedMatch = disposition.match(
+    /(?:^|;)\s*filename\*\s*=\s*(?:"([^"]+)"|([^;]+))/i
+  )
+  const encodedValue = (encodedMatch?.[1] ?? encodedMatch?.[2])?.trim()
+  if (encodedValue) {
+    const rfc5987Match = encodedValue.match(/^[^']*'[^']*'(.*)$/)
+    try {
+      return decodeURIComponent(rfc5987Match?.[1] ?? encodedValue)
+    } catch {
+      // Fall through to the legacy filename parameter.
+    }
+  }
+
+  const legacyMatch = disposition.match(
+    /(?:^|;)\s*filename\s*=\s*(?:"([^"]*)"|([^;]+))/i
+  )
+  const legacyValue = (legacyMatch?.[1] ?? legacyMatch?.[2])?.trim()
+  return legacyValue === '' || legacyValue === undefined ? null : legacyValue
 }
 
 export async function getDepartmentUsageDetail(params: {
@@ -274,16 +295,27 @@ export const departmentUsageReportQueryKey = [
 
 export async function getDepartmentUsageReportConfig(params?: {
   tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
 }): Promise<ApiResponse<DepartmentUsageReportConfigResponse>> {
   const res = await api.get('/api/enterprise/usage/reports', {
-    params:
-      params?.tenantId === undefined ? {} : { tenant_id: params.tenantId },
+    params: {
+      ...(params?.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+      ...(params?.departmentId === undefined
+        ? {}
+        : { department_id: params.departmentId }),
+      ...(params?.includeDescendants === undefined
+        ? {}
+        : { include_descendants: params.includeDescendants }),
+    },
   })
   return res.data
 }
 
 export async function saveDepartmentUsageReportConfig(params: {
   tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
   receivers: string[]
   frequency: 'daily' | 'weekly' | 'monthly'
   rangeType: 'today' | 'last7d' | 'last30d'
@@ -291,10 +323,33 @@ export async function saveDepartmentUsageReportConfig(params: {
 }): Promise<ApiResponse<DepartmentUsageReportConfigResponse>> {
   const res = await api.put('/api/enterprise/usage/reports', {
     ...(params.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+    ...(params.departmentId === undefined
+      ? {}
+      : { department_id: params.departmentId }),
+    ...(params.includeDescendants === undefined
+      ? {}
+      : { include_descendants: params.includeDescendants }),
     receivers: params.receivers,
     frequency: params.frequency,
     range_type: params.rangeType,
     enabled: params.enabled,
+  })
+  return res.data
+}
+
+export async function sendDepartmentUsageReportNow(params?: {
+  tenantId?: number
+  departmentId?: number
+  includeDescendants?: boolean
+}): Promise<ApiResponse<DepartmentUsageReportConfigResponse>> {
+  const res = await api.post('/api/enterprise/usage/reports/send', {
+    ...(params?.tenantId === undefined ? {} : { tenant_id: params.tenantId }),
+    ...(params?.departmentId === undefined
+      ? {}
+      : { department_id: params.departmentId }),
+    ...(params?.includeDescendants === undefined
+      ? {}
+      : { include_descendants: params.includeDescendants }),
   })
   return res.data
 }

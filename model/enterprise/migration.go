@@ -38,6 +38,14 @@ type dingTalkSyncTaskScheduleColumns struct {
 
 func (dingTalkSyncTaskScheduleColumns) TableName() string { return DingTalkSyncTask{}.TableName() }
 
+type usageReportJobScopeColumns struct {
+	ScopeKey           string `gorm:"column:scope_key;type:varchar(64);not null;default:'tenant';uniqueIndex:uq_usage_report_job_scope,priority:2"`
+	DepartmentId       *int   `gorm:"column:department_id;type:int;index:idx_usage_report_jobs_department"`
+	IncludeDescendants bool   `gorm:"column:include_descendants;type:boolean;not null;default:false"`
+}
+
+func (usageReportJobScopeColumns) TableName() string { return UsageReportJob{}.TableName() }
+
 func (dingTalkConfigAutoSyncColumn) TableName() string {
 	return DingTalkConfig{}.TableName()
 }
@@ -82,6 +90,9 @@ func Migrate(db *gorm.DB) error {
 	if err := ensureDingTalkScheduleColumns(db); err != nil {
 		return err
 	}
+	if err := ensureUsageReportJobScopeColumns(db); err != nil {
+		return err
+	}
 	// Existing DingTalk tables use explicit additive migrations above. SQLite
 	// rebuilds them when AutoMigrate sees the new defaults, dropping backfilled
 	// values during the copy.
@@ -112,6 +123,9 @@ func Migrate(db *gorm.DB) error {
 		models = append(models, &DingTalkSyncConflict{})
 	}
 	if err := db.AutoMigrate(models...); err != nil {
+		return err
+	}
+	if err := ensureUsageReportJobScopeIndex(db); err != nil {
 		return err
 	}
 	if err := backfillDingTalkAutoSyncColumns(db, dingTalkColumns); err != nil {
@@ -295,6 +309,48 @@ func ensureGovernanceNotificationDeliveryColumns(db *gorm.DB) error {
 			continue
 		}
 		if err := db.Migrator().AddColumn(&GovernanceNotificationDelivery{}, column); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureUsageReportJobScopeColumns(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&UsageReportJob{}) {
+		return nil
+	}
+	for _, column := range []string{"scope_key", "department_id", "include_descendants"} {
+		if db.Migrator().HasColumn(&UsageReportJob{}, column) {
+			continue
+		}
+		if err := db.Migrator().AddColumn(&usageReportJobScopeColumns{}, column); err != nil {
+			return err
+		}
+	}
+	if err := db.Table(UsageReportJob{}.TableName()).
+		Where("scope_key = '' OR scope_key IS NULL").
+		UpdateColumn("scope_key", UsageReportScopeTenant).Error; err != nil {
+		return err
+	}
+	if db.Migrator().HasIndex(&UsageReportJob{}, "uq_usage_report_job_tenant") {
+		if err := db.Migrator().DropIndex(&UsageReportJob{}, "uq_usage_report_job_tenant"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureUsageReportJobScopeIndex(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&UsageReportJob{}) {
+		return nil
+	}
+	if db.Migrator().HasIndex(&UsageReportJob{}, "uq_usage_report_job_tenant") {
+		if err := db.Migrator().DropIndex(&UsageReportJob{}, "uq_usage_report_job_tenant"); err != nil {
+			return err
+		}
+	}
+	if !db.Migrator().HasIndex(&UsageReportJob{}, "uq_usage_report_job_scope") {
+		if err := db.Migrator().CreateIndex(&UsageReportJob{}, "uq_usage_report_job_scope"); err != nil {
 			return err
 		}
 	}

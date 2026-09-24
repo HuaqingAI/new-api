@@ -48,11 +48,25 @@ type DepartmentUsagePeersQuery struct {
 }
 
 type DepartmentUsageReportConfigRequest struct {
-	TenantId  *int     `json:"tenant_id,omitempty"`
-	Receivers []string `json:"receivers"`
-	Frequency *string  `json:"frequency,omitempty"`
-	RangeType *string  `json:"range_type,omitempty"`
-	Enabled   *bool    `json:"enabled,omitempty"`
+	TenantId           *int     `json:"tenant_id,omitempty"`
+	DepartmentId       *int     `json:"department_id,omitempty"`
+	IncludeDescendants *bool    `json:"include_descendants,omitempty"`
+	Receivers          []string `json:"receivers"`
+	Frequency          *string  `json:"frequency,omitempty"`
+	RangeType          *string  `json:"range_type,omitempty"`
+	Enabled            *bool    `json:"enabled,omitempty"`
+}
+
+type DepartmentUsageReportConfigQuery struct {
+	TenantId           *int  `form:"tenant_id"`
+	DepartmentId       *int  `form:"department_id,omitempty"`
+	IncludeDescendants *bool `form:"include_descendants,omitempty"`
+}
+
+type DepartmentUsageReportSendRequest struct {
+	TenantId           *int  `json:"tenant_id,omitempty"`
+	DepartmentId       *int  `json:"department_id,omitempty"`
+	IncludeDescendants *bool `json:"include_descendants,omitempty"`
 }
 
 type DepartmentUsageReportSummary struct {
@@ -101,24 +115,27 @@ type DepartmentUsageReportSnapshot struct {
 }
 
 type DepartmentUsageReportJobItem struct {
-	Id              int                            `json:"id"`
-	TenantId        int                            `json:"tenant_id"`
-	Receivers       []string                       `json:"receivers"`
-	Frequency       string                         `json:"frequency"`
-	RangeType       string                         `json:"range_type"`
-	Enabled         bool                           `json:"enabled"`
-	Status          string                         `json:"status"`
-	LastRunAt       int64                          `json:"last_run_at"`
-	NextRunAt       int64                          `json:"next_run_at"`
-	LastSuccessAt   int64                          `json:"last_success_at"`
-	LastWindowStart int64                          `json:"last_window_start"`
-	LastWindowEnd   int64                          `json:"last_window_end"`
-	RunCount        int64                          `json:"run_count"`
-	FailureCount    int64                          `json:"failure_count"`
-	ErrorReason     string                         `json:"error_reason"`
-	LastSnapshot    *DepartmentUsageReportSnapshot `json:"last_snapshot,omitempty"`
-	CreatedAt       int64                          `json:"created_at"`
-	UpdatedAt       int64                          `json:"updated_at"`
+	Id                 int                            `json:"id"`
+	TenantId           int                            `json:"tenant_id"`
+	DepartmentId       *int                           `json:"department_id,omitempty"`
+	ScopeKey           string                         `json:"scope_key"`
+	IncludeDescendants bool                           `json:"include_descendants"`
+	Receivers          []string                       `json:"receivers"`
+	Frequency          string                         `json:"frequency"`
+	RangeType          string                         `json:"range_type"`
+	Enabled            bool                           `json:"enabled"`
+	Status             string                         `json:"status"`
+	LastRunAt          int64                          `json:"last_run_at"`
+	NextRunAt          int64                          `json:"next_run_at"`
+	LastSuccessAt      int64                          `json:"last_success_at"`
+	LastWindowStart    int64                          `json:"last_window_start"`
+	LastWindowEnd      int64                          `json:"last_window_end"`
+	RunCount           int64                          `json:"run_count"`
+	FailureCount       int64                          `json:"failure_count"`
+	ErrorReason        string                         `json:"error_reason"`
+	LastSnapshot       *DepartmentUsageReportSnapshot `json:"last_snapshot,omitempty"`
+	CreatedAt          int64                          `json:"created_at"`
+	UpdatedAt          int64                          `json:"updated_at"`
 }
 
 type DepartmentUsageReportConfigResponse struct {

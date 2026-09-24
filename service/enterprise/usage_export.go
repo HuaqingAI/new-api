@@ -75,6 +75,7 @@ type DepartmentUsageExportRow struct {
 type DepartmentUsageExportResult struct {
 	FileName   string
 	Disclaimer string
+	ScopeName  string
 	Rows       []DepartmentUsageExportRow
 }
 
@@ -275,6 +276,7 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 	ranking := []UsageDepartmentUserRankItem{}
 	metricBasis := "tenant"
 	deptName := "全公司"
+	scopeName := deptName
 	disclaimer := usageTenantUserExportDisclaimer
 	if query.DepartmentId == nil {
 		tenantRanking, err := s.buildTenantUserRanking(query)
@@ -295,6 +297,10 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 		}
 		metricBasis = detail.Scope.MetricBasis
 		deptName = detail.DeptName
+		scopeName = detail.DeptName
+		if strings.TrimSpace(scopeName) == "" {
+			scopeName = "当前组织"
+		}
 		disclaimer = usageDepartmentUserExportDisclaimer
 		ranking = detail.UserRanking
 	}
@@ -324,8 +330,9 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 	}
 
 	return DepartmentUsageExportResult{
-		FileName:   buildDepartmentUsageExportFileName(query.From, query.To),
+		FileName:   buildDepartmentUsageExportFileName(scopeName, query.From, query.To),
 		Disclaimer: disclaimer,
+		ScopeName:  scopeName,
 		Rows:       rows,
 	}, nil
 }
@@ -333,9 +340,6 @@ func (s *UsageExportService) ExportDepartmentUsageCSV(query DepartmentUsageExpor
 func (s *UsageExportService) WriteDepartmentUsageCSV(writer io.Writer, result DepartmentUsageExportResult) error {
 	csvWriter := csv.NewWriter(writer)
 
-	if err := csvWriter.Write([]string{"# " + result.Disclaimer}); err != nil {
-		return err
-	}
 	if err := csvWriter.Write([]string{
 		"部门 ID",
 		"部门名称",
@@ -398,10 +402,36 @@ func (s *UsageExportService) buildTenantUserRanking(query DepartmentUsageExportQ
 	return ranking, nil
 }
 
-func buildDepartmentUsageExportFileName(from int64, to int64) string {
-	start := time.Unix(from, 0).UTC().Format("20060102")
-	end := time.Unix(to-1, 0).UTC().Format("20060102")
-	return fmt.Sprintf("usage-department-%s-%s.csv", start, end)
+func buildDepartmentUsageExportFileName(scopeName string, from int64, to int64) string {
+	scopeName = sanitizeUsageExportFileNamePart(scopeName)
+	if scopeName == "" {
+		scopeName = "全公司"
+	}
+	start := time.Unix(from, 0).Format("20060102")
+	end := time.Unix(to-1, 0).Format("20060102")
+	return fmt.Sprintf("usage-department-%s-%s-%s.csv", scopeName, start, end)
+}
+
+func sanitizeUsageExportFileNamePart(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	value = strings.NewReplacer(
+		"\\", "_",
+		"/", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		"\r", "_",
+		"\n", "_",
+		"\t", "_",
+	).Replace(value)
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func formatOptionalInt(value *int) string {

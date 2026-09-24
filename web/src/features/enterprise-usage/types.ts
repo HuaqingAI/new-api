@@ -199,6 +199,9 @@ export type DepartmentUsageReportSnapshot = {
 export type DepartmentUsageReportJobItem = {
   id: number
   tenant_id: number
+  department_id?: number | null
+  scope_key: string
+  include_descendants: boolean
   receivers: string[]
   frequency: 'daily' | 'weekly' | 'monthly'
   range_type: 'today' | 'last7d' | 'last30d'

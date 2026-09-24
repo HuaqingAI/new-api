@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -217,7 +218,7 @@ func ExportDepartmentUsageCSV(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", exportResult.FileName))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"usage-department.csv\"; filename*=UTF-8''%s", url.PathEscape(exportResult.FileName)))
 	c.Status(http.StatusOK)
 	if err := entservice.NewUsageExportService(model.DB).WriteDepartmentUsageCSV(c.Writer, exportResult); err != nil {
 		_ = c.Error(err)
@@ -340,11 +341,23 @@ func GetDepartmentUsageDetail(c *gin.Context) {
 }
 
 func GetDepartmentUsageReportConfig(c *gin.Context) {
-	tenantId, ok := requestTenantId(c, nil)
+	var req dtoenterprise.DepartmentUsageReportConfigQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
 	if !ok {
 		return
 	}
-	result, err := entservice.NewUsageReportService(model.DB).GetConfig(tenantId)
+	if req.DepartmentId != nil && *req.DepartmentId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
+	result, err := entservice.NewUsageReportService(model.DB).GetConfig(tenantId, req.DepartmentId)
 	if err != nil {
 		writeUsageSummaryError(c, err)
 		return
@@ -369,13 +382,26 @@ func SaveDepartmentUsageReportConfig(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if req.DepartmentId != nil && *req.DepartmentId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
+	includeDescendants := req.IncludeDescendants != nil && *req.IncludeDescendants
+	if req.DepartmentId != nil {
+		includeDescendants = true
+	}
 
 	input := entservice.UsageReportConfigInput{
-		TenantId:  tenantId,
-		Receivers: req.Receivers,
-		Frequency: readOptionalString(req.Frequency),
-		RangeType: readOptionalString(req.RangeType),
-		Enabled:   req.Enabled,
+		TenantId:           tenantId,
+		DepartmentId:       req.DepartmentId,
+		IncludeDescendants: includeDescendants,
+		Receivers:          req.Receivers,
+		Frequency:          readOptionalString(req.Frequency),
+		RangeType:          readOptionalString(req.RangeType),
+		Enabled:            req.Enabled,
 	}
 
 	var result entservice.UsageReportJobResult
@@ -394,12 +420,15 @@ func SaveDepartmentUsageReportConfig(c *gin.Context) {
 			ObjectId:    strconv.Itoa(result.Id),
 			DiffSummary: "Saved department usage report configuration",
 			Payload: map[string]any{
-				"tenant_id":   tenantId,
-				"receivers":   result.Receivers,
-				"frequency":   result.Frequency,
-				"range_type":  result.RangeType,
-				"enabled":     result.Enabled,
-				"next_run_at": result.NextRunAt,
+				"tenant_id":           tenantId,
+				"department_id":       result.DepartmentId,
+				"scope_key":           result.ScopeKey,
+				"include_descendants": result.IncludeDescendants,
+				"receivers":           result.Receivers,
+				"frequency":           result.Frequency,
+				"range_type":          result.RangeType,
+				"enabled":             result.Enabled,
+				"next_run_at":         result.NextRunAt,
 			},
 		})
 	})
@@ -408,6 +437,39 @@ func SaveDepartmentUsageReportConfig(c *gin.Context) {
 		return
 	}
 
+	item, err := mapUsageReportJobDTO(result)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, dtoenterprise.DepartmentUsageReportConfigResponse{
+		Item: item,
+	})
+}
+
+func SendDepartmentUsageReportNow(c *gin.Context) {
+	var req dtoenterprise.DepartmentUsageReportSendRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	tenantId, ok := requestTenantId(c, req.TenantId)
+	if !ok {
+		return
+	}
+	if req.DepartmentId != nil && *req.DepartmentId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !authorizeScopedEnterpriseSummary(c, tenantId, req.DepartmentId) {
+		return
+	}
+
+	result, err := entservice.NewUsageReportService(model.DB).SendNow(c.Request.Context(), tenantId, req.DepartmentId)
+	if err != nil {
+		writeUsageSummaryError(c, err)
+		return
+	}
 	item, err := mapUsageReportJobDTO(result)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -517,23 +579,26 @@ func authorizeScopedEnterpriseSummary(c *gin.Context, tenantId int, departmentId
 
 func mapUsageReportJobDTO(item entservice.UsageReportJobResult) (dtoenterprise.DepartmentUsageReportJobItem, error) {
 	dto := dtoenterprise.DepartmentUsageReportJobItem{
-		Id:              item.Id,
-		TenantId:        item.TenantId,
-		Receivers:       append([]string{}, item.Receivers...),
-		Frequency:       item.Frequency,
-		RangeType:       item.RangeType,
-		Enabled:         item.Enabled,
-		Status:          item.Status,
-		LastRunAt:       item.LastRunAt,
-		NextRunAt:       item.NextRunAt,
-		LastSuccessAt:   item.LastSuccessAt,
-		LastWindowStart: item.LastWindowStart,
-		LastWindowEnd:   item.LastWindowEnd,
-		RunCount:        item.RunCount,
-		FailureCount:    item.FailureCount,
-		ErrorReason:     item.ErrorReason,
-		CreatedAt:       item.CreatedAt,
-		UpdatedAt:       item.UpdatedAt,
+		Id:                 item.Id,
+		TenantId:           item.TenantId,
+		DepartmentId:       item.DepartmentId,
+		ScopeKey:           item.ScopeKey,
+		IncludeDescendants: item.IncludeDescendants,
+		Receivers:          append([]string{}, item.Receivers...),
+		Frequency:          item.Frequency,
+		RangeType:          item.RangeType,
+		Enabled:            item.Enabled,
+		Status:             item.Status,
+		LastRunAt:          item.LastRunAt,
+		NextRunAt:          item.NextRunAt,
+		LastSuccessAt:      item.LastSuccessAt,
+		LastWindowStart:    item.LastWindowStart,
+		LastWindowEnd:      item.LastWindowEnd,
+		RunCount:           item.RunCount,
+		FailureCount:       item.FailureCount,
+		ErrorReason:        item.ErrorReason,
+		CreatedAt:          item.CreatedAt,
+		UpdatedAt:          item.UpdatedAt,
 	}
 	if item.LastSnapshot != nil {
 		dto.LastSnapshot = &dtoenterprise.DepartmentUsageReportSnapshot{

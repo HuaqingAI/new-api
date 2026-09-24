@@ -335,19 +335,20 @@ func TestUsageExportAPIStreamsCSVWithHeadersAndSorting(t *testing.T) {
 	)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "text/csv; charset=utf-8", recorder.Header().Get("Content-Type"))
-	require.Equal(t, `attachment; filename="usage-department-20240501-20240501.csv"`, recorder.Header().Get("Content-Disposition"))
+	contentDisposition := recorder.Header().Get("Content-Disposition")
+	require.Contains(t, contentDisposition, `attachment; filename="usage-department.csv"`)
+	require.Contains(t, contentDisposition, `filename*=UTF-8''usage-department-%E5%85%A8%E5%85%AC%E5%8F%B8-20240501-20240502.csv`)
 
 	body := recorder.Body.String()
-	require.Contains(t, body, "# 注意：导出内容为全公司成员用户排行")
+	require.NotContains(t, body, "# 注意")
 	require.Contains(t, body, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度")
 	startDate := time.Unix(1714521600, 0).Format("2006-01-02")
 	endDate := time.Unix(1714608000-1, 0).Format("2006-01-02")
 	require.Contains(t, body, ",全公司,"+startDate+","+endDate+",100,alice,Alice,2,40,15,55,$1.2")
 
 	lines := strings.Split(strings.TrimSpace(body), "\n")
-	require.GreaterOrEqual(t, len(lines), 3)
-	require.Equal(t, "# 注意：导出内容为全公司成员用户排行", lines[0])
-	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[1])
+	require.GreaterOrEqual(t, len(lines), 2)
+	require.Equal(t, "部门 ID,部门名称,周期开始,周期结束,用户 ID,用户名,显示名称,请求数,输入 Tokens,输出 Tokens,总 Tokens,额度", lines[0])
 	require.NotContains(t, body, "null")
 	require.NotContains(t, body, "<nil>")
 }
@@ -591,6 +592,11 @@ func TestUsageReportConfigAPIValidatesAndPersists(t *testing.T) {
 	require.False(t, invalidResponse.Success)
 	require.Equal(t, "enterprise.usage.report_invalid_email", invalidResponse.Message)
 
+	missingSendRecorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/usage/reports/send", dtoenterprise.DepartmentUsageReportSendRequest{})
+	missingSendResponse := decodeEnterpriseAPIResponse(t, missingSendRecorder)
+	require.False(t, missingSendResponse.Success)
+	require.Equal(t, "enterprise.usage.report_not_configured", missingSendResponse.Message)
+
 	saveRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
 		Receivers: []string{"ops@example.com", "cto@example.com"},
 		Frequency: strPtr("weekly"),
@@ -612,12 +618,38 @@ func TestUsageReportConfigAPIValidatesAndPersists(t *testing.T) {
 	require.True(t, getResponse.Success, getResponse.Message)
 	require.Contains(t, getRecorder.Body.String(), `"receivers":["ops@example.com","cto@example.com"]`)
 
+	departmentID := 1
+	departmentRecorder := performEnterpriseRequest(t, router, http.MethodPut, "/api/enterprise/usage/reports", dtoenterprise.DepartmentUsageReportConfigRequest{
+		DepartmentId:       &departmentID,
+		IncludeDescendants: boolPtr(true),
+		Receivers:          []string{"dept@example.com"},
+		Frequency:          strPtr("daily"),
+		RangeType:          strPtr("last7d"),
+		Enabled:            boolPtr(true),
+	})
+	departmentResponse := decodeEnterpriseAPIResponse(t, departmentRecorder)
+	require.True(t, departmentResponse.Success, departmentResponse.Message)
+	require.NoError(t, common.Unmarshal(departmentResponse.Data, &payload))
+	require.NotNil(t, payload.Item.DepartmentId)
+	require.Equal(t, departmentID, *payload.Item.DepartmentId)
+	require.True(t, payload.Item.IncludeDescendants)
+	require.Equal(t, []string{"dept@example.com"}, payload.Item.Receivers)
+
+	departmentGetRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/usage/reports?department_id=1&include_descendants=true", nil)
+	departmentGetResponse := decodeEnterpriseAPIResponse(t, departmentGetRecorder)
+	require.True(t, departmentGetResponse.Success, departmentGetResponse.Message)
+	require.Contains(t, departmentGetRecorder.Body.String(), `"receivers":["dept@example.com"]`)
+	require.NotContains(t, departmentGetRecorder.Body.String(), "ops@example.com")
+
 	var actions []entmodel.AdminAction
 	require.NoError(t, db.Order("action_id ASC").Find(&actions).Error)
-	require.NotEmpty(t, actions)
+	require.GreaterOrEqual(t, len(actions), 2)
+	require.Equal(t, entservice.AdminActionUsageReportSet, actions[len(actions)-2].ActionType)
+	require.Equal(t, entservice.AdminObjectUsageReportJob, actions[len(actions)-2].ObjectType)
+	require.Contains(t, actions[len(actions)-2].Payload, "ops@example.com")
 	require.Equal(t, entservice.AdminActionUsageReportSet, actions[len(actions)-1].ActionType)
 	require.Equal(t, entservice.AdminObjectUsageReportJob, actions[len(actions)-1].ObjectType)
-	require.Contains(t, actions[len(actions)-1].Payload, "ops@example.com")
+	require.Contains(t, actions[len(actions)-1].Payload, "dept@example.com")
 }
 
 func TestUsageSummaryAPIAllowsScopedDepartmentOwnerAndReturnsScopeEnvelope(t *testing.T) {

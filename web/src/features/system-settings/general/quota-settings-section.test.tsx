@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, test } from 'bun:test'
 import assert from 'node:assert/strict'
+import { describe, test } from 'vitest'
 
 import {
   createQuotaSettingsSchema,
@@ -29,15 +29,13 @@ describe('Quota settings schema', () => {
     const schema = createQuotaSettingsSchema((key) => key)
     const result = schema.safeParse({
       QuotaForNewUser: 0,
-      PreConsumedQuota: 0,
       QuotaForInviter: 0,
       QuotaForInvitee: 0,
       TopUpLink: '',
-      general_setting: {
-        docs_link: '',
-      },
       quota_setting: {
         enable_free_model_pre_consume: true,
+        trust_quota_usd: 10,
+        pre_consume_multiplier: 1,
         enterprise_budget_warning_threshold: 95,
         enterprise_budget_critical_threshold: 80,
       },
@@ -53,15 +51,13 @@ describe('Quota settings schema', () => {
     const schema = createQuotaSettingsSchema((key) => key)
     const result = schema.safeParse({
       QuotaForNewUser: 0,
-      PreConsumedQuota: 0,
       QuotaForInviter: 0,
       QuotaForInvitee: 0,
       TopUpLink: '',
-      general_setting: {
-        docs_link: '',
-      },
       quota_setting: {
         enable_free_model_pre_consume: true,
+        trust_quota_usd: 10,
+        pre_consume_multiplier: 1,
         enterprise_budget_warning_threshold: 80,
         enterprise_budget_critical_threshold: 95,
       },

@@ -1,0 +1,1 @@
+{"stories":[{"storyId":"7B.6","title":"企业管理员补齐预算池暂停、恢复与扩缩容治理闭环","complexity":{"score":5,"level":"Medium","reasons":["Authentication system","Rate limiting/throttling","High AC count (20)"]}},{"storyId":"7B.7","title":"收紧预算池创建权限并重命名下级部门预算分配语义","complexity":{"score":2,"level":"Low","reasons":["High AC count (16)"]}}]}

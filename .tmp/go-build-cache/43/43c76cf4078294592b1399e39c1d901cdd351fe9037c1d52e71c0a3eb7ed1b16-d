@@ -1,0 +1,6 @@
+./analysis_fixed.go
+./encode.go
+./encode_frame.go
+./encode_meta.go
+./encode_subframe.go
+./flac.go

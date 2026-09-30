@@ -1,0 +1,7 @@
+=== RUN   TestCreateQuotaAllocationRejectsUserOutsideDepartment
+
+2026/05/29 14:28:54 [31;1m/Users/hq-it/repository/github/huaqingai/new-api/service/enterprise/quota_allocation.go:215 [35;1mrecord not found
+[0m[33m[0.038ms] [34;1m[rows:0][0m SELECT * FROM `enterprise_user_departments` WHERE tenant_id = 0 AND department_id = 1 AND user_id = 2001 AND status = 1 ORDER BY `enterprise_user_departments`.`id` LIMIT 1
+--- PASS: TestCreateQuotaAllocationRejectsUserOutsideDepartment (0.01s)
+PASS
+ok  	github.com/QuantumNous/new-api/service/enterprise	1.275s

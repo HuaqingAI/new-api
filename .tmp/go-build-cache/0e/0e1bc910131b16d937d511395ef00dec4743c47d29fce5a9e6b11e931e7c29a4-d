@@ -1,0 +1,7 @@
+./api-router.go
+./dashboard.go
+./enterprise-router.go
+./main.go
+./relay-router.go
+./video-router.go
+./web-router.go

@@ -1,0 +1,283 @@
+# 贡献指南 — new-api
+
+> 文档生成时间：2026-05-26
+
+欢迎为 [QuantumNous/new-api](https://github.com/QuantumNous/new-api) 贡献代码。本文档聚合提 PR 全流程要点。
+
+---
+
+## 1. 仓库与分支
+
+- 仓库：https://github.com/QuantumNous/new-api
+- 主分支：`main`（受保护，仅通过 PR 合入）
+- 开发分支：`dev`（日常开发，PR 一般打到 `dev`）
+- Tag：版本发布触发 `release.yml`；GitHub Release 发布后触发 `docker-build.yml`
+
+请基于 `dev` 分支创建你的 feature 分支：
+
+```bash
+git fetch origin
+git checkout -b feature/your-thing origin/dev
+```
+
+### 1.1 发布流水线
+
+- `release.yml`：tag push 时构建 Linux / macOS / Windows 二进制并上传到 GitHub Release。
+- `docker-build.yml`：GitHub Release `published` 事件或手动触发时构建多架构镜像、推送到配置的镜像仓库，并在 manifest 推送成功后更新 Kubernetes Deployment 镜像。
+- 双版本号规则：Docker 发布同时记录“我们的 Release tag”和“对应上游 new-api 官方版本号”。每次从上游官方分支合并版本代码时，同步更新根目录 `UPSTREAM_VERSION`：
+
+```text
+v1.0.0-rc.10
+```
+
+发布 workflow 会从 release tag 对应代码中的 `UPSTREAM_VERSION` 读取官方版本。生成的应用版本形如 `v2.0.0+new-api.v1.0.0-rc.10`，Docker/k8s 使用的组合镜像 tag 形如 `v2.0.0-newapi-v1.0.0-rc.10`。
+
+Kubernetes 部署更新需要配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `IMAGE_REPOSITORY` | Variable / Secret，可选 | 构建推送目标镜像仓库，默认 `calciumion/new-api`；阿里云 ACR 可配置为 `crpi-dgkl9khr1943eg60.cn-hangzhou.personal.cr.aliyuncs.com/hq-service/hth-newapi` |
+| `IMAGE_REGISTRY` | Variable / Secret，可选 | 镜像仓库 registry host，默认 `docker.io`；阿里云 ACR 可配置为 `crpi-dgkl9khr1943eg60.cn-hangzhou.personal.cr.aliyuncs.com` |
+| `IMAGE_REGISTRY_USERNAME` | Secret | 镜像仓库登录用户名 |
+| `IMAGE_REGISTRY_PASSWORD` | Secret | 镜像仓库登录密码或访问令牌 |
+| `KUBE_CONFIG` | Secret | kubeconfig YAML 或 base64 编码内容；必须包含 GitHub Actions 可直接使用的非交互式凭据（例如有效的 service account token），不能依赖本机登录态或交互式云厂商登录 |
+| `KUBE_DEPLOY_STRATEGY` | Variable / Secret，可选 | `helm` 或 `kubectl`；配置 `HELM_RELEASE` / `HELM_CHART` 时默认 `helm`，否则默认 `kubectl` |
+| `KUBE_NAMESPACE` | Variable / Secret | `kubectl` 策略目标命名空间；Helm 策略未配置 `HELM_NAMESPACE` 时也会复用 |
+| `KUBE_IMAGE_REPOSITORY` | Variable / Secret，可选 | 部署时写入 Kubernetes/Helm values 的镜像仓库；默认复用 `IMAGE_REPOSITORY`，都未配置时使用 `calciumion/new-api` |
+| `KUBE_ROLLOUT_TIMEOUT` | Variable / Secret，可选 | Helm / kubectl 等待 rollout 的超时时间，默认 `10m` |
+| `KUBE_COLLECT_POD_LOGS` | Variable / Secret，可选 | 部署失败时是否采集相关 Pod 最近日志，默认 `false`；日志可能包含业务上下文，生产环境谨慎开启 |
+
+workflow 会在部署前用 `KUBE_CONFIG` 访问 Kubernetes API 做认证/权限校验。Helm 策略至少需要在目标 namespace 读取 Helm release storage（默认 Kubernetes Secret），kubectl 策略至少需要 patch Deployment。如果日志出现 `the server has asked for the client to provide credentials` 或 `You must be logged in to the server`，说明 `KUBE_CONFIG` 中的用户/token 在 GitHub Actions 环境不可用、已过期，或依赖了本地/云厂商交互式认证，需要重新生成可用于 CI 的 kubeconfig secret。
+
+Helm 部署推荐配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `HELM_RELEASE` | Variable / Secret | Helm release 名称 |
+| `HELM_CHART` | Variable / Secret | Chart 路径或 chart 引用 |
+| `HELM_NAMESPACE` | Variable / Secret，可选 | Helm release 所在命名空间，未配置时使用 `KUBE_NAMESPACE` |
+| `HELM_CREATE_NAMESPACE` | Variable / Secret，可选 | 设为 `true` 时给 `helm upgrade` 添加 `--create-namespace` |
+| `HELM_IMAGE_REPOSITORY_KEYS` | Variable / Secret，可选 | 镜像仓库 values key，默认 `image.repository`；多个 key 用逗号分隔 |
+| `HELM_IMAGE_TAG_KEYS` | Variable / Secret，可选 | 镜像 tag values key，默认 `image.tag`；master/slave 分开配置时可用逗号分隔 |
+| `HELM_VALUES` | Secret，可选 | 追加的 values YAML 内容 |
+| `HELM_EXTRA_SET` | Variable / Secret，可选 | 额外 `--set-string` 项，每行一个 `key=value` |
+| `HELM_EXTRA_SET_TYPED` | Variable / Secret，可选 | 额外 `--set` 项，每行一个 `key=value`，用于布尔值/数字等 typed values，例如 `newapi.persistence.enabled=false` |
+| `HELM_RWO_ROLLOUT_MODE` | Variable / Secret，可选 | 检测到 Helm release 下已有 Deployment 使用 `ReadWriteOnce` / `ReadWriteOncePod` PVC 时的处理方式：`recreate` 默认，先缩容到 0 再升级；`warn` 仅告警；`off` 关闭检测 |
+| `HELM_VERSION` | Variable，可选 | GitHub Actions 安装的 Helm 版本，默认固定为 `v3.17.1`，避免 `latest` 行为漂移 |
+| `HELM_REPO_NAME` / `HELM_REPO_URL` | Variable / Secret，可选 | 需要添加 Helm repo 时配置 |
+| `HELM_REPO_USERNAME` / `HELM_REPO_PASSWORD` | Secret，可选 | 私有 Helm repo 凭据 |
+
+如果 Helm 部署失败信息类似 `Pending termination: 1` 或 `context deadline exceeded`，优先检查 release 下的 Deployment 是否挂载了 `ReadWriteOnce` PVC。流水线默认会在 Helm 升级前将这类 Deployment 缩容到 0，等待旧 Pod 删除后再升级，避免旧 Pod 未释放卷导致新 Pod 一直无法就绪。预缩容前会先执行 server-side Helm dry-run，因此 chart 中依赖 `lookup` 读取既有 Secret 的升级校验会使用集群现状，而不是离线渲染结果。若生产环境不能接受这段短暂停机，可以将 `HELM_RWO_ROLLOUT_MODE=warn`，并改用支持多写的存储、关闭不需要的 `newapi.persistence.enabled`，或调整 chart 架构。
+
+部署失败时，workflow 会自动把 Helm status/history、Deployment、Pod、PVC 和 namespace events 写入 GitHub Actions summary；只有 `KUBE_COLLECT_POD_LOGS=true` 时才会额外采集 Pod 日志。
+
+裸 Deployment 部署可配置：
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `KUBE_DEPLOYMENTS` | Variable / Secret | 目标 Deployment 名称；多个用逗号分隔，例如 `new-api-master,new-api-slave` |
+| `KUBE_CONTAINER` | Variable / Secret | Deployment 内需要更新的容器名 |
+
+---
+
+## 2. 开发流程
+
+### 2.1 选择 part 并阅读对应开发指南
+
+- Go 后端：[development-guide-server.md](development-guide-server.md)
+- Web Default：[development-guide-web-default.md](development-guide-web-default.md)
+- Web Classic：[development-guide-web-classic.md](development-guide-web-classic.md)
+- Electron：[development-guide-electron.md](development-guide-electron.md)
+
+### 2.2 必读约定
+
+- [CLAUDE.md](../CLAUDE.md)：7 条项目级强约束规则
+  - **Rule 5 受保护标识**：`new-api` / `QuantumNous` 严禁修改/删除/替换
+- [project-overview.md](project-overview.md)：项目总览
+- 修改计费相关：[pkg/billingexpr/expr.md](../pkg/billingexpr/expr.md)（Rule 7）
+
+### 2.3 本地验证
+
+提交前确保：
+
+| 检查项 | 命令 |
+|--------|------|
+| Go 编译 | `go build ./...` |
+| Go 测试 | `go test ./...`（受影响包） |
+| Go 静态检查 | `go vet ./...` |
+| 前端构建（default） | `cd web/default && bun install && bun run build` |
+| 前端类型检查（default） | `cd web/default && bun run type-check` |
+| 前端构建（classic） | `cd web/classic && bun install && bun run build` |
+| Electron 启动 | `cd electron && npm install && npm start` |
+
+---
+
+## 3. PR 模板与 Anti-Slop 检查
+
+### 3.1 PR 模板
+
+`.github/pull_request_template.md` 强制要求填写：
+- 变更摘要
+- 测试方式
+- 关联 issue
+- Breaking changes（如有）
+
+### 3.2 Anti-Slop 自动化检查
+
+`.github/workflows/pr-check.yml` 使用 `peakoss/anti-slop@v0.2.1` 在 PR 打开 / 重开时自动运行。规则：
+
+- **屏蔽 AI 生成痕迹**：PR 描述与提交信息中**不允许**出现以下内容：
+  - `🤖 Generated with Claude Code`
+  - 类似的"由 AI 助手生成"署名
+- **强制 PR 模板**：必须填写完整
+- **最低账号年龄**：30 天
+- **其他启发式规则**：参见 anti-slop action 文档
+
+> 这意味着：即使你用 Claude / Cursor / Copilot 等 AI 辅助开发，**不要**在提交信息或 PR 描述中保留 AI 署名行。
+
+### 3.3 提交信息约定
+
+无强制 commit convention，但建议：
+- 简洁陈述变更（中英皆可，仓库内两种都常见）
+- 关联 issue：`fix #123` / `close #456`
+- 多行：第一行 < 72 字符，空行后展开
+
+参考最近提交：
+
+```
+🐛 fix(system-settings): resolve save detection and number input NaN issues
+🎨 fix(logs): tune usage table typography
+fix: use actual user id for channel tests (#5109)
+```
+
+支持 emoji 前缀风格（gitmoji），但不强制。
+
+---
+
+## 4. 代码审查关注点
+
+PR 评审会重点关注：
+
+### 4.1 通用
+- [ ] 是否破坏 [CLAUDE.md](../CLAUDE.md) 的 7 条规则
+- [ ] 是否动到了受保护标识（Rule 5）
+- [ ] 是否有 secret / token / credentials 误提交
+- [ ] 文档是否同步更新（api-contracts / data-models / 架构图等）
+
+### 4.2 后端（Go）
+- [ ] JSON 操作走 `common.Marshal` / `Unmarshal`（Rule 1）
+- [ ] DB 代码跨 SQLite/MySQL/PostgreSQL 兼容（Rule 2）
+- [ ] 新 channel 的 StreamOptions 注册（Rule 4）
+- [ ] DTO 可选字段使用指针 + `omitempty`（Rule 6）
+- [ ] 计费改动遵循 `pkg/billingexpr/expr.md`（Rule 7）
+- [ ] 测试覆盖关键分支
+- [ ] 跨包导入未引入循环依赖（注意 service ↔ relay）
+
+### 4.3 前端（Default 主题）
+- [ ] TypeScript 类型完整，无 `any` 滥用
+- [ ] 数据获取用 TanStack Query
+- [ ] mutation 后已 invalidate
+- [ ] i18n key 已 `bun run i18n:sync`
+- [ ] 没有 cross-feature import
+
+### 4.4 前端（Classic 主题）
+- [ ] 路由集中在 `App.jsx`
+- [ ] 守卫包装正确（`PrivateRoute` / `AdminRoute`）
+- [ ] 二次验证场景使用 `secureApiCall`
+- [ ] 未混入其他样式系统
+
+### 4.5 Electron
+- [ ] `nodeIntegration: false` / `contextIsolation: true` 保留
+- [ ] 新增 IPC 有输入校验
+- [ ] 跨平台分支完整（darwin / win32 / linux）
+
+---
+
+## 5. 测试要求
+
+### 5.1 必须
+
+- 修改触及 `pkg/billingexpr/`：必须有单元测试覆盖新表达式 case
+- 修改触及 `model/`：在 SQLite 上至少跑过 `go test ./model/...`
+- 新增 channel 适配器：参考 `relay/channel/api_request_test.go` 风格
+
+### 5.2 建议
+
+- UI 改动：截图或录屏附在 PR 描述中
+- 性能敏感改动：附 benchmark / pprof 数据
+- 跨 DB 改动：MySQL 或 PG 至少一个手测验证
+
+### 5.3 现状说明
+
+项目当前测试覆盖率不高：
+- Go 后端：单测散落各包
+- Web Default：少量 `*.test.tsx`，主要靠 TS 类型 + 人工
+- Web Classic：无独立单测
+- Electron：无单测
+
+新增测试一律欢迎，但不会因缺测试而拒绝你的 PR（除非属于 5.1 必须场景）。
+
+---
+
+## 6. 文档更新
+
+代码变更涉及以下场景必须同步更新文档：
+
+| 变更场景 | 需要更新 |
+|---------|---------|
+| 新增 / 修改 / 删除 HTTP 端点 | [api-contracts-server.md](api-contracts-server.md) |
+| 新增 / 修改数据表 | [data-models-server.md](data-models-server.md) |
+| 新增 / 修改环境变量 | [deployment-guide.md §2](deployment-guide.md) + `.env.example` |
+| 新增上游 provider | [architecture-server.md §5](architecture-server.md) + [project-parts.json](project-parts.json) |
+| 新增前端页面 | 对应 [component-inventory-*.md](.) |
+| 修改架构 | 对应 [architecture-*.md](.) + [integration-architecture.md](integration-architecture.md) |
+
+---
+
+## 7. Issue / Bug 提交
+
+### 7.1 Bug
+
+提供：
+- 复现步骤
+- 期望行为 vs 实际行为
+- 环境（OS / 部署形态 / DB 类型 / new-api 版本）
+- 相关日志（敏感信息脱敏）
+
+### 7.2 Feature Request
+
+说明：
+- 用户场景与动机
+- 期望接口 / 行为
+- 是否愿意自己实现
+
+---
+
+## 8. 不会被接受的 PR 类型
+
+- 修改受保护标识（Rule 5）
+- 重大架构重构未经事前讨论
+- 引入大量未使用依赖
+- 提交信息或 PR 描述含 AI 署名（被 anti-slop 拦截）
+- 删除已有 i18n 语言（zh/en/fr/ru/ja/vi 全保留）
+- 强制要求修改默认部署方式（如 PR：从 SQLite 默认改为 MySQL 默认）
+
+---
+
+## 9. 联系与帮助
+
+- Issue Tracker：https://github.com/QuantumNous/new-api/issues
+- Discussions：https://github.com/QuantumNous/new-api/discussions
+- 文档主索引：[index.md](index.md)
+
+---
+
+## 10. 关键文档交叉引用
+
+| 主题 | 文档 |
+|------|------|
+| 项目总览 | [project-overview.md](project-overview.md) |
+| 项目约定 | [CLAUDE.md](../CLAUDE.md) |
+| 各 part 开发指南 | [development-guide-server.md](development-guide-server.md) / [development-guide-web-default.md](development-guide-web-default.md) / [development-guide-web-classic.md](development-guide-web-classic.md) / [development-guide-electron.md](development-guide-electron.md) |
+| 部署运维 | [deployment-guide.md](deployment-guide.md) |
+| 计费表达式 | [pkg/billingexpr/expr.md](../pkg/billingexpr/expr.md) |

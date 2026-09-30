@@ -1,0 +1,5 @@
+./mem.go
+./mem_darwin.go
+_cgo_gotypes.go
+mem_darwin_cgo.cgo1.go
+_cgo_import.go

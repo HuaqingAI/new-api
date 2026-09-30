@@ -1,0 +1,163 @@
+# generated: 2026-05-28 13:47:30 +08:00
+# last_updated: 2026-06-04 00:25:14 +0800
+# project: new-api
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created (via create-story)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-28 13:47:30 +08:00
+last_updated: 2026-06-04 00:25:14 +0800
+project: new-api
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/hq-it/repository/github/huaqingai/new-api-ap/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: done
+  1-1-view-enterprise-department-tree: done
+  1-2-maintain-user-department-memberships: done
+  1-3-separate-department-permissions-from-group-semantics: done
+  1-4-record-enterprise-organization-audit: done
+  epic-1-retrospective: done
+
+  epic-2: in-progress
+  2-1-configure-dingtalk-enterprise-app: done
+  2-2-test-dingtalk-connectivity-and-permissions: done
+  2-3-support-dingtalk-oauth-login-and-account-binding: done
+  2-4-sync-dingtalk-departments-and-members: done
+  2-5-handle-sync-conflicts-and-organization-changes: done
+  epic-2-retrospective: done
+
+  epic-3: done
+  3-1-create-department-budget-pool: done
+  3-2-allocate-department-budget-to-member-wallet: done
+  3-3-enforce-budget-invariants-and-concurrency-safety: done
+  3-4-revoke-and-sync-department-wallet-state: done
+  3-5-display-budget-pool-and-wallet-state: done
+  epic-3-retrospective: done
+
+  epic-4: in-progress
+  4-1-aggregate-department-usage-snapshots: done
+  4-2-display-department-usage-overview-dashboard: done
+  4-3-view-department-usage-details: done
+  4-4-export-department-usage-csv: done
+  4-5-configure-and-send-scheduled-usage-reports: done
+  epic-4-retrospective: done
+
+  epic-5: done
+  5-1-record-content-risk-events: done
+  5-2-query-and-filter-risk-events: done
+  5-3-configure-content-risk-alert-rules-and-channels: done
+  5-4-send-traceable-alert-notifications: done
+  5-5-manage-alert-delivery-status-and-manual-resend: done
+  5-6-display-department-risk-overview: done
+  epic-5-retrospective: done
+
+  epic-6: in-progress
+  6-1-rebuild-enterprise-organization-as-tree-driven-governance-view: done
+  6-2-rebuild-department-usage-as-tree-driven-analysis-view: done
+  6-3-move-membership-and-budget-operations-into-department-context: done
+  6-4-fix-dingtalk-username-strategy-and-controlled-rename: done
+  6-5-unify-enterprise-user-display-rules: done
+  epic-6-retrospective: optional
+
+  epic-7: done
+  7-1-establish-department-owner-role-model-and-precedence: done
+  7-2-add-descendant-inclusive-scope-to-budget-usage-and-alert-summaries: done
+  7-3-delegate-ancestor-budget-pools-to-descendant-department-pools: done
+  7-4-govern-member-allocations-with-adjust-cancel-and-reclaim: done
+  7-5-support-employee-quota-requests-single-step-approval-and-auto-allocation: done
+  7-6-audit-governance-actions-and-send-dingtalk-notifications: done
+  epic-7-retrospective: done
+  epic-7a: done
+  7a-1-complete-enterprise-governance-i18n-and-action-label-mapping: done
+  7a-2-move-employee-quota-request-entry-to-balance-wallet-user-flow: done
+  7a-3-relax-budget-pool-type-locking-to-per-budget-invariance: done
+  epic-7a-retrospective: done
+
+  epic-7b: in-progress
+  7b-1-decouple-governance-action-result-from-notification-delivery: done
+  7b-2-redesign-budget-pool-selection-and-selected-summary: done
+  7b-3-complete-quota-request-governance-wallet-i18n-coverage: done
+  7b-4-normalize-one-time-wallet-and-non-positive-expiry-display: done
+  7b-5-add-quota-amount-toggle-and-dollar-display-for-budget-governance: done
+  7b-6-close-budget-pool-lifecycle-gap-with-disable-and-replace: done
+  7b-7-restrict-budget-pool-creation-to-system-admin-and-rename-descendant-delegation: done
+  epic-7b-retrospective: optional
+
+  ap-epic-1: done
+  ap-1-1-establish-shared-resource-registry-and-stable-identity: done
+  ap-1-2-implement-typed-detail-storage-for-skill-knowledge-agent: done
+  ap-1-3-implement-unified-lifecycle-version-and-rollback-actions: done
+  ap-1-4-establish-projection-baseline-decoupled-from-client-registration: done
+  ap-1-5-build-publication-projection-and-exposure-model: done
+  ap-1-6-deliver-web-default-control-plane-shell: done
+  ap-epic-1-retrospective: done
+
+  ap-epic-2: done
+  ap-2-1-register-clients-and-capability-declarations: done
+  ap-2-2-implement-browser-delegated-auth-main-flow: done
+  ap-2-3-implement-token-lifecycle-and-revocation: done
+  ap-2-4-publish-open-capability-standard-apis-and-error-envelope: done
+  ap-2-5-enforce-freshness-revoke-and-contract-version-convergence: done
+  ap-epic-2-retrospective: optional
+
+  ap-epic-3: done
+  ap-3-1-provide-skill-management-in-control-plane: done
+  ap-3-2-define-skill-detail-schema-and-invoke-readiness: done
+  ap-3-3-expose-skill-discovery-detail-and-invoke-via-open-capabilities: done
+  ap-epic-3-retrospective: optional
+
+  ap-epic-4: done
+  ap-4-1-manage-knowledge-resources-with-provider-metadata: done
+  ap-4-2-freeze-knowledge-mvp-contract-to-standardized-retrieval: done
+  ap-4-3-expose-knowledge-retrieval-via-shared-open-capability-layer: done
+  ap-4-4-integrate-first-http-retrieval-provider-adapter: done
+  ap-epic-4-retrospective: optional
+
+  ap-epic-5: done
+  ap-5-1-provide-agent-definition-management-in-control-plane: done
+  ap-5-2-implement-agent-dependency-declaration-and-boundary-validation: done
+  ap-5-3-publish-agent-definition-via-discovery-detail-without-runtime-overreach: done
+  ap-5-4-stabilize-agent-platform-web-default-integration: done
+  ap-epic-5-retrospective: optional
+
+  ap-epic-6: done
+  ap-6-1-freeze-oauth-token-revoke-and-callback-wire-contract: done
+  ap-6-2-freeze-client-registration-schema-and-onboarding-flow: done
+  ap-6-3-freeze-discovery-detail-and-refresh-public-fields: done
+  ap-6-4-freeze-skill-invoke-and-knowledge-query-specs: done
+  ap-6-5-freeze-enterprise-model-discovery-contract: done
+  ap-6-6-freeze-error-code-and-client-state-matrices: done
+  ap-6-7-provide-mock-fixture-and-contract-conformance-suite: done
+  ap-6-8-complete-cherry-studio-first-and-codex-second-signoff: done
+  ap-epic-6-retrospective: optional

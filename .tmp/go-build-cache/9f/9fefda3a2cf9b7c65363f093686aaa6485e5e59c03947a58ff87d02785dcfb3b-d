@@ -1,0 +1,7 @@
+./audio.go
+./conv.go
+./doc.go
+./float_buffer.go
+./formats.go
+./int_buffer.go
+./pcm_buffer.go

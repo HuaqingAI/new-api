@@ -202,7 +202,7 @@ func isValidDingTalkCallbackURL(value string) bool {
 	if err != nil || parsed == nil {
 		return false
 	}
-	return parsed.Scheme == "https" && parsed.Host != ""
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 func mapDingTalkConfig(config entmodel.DingTalkConfig) dtoenterprise.DingTalkConfigResponse {

@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +24,7 @@ func TestDingTalkConfigAPIStoresSecretWithoutReturningIt(t *testing.T) {
 		CorpId:       "corp-id",
 		AppKey:       "app-key",
 		AppSecret:    &secret,
-		CallbackUrl:  "https://example.com/api/oauth/dingtalk",
+		CallbackUrl:  "http://127.0.0.1:3001/oauth/dingtalk",
 		SyncScope:    "1,2",
 		LoginEnabled: boolPtr(true),
 		SyncEnabled:  boolPtr(true),
@@ -35,6 +36,7 @@ func TestDingTalkConfigAPIStoresSecretWithoutReturningIt(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"app_secret":`)
 	saved := decodeEnterpriseData[dtoenterprise.DingTalkConfigResponse](t, response)
 	require.True(t, saved.HasAppSecret)
+	assert.Equal(t, "http://127.0.0.1:3001/oauth/dingtalk", saved.CallbackUrl)
 
 	getRecorder := performEnterpriseRequest(t, router, http.MethodGet, "/api/enterprise/dingtalk/config", nil)
 	getResponse := decodeEnterpriseAPIResponse(t, getRecorder)
@@ -44,6 +46,7 @@ func TestDingTalkConfigAPIStoresSecretWithoutReturningIt(t *testing.T) {
 	fetched := decodeEnterpriseData[dtoenterprise.DingTalkConfigResponse](t, getResponse)
 	require.True(t, fetched.HasAppSecret)
 	require.Equal(t, "corp-id", fetched.CorpId)
+	assert.Equal(t, saved.CallbackUrl, fetched.CallbackUrl)
 
 	var config entmodel.DingTalkConfig
 	require.NoError(t, db.Where("tenant_id = ?", 0).First(&config).Error)
@@ -75,7 +78,7 @@ func TestDingTalkConfigAPIRejectsEnableWithDistinctErrors(t *testing.T) {
 		CorpId:      "corp-id",
 		AppKey:      "app-key",
 		AppSecret:   &secret,
-		CallbackUrl: "http://example.com/api/oauth/dingtalk",
+		CallbackUrl: "ftp://example.com/api/oauth/dingtalk",
 		SyncEnabled: boolPtr(true),
 	})
 	invalidCallbackResponse := decodeEnterpriseAPIResponse(t, invalidCallbackRecorder)
@@ -94,7 +97,7 @@ func TestDingTalkConnectivityAPIWritesSanitizedAudit(t *testing.T) {
 		CorpId:      "corp-id",
 		AppKey:      "app-key",
 		AppSecret:   secret,
-		CallbackUrl: "http://example.com/api/oauth/dingtalk",
+		CallbackUrl: "ftp://example.com/api/oauth/dingtalk",
 	}).Error)
 
 	recorder := performEnterpriseRequest(t, router, http.MethodPost, "/api/enterprise/dingtalk/connectivity-test", nil)

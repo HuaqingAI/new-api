@@ -120,11 +120,14 @@ const dingTalkConfigSchema = (t: (key: string) => string) =>
       if (callbackUrl) {
         try {
           const parsed = new URL(callbackUrl)
-          if (parsed.protocol !== 'https:') {
+          if (
+            (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+            !parsed.host
+          ) {
             ctx.addIssue({
               code: 'custom',
               path: ['callback_url'],
-              message: t('DingTalk callback URL must use HTTPS'),
+              message: t('Enter a valid callback URL'),
             })
           }
         } catch {
@@ -198,7 +201,8 @@ function configToFormValues(config: DingTalkConfig): DingTalkConfigFormValues {
     auto_sync_on_login: Boolean(config.auto_sync_on_login),
     scheduled_full_sync_enabled: Boolean(config.scheduled_full_sync_enabled),
     scheduled_full_sync_cron: config.scheduled_full_sync_cron || '0 0 * * *',
-    scheduled_full_sync_timezone: config.scheduled_full_sync_timezone || 'Asia/Shanghai',
+    scheduled_full_sync_timezone:
+      config.scheduled_full_sync_timezone || 'Asia/Shanghai',
   }
 }
 
@@ -212,8 +216,9 @@ export function EnterpriseDingTalk() {
     queryKey: enterpriseDingTalkQueryKey,
     queryFn: async () => {
       const result = await getDingTalkConfig()
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data ?? emptyConfig
     },
   })
@@ -252,14 +257,16 @@ export function EnterpriseDingTalk() {
         auto_sync_on_login: values.auto_sync_on_login,
         scheduled_full_sync_enabled: values.scheduled_full_sync_enabled,
         scheduled_full_sync_cron: values.scheduled_full_sync_cron.trim(),
-        scheduled_full_sync_timezone: values.scheduled_full_sync_timezone.trim(),
+        scheduled_full_sync_timezone:
+          values.scheduled_full_sync_timezone.trim(),
       }
       const appSecret = values.app_secret.trim()
       const result = await saveDingTalkConfig(
         appSecret ? { ...payload, app_secret: appSecret } : payload
       )
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data ?? emptyConfig
     },
     onSuccess: async (saved) => {
@@ -278,8 +285,9 @@ export function EnterpriseDingTalk() {
   const connectivityMutation = useMutation({
     mutationFn: async () => {
       const result = await testDingTalkConnectivity()
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data
     },
     onSuccess: (result) => {
@@ -300,8 +308,9 @@ export function EnterpriseDingTalk() {
     enabled: canEdit,
     queryFn: async () => {
       const result = await listDingTalkSyncLogs({ page: 1, page_size: 8 })
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data
     },
   })
@@ -315,8 +324,9 @@ export function EnterpriseDingTalk() {
         page: 1,
         page_size: 5,
       })
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data
     },
   })
@@ -324,8 +334,9 @@ export function EnterpriseDingTalk() {
   const syncMutation = useMutation({
     mutationFn: async () => {
       const result = await startDingTalkFullSync(true)
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       if (!result.data) throw new Error(t('Missing sync task status'))
       return result.data
     },
@@ -355,8 +366,9 @@ export function EnterpriseDingTalk() {
         conflict.id,
         conflict.candidate_user_id
       )
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data
     },
     onSuccess: async () => {
@@ -380,8 +392,9 @@ export function EnterpriseDingTalk() {
       const taskId = syncMutation.data?.id
       if (!taskId) return null
       const result = await getDingTalkSyncTask(taskId)
-      if (!result.success)
+      if (!result.success) {
         throw new Error(result.message || t('Request failed'))
+      }
       return result.data ?? null
     },
   })
@@ -544,7 +557,7 @@ export function EnterpriseDingTalk() {
                           </FormControl>
                           <FormDescription>
                             {t(
-                              'Use the same HTTPS callback URL in the DingTalk developer console.'
+                              'Use the same callback URL in the DingTalk developer console.'
                             )}
                           </FormDescription>
                           <FormMessage />
@@ -682,7 +695,9 @@ export function EnterpriseDingTalk() {
                   <CardHeader>
                     <CardTitle>{t('Scheduled full sync')}</CardTitle>
                     <CardDescription>
-                      {t('Run a complete DingTalk address book sync on a cron schedule.')}
+                      {t(
+                        'Run a complete DingTalk address book sync on a cron schedule.'
+                      )}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className='grid gap-4'>
@@ -692,7 +707,9 @@ export function EnterpriseDingTalk() {
                       render={({ field }) => (
                         <ToggleField
                           label={t('Enable scheduled full sync')}
-                          description={t('The schedule requires address book sync to be enabled.')}
+                          description={t(
+                            'The schedule requires address book sync to be enabled.'
+                          )}
                           checked={field.value}
                           disabled={!canEdit || !formValues.sync_enabled}
                           onCheckedChange={field.onChange}
@@ -707,9 +724,15 @@ export function EnterpriseDingTalk() {
                           <FormItem>
                             <FormLabel>{t('Cron expression')}</FormLabel>
                             <FormControl>
-                              <Input placeholder='0 0 * * *' disabled={!canEdit} {...field} />
+                              <Input
+                                placeholder='0 0 * * *'
+                                disabled={!canEdit}
+                                {...field}
+                              />
                             </FormControl>
-                            <FormDescription>{t('Five fields: minute hour day month weekday.')}</FormDescription>
+                            <FormDescription>
+                              {t('Five fields: minute hour day month weekday.')}
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -721,9 +744,17 @@ export function EnterpriseDingTalk() {
                           <FormItem>
                             <FormLabel>{t('Timezone')}</FormLabel>
                             <FormControl>
-                              <Input placeholder='Asia/Shanghai' disabled={!canEdit} {...field} />
+                              <Input
+                                placeholder='Asia/Shanghai'
+                                disabled={!canEdit}
+                                {...field}
+                              />
                             </FormControl>
-                            <FormDescription>{t('Use an IANA timezone such as Asia/Shanghai or UTC.')}</FormDescription>
+                            <FormDescription>
+                              {t(
+                                'Use an IANA timezone such as Asia/Shanghai or UTC.'
+                              )}
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -1232,7 +1263,7 @@ function getConnectivityGuidance(
       return {
         title: t('Fix DingTalk callback URL'),
         description: t(
-          'Use the same valid HTTPS callback URL in new-api and the DingTalk developer console.'
+          'Use the same valid callback URL in new-api and the DingTalk developer console.'
         ),
       }
   }

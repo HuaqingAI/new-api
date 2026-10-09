@@ -83,7 +83,7 @@ func TestDingTalkConnectivityMapsCallbackMisconfigured(t *testing.T) {
 		CorpId:      "corp-id",
 		AppKey:      "app-key",
 		AppSecret:   "plain-secret",
-		CallbackUrl: "http://example.com/callback",
+		CallbackUrl: "ftp://example.com/callback",
 	}).Error)
 
 	result, err := entservice.NewDingTalkConnectivityService(db, nil).Test(context.Background(), 0)
@@ -103,7 +103,7 @@ func newDingTalkConnectivityTestService(t *testing.T, transport http.RoundTrippe
 		CorpId:       "corp-id",
 		AppKey:       "app-key",
 		AppSecret:    secret,
-		CallbackUrl:  "https://example.com/api/oauth/dingtalk",
+		CallbackUrl:  "http://127.0.0.1:3001/oauth/dingtalk",
 		LoginEnabled: true,
 		SyncEnabled:  true,
 	}).Error)

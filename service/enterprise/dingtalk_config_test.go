@@ -8,6 +8,7 @@ import (
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -97,18 +98,62 @@ func TestDingTalkConfigRejectsEnableWithoutCredentials(t *testing.T) {
 	require.ErrorIs(t, err, entservice.ErrDingTalkMissingCredentials)
 }
 
-func TestDingTalkConfigRejectsInvalidCallbackWhenEnabling(t *testing.T) {
-	svc, _ := newDingTalkConfigTestService(t)
-	secret := "secret"
+func TestDingTalkConfigAllowsHTTPCallback(t *testing.T) {
+	for _, mode := range []string{"draft", "login", "sync", "auto sync on login"} {
+		t.Run(mode, func(t *testing.T) {
+			svc, _ := newDingTalkConfigTestService(t)
+			secret := "secret"
+			autoSyncOnLogin := mode == "auto sync on login"
+			callbackURL := "http://127.0.0.1:3001/oauth/dingtalk"
 
-	_, err := svc.Save(entservice.DingTalkConfigInput{
-		CorpId:       "corp",
-		AppKey:       "key",
-		AppSecret:    &secret,
-		CallbackUrl:  "http://example.com/callback",
-		LoginEnabled: true,
-	})
-	require.ErrorIs(t, err, entservice.ErrDingTalkInvalidCallbackURL)
+			saved, err := svc.Save(entservice.DingTalkConfigInput{
+				CorpId:          "corp",
+				AppKey:          "key",
+				AppSecret:       &secret,
+				CallbackUrl:     "  " + callbackURL + "  ",
+				LoginEnabled:    mode == "login",
+				SyncEnabled:     mode == "sync",
+				AutoSyncOnLogin: &autoSyncOnLogin,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, callbackURL, saved.CallbackUrl)
+			assert.Equal(t, mode == "login", saved.LoginEnabled)
+			assert.Equal(t, mode == "sync", saved.SyncEnabled)
+			assert.Equal(t, autoSyncOnLogin, saved.AutoSyncOnLogin)
+
+			fetched, err := svc.Get(0)
+			require.NoError(t, err)
+			assert.Equal(t, callbackURL, fetched.CallbackUrl)
+		})
+	}
+}
+
+func TestDingTalkConfigRejectsInvalidCallbackWhenEnabling(t *testing.T) {
+	testCases := []struct {
+		name        string
+		callbackURL string
+	}{
+		{name: "empty"},
+		{name: "unsupported scheme", callbackURL: "ftp://example.com/callback"},
+		{name: "relative", callbackURL: "/oauth/dingtalk"},
+		{name: "missing host", callbackURL: "http:///oauth/dingtalk"},
+		{name: "invalid port", callbackURL: "https://example.com:invalid/callback"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			svc, _ := newDingTalkConfigTestService(t)
+			secret := "secret"
+
+			_, err := svc.Save(entservice.DingTalkConfigInput{
+				CorpId:       "corp",
+				AppKey:       "key",
+				AppSecret:    &secret,
+				CallbackUrl:  testCase.callbackURL,
+				LoginEnabled: true,
+			})
+			require.ErrorIs(t, err, entservice.ErrDingTalkInvalidCallbackURL)
+		})
+	}
 }
 
 func TestDingTalkConfigAllowsDraftWithoutCredentials(t *testing.T) {

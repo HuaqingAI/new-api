@@ -381,3 +381,8 @@ enterprise.usage.report_not_configured: "用量报告尚未配置"
 enterprise.dingtalk.sync_conflict_not_found: "钉钉同步冲突不存在"
 enterprise.dingtalk.sync_conflict_not_pending: "钉钉同步冲突已不在待处理状态"
 enterprise.dingtalk.sync_conflict_no_candidate: "钉钉同步冲突没有唯一候选用户"
+
+agent_platform.model_filter.invalid: "客户端模型过滤配置无效，请提交符合数量和长度限制的模型 ID 数组。"
+agent_platform.model_filter.too_large: "客户端模型过滤请求不能超过 64 KiB。"
+agent_platform.model_filter.load_failed: "加载客户端模型过滤配置失败。"
+agent_platform.model_filter.save_failed: "保存客户端模型过滤配置失败。"

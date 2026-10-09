@@ -378,3 +378,8 @@ enterprise.usage.report_not_configured: "Usage report is not configured"
 enterprise.dingtalk.sync_conflict_not_found: "DingTalk sync conflict not found"
 enterprise.dingtalk.sync_conflict_not_pending: "DingTalk sync conflict is no longer pending"
 enterprise.dingtalk.sync_conflict_no_candidate: "DingTalk sync conflict has no single candidate user"
+
+agent_platform.model_filter.invalid: "Invalid client model filter. Submit an array of valid model IDs within the allowed limits."
+agent_platform.model_filter.too_large: "Client model filter request must not exceed 64 KiB."
+agent_platform.model_filter.load_failed: "Failed to load client model filter."
+agent_platform.model_filter.save_failed: "Failed to save client model filter."

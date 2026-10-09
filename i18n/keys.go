@@ -135,20 +135,20 @@ const (
 
 // Subscription related messages
 const (
-	MsgSubscriptionNotEnabled       = "subscription.not_enabled"
-	MsgSubscriptionTitleEmpty       = "subscription.title_empty"
-	MsgSubscriptionPriceNegative    = "subscription.price_negative"
-	MsgSubscriptionPriceMax         = "subscription.price_max"
-	MsgSubscriptionPurchaseLimitNeg = "subscription.purchase_limit_negative"
-	MsgSubscriptionQuotaNegative    = "subscription.quota_negative"
-	MsgSubscriptionGroupNotExists   = "subscription.group_not_exists"
-	MsgSubscriptionResetCycleGtZero = "subscription.reset_cycle_gt_zero"
-	MsgSubscriptionPurchaseMax      = "subscription.purchase_max"
-	MsgSubscriptionInvalidId        = "subscription.invalid_id"
-	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
-	MsgSubscriptionProtectedDelete  = "subscription.protected_delete"
+	MsgSubscriptionNotEnabled          = "subscription.not_enabled"
+	MsgSubscriptionTitleEmpty          = "subscription.title_empty"
+	MsgSubscriptionPriceNegative       = "subscription.price_negative"
+	MsgSubscriptionPriceMax            = "subscription.price_max"
+	MsgSubscriptionPurchaseLimitNeg    = "subscription.purchase_limit_negative"
+	MsgSubscriptionQuotaNegative       = "subscription.quota_negative"
+	MsgSubscriptionGroupNotExists      = "subscription.group_not_exists"
+	MsgSubscriptionResetCycleGtZero    = "subscription.reset_cycle_gt_zero"
+	MsgSubscriptionPurchaseMax         = "subscription.purchase_max"
+	MsgSubscriptionInvalidId           = "subscription.invalid_id"
+	MsgSubscriptionInvalidUserId       = "subscription.invalid_user_id"
+	MsgSubscriptionProtectedDelete     = "subscription.protected_delete"
 	MsgSubscriptionProtectedInvalidate = "subscription.protected_invalidate"
-	MsgSubscriptionInvalidSortOrder = "subscription.invalid_sort_order"
+	MsgSubscriptionInvalidSortOrder    = "subscription.invalid_sort_order"
 )
 
 // Payment related messages
@@ -427,4 +427,8 @@ const (
 	MsgEnterpriseAlertRuleInvalidWebhook                  = "enterprise.alert.rule_invalid_webhook"
 	MsgEnterpriseAlertDeliveryNotFound                    = "enterprise.alert.delivery_not_found"
 	MsgEnterpriseAlertDeliveryResendNotAllowed            = "enterprise.alert.delivery_resend_not_allowed"
+	MsgClientModelFilterInvalid                           = "agent_platform.model_filter.invalid"
+	MsgClientModelFilterTooLarge                          = "agent_platform.model_filter.too_large"
+	MsgClientModelFilterLoadFailed                        = "agent_platform.model_filter.load_failed"
+	MsgClientModelFilterSaveFailed                        = "agent_platform.model_filter.save_failed"
 )

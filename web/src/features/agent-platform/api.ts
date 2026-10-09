@@ -23,6 +23,40 @@ import { api } from '@/lib/api'
 export type AgentPlatformResourceType = 'mcp' | 'skill' | 'knowledge' | 'agent'
 export type AgentPlatformAgentCliType = 'opencode' | 'codex'
 
+export const CLIENT_MODEL_FILTER_QUERY_KEY = [
+  'agent-platform',
+  'model-filter',
+] as const
+
+export type ClientModelFilter = {
+  target_token_name: string
+  default_model: string
+  excluded_models: string[]
+}
+
+export type ClientModelFilterResponse = {
+  success: boolean
+  message?: string
+  data?: ClientModelFilter
+}
+
+export async function getClientModelFilter(): Promise<ClientModelFilterResponse> {
+  const res = await api.get<ClientModelFilterResponse>(
+    '/api/agent-platform/model-filter'
+  )
+  return res.data
+}
+
+export async function updateClientModelFilter(payload: {
+  excluded_models: string[]
+}): Promise<ClientModelFilterResponse> {
+  const res = await api.put<ClientModelFilterResponse>(
+    '/api/agent-platform/model-filter',
+    payload
+  )
+  return res.data
+}
+
 export type AgentPlatformJsonValue =
   | null
   | boolean

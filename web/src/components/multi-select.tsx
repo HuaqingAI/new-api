@@ -54,7 +54,10 @@ export type Option = {
   icon?: React.ReactNode
 }
 
-interface MultiSelectProps {
+interface MultiSelectProps extends Pick<
+  React.ComponentProps<typeof ComboboxChipsInput>,
+  'ref' | 'onBlur' | 'aria-invalid' | 'aria-describedby'
+> {
   options: Option[]
   selected: string[]
   onChange: (values: string[]) => void
@@ -71,6 +74,7 @@ interface MultiSelectProps {
   emptyText?: string
   /** Optional `id` to wire labels/aria-describedby to the input. */
   id?: string
+  'data-form-root'?: string
   /** Disable the entire control. */
   disabled?: boolean
   /** Reports current search text for remote option sources. */
@@ -409,7 +413,12 @@ export function MultiSelect(props: MultiSelectProps) {
           }}
         </ComboboxValue>
         <ComboboxChipsInput
+          ref={props.ref}
           id={props.id}
+          onBlur={props.onBlur}
+          aria-invalid={props['aria-invalid']}
+          aria-describedby={props['aria-describedby']}
+          data-form-root={props['data-form-root']}
           placeholder={
             props.selected.length === 0 && !props.renderSelectedSummary
               ? placeholder

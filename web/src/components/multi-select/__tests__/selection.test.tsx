@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { createRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { MultiSelect } from '@/components/multi-select'
@@ -50,6 +50,29 @@ function Fixture(props: {
 }
 
 describe('multi-select batch paste', () => {
+  it('forwards field accessibility and an input ref so invalid selections can receive focus', () => {
+    const inputRef = createRef<HTMLInputElement>()
+    render(
+      <>
+        <label htmlFor='models'>Models</label>
+        <MultiSelect
+          id='models'
+          ref={inputRef}
+          options={options}
+          selected={[]}
+          onChange={() => undefined}
+          aria-invalid
+          aria-describedby='models-error'
+        />
+        <p id='models-error'>Invalid model ID</p>
+      </>
+    )
+    const input = screen.getByRole('combobox')
+    inputRef.current?.focus()
+    expect(input).toHaveFocus()
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAccessibleDescription('Invalid model ID')
+  })
   it.each(['a,b,c', 'a，b，c', 'a\nb\nc', 'a\r\nb\r\nc'])(
     'adds every pasted value including the final item without a trailing separator: %j',
     async (text) => {

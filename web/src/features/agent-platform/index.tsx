@@ -116,6 +116,7 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  CLIENT_MODEL_FILTER_QUERY_KEY,
   type AgentPlatformAgentItem,
   type AgentPlatformAgentCliType,
   type AgentPlatformAgentVersion,
@@ -148,6 +149,7 @@ import {
   uploadAgentPlatformAvatar,
   uploadAgentPlatformSkillPackage,
 } from './api'
+import { ClientModelFilterSettings } from './components/ClientModelFilterSettings'
 import { DepartmentGrantTreeOptions } from './components/department-grant-tree-options'
 import {
   GrantSubjectMultiSelect,
@@ -2221,6 +2223,11 @@ export function AgentPlatformShell() {
     void skillsQuery.refetch()
     void knowledgeQuery.refetch()
     void agentsQuery.refetch()
+    if (isSuperAdmin) {
+      void queryClient.invalidateQueries({
+        queryKey: CLIENT_MODEL_FILTER_QUERY_KEY,
+      })
+    }
   }
 
   const mcpItems = getItems(mcpsQuery.data)
@@ -2293,12 +2300,12 @@ export function AgentPlatformShell() {
         <SectionPageLayout.Content>
           <div className='space-y-6'>
             <Card>
-              <CardHeader className='gap-3 border-b'>
-                <div className='flex items-start gap-3'>
-                  <span className='bg-primary/10 text-primary inline-flex size-10 items-center justify-center rounded-xl'>
+              <CardHeader className='flex flex-col gap-3 border-b sm:flex-row sm:justify-between'>
+                <div className='flex min-w-0 items-start gap-3'>
+                  <span className='bg-primary/10 text-primary inline-flex size-10 shrink-0 items-center justify-center rounded-xl'>
                     <Boxes className='size-5' />
                   </span>
-                  <div className='space-y-1'>
+                  <div className='min-w-0 space-y-1'>
                     <CardTitle>{t('Resource control plane')}</CardTitle>
                     <CardDescription>
                       {t(
@@ -2307,6 +2314,7 @@ export function AgentPlatformShell() {
                     </CardDescription>
                   </div>
                 </div>
+                {isSuperAdmin && <ClientModelFilterSettings />}
               </CardHeader>
               <CardContent className='pt-4'>
                 <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>

@@ -20,6 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -253,6 +255,19 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 	}
+	var excludedModels map[string]struct{}
+	if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/v1/models" &&
+		c.GetString("token_name") == serviceaionui.DefaultPersonalAPIKeyName {
+		excluded, err := setting.GetClientModelFilterExcludedModels()
+		if err != nil {
+			common.SysError("invalid client model filter; keeping the existing model list")
+		} else if len(excluded) > 0 {
+			excludedModels = make(map[string]struct{}, len(excluded))
+			for _, id := range excluded {
+				excludedModels[id] = struct{}{}
+			}
+		}
+	}
 	models := service.GetGroupsEnabledModels(ownerGroups)
 	for _, modelName := range models {
 		if modelLimitEnable {
@@ -262,6 +277,9 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		}
 		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
+			continue
+		}
+		if _, excluded := excludedModels[modelName]; excluded {
 			continue
 		}
 		userModelNames = append(userModelNames, modelName)

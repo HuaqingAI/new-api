@@ -33,6 +33,7 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	common.OptionMap[setting.ClientModelFilterExcludedModelsKey] = "[]"
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -228,6 +229,10 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == setting.ClientModelFilterExcludedModelsKey {
+		_, _, err := setting.NormalizeClientModelFilter(value)
+		return err
+	}
 	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
 		return err
 	}
@@ -244,6 +249,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == setting.ClientModelFilterExcludedModelsKey {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -280,6 +288,14 @@ func UpdateOption(key string, value string) error {
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
+	}
+	if value, ok := values[setting.ClientModelFilterExcludedModelsKey]; ok {
+		_, canonical, err := setting.NormalizeClientModelFilter(value)
+		if err != nil {
+			return err
+		}
+		values = maps.Clone(values)
+		values[setting.ClientModelFilterExcludedModelsKey] = canonical
 	}
 	for key := range values {
 		if IsPasskeyDomainOption(key) {
@@ -340,6 +356,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == setting.ClientModelFilterExcludedModelsKey {
+		_, value, err = setting.NormalizeClientModelFilter(value)
+		if err != nil {
+			return err
+		}
+	}
 	if key == retiredThemeOptionKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)

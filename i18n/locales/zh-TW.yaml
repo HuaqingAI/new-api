@@ -348,3 +348,8 @@ enterprise.usage.report_not_configured: "用量報告尚未配置"
 enterprise.dingtalk.sync_conflict_not_found: "釘釘同步衝突不存在"
 enterprise.dingtalk.sync_conflict_not_pending: "釘釘同步衝突已不在待處理狀態"
 enterprise.dingtalk.sync_conflict_no_candidate: "釘釘同步衝突沒有唯一候選使用者"
+
+agent_platform.model_filter.invalid: "用戶端模型過濾設定無效，請提交符合數量和長度限制的模型 ID 陣列。"
+agent_platform.model_filter.too_large: "用戶端模型過濾請求不能超過 64 KiB。"
+agent_platform.model_filter.load_failed: "載入用戶端模型過濾設定失敗。"
+agent_platform.model_filter.save_failed: "儲存用戶端模型過濾設定失敗。"

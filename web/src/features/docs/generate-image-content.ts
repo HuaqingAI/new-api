@@ -66,28 +66,28 @@ export const GENERATE_IMAGE_EXAMPLES = [
     title: '文生图',
     description: '用自然语言描述主体、光照与用途，生成产品照片。',
     prompt:
-      '使用 $generate-image 帮我生成一张白色陶瓷杯的产品照片。杯子放在浅色桌面上，柔和自然光，背景简洁，适合电商展示。使用 gpt-image-2.5-flare，将图片保存到当前工作目录的 output/generate-image 中，并展示生成结果。',
+      '使用 $generate-image 的 gpt-image-2.5-flare 帮我生成一张白色陶瓷杯的产品照片。杯子放在浅色桌面上，柔和自然光，背景简洁，适合电商展示。',
   },
   {
     id: 'edit',
     title: '精细改图',
     description: '先把参考图附加到 Codex，或提供本机文件路径。',
     prompt:
-      '使用 $generate-image 编辑我提供的图片：把杯子的颜色改成深蓝色，保留杯子的形状、光照和背景。使用 gpt-image-2.5-sunburst，保存编辑后的图片并展示结果。',
+      '使用 $generate-image 的 gpt-image-2.5-sunburst  编辑我提供的图片：把杯子的颜色改成深蓝色，保留杯子的形状、光照和背景。',
   },
   {
     id: 'composite',
     title: '多参考图合成',
     description: '先提供产品图和背景图，再说明需要保留与调整的内容。',
     prompt:
-      '使用 $generate-image，将我提供的产品图和背景图合成一张宣传图片。保持产品外观和比例，统一光照与透视，让产品自然融入背景。使用 doubao-seedream-5.0-pro，把结果保存到 output/generate-image 中。',
+      '使用 $generate-image 的 doubao-seedream-5.0-pro 将我提供的产品图和背景图合成一张宣传图片。保持产品外观和比例，统一光照与透视，让产品自然融入背景。',
   },
   {
     id: 'gemini',
     title: 'Gemini 场景图',
     description: '描述场景、氛围和画面比例，生成横向风景图。',
     prompt:
-      '使用 $generate-image 生成一张清晨山谷的横向风景图，有薄雾和柔和阳光，画面比例 16:9。使用 gemini-3.1-flash-image，把图片保存到当前工作目录并展示结果。',
+      '使用 $generate-image 的 gemini-3.1-flash-image  生成一张清晨山谷的横向风景图，有薄雾和柔和阳光，画面比例 16:9。',
   },
 ]
 

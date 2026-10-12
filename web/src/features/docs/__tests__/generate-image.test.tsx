@@ -346,13 +346,29 @@ describe('GenerateImageDocsPage', () => {
   })
 
   it.each([
-    ['复制文生图示例', 'gpt-image-2.5-flare'],
-    ['复制精细改图示例', 'gpt-image-2.5-sunburst'],
-    ['复制多参考图合成示例', 'doubao-seedream-5.0-pro'],
-    ['复制Gemini 场景图示例', 'gemini-3.1-flash-image'],
+    [
+      '复制文生图示例',
+      'gpt-image-2.5-flare',
+      '使用 $generate-image 的 gpt-image-2.5-flare 帮我生成一张白色陶瓷杯的产品照片。杯子放在浅色桌面上，柔和自然光，背景简洁，适合电商展示。',
+    ],
+    [
+      '复制精细改图示例',
+      'gpt-image-2.5-sunburst',
+      '使用 $generate-image 的 gpt-image-2.5-sunburst  编辑我提供的图片：把杯子的颜色改成深蓝色，保留杯子的形状、光照和背景。',
+    ],
+    [
+      '复制多参考图合成示例',
+      'doubao-seedream-5.0-pro',
+      '使用 $generate-image 的 doubao-seedream-5.0-pro 将我提供的产品图和背景图合成一张宣传图片。保持产品外观和比例，统一光照与透视，让产品自然融入背景。',
+    ],
+    [
+      '复制Gemini 场景图示例',
+      'gemini-3.1-flash-image',
+      '使用 $generate-image 的 gemini-3.1-flash-image  生成一张清晨山谷的横向风景图，有薄雾和柔和阳光，画面比例 16:9。',
+    ],
   ])(
     'copies the complete visible sample when %s is activated',
-    async (name, model) => {
+    async (name, model, expectedPrompt) => {
       const user = userEvent.setup()
       const writeText = vi
         .spyOn(navigator.clipboard, 'writeText')
@@ -362,13 +378,13 @@ describe('GenerateImageDocsPage', () => {
         (content) =>
           content.startsWith('使用 $generate-image') && content.includes(model)
       )
+      expect(sample.textContent).toBe(expectedPrompt)
 
       await user.click(screen.getByRole('button', { name }))
 
       await waitFor(() =>
-        expect(writeText).toHaveBeenCalledWith(sample.textContent)
+        expect(writeText).toHaveBeenCalledWith(expectedPrompt)
       )
-      expect(sample.textContent).toContain('$generate-image')
     }
   )
 

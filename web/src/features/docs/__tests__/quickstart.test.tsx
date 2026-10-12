@@ -16,7 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterContextProvider,
+} from '@tanstack/react-router'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
 import { describe, expect, it, vi } from 'vitest'
@@ -43,9 +49,15 @@ vi.mock('@/lib/lobe-icon', () => ({
 }))
 
 function renderDocsGuide() {
+  const router = createRouter({
+    routeTree: createRootRoute(),
+    history: createMemoryHistory({ initialEntries: ['/docs'] }),
+  })
   return render(
     <I18nextProvider i18n={i18n}>
-      <DocsGuide />
+      <RouterContextProvider router={router}>
+        <DocsGuide />
+      </RouterContextProvider>
     </I18nextProvider>
   )
 }
@@ -68,6 +80,22 @@ function mockClipboardWrite() {
 }
 
 describe('DocsGuide', () => {
+  it('links the skill guide outside the existing tool selection', () => {
+    renderDocsGuide()
+
+    expect(screen.getByRole('link', { name: '查看使用指南' })).toHaveAttribute(
+      'href',
+      '/docs/generate-image'
+    )
+    const toolSelection = screen.getByRole('radiogroup', {
+      name: '选择你使用的工具',
+    })
+    expect(within(toolSelection).getAllByRole('radio')).toHaveLength(4)
+    expect(
+      within(toolSelection).queryByText('HTH 生图 Skill')
+    ).not.toBeInTheDocument()
+  })
+
   it('creates one tutorial document for each tool and system pair', () => {
     const docKeys = TUTORIAL_DOCS.map(
       (doc) => `${doc.toolId}-${doc.systemId}`

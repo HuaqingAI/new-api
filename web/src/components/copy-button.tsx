@@ -39,6 +39,7 @@ interface CopyButtonProps {
   tooltip?: string
   successTooltip?: string
   onCopy?: () => void
+  onCopyError?: () => void
   'aria-label'?: string
 }
 
@@ -52,6 +53,7 @@ export function CopyButton({
   tooltip,
   successTooltip,
   onCopy,
+  onCopyError,
   'aria-label': ariaLabel,
 }: CopyButtonProps) {
   const { t } = useTranslation()
@@ -66,7 +68,9 @@ export function CopyButton({
     const success = await copyToClipboard(value)
     if (success) {
       onCopy?.()
+      return
     }
+    onCopyError?.()
   }
 
   const button = (

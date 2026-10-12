@@ -30,6 +30,7 @@ import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authentica
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as DocsGenerateImageRouteImport } from './routes/docs/generate-image'
 import { Route as DownloadsIndexRouteImport } from './routes/downloads/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
@@ -189,6 +190,11 @@ const AboutIndexRoute = AboutIndexRouteImport.update({
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/docs/',
   path: '/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsGenerateImageRoute = DocsGenerateImageRouteImport.update({
+  id: '/docs/generate-image',
+  path: '/docs/generate-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DownloadsIndexRoute = DownloadsIndexRouteImport.update({
@@ -536,6 +542,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/docs/generate-image': typeof DocsGenerateImageRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -612,6 +619,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/chat2link': typeof AuthenticatedChat2linkRoute
+  '/docs/generate-image': typeof DocsGenerateImageRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
   '/docs': typeof DocsIndexRoute
@@ -692,6 +700,7 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
+  '/docs/generate-image': typeof DocsGenerateImageRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -771,6 +780,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/docs/generate-image'
     | '/oauth/$provider'
     | '/about/'
     | '/docs/'
@@ -847,6 +857,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/chat2link'
+    | '/docs/generate-image'
     | '/oauth/$provider'
     | '/about'
     | '/docs'
@@ -926,6 +937,7 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/chat2link'
+    | '/docs/generate-image'
     | '/oauth/$provider'
     | '/about/'
     | '/docs/'
@@ -997,6 +1009,7 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  DocsGenerateImageRoute: typeof DocsGenerateImageRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -1155,6 +1168,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs/'
       preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/generate-image': {
+      id: '/docs/generate-image'
+      path: '/docs/generate-image'
+      fullPath: '/docs/generate-image'
+      preLoaderRoute: typeof DocsGenerateImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/downloads/': {
@@ -1739,6 +1759,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  DocsGenerateImageRoute: DocsGenerateImageRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
   DocsIndexRoute: DocsIndexRoute,

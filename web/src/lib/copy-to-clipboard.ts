@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
  * Fallback copy method using document.execCommand (works in HTTP)
  */
 function fallbackCopyToClipboard(text: string): boolean {
+  const activeElement = document.activeElement
   const textArea = document.createElement('textarea')
   textArea.value = text
 
@@ -49,7 +50,6 @@ function fallbackCopyToClipboard(text: string): boolean {
 
     // Execute copy command
     const successful = document.execCommand('copy')
-    document.body.removeChild(textArea)
     // Clear selection ranges for better UX
     const selectionAfter = window.getSelection()
     if (selectionAfter) {
@@ -60,8 +60,12 @@ function fallbackCopyToClipboard(text: string): boolean {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Fallback copy failed:', err)
-    document.body.removeChild(textArea)
     return false
+  } finally {
+    textArea.remove()
+    if (activeElement instanceof HTMLElement) {
+      activeElement.focus({ preventScroll: true })
+    }
   }
 }
 

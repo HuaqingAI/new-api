@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { ArrowRight, Cable, ExternalLink, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -431,6 +432,31 @@ export function DocsGuide() {
             selectedTool={selectedTool}
             selectedSystem={selectedSystem}
           />
+        </section>
+        <section
+          lang='zh-CN'
+          aria-labelledby='generate-image-entry'
+          className='bg-card mt-8 flex flex-col gap-5 rounded-xl border p-5 md:flex-row md:items-center md:justify-between md:p-6'
+        >
+          <div>
+            <p className='text-muted-foreground text-xs'>扩展能力</p>
+            <h2 id='generate-image-entry' className='mt-2 text-xl font-bold'>
+              HTH 生图 Skill
+            </h2>
+            <p className='text-muted-foreground mt-3 text-sm leading-7'>
+              复制一段提示词，让 Codex 下载并安装
+              generate-image，开始生成和编辑图片。
+            </p>
+          </div>
+          <Button
+            role='link'
+            variant='outline'
+            className='h-11 shrink-0'
+            render={<Link to='/docs/generate-image' />}
+          >
+            查看使用指南
+            <ArrowRight aria-hidden='true' data-icon='inline-end' />
+          </Button>
         </section>
       </main>
     </div>

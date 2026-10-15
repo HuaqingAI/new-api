@@ -1,9 +1,0 @@
-./aac.go
-./bitstream.go
-./codec.go
-./h264.go
-./h265.go
-./mp3.go
-./opus.go
-./util.go
-./vp8.go

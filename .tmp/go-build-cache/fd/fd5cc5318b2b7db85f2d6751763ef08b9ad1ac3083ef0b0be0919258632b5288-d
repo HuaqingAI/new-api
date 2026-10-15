@@ -1,4 +1,0 @@
-package mem
-//go:cgo_import_dynamic host_statistics host_statistics ""
-//go:cgo_import_dynamic mach_host_self mach_host_self ""
-//go:cgo_import_dynamic _ _ "/usr/lib/libSystem.B.dylib"

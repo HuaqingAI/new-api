@@ -1,7 +1,0 @@
-./aiff.go
-./apple_metadata.go
-./chunk.go
-./chunk_parsing.go
-./decoder.go
-./doc.go
-./encoder.go

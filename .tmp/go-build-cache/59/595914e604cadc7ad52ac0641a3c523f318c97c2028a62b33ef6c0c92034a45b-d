@@ -1,8 +1,0 @@
-./adaptor.go
-./audio.go
-./chat_via_responses.go
-./constant.go
-./helper.go
-./relay-openai.go
-./relay_responses.go
-./relay_responses_compact.go

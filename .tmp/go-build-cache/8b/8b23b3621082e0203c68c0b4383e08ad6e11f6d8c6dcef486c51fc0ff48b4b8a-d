@@ -1,9 +1,0 @@
-./application.go
-./cuesheet.go
-./meta.go
-./padding.go
-./picture.go
-./reader.go
-./seektable.go
-./streaminfo.go
-./vorbiscomment.go

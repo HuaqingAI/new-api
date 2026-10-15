@@ -1,7 +1,0 @@
-./cue_chunk.go
-./decoder.go
-./encoder.go
-./list_chunk.go
-./metadata.go
-./smpl_chunk.go
-./wav.go

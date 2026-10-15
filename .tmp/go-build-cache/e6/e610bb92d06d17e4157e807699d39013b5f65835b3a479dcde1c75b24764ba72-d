@@ -1,8 +1,0 @@
-./discord.go
-./generic.go
-./github.go
-./linuxdo.go
-./oidc.go
-./provider.go
-./registry.go
-./types.go

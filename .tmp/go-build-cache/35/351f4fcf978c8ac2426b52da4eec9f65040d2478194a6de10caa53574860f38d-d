@@ -1,4 +1,0 @@
-./ddlmod.go
-./errors.go
-./migrator.go
-./sqlite.go

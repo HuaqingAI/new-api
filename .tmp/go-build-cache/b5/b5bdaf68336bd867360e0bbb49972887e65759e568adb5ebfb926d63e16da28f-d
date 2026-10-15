@@ -1,7 +1,0 @@
-./adaptor.go
-./constants.go
-./dto.go
-./image.go
-./image_wan.go
-./rerank.go
-./text.go

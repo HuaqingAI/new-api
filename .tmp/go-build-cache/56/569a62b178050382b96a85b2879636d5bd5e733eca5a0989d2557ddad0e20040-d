@@ -1,4 +1,0 @@
-./cache_layer.go
-./collector.go
-./collector_noop.go
-./collector_prometheus.go

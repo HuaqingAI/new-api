@@ -1,7 +1,0 @@
-./discord.go
-./fetch_setting.go
-./legal.go
-./oidc.go
-./passkey.go
-./system_setting_old.go
-./theme.go

@@ -1,6 +1,0 @@
-./debug_off.go
-./func_types[generated].go
-./opcodes.go
-./program.go
-./utils.go
-./vm.go

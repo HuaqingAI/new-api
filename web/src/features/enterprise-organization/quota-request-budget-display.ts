@@ -1,0 +1,89 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { formatEnterpriseQuotaAmount } from './quota-amount-controls'
+import type { QuotaRequestCapabilityBudgetItem } from './types'
+
+export type QuotaRequestBudgetDisplayText = {
+  departmentName: string
+  identity: string
+  typeLabel: string
+  remainingLabel: string
+  remainingAmountLabel: string
+  statusLabel: string
+}
+
+export function enterpriseBudgetStatusLabel(
+  status: string,
+  t: (key: string) => string
+) {
+  const labels: Record<string, string> = {
+    active: 'Active',
+    approved: 'Approved',
+    cancelled: 'Cancelled',
+    closed: 'Closed',
+    expired: 'Expired',
+    fulfilled: 'Fulfilled',
+    paused: 'Paused',
+    rejected: 'Rejected',
+    revoked: 'Revoked',
+    submitted: 'Submitted',
+    superseded: 'Superseded',
+  }
+  return t(labels[status] ?? 'Unknown status')
+}
+
+export function formatBudgetType(type: string, t: (key: string) => string) {
+  if (type === 'balance') return t('Balance Budget')
+  if (type === 'subscription') return t('Subscription Budget')
+  return t('Unknown budget type')
+}
+
+export function getQuotaRequestBudgetDisplayText(
+  item: QuotaRequestCapabilityBudgetItem,
+  t: (key: string, options?: Record<string, unknown>) => string
+): QuotaRequestBudgetDisplayText {
+  const remaining = formatEnterpriseQuotaAmount(item.remaining, t)
+  const isPublic = item.is_public ?? item.scope_type === 'public'
+  const poolName = item.name?.trim() || `#${item.id}`
+  return {
+    departmentName: isPublic
+      ? t('Public budget pool')
+      : item.department_name || `#${item.department_id}`,
+    identity: item.name?.trim()
+      ? poolName
+      : t('Budget #{{budgetId}}', { budgetId: item.id }),
+    typeLabel: formatBudgetType(item.type, t),
+    remainingLabel: t('Remaining {{remaining}}', {
+      remaining: remaining.quotaLabel,
+    }),
+    remainingAmountLabel: remaining.auxiliaryLabel,
+    statusLabel: enterpriseBudgetStatusLabel(item.status, t),
+  }
+}
+
+export function getQuotaRequestBudgetTriggerLabel(
+  item: QuotaRequestCapabilityBudgetItem,
+  t: (key: string, options?: Record<string, unknown>) => string
+) {
+  const display = getQuotaRequestBudgetDisplayText(item, t)
+  return t('{{department}} · {{budget}}', {
+    department: display.departmentName,
+    budget: display.identity,
+  })
+}

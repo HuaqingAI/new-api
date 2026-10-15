@@ -1,25 +1,15 @@
 package dto
 
-type Notify struct {
-	Type    string        `json:"type"`
-	Title   string        `json:"title"`
-	Content string        `json:"content"`
-	Values  []interface{} `json:"values"`
-}
+import relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 
-const ContentValueParam = "{{value}}"
+type Notify = relaydto.Notify
+
+const ContentValueParam = relaydto.ContentValueParam
 
 const (
-	NotifyTypeQuotaExceed   = "quota_exceed"
-	NotifyTypeChannelUpdate = "channel_update"
-	NotifyTypeChannelTest   = "channel_test"
+	NotifyTypeQuotaExceed   = relaydto.NotifyTypeQuotaExceed
+	NotifyTypeChannelUpdate = relaydto.NotifyTypeChannelUpdate
+	NotifyTypeChannelTest   = relaydto.NotifyTypeChannelTest
 )
 
-func NewNotify(t string, title string, content string, values []interface{}) Notify {
-	return Notify{
-		Type:    t,
-		Title:   title,
-		Content: content,
-		Values:  values,
-	}
-}
+var NewNotify = relaydto.NewNotify

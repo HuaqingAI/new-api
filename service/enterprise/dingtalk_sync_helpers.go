@@ -1,0 +1,247 @@
+package enterprise
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/constant"
+	entmodel "github.com/QuantumNous/new-api/model/enterprise"
+	"gorm.io/gorm"
+)
+
+func (s *DingTalkSyncService) disableStaleRecords(ctx context.Context, taskId int, tenantId int, snapshot *dingTalkSyncSnapshot) {
+	var departments []entmodel.Department
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND source_type = ?", tenantId, constant.DepartmentSourceTypeDingTalk).Find(&departments).Error; err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, "", "stale_department_query_failed")
+		return
+	}
+	for _, department := range departments {
+		if _, ok := snapshot.seenDepartmentExternalIds[department.ExternalId]; ok {
+			continue
+		}
+		if department.Status == constant.DepartmentStatusDisabled {
+			continue
+		}
+		if err := s.db.WithContext(ctx).Model(&department).Updates(map[string]any{"status": constant.DepartmentStatusDisabled, "sync_status": constant.DepartmentSyncStatusWarning, "sync_error": "not_seen_in_latest_sync"}).Error; err != nil {
+			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectDepartment, department.ExternalId, "department_disable_failed")
+			continue
+		}
+		s.incrementTaskCounter(ctx, taskId, "departments_disabled", 1)
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectDepartment, ObjectExternalId: department.ExternalId, Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "department_disabled"})
+	}
+
+	var memberships []entmodel.UserDepartment
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND external_source = ? AND status = ?", tenantId, constant.EnterpriseExternalSourceDingTalk, constant.EnterpriseMembershipStatusActive).Find(&memberships).Error; err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectMembership, "", "stale_membership_query_failed")
+		return
+	}
+	for _, membership := range memberships {
+		key := fmt.Sprintf("%d:%d:%s", membership.UserId, membership.DepartmentId, membership.ExternalSource)
+		if _, ok := snapshot.seenMembershipKeys[key]; ok {
+			continue
+		}
+		now := time.Now().Unix()
+		if err := s.db.WithContext(ctx).Model(&membership).Updates(map[string]any{"status": constant.EnterpriseMembershipStatusLeft, "left_at": now}).Error; err != nil {
+			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectMembership, membership.ExternalUserId, "membership_disable_failed")
+			continue
+		}
+		s.incrementTaskCounter(ctx, taskId, "memberships_disabled", 1)
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectMembership, ObjectExternalId: membership.ExternalUserId, Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "membership_left_or_transferred"})
+	}
+
+	var ownerRoles []entmodel.DepartmentRole
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND source = ? AND status = ?", tenantId, constant.EnterpriseDepartmentRoleSourceDingTalkOwner, constant.EnterpriseDepartmentRoleStatusActive).Find(&ownerRoles).Error; err != nil {
+		s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectOwner, "", "stale_owner_query_failed")
+		return
+	}
+	for _, role := range ownerRoles {
+		key := fmt.Sprintf("%d:%d:%s", role.UserId, role.DepartmentId, role.Source)
+		if _, ok := snapshot.seenOwnerKeys[key]; ok {
+			continue
+		}
+		if err := s.db.WithContext(ctx).Model(&role).Updates(map[string]any{"status": constant.EnterpriseDepartmentRoleStatusInactive}).Error; err != nil {
+			s.logSyncFailure(ctx, taskId, tenantId, constant.DingTalkSyncObjectOwner, strconv.Itoa(role.UserId), "owner_fact_disable_failed")
+			continue
+		}
+		s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: constant.DingTalkSyncObjectOwner, ObjectExternalId: strconv.Itoa(role.UserId), Action: constant.DingTalkSyncLogActionDisabled, Status: constant.DingTalkSyncLogStatusSuccess, Message: "owner_fact_inactivated"})
+	}
+}
+
+func (s *DingTalkSyncService) updateDingTalkIdentity(ctx context.Context, tenantId int, corpId string, dingTalkUser DingTalkDepartmentUserInfo, userId int) {
+	identityKey := dingtalkSyncIdentityKey(dingTalkUser)
+	if identityKey == "" {
+		return
+	}
+	var existing entmodel.DingTalkIdentity
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND identity_key = ?", tenantId, identityKey).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		_ = s.db.WithContext(ctx).Create(&entmodel.DingTalkIdentity{
+			TenantId:       tenantId,
+			CorpId:         strings.TrimSpace(corpId),
+			IdentityKey:    identityKey,
+			UnionId:        strings.TrimSpace(dingTalkUser.UnionId),
+			ExternalUserId: strings.TrimSpace(dingTalkUser.UserId),
+			Mobile:         strings.TrimSpace(dingTalkUser.Mobile),
+			UserId:         userId,
+			Status:         DingTalkIdentityStatusActive,
+		}).Error
+		return
+	}
+	_ = s.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
+		"corp_id":          strings.TrimSpace(corpId),
+		"identity_key":     identityKey,
+		"union_id":         strings.TrimSpace(dingTalkUser.UnionId),
+		"external_user_id": strings.TrimSpace(dingTalkUser.UserId),
+		"mobile":           strings.TrimSpace(dingTalkUser.Mobile),
+		"user_id":          userId,
+		"status":           DingTalkIdentityStatusActive,
+	}).Error
+}
+
+func (s *DingTalkSyncService) availableSyncUsername(dingTalkUser DingTalkDepartmentUserInfo) string {
+	base := firstReadableEnterpriseUsername(
+		dingTalkUser.Name,
+		dingTalkUser.Email,
+		dingTalkUser.Mobile,
+		dingTalkUser.UserId,
+		dingTalkUser.UnionId,
+	)
+	return resolveAvailableEnterpriseUsername(
+		s.db.WithContext(context.Background()),
+		base,
+		dingTalkUser.UserId,
+		dingTalkUser.UnionId,
+		dingTalkUser.Mobile,
+	)
+}
+
+func (s *DingTalkSyncService) finishTask(ctx context.Context, taskId int) error {
+	var task entmodel.DingTalkSyncTask
+	if err := s.db.WithContext(ctx).Where("id = ?", taskId).First(&task).Error; err != nil {
+		return err
+	}
+	status := constant.DingTalkSyncTaskStatusSucceeded
+	if task.FailedCount > 0 {
+		status = constant.DingTalkSyncTaskStatusFailed
+	}
+	if err := s.db.WithContext(ctx).Model(&task).Updates(map[string]any{"status": status, "progress": 100, "finished_at": time.Now().Unix(), "active_key": nil}).Error; err != nil {
+		return err
+	}
+	if task.TriggerSource == DingTalkScheduledTrigger {
+		updates := map[string]any{"scheduled_full_sync_last_status": status, "scheduled_full_sync_last_error": task.ErrorSummary}
+		_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", task.TenantId).Updates(updates).Error
+	}
+	return nil
+}
+
+func (s *DingTalkSyncService) finishTaskFailed(ctx context.Context, taskId int, summary string) {
+	var task entmodel.DingTalkSyncTask
+	_ = s.db.WithContext(ctx).Where("id = ?", taskId).First(&task).Error
+	_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{"status": constant.DingTalkSyncTaskStatusFailed, "progress": 100, "failed_count": gorm.Expr("failed_count + ?", 1), "error_summary": summary, "finished_at": time.Now().Unix(), "active_key": nil}).Error
+	if task.TriggerSource == DingTalkScheduledTrigger {
+		_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkConfig{}).Where("tenant_id = ?", task.TenantId).Updates(map[string]any{"scheduled_full_sync_last_status": constant.DingTalkSyncTaskStatusFailed, "scheduled_full_sync_last_error": summary}).Error
+	}
+}
+
+func (s *DingTalkSyncService) logSyncFailure(ctx context.Context, taskId int, tenantId int, objectType string, externalId string, message string) {
+	s.incrementTaskCounter(ctx, taskId, "failed_count", 1)
+	_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ? AND error_summary = ?", taskId, "").Update("error_summary", message).Error
+	s.writeLog(ctx, entmodel.DingTalkSyncLog{TaskId: taskId, TenantId: tenantId, ObjectType: objectType, ObjectExternalId: externalId, Action: constant.DingTalkSyncLogActionFailed, Status: constant.DingTalkSyncLogStatusFailed, Message: message})
+}
+
+func (s *DingTalkSyncService) incrementTaskCounter(ctx context.Context, taskId int, column string, delta int) {
+	_ = s.db.WithContext(ctx).Model(&entmodel.DingTalkSyncTask{}).Where("id = ?", taskId).Updates(map[string]any{column: gorm.Expr(column+" + ?", delta), "progress": 80}).Error
+}
+
+func (s *DingTalkSyncService) writeLog(ctx context.Context, log entmodel.DingTalkSyncLog) {
+	log.Message = truncateSyncText(log.Message, 1024)
+	log.ObjectExternalId = truncateSyncText(log.ObjectExternalId, 128)
+	_ = s.db.WithContext(ctx).Create(&log).Error
+}
+
+func parseDingTalkSyncScope(scope string) []int64 {
+	parts := strings.FieldsFunc(scope, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ';' || r == ' '
+	})
+	ids := make([]int64, 0, len(parts))
+	seen := map[int64]struct{}{}
+	for _, part := range parts {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func dingtalkSyncIdentityKey(user DingTalkDepartmentUserInfo) string {
+	if strings.TrimSpace(user.UnionId) != "" {
+		return "union:" + strings.TrimSpace(user.UnionId)
+	}
+	if strings.TrimSpace(user.UserId) != "" {
+		return "user:" + strings.TrimSpace(user.UserId)
+	}
+	return ""
+}
+
+func dingtalkSyncConflictIdentityKey(conflict entmodel.DingTalkSyncConflict) string {
+	if strings.TrimSpace(conflict.UnionId) != "" {
+		return "union:" + strings.TrimSpace(conflict.UnionId)
+	}
+	if strings.TrimSpace(conflict.ExternalUserId) != "" {
+		return "user:" + strings.TrimSpace(conflict.ExternalUserId)
+	}
+	return ""
+}
+
+func sameOptionalInt(a *int, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+func normalizeDingTalkSyncLogPage(page int, pageSize int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize
+}
+
+func truncateSyncText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit]
+}
+
+func mapDingTalkSyncTask(task entmodel.DingTalkSyncTask) DingTalkSyncTaskItem {
+	return DingTalkSyncTaskItem(task)
+}
+
+func mapDingTalkSyncLog(log entmodel.DingTalkSyncLog) DingTalkSyncLogItem {
+	return DingTalkSyncLogItem(log)
+}
+
+func mapDingTalkSyncConflict(conflict entmodel.DingTalkSyncConflict) DingTalkSyncConflictItem {
+	return DingTalkSyncConflictItem(conflict)
+}

@@ -256,6 +256,16 @@ type h2ServerResult struct {
 	attemptBodies [][]byte
 }
 
+func closeH2TestConnection(conn net.Conn) {
+	// Drain the peer after sending FIN so Windows does not abort the socket
+	// and discard the HTTP/2 frames the client has not read yet.
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.CloseWrite()
+		_, _ = io.Copy(io.Discard, tcp)
+	}
+	_ = conn.Close()
+}
+
 func acceptH2TestConnection(ln net.Listener) (net.Conn, *http2.Framer, error) {
 	conn, err := ln.Accept()
 	if err != nil {
@@ -361,7 +371,7 @@ func runResetOnFirstStreamServer(ln net.Listener, expectRetry bool) <-chan h2Ser
 			res.err = err
 			return
 		}
-		defer conn.Close()
+		defer closeH2TestConnection(conn)
 
 	attempts:
 		for attempt := 0; ; attempt++ {
@@ -416,7 +426,7 @@ func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
 
 			if attempt == 0 {
 				err = framer.WriteGoAway(0, http2.ErrCodeNo, nil)
-				conn.Close()
+				closeH2TestConnection(conn)
 				if err != nil {
 					res.err = err
 					return
@@ -425,7 +435,7 @@ func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
 			}
 
 			err = writeH2TestResponse(framer, streamID)
-			conn.Close()
+			closeH2TestConnection(conn)
 			if err != nil {
 				res.err = err
 			}

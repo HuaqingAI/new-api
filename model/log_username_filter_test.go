@@ -53,7 +53,7 @@ func TestGetAllLogsUsernameFilterMatchesCurrentUsernameAndHistoricalSnapshot(t *
 		CreatedAt: 1717117200,
 	}).Error)
 
-	logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, "", "alice_ops", "", 0, 20, 0, "", "", "", "", "")
+	logs, total, err := GetAllLogs(LogFilter{Type: LogTypeConsume, Username: "alice_ops"}, 0, 20)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)
@@ -107,19 +107,19 @@ func TestGetLogsClientAndInboundRequestIDFilters(t *testing.T) {
 		InboundRequestId: "codex-thread-2",
 	}).Error)
 
-	logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", "upstream-client-1", "")
+	logs, total, err := GetAllLogs(LogFilter{Type: LogTypeConsume, ClientRequestId: "upstream-client-1"}, 0, 20)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "upstream-client-1", logs[0].ClientRequestId)
 
-	logs, total, err = GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 20, "", "", "", "upstream-client-2", "")
+	logs, total, err = GetUserLogs(1, LogFilter{Type: LogTypeConsume, ClientRequestId: "upstream-client-2"}, 0, 20)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "upstream-client-2", logs[0].ClientRequestId)
 
-	logs, total, err = GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 20, 0, "", "", "", "", "codex-thread-2")
+	logs, total, err = GetAllLogs(LogFilter{Type: LogTypeConsume, InboundRequestId: "codex-thread-2"}, 0, 20)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)
@@ -178,7 +178,7 @@ func TestRecordConsumeLogStoresResponseAndInboundRequestIDsSeparately(t *testing
 		ModelName:      "gpt-5",
 		TokenName:      "token",
 		Quota:          42,
-		Content:        "ok",
+		Content:        []*common.Message{common.NewMessage("ok")},
 		UseTimeSeconds: 1,
 		Other:          NewLogOther(),
 	})

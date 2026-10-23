@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -15,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	modelenterprise "github.com/QuantumNous/new-api/model/enterprise"
 	"github.com/QuantumNous/new-api/router"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -45,7 +47,6 @@ func TestEnterpriseDepartmentTreeAPIRequiresBackendDepartmentPermission(t *testi
 	noSession := fixture.performDepartmentTreeRequest(t, nil)
 	require.Equal(t, http.StatusUnauthorized, noSession.Code)
 	require.Contains(t, noSession.Body.String(), `"code":"AUTH_UNAUTHORIZED"`)
-	require.Contains(t, noSession.Body.String(), "auth.access_token_invalid")
 
 	commonUserCookies := fixture.login(t, common.RoleCommonUser, common.UserStatusEnabled)
 	commonUser := fixture.performDepartmentTreeRequest(t, commonUserCookies)
@@ -270,7 +271,6 @@ func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
 	})
 	require.Equal(t, http.StatusForbidden, adminRecorder.Code)
 	require.Contains(t, adminRecorder.Body.String(), `"code":"AUTH_INSUFFICIENT_PRIVILEGE"`)
-	require.Contains(t, adminRecorder.Body.String(), "auth.insufficient_privilege")
 	require.NotContains(t, adminRecorder.Body.String(), "plain-secret")
 
 	rootCookies := fixture.login(t, common.RoleRootUser, common.UserStatusEnabled)
@@ -295,7 +295,6 @@ func TestEnterpriseDingTalkConfigAPIRequiresRootAndMasksSecret(t *testing.T) {
 	)
 	require.Equal(t, http.StatusForbidden, connectivityAdmin.Code)
 	require.Contains(t, connectivityAdmin.Body.String(), `"code":"AUTH_INSUFFICIENT_PRIVILEGE"`)
-	require.Contains(t, connectivityAdmin.Body.String(), "auth.insufficient_privilege")
 }
 
 func TestEnterpriseDepartmentAdminRoleMutationWritesAudit(t *testing.T) {
@@ -378,9 +377,8 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.Log{}, &model.AuditLog{}, &model.UserAccessToken{}, &model.Option{}))
 	require.NoError(t, modelenterprise.Migrate(db))
-	accessToken := "enterprise-department-tree-api-test"
 	require.NoError(t, db.Create(&model.User{
 		Id:          1001,
 		Username:    "enterprise-admin",
@@ -390,10 +388,11 @@ func newEnterpriseDepartmentTreeAPIFixture(t *testing.T) enterpriseDepartmentTre
 		AffCode:     "enterprise-admin-api-fixture",
 		Status:      common.UserStatusEnabled,
 		Role:        common.RoleAdminUser,
-		AccessToken: &accessToken,
+		AuthVersion: 1,
 	}).Error)
 	model.DB = db
 	model.LOG_DB = db
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
 
 	engine := gin.New()
 	apiRouter := engine.Group("/api")
@@ -420,9 +419,11 @@ func (f enterpriseDepartmentTreeAPIFixture) login(t *testing.T, role int, status
 	if status != common.UserStatusEnabled {
 		t.Fatalf("test fixture only supports enabled login sessions")
 	}
+	bundle, err := service.CreateLoginSession(1001, "password", "127.0.0.1", "enterprise-api-test")
+	require.NoError(t, err)
 	return []*http.Cookie{{
 		Name:  fmt.Sprintf("test-access-token-role-%d", role),
-		Value: "enterprise-department-tree-api-test",
+		Value: bundle.AccessToken,
 	}}
 }
 

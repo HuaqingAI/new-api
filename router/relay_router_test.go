@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
@@ -70,10 +71,11 @@ func setupAionUiModelFilterRouterTest(t *testing.T) (*gin.Engine, *model.User, s
 	tables, err := db.Migrator().GetTables()
 	require.NoError(t, err)
 	require.Empty(t, tables, "model filter tests require an empty disposable database")
-	fixtures := []any{&model.Option{}, &model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.AuditLog{}}
+	fixtures := []any{&model.Option{}, &model.User{}, &model.UserAccessToken{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.AuditLog{}}
 	t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(fixtures...)) })
 	require.NoError(t, db.AutoMigrate(fixtures...))
 	model.LOG_DB = db
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
 	model.InitOptionMap()
 
 	rootBearer, adminBearer := "model-filter-root-pat", "model-filter-admin-pat"

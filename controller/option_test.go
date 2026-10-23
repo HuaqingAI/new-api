@@ -9,16 +9,22 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 func TestUpdateOptionValidatesEnterpriseBudgetThresholds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
+	previousDB := model.DB
+	previousOptionMap := common.OptionMap
+	previousSQLite, previousMySQL, previousPostgreSQL := common.UsingSQLite, common.UsingMySQL, common.UsingPostgreSQL
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -35,6 +41,9 @@ func TestUpdateOptionValidatesEnterpriseBudgetThresholds(t *testing.T) {
 	t.Cleanup(func() {
 		operation_setting.GetQuotaSetting().EnterpriseBudgetWarningThreshold = oldWarning
 		operation_setting.GetQuotaSetting().EnterpriseBudgetCriticalThreshold = oldCritical
+		model.DB = previousDB
+		common.OptionMap = previousOptionMap
+		common.UsingSQLite, common.UsingMySQL, common.UsingPostgreSQL = previousSQLite, previousMySQL, previousPostgreSQL
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()
@@ -51,8 +60,19 @@ func TestUpdateOptionValidatesEnterpriseBudgetThresholds(t *testing.T) {
 		"value": 98,
 	})
 	require.Equal(t, http.StatusOK, invalidRecorder.Code)
-	require.Contains(t, invalidRecorder.Body.String(), `"success":false`)
-	require.Contains(t, invalidRecorder.Body.String(), `enterprise.organization.department_budget_threshold_invalid`)
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(invalidRecorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, i18n.Translate(i18n.LangEn, i18n.MsgEnterpriseDepartmentBudgetThresholdInvalid), response.Message)
+	assert.Equal(t, 80, operation_setting.GetQuotaSetting().EnterpriseBudgetWarningThreshold)
+	assert.Equal(t, 95, operation_setting.GetQuotaSetting().EnterpriseBudgetCriticalThreshold)
+	assert.NotContains(t, common.OptionMap, "quota_setting.enterprise_budget_warning_threshold")
+	var persistedOptions int64
+	require.NoError(t, db.Model(&model.Option{}).Count(&persistedOptions).Error)
+	assert.Zero(t, persistedOptions)
 
 	validRecorder := performOptionRequest(t, router, map[string]any{
 		"key":   "quota_setting.enterprise_budget_warning_threshold",
@@ -70,6 +90,7 @@ func performOptionRequest(t *testing.T, router *gin.Engine, body any) *httptest.
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPut, "/api/option/", bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept-Language", i18n.LangEn)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 	return recorder

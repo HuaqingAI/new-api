@@ -13,12 +13,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	dtoaionui "github.com/QuantumNous/new-api/dto/aionui"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	entmodel "github.com/QuantumNous/new-api/model/enterprise"
 	serviceaionui "github.com/QuantumNous/new-api/service/aionui"
 	entservice "github.com/QuantumNous/new-api/service/enterprise"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -140,12 +142,20 @@ func TestDingTalkOAuthCallbackBindsLoggedInUser(t *testing.T) {
 }
 
 func TestDingTalkOAuthCallbackRejectsInvalidState(t *testing.T) {
-	router, _ := setupDingTalkOAuthTestRouter(t, &fakeDingTalkOAuthService{}, model.AuthFlowIntentLogin)
+	router, state := setupDingTalkOAuthTestRouter(t, &fakeDingTalkOAuthService{}, model.AuthFlowIntentLogin)
 
 	recorder := performDingTalkOAuthCallback(router, "/api/oauth/dingtalk?code=ok&state=wrong", nil)
 
 	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "oauth.state_invalid")
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, i18n.Translate(i18n.LangEn, i18n.MsgOAuthStateInvalid), response.Message)
+	_, err := model.GetAuthFlow(state, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
+	require.NoError(t, err, "an invalid state must not consume a different pending login")
 }
 
 func TestDingTalkOAuthCallbackMapsDingTalkErrors(t *testing.T) {
@@ -194,7 +204,13 @@ func TestDingTalkOAuthCallbackMapsDingTalkErrors(t *testing.T) {
 			recorder := performDingTalkOAuthCallback(router, "/api/oauth/dingtalk?code=ok&state="+state, nil)
 
 			require.Equal(t, testCase.statusCode, recorder.Code)
-			require.Contains(t, recorder.Body.String(), testCase.messageKey)
+			var response struct {
+				Success bool   `json:"success"`
+				Message string `json:"message"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.False(t, response.Success)
+			assert.Equal(t, i18n.Translate(i18n.LangEn, testCase.messageKey), response.Message)
 		})
 	}
 }
@@ -202,6 +218,7 @@ func TestDingTalkOAuthCallbackMapsDingTalkErrors(t *testing.T) {
 func setupDingTalkOAuthTestRouter(t *testing.T, fake *fakeDingTalkOAuthService, intent string) (*gin.Engine, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
 	db := newDingTalkOAuthControllerDB(t)
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
@@ -275,6 +292,7 @@ func newDingTalkOAuthControllerDB(t *testing.T) *gorm.DB {
 
 func performDingTalkOAuthCallback(router *gin.Engine, target string, cookies []*http.Cookie) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodGet, target, nil)
+	request.Header.Set("Accept-Language", i18n.LangEn)
 	for _, cookie := range cookies {
 		request.AddCookie(cookie)
 	}

@@ -82,7 +82,7 @@ export function GenerateImageUsageGuide() {
         </h2>
         <p className='text-muted-foreground mt-3 text-sm leading-7'>
           模型标识来自当前发布包，实际可用性以 HTH 服务配置和账户权限为准。
-          默认使用 gpt-image-2.5，具体上游映射由 HTH 决定。
+          具体上游映射由 HTH 决定。
         </p>
         <div className='mt-5 grid gap-4 lg:grid-cols-3'>
           {GENERATE_IMAGE_MODELS.map((provider) => (

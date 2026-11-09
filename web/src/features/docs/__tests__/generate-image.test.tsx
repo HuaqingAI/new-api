@@ -97,14 +97,14 @@ function renderGenerateImagePage(release?: GenerateImageRelease) {
 }
 
 describe('generate-image installation prompt', () => {
-  it('includes release v1.0 and seven installation steps without a checksum or credential setup instructions', () => {
+  it('includes release v1.1 and seven installation steps without a checksum or credential setup instructions', () => {
     const prompt = buildGenerateImageInstallPrompt(GENERATE_IMAGE_RELEASE)
 
     expect(prompt).toContain(
       'https://hqdtc.oss-us-west-1.aliyuncs.com/hth-skills/generate-image/generate-image.zip'
     )
-    expect(GENERATE_IMAGE_RELEASE.version).toBe('1.0')
-    expect(prompt).toContain('发布版本：1.0')
+    expect(GENERATE_IMAGE_RELEASE.version).toBe('1.1')
+    expect(prompt).toContain('发布版本：1.1')
     expect(prompt).not.toContain('SHA-256')
     expect(prompt).not.toContain('安装期间不读取或修改我的 Codex 登录凭据')
     expect(prompt).not.toContain('HTH_API_KEY')
@@ -255,7 +255,7 @@ describe('GenerateImageDocsPage', () => {
     renderGenerateImagePage()
 
     expect(i18next.language).toBe('en')
-    expect(screen.getByText('generate-image v1.0')).toBeVisible()
+    expect(screen.getByText('generate-image v1.1')).toBeVisible()
     expect(screen.getByRole('main')).not.toHaveTextContent('SHA-256')
     expect(screen.getByRole('main')).not.toHaveTextContent(/Linux|WSL/i)
     expect(screen.getByRole('button', { name: '复制到 Codex' })).toBeVisible()

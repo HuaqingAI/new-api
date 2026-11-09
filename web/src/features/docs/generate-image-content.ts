@@ -25,7 +25,7 @@ export type GenerateImageRelease = {
 
 export const GENERATE_IMAGE_RELEASE: GenerateImageRelease = {
   skillName: 'generate-image',
-  version: '1.0',
+  version: '1.1',
   downloadUrl:
     'https://hqdtc.oss-us-west-1.aliyuncs.com/hth-skills/generate-image/generate-image.zip',
   pythonRequirement: 'Python 3.11+',
@@ -96,11 +96,12 @@ export const GENERATE_IMAGE_MODELS = [
     name: 'OpenAI',
     models: [
       'gpt-image-2',
-      'gpt-image-2.5',
       'gpt-image-2.5-flare',
       'gpt-image-2.5-sunburst',
+      'gpt-image-2.6-flare',
+      'gpt-image-2.6-sunburst',
     ],
-    description: '支持文生图与图片编辑，默认模型为 gpt-image-2.5。',
+    description: '支持文生图与图片编辑。',
   },
   {
     name: 'Google Gemini',

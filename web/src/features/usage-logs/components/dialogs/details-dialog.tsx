@@ -756,6 +756,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
+          {showTiming && (
+            <DetailRow
+              label={t('Source')}
+              value={props.log.client_app || '—'}
+            />
+          )}
+
           {(props.log.group || other?.group) && (
             <DetailRow
               label={t('Group')}

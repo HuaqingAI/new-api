@@ -812,6 +812,27 @@ export function useCommonLogsColumns(
       },
 
       {
+        id: 'client_app',
+        accessorFn: (log) => log.client_app || '',
+        header: t('Source'),
+        cell: ({ row }) => {
+          if (!isTimingLogType(row.original.type)) return null
+          const clientApp = (row.getValue('client_app') as string) || '—'
+          return (
+            <StatusBadge
+              label={clientApp}
+              title={`${t('Source')}: ${clientApp}`}
+              type='text'
+              size='sm'
+              copyable={false}
+              className='max-w-[200px]'
+            />
+          )
+        },
+        size: 160,
+      },
+
+      {
         accessorKey: 'content',
         header: t('Details'),
         cell: function DetailsCell({ row }) {

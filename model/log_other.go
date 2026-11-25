@@ -76,6 +76,31 @@ func (o *LogOther) MergePublic(values map[string]any) {
 	}
 }
 
+func normalizeLogClientApp(clientApp string) string {
+	clientApp = strings.Trim(clientApp, " ")
+	if clientApp == "" || len(clientApp) > 128 {
+		return ""
+	}
+	for i := range len(clientApp) {
+		if clientApp[i] < 0x20 || clientApp[i] > 0x7e {
+			return ""
+		}
+	}
+	return clientApp
+}
+
+func (o *LogOther) withClientApp(clientApp string) *LogOther {
+	clientApp = normalizeLogClientApp(clientApp)
+	if clientApp == "" {
+		return o
+	}
+	if o == nil {
+		o = NewLogOther()
+	}
+	o.SetPublic("client_app", clientApp)
+	return o
+}
+
 // setContent stores structured content under content_parts, which the web
 // console renders in the viewer's language, and returns the English text kept
 // in the content column for exports and API callers.

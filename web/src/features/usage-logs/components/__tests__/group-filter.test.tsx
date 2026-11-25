@@ -36,8 +36,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
+import { usageLogsSearchSchema } from '@/routes/_authenticated/usage-logs/$section'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { buildApiParams } from '../../lib/utils'
 import { CommonLogsFilterBar } from '../common-logs-filter-bar'
 import { UsageLogsProvider } from '../usage-logs-provider'
 
@@ -169,6 +171,53 @@ it('submits the client request id advanced filter', async () => {
       page: 1,
     })
   )
+})
+
+it('restores the source from the URL, submits it for statistics, and removes it on Reset', async () => {
+  const router = await renderFilter(
+    '/usage-logs/common?clientApp=hqbuddy-codex&page=3'
+  )
+  await userEvent.click(screen.getByRole('button', { name: /^Expand/ }))
+  const input = screen.getByRole('textbox', { name: 'Source' })
+  expect(input).toHaveValue('hqbuddy-codex')
+  await userEvent.clear(input)
+  await userEvent.type(input, 'hqbuddy-%')
+  expect(router.state.location.search).toMatchObject({
+    clientApp: 'hqbuddy-codex',
+  })
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      clientApp: 'hqbuddy-%',
+      page: 1,
+    })
+  )
+  const search = usageLogsSearchSchema.parse(router.state.location.search)
+  expect(
+    buildApiParams({
+      page: 1,
+      pageSize: 100,
+      searchParams: search,
+      isAdmin: false,
+    })
+  ).toMatchObject({ client_app: 'hqbuddy-%' })
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(api.get)
+        .mock.calls.some(
+          ([url]) =>
+            url.startsWith('/api/log/self/stat?') &&
+            new URL(url, 'http://localhost').searchParams.get('client_app') ===
+              'hqbuddy-%'
+        )
+    ).toBe(true)
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
+  await waitFor(() =>
+    expect(router.state.location.search).not.toHaveProperty('clientApp')
+  )
+  expect(input).toHaveValue('')
 })
 
 it('submits the inbound request id advanced filter', async () => {

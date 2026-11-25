@@ -49,6 +49,7 @@ type FieldName =
   | 'channel'
   | 'token'
   | 'group'
+  | 'source'
   | 'time'
 type LogField = {
   label: string
@@ -116,13 +117,18 @@ export function CommonLogMobileCard<TData>(props: {
       visible: displayable && props.cells.has('token_name') && !!group,
       sensitive: true,
     },
+    source: {
+      label: t('Source'),
+      value: log.client_app || '—',
+      visible: timing && props.cells.has('client_app'),
+    },
   }
   const selected = selectedField ? fields[selectedField] : undefined
   const activeField =
     selected?.visible && (!selected.sensitive || context.sensitiveVisible)
       ? selected
       : undefined
-  const metadata: FieldName[] = ['user', 'channel', 'token', 'group']
+  const metadata: FieldName[] = ['user', 'channel', 'token', 'group', 'source']
   const visibleMetadata = metadata.filter((id) => fields[id].visible)
   const costCell = props.cells.get('quota')
   const contentCell = props.cells.get('content')
@@ -262,7 +268,7 @@ export function CommonLogMobileCard<TData>(props: {
                     field.label
                   )}
                 </span>
-                {context.sensitiveVisible ? (
+                {!field.sensitive || context.sensitiveVisible ? (
                   <Button
                     variant='ghost'
                     aria-label={`${field.label}: ${field.value}`}

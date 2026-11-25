@@ -22,7 +22,15 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterAll, afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -37,6 +45,7 @@ import {
 import type { UsageLog } from '../../data/schema'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 vi.mock('@lobehub/icons', () => ({}))
 vi.hoisted(() => {
@@ -48,7 +57,9 @@ vi.hoisted(() => {
 })
 afterAll(() => vi.unstubAllGlobals())
 
-function makeLog(other: LogOtherData, type = 2): UsageLog {
+type LogOtherFixture = LogOtherData & { client_app?: string }
+
+function makeLog(other: LogOtherFixture, type = 2): UsageLog {
   return {
     id: 1,
     user_id: 1,
@@ -77,19 +88,25 @@ function makeLog(other: LogOtherData, type = 2): UsageLog {
 }
 
 function DetailPreview(props: {
-  other: LogOtherData
+  other: LogOtherFixture
   isAdmin: boolean
   type?: number
+  columnId?: 'content' | 'token_name' | 'client_app'
+  tokenName?: string
+  clientApp?: string
 }) {
+  const log = makeLog(props.other, props.type)
+  if (props.tokenName !== undefined) log.token_name = props.tokenName
+  if (props.clientApp !== undefined) log.client_app = props.clientApp
   const table = useReactTable({
-    data: [makeLog(props.other, props.type)],
+    data: [log],
     columns: useCommonLogsColumns(props.isAdmin, false),
     getCoreRowModel: getCoreRowModel(),
   })
   const cell = table
     .getRowModel()
     .rows[0].getAllCells()
-    .find((item) => item.column.id === 'content')
+    .find((item) => item.column.id === (props.columnId ?? 'content'))
   if (!cell) throw new Error('The log must have a content column')
   return flexRender(cell.column.columnDef.cell, cell.getContext())
 }
@@ -123,16 +140,145 @@ afterEach(() => {
   client.clear()
   useSystemConfigStore.getState().setConfig(previousConfig)
 })
-function renderPreview(other: LogOtherData, isAdmin = true, type?: number) {
+function renderPreview(
+  other: LogOtherFixture,
+  isAdmin = true,
+  type?: number,
+  clientApp?: string
+) {
   render(
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={client}>
-        <DetailPreview other={other} isAdmin={isAdmin} type={type} />
+        <DetailPreview
+          other={other}
+          isAdmin={isAdmin}
+          type={type}
+          clientApp={clientApp}
+        />
       </QueryClientProvider>
     </I18nextProvider>
   )
   return screen.getByRole('button', { name: /./ })
 }
+
+test.each([
+  { clientApp: 'hqbuddy-codex', label: 'hqbuddy-codex', type: 2 },
+  { clientApp: 'hqbuddy-opencode', label: 'hqbuddy-opencode', type: 5 },
+  { clientApp: 'wordbuddy', label: 'wordbuddy', type: 2 },
+  { clientApp: undefined, label: '—', type: 2 },
+])(
+  'shows source $label in its own column without a token name',
+  ({ clientApp, label, type }) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <UsageLogsProvider>
+          <DetailPreview
+            other={{}}
+            clientApp={clientApp}
+            isAdmin={false}
+            type={type}
+            columnId='client_app'
+            tokenName=''
+          />
+        </UsageLogsProvider>
+      </I18nextProvider>
+    )
+    expect(screen.getByTitle(`Source: ${label}`)).toBeVisible()
+  }
+)
+
+test('places Source immediately after Timing and keeps it out of the Token cell', () => {
+  const { result } = renderHook(() => useCommonLogsColumns(false, false), {
+    wrapper: ({ children }) => (
+      <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+    ),
+  })
+  const headers = result.current.map((column) => column.header)
+  expect(headers.indexOf('Source')).toBe(headers.indexOf('Timing') + 1)
+  render(
+    <I18nextProvider i18n={i18n}>
+      <UsageLogsProvider>
+        <DetailPreview
+          other={{}}
+          clientApp='hqbuddy-codex'
+          isAdmin={false}
+          columnId='token_name'
+        />
+      </UsageLogsProvider>
+    </I18nextProvider>
+  )
+  expect(screen.getByText('token')).toBeVisible()
+  expect(screen.queryByText('hqbuddy-codex')).not.toBeInTheDocument()
+})
+
+test.each([{}, { client_app: 'legacy-client' }])(
+  'shows the indexed source before legacy metadata %j',
+  (other) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <DetailPreview
+          other={other}
+          isAdmin={false}
+          columnId='client_app'
+          clientApp='hqbuddy-codex'
+        />
+      </I18nextProvider>
+    )
+    expect(screen.getByTitle('Source: hqbuddy-codex')).toBeVisible()
+    expect(screen.queryByText('legacy-client')).not.toBeInTheDocument()
+  }
+)
+
+test.each([undefined, ''])(
+  'ignores legacy source metadata in the source column when client_app is %s',
+  (clientApp) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <DetailPreview
+          other={{ client_app: 'legacy-client' }}
+          isAdmin={false}
+          columnId='client_app'
+          clientApp={clientApp}
+        />
+      </I18nextProvider>
+    )
+    expect(screen.getByTitle('Source: —')).toBeVisible()
+    expect(screen.queryByText('legacy-client')).not.toBeInTheDocument()
+  }
+)
+
+test('ignores legacy source metadata in log details when client_app is empty', async () => {
+  fireEvent.click(renderPreview({ client_app: 'legacy-client' }, false, 2, ''))
+  const dialog = within(await screen.findByRole('dialog'))
+  expect(dialog.getByText('Source').nextElementSibling).toHaveTextContent('—')
+  expect(dialog.queryByText('legacy-client')).not.toBeInTheDocument()
+})
+
+test('shows the indexed source in log details before legacy metadata', async () => {
+  fireEvent.click(
+    renderPreview({ client_app: 'legacy-client' }, false, 2, 'hqbuddy-codex')
+  )
+  const dialog = within(await screen.findByRole('dialog'))
+  expect(dialog.getByText('hqbuddy-codex')).toBeVisible()
+  expect(dialog.queryByText('legacy-client')).not.toBeInTheDocument()
+})
+
+test.each([
+  { language: 'en', sourceLabel: 'Source' },
+  { language: 'zh', sourceLabel: '来源' },
+])(
+  'shows the raw source in $language log details',
+  async ({ language, sourceLabel }) => {
+    i18n.addResourceBundle('zh', 'translation', zh.translation)
+    await i18n.changeLanguage(language)
+    fireEvent.click(renderPreview({}, false, 2, 'hqbuddy-codex'))
+    await waitFor(() => {
+      const dialog = within(screen.getByRole('dialog'))
+      expect(dialog.getByText(sourceLabel)).toBeVisible()
+      expect(dialog.getByText('hqbuddy-codex')).toBeVisible()
+    })
+  }
+)
 
 test('keeps log details open when the parent refreshes with unchanged data', async () => {
   const other = { model_price: 0.25 }
@@ -338,15 +484,17 @@ test.each([true, false])(
     )
     expect(preview.textContent).toBe('Per-call · $0.25')
     fireEvent.click(preview)
-    const dialog = within(await screen.findByRole('dialog'))
-    if (isAdmin) {
-      expect(dialog.getByText('Incho')).toBeVisible()
-      expect(dialog.getByText('1.0.1')).toBeVisible()
-      expect(dialog.getByText('Plugin maintainer')).toBeVisible()
-    } else {
-      expect(dialog.queryByText('Incho')).not.toBeInTheDocument()
-      expect(dialog.queryByText('Plugin maintainer')).not.toBeInTheDocument()
-    }
+    await waitFor(() => {
+      const dialog = within(screen.getByRole('dialog'))
+      if (isAdmin) {
+        expect(dialog.getByText('Incho')).toBeVisible()
+        expect(dialog.getByText('1.0.1')).toBeVisible()
+        expect(dialog.getByText('Plugin maintainer')).toBeVisible()
+      } else {
+        expect(dialog.queryByText('Incho')).not.toBeInTheDocument()
+        expect(dialog.queryByText('Plugin maintainer')).not.toBeInTheDocument()
+      }
+    })
   }
 )
 

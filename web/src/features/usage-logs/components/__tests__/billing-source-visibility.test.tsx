@@ -56,6 +56,7 @@ async function renderLogs(props: {
   role: number
   enabledPlans: boolean[]
   activeSubscription: boolean
+  clientApp?: string
 }) {
   useAuthStore
     .getState()
@@ -104,7 +105,13 @@ async function renderLogs(props: {
   })
   const router = createRouter({
     routeTree: root.addChildren([auth.addChildren([logs])]),
-    history: createMemoryHistory({ initialEntries: ['/usage-logs/common'] }),
+    history: createMemoryHistory({
+      initialEntries: [
+        props.clientApp
+          ? `/usage-logs/common?clientApp=${encodeURIComponent(props.clientApp)}`
+          : '/usage-logs/common',
+      ],
+    }),
   })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -126,6 +133,30 @@ afterEach(() => {
   useAuthStore.setState(useAuthStore.getInitialState(), true)
   useSystemConfigStore.setState(useSystemConfigStore.getInitialState(), true)
   localStorage.clear()
+})
+
+test('sends the URL source to the log list and statistics and exposes a separate Source visibility option', async () => {
+  await renderLogs({
+    role: ROLE.ADMIN,
+    enabledPlans: [],
+    activeSubscription: false,
+    clientApp: 'hqbuddy-codex',
+  })
+  const urls = vi
+    .mocked(api.get)
+    .mock.calls.map(([url]) => new URL(url, 'http://localhost'))
+  expect(
+    urls
+      .find((url) => url.pathname === '/api/log')
+      ?.searchParams.get('client_app')
+  ).toBe('hqbuddy-codex')
+  expect(
+    urls
+      .find((url) => url.pathname === '/api/log/stat')
+      ?.searchParams.get('client_app')
+  ).toBe('hqbuddy-codex')
+  await userEvent.click(screen.getByRole('button', { name: 'View' }))
+  expect(screen.getByRole('menuitemcheckbox', { name: 'Source' })).toBeVisible()
 })
 
 test.each([{ enabledPlans: [] }, { enabledPlans: [false] }])(

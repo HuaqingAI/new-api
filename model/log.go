@@ -28,6 +28,21 @@ func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm
 	return tx.Where(column+" = ?", value), nil
 }
 
+func applyLogClientAppFilter(tx *gorm.DB, clientApp string) (*gorm.DB, error) {
+	if clientApp == "" {
+		return tx, nil
+	}
+	if !strings.Contains(clientApp, "%") {
+		tx = tx.Where("logs.client_app = ?", clientApp)
+		if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
+			// Retain the indexed equality while making exact matching case-sensitive.
+			tx = tx.Where("BINARY logs.client_app = ?", clientApp)
+		}
+		return tx, nil
+	}
+	return applyExplicitLogTextFilter(tx, "LOWER(logs.client_app)", strings.ToLower(clientApp))
+}
+
 func applyLogUsernameFilter(tx *gorm.DB, column string, username string) (*gorm.DB, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -94,11 +109,12 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 type Log struct {
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
+	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_client_app_created_at,priority:2"`
 	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
 	Content           string `json:"content"`
 	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
 	TokenName         string `json:"token_name" gorm:"index;default:''"`
+	ClientApp         string `json:"client_app,omitempty" gorm:"type:varchar(128);default:'';index:idx_logs_client_app_created_at,priority:1"`
 	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
 	Quota             int    `json:"quota" gorm:"default:0"`
 	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
@@ -338,6 +354,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	clientRequestId := c.GetString(common.ClientRequestIdKey)
 	inboundRequestId := c.GetString(common.InboundRequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	clientApp := normalizeLogClientApp(c.GetHeader("X-Client-App"))
+	other = other.withClientApp(clientApp)
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
 	needRecordIp := false
@@ -355,6 +373,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		PromptTokens:     0,
 		CompletionTokens: 0,
 		TokenName:        tokenName,
+		ClientApp:        clientApp,
 		ModelName:        modelName,
 		Quota:            0,
 		ChannelId:        channelId,
@@ -406,7 +425,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	inboundRequestId := c.GetString(common.InboundRequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
-	other := params.Other
+	clientApp := normalizeLogClientApp(c.GetHeader("X-Client-App"))
+	other := params.Other.withClientApp(clientApp)
 	content := other.setContent(params.Content)
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
@@ -425,6 +445,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		PromptTokens:     params.PromptTokens,
 		CompletionTokens: params.CompletionTokens,
 		TokenName:        params.TokenName,
+		ClientApp:        clientApp,
 		ModelName:        params.ModelName,
 		Quota:            params.Quota,
 		ChannelId:        params.ChannelId,
@@ -545,6 +566,7 @@ type LogFilter struct {
 	ModelName         string
 	Username          string
 	TokenName         string
+	ClientApp         string
 	Channel           int
 	Group             string
 	RequestId         string
@@ -566,6 +588,9 @@ func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
 	}
 	if f.TokenName != "" {
 		tx = tx.Where("logs.token_name = ?", f.TokenName)
+	}
+	if tx, err = applyLogClientAppFilter(tx, f.ClientApp); err != nil {
+		return nil, err
 	}
 	tx = applyLogIdentifierFilters(tx, f.RequestId, f.UpstreamRequestId, f.ClientRequestId, f.InboundRequestId)
 	if f.StartTimestamp != 0 {
@@ -746,12 +771,18 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, clientRequestId string, inboundRequestId string, clientApp string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
 
+	if tx, err = applyLogClientAppFilter(tx, clientApp); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyLogClientAppFilter(rpmTpmQuery, clientApp); err != nil {
+		return stat, err
+	}
 	if tx, err = applyLogUsernameFilter(tx, "username", username); err != nil {
 		return stat, err
 	}

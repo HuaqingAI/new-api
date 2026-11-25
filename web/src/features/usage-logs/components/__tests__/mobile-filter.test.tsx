@@ -155,12 +155,17 @@ it('applies mobile drawer filters only when Search is pressed', async () => {
     within(dialog).getByPlaceholderText('Model Name'),
     'gemini-3.7-flash'
   )
+  await user.type(
+    within(dialog).getByRole('textbox', { name: 'Source' }),
+    'hqbuddy-opencode'
+  )
   expect(router.state.location.search).not.toHaveProperty('model')
   await user.click(within(dialog).getByRole('button', { name: 'Search' }))
   await waitFor(() =>
     expect(router.state.location.search).toMatchObject({
       page: 1,
       model: 'gemini-3.7-flash',
+      clientApp: 'hqbuddy-opencode',
     })
   )
   await waitFor(() =>

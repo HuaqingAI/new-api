@@ -97,6 +97,72 @@ function renderLogs(props: Parameters<typeof Fixture>[0] = {}) {
   )
 }
 
+it.each([
+  { clientApp: 'hqbuddy-opencode', label: 'hqbuddy-opencode' },
+  { clientApp: undefined, label: '—' },
+])('shows $label as the mobile request source', ({ clientApp, label }) => {
+  renderLogs({
+    logs: [{ ...log, client_app: clientApp }],
+  })
+  expect(screen.getByRole('button', { name: `Source: ${label}` })).toBeVisible()
+})
+
+it('keeps a custom source readable on tap and visible while sensitive names are hidden', async () => {
+  const user = userEvent.setup()
+  const clientApp = `wordbuddy-${'long-client-name-'.repeat(6)}`
+  renderLogs({
+    logs: [{ ...log, client_app: clientApp }],
+  })
+  await user.click(screen.getByRole('button', { name: 'Hide sensitive data' }))
+  await user.click(screen.getByRole('button', { name: `Source: ${clientApp}` }))
+  const dialog = within(await screen.findByRole('dialog', { name: 'Source' }))
+  expect(dialog.getByText(clientApp)).toHaveClass('[overflow-wrap:anywhere]')
+})
+
+it('uses the indexed source before legacy metadata in the mobile summary', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        client_app: 'hqbuddy-codex',
+        other: JSON.stringify({ client_app: 'legacy-client' }),
+      },
+    ],
+  })
+  expect(
+    screen.getByRole('button', { name: 'Source: hqbuddy-codex' })
+  ).toBeVisible()
+  expect(screen.queryByText('legacy-client')).not.toBeInTheDocument()
+})
+
+it('ignores legacy source metadata in the mobile summary when client_app is empty', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        client_app: '',
+        other: JSON.stringify({ client_app: 'legacy-client' }),
+      },
+    ],
+  })
+  expect(screen.getByRole('button', { name: 'Source: —' })).toBeVisible()
+  expect(screen.queryByText('legacy-client')).not.toBeInTheDocument()
+})
+
+it('keeps Source visible independently of Token and hides it through its own column option', () => {
+  const view = renderLogs({ visibility: { token_name: false } })
+  expect(screen.getByRole('button', { name: 'Source: —' })).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: /^Token:/ })
+  ).not.toBeInTheDocument()
+  view.unmount()
+  renderLogs({ visibility: { client_app: false } })
+  expect(
+    screen.queryByRole('button', { name: /^Source:/ })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /^Token:/ })).toBeVisible()
+})
+
 it('shows model mismatch evidence when tapping the mobile model badge', async () => {
   const user = userEvent.setup()
   renderLogs({

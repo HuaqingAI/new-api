@@ -125,11 +125,11 @@ func TestGetLogsClientAndInboundRequestIDFilters(t *testing.T) {
 	require.Len(t, logs, 1)
 	assert.Equal(t, "codex-thread-2", logs[0].InboundRequestId)
 
-	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "", "", "upstream-client-1", "")
+	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "", "", "upstream-client-1", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, 42, stat.Quota)
 
-	stat, err = SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "", "", "", "codex-thread-2")
+	stat, err = SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", 0, "", "", "", "", "codex-thread-2", "")
 	require.NoError(t, err)
 	assert.Equal(t, 100, stat.Quota)
 }

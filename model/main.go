@@ -429,7 +429,19 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return MigrateLogClientApp()
+}
+
+// MigrateLogClientApp adds the source column and search index without changing
+// historical log records, which did not have a client application source.
+func MigrateLogClientApp() error {
+	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return LOG_DB.AutoMigrate(&Log{})
+	}
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS client_app String DEFAULT ''").Error; err != nil {
+		return err
+	}
+	return LOG_DB.Exec("ALTER TABLE logs ADD INDEX IF NOT EXISTS idx_logs_client_app_created_at client_app TYPE bloom_filter(0.01) GRANULARITY 4").Error
 }
 
 func migrateClickHouseLogDB() error {
@@ -438,6 +450,9 @@ func migrateClickHouseLogDB() error {
 		return err
 	}
 	if err := ensureClickHouseLogColumns(); err != nil {
+		return err
+	}
+	if err := MigrateLogClientApp(); err != nil {
 		return err
 	}
 	return syncClickHouseLogTTL(ttlDays)
@@ -488,6 +503,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	content String DEFAULT '',
 	username String DEFAULT '',
 	token_name String DEFAULT '',
+	client_app String DEFAULT '',
 	model_name String DEFAULT '',
 	quota Int32 DEFAULT 0,
 	prompt_tokens Int32 DEFAULT 0,
@@ -502,7 +518,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	client_request_id String DEFAULT '',
 	inbound_request_id String DEFAULT '',
 	upstream_request_id String DEFAULT '',
-	other String DEFAULT ''
+	other String DEFAULT '',
+	INDEX idx_logs_client_app_created_at client_app TYPE bloom_filter(0.01) GRANULARITY 4
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(toDateTime(created_at))

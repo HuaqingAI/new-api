@@ -90,6 +90,7 @@ function buildSearchSourceKey(values: {
   channel?: unknown
   model?: unknown
   token?: unknown
+  clientApp?: unknown
   group?: unknown
   username?: unknown
   requestId?: unknown
@@ -104,6 +105,7 @@ function buildSearchSourceKey(values: {
     values.channel,
     values.model,
     values.token,
+    values.clientApp,
     values.group,
     values.username,
     values.requestId,
@@ -158,6 +160,7 @@ export function CommonLogsFilterBar<TData>(
       channel: searchParams.channel,
       model: searchParams.model,
       token: searchParams.token,
+      clientApp: searchParams.clientApp,
       group: searchParams.group,
       username: searchParams.username,
       requestId: searchParams.requestId,
@@ -181,6 +184,7 @@ export function CommonLogsFilterBar<TData>(
           : undefined,
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,
+      clientApp: searchParams.clientApp || undefined,
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
       requestId: searchParams.requestId || undefined,
@@ -201,6 +205,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.departmentName,
     searchParams.model,
     searchParams.token,
+    searchParams.clientApp,
     searchParams.group,
     searchParams.username,
     searchParams.requestId,
@@ -285,6 +290,7 @@ export function CommonLogsFilterBar<TData>(
 
   const hasExpandedFilters =
     !!filters.token ||
+    !!filters.clientApp ||
     !!filters.username ||
     !!filters.channel ||
     !!filters.requestId ||
@@ -298,6 +304,7 @@ export function CommonLogsFilterBar<TData>(
 
   const expandedFilterCount = [
     filters.token,
+    filters.clientApp,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
@@ -460,6 +467,15 @@ export function CommonLogsFilterBar<TData>(
   )
   const advancedFilters = (
     <>
+      <LogsFilterField>
+        <LogsFilterInput
+          placeholder={t('Source')}
+          aria-label={t('Source')}
+          value={filters.clientApp || ''}
+          onChange={(e) => handleChange('clientApp', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}

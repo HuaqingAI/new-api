@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { createInstance } from 'i18next'
 import { describe, expect, test } from 'vitest'
 
-import type { UsageLog } from '../../data/schema'
+import { usageLogSchema, type UsageLog } from '../../data/schema'
 import { getLogCsvHeader, getLogCsvRow, toCsvLine } from '../export'
 
 const consumeLog: UsageLog = {
@@ -30,6 +30,7 @@ const consumeLog: UsageLog = {
   content: '',
   username: 'alice',
   token_name: 'prod',
+  client_app: 'hqbuddy-codex',
   model_name: 'gpt-4o-mini',
   quota: 250000,
   prompt_tokens: 2008,
@@ -42,6 +43,7 @@ const consumeLog: UsageLog = {
   group: 'default',
   ip: '203.0.113.9',
   other: JSON.stringify({
+    client_app: 'hqbuddy-codex',
     cache_tokens: 1906,
     cache_creation_tokens_5m: 10,
     cache_creation_tokens_1h: 5,
@@ -74,6 +76,39 @@ async function chineseTranslator() {
 }
 
 describe('usage log CSV export', () => {
+  test.each([undefined, ''])(
+    'ignores legacy source metadata in CSV when client_app is %s',
+    async (clientApp) => {
+      const t = await chineseTranslator()
+      const row = getLogCsvRow(
+        { ...consumeLog, client_app: clientApp },
+        false,
+        t
+      )
+      expect(row[getLogCsvHeader(false, t).indexOf('Source')]).toBe('')
+    }
+  )
+
+  test.each(['', JSON.stringify({ client_app: 'legacy-client' })])(
+    'exports the indexed source ahead of legacy metadata %s',
+    async (other) => {
+      const t = await chineseTranslator()
+      const record = usageLogSchema.parse({
+        ...consumeLog,
+        client_app: 'hqbuddy-codex',
+        other,
+      })
+      const row = getLogCsvRow(record, false, t)
+      expect(row[getLogCsvHeader(false, t).indexOf('Source')]).toBe(
+        'hqbuddy-codex'
+      )
+      expect(
+        usageLogSchema.parse({ ...consumeLog, client_app: undefined })
+          .client_app
+      ).toBe('')
+    }
+  )
+
   test('header in the user view has no user or channel column', async () => {
     const t = await chineseTranslator()
 
@@ -93,6 +128,8 @@ describe('usage log CSV export', () => {
     expect(row).toHaveLength(header.length)
     expect(row[header.indexOf('用户')]).toBe('alice')
     expect(row[header.indexOf('渠道')]).toBe('#162 azure')
+    expect(header.indexOf('Source')).toBe(header.indexOf('Duration') + 1)
+    expect(row[header.indexOf('Source')]).toBe('hqbuddy-codex')
   })
 
   test('consume log row matches the log table values', async () => {
@@ -111,6 +148,7 @@ describe('usage log CSV export', () => {
       '15',
       '$0.5',
       '3s',
+      'hqbuddy-codex',
       '203.0.113.9',
       'req-1',
       '',
@@ -156,6 +194,7 @@ describe('usage log CSV export', () => {
 
     expect(row.slice(1, 2)).toEqual(['充值'])
     expect(row.slice(5, 12)).toEqual(['', '', '', '', '', '', ''])
+    expect(row[getLogCsvHeader(false, t).indexOf('Source')]).toBe('')
     expect(row.at(-1)).toBe('充值 $5')
   })
 

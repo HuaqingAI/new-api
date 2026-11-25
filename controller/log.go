@@ -25,6 +25,7 @@ func logFilterFromQuery(c *gin.Context, admin bool) model.LogFilter {
 		EndTimestamp:      endTimestamp,
 		ModelName:         c.Query("model_name"),
 		TokenName:         c.Query("token_name"),
+		ClientApp:         c.Query("client_app"),
 		Group:             c.Query("group"),
 		RequestId:         c.Query("request_id"),
 		UpstreamRequestId: c.Query("upstream_request_id"),
@@ -215,7 +216,7 @@ func GetLogsStat(c *gin.Context) {
 	clientRequestId := c.Query("client_request_id")
 	inboundRequestId := c.Query("inbound_request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, clientRequestId, inboundRequestId, c.Query("client_app"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -253,7 +254,7 @@ func GetLogsSelfStat(c *gin.Context) {
 	clientRequestId := c.Query("client_request_id")
 	inboundRequestId := c.Query("inbound_request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, clientRequestId, inboundRequestId)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, upstreamRequestId, clientRequestId, inboundRequestId, c.Query("client_app"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

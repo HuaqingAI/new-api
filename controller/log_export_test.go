@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -25,13 +26,16 @@ import (
 
 // callLogHandler runs a log handler as the given user and returns the JSON
 // lines of the response.
-func callLogHandler(t *testing.T, handler gin.HandlerFunc, userId int, role int, query string) []map[string]any {
+func callLogHandler(t *testing.T, handler gin.HandlerFunc, userId int, role int, query string, username ...string) []map[string]any {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/log?"+query, nil)
 	ctx.Set("id", userId)
 	ctx.Set("role", role)
+	if len(username) > 0 {
+		ctx.Set("username", username[0])
+	}
 	handler(ctx)
 	var lines []map[string]any
 	for line := range strings.SplitSeq(strings.TrimSpace(recorder.Body.String()), "\n") {
@@ -79,6 +83,32 @@ func useLogExportDatabases(t *testing.T, mainDB *gorm.DB, logDB *gorm.DB, mainTy
 		common.SetDatabaseTypes(previousMain, previousLog)
 		common.RedisEnabled, common.MemoryCacheEnabled = previousRedis, previousMemory
 	})
+}
+
+func assertLogClientAppIndex(t *testing.T, db *gorm.DB, clickHouse bool) {
+	t.Helper()
+	assert.True(t, db.Migrator().HasColumn(&model.Log{}, "ClientApp"))
+	if clickHouse {
+		var index struct {
+			Expression string `gorm:"column:expr"`
+			Type       string `gorm:"column:type"`
+		}
+		require.NoError(t, db.Raw("SELECT expr, type FROM system.data_skipping_indices WHERE database = currentDatabase() AND table = 'logs' AND name = 'idx_logs_client_app_created_at'").Scan(&index).Error)
+		assert.Equal(t, "client_app", index.Expression)
+		assert.Equal(t, "bloom_filter", index.Type)
+		return
+	}
+	indexes, err := db.Migrator().GetIndexes(&model.Log{})
+	require.NoError(t, err)
+	var sourceColumns []string
+	for _, index := range indexes {
+		if index.Name() == "idx_logs_client_app_created_at" {
+			sourceColumns = index.Columns()
+		}
+	}
+	assert.Equal(t, []string{"client_app", "created_at"}, sourceColumns)
+	assert.True(t, db.Migrator().HasIndex(&model.Log{}, "idx_created_at_id"))
+	assert.True(t, db.Migrator().HasIndex(&model.Log{}, "idx_logs_request_id"))
 }
 
 func TestLogExportDatabaseMatrix(t *testing.T) {
@@ -169,6 +199,198 @@ func TestLogExportDatabaseMatrix(t *testing.T) {
 					assert.Equal(t, []any{filter.requestID}, exportedRequestIds(exported))
 				}
 			}
+		})
+	}
+}
+
+func TestLogClientAppFilterDatabaseMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	for _, tc := range []struct {
+		kind, env string
+		typ       common.DatabaseType
+	}{
+		{"sqlite", "", common.DatabaseTypeSQLite},
+		{"mysql", "AUDIT_MYSQL_DSN", common.DatabaseTypeMySQL},
+		{"postgres", "AUDIT_POSTGRES_DSN", common.DatabaseTypePostgreSQL},
+		{"clickhouse", "AUDIT_CLICKHOUSE_DSN", common.DatabaseTypeClickHouse},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			dsn := os.Getenv(tc.env)
+			if tc.env != "" && dsn == "" {
+				t.Skip(tc.env + " is not configured")
+			}
+			db, isolatedDSN := newAuditTestDatabase(t, tc.kind, dsn)
+			mainDB, mainType := db, tc.typ
+			if tc.kind == "clickhouse" {
+				mainDB, _ = newAuditTestDatabase(t, "sqlite", "")
+				mainType = common.DatabaseTypeSQLite
+			}
+			useLogExportDatabases(t, mainDB, db, mainType, tc.typ)
+			require.NoError(t, mainDB.AutoMigrate(&model.User{}))
+			for range 2 {
+				if tc.kind == "clickhouse" {
+					t.Setenv("LOG_SQL_DSN", isolatedDSN)
+					require.NoError(t, model.InitLogDB())
+				} else {
+					require.NoError(t, model.MigrateLogClientApp())
+					require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+				}
+			}
+			assertLogClientAppIndex(t, model.LOG_DB, tc.kind == "clickhouse")
+			require.NoError(t, mainDB.Create(&[]model.User{
+				{Id: 1, Username: "alice", AffCode: "alice", Setting: "{}"},
+				{Id: 2, Username: "bob", AffCode: "bob", Setting: "{}"},
+			}).Error)
+			var version string
+			versionSQL := "SELECT version()"
+			if tc.kind == "sqlite" {
+				versionSQL = "SELECT sqlite_version()"
+			}
+			require.NoError(t, model.LOG_DB.Raw(versionSQL).Scan(&version).Error)
+			t.Logf("log database: %s %s", tc.kind, version)
+			now := time.Now().Unix()
+			logs := []model.Log{
+				{UserId: 1, Username: "alice", CreatedAt: now - 10, Type: model.LogTypeConsume, Quota: 10, PromptTokens: 7, CompletionTokens: 3, RequestId: "a-codex", ClientApp: "hqbuddy-codex", Other: `{"client_app":"hqbuddy-codex"}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 120, Type: model.LogTypeConsume, Quota: 20, RequestId: "a-codex-old", ClientApp: "hqbuddy-codex", Other: `{"client_app" : "hqbuddy-codex"}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 8, Type: model.LogTypeConsume, Quota: 30, PromptTokens: 9, CompletionTokens: 3, RequestId: "a-opencode", ClientApp: "hqbuddy-opencode", Other: `{"client_app":"hqbuddy-opencode"}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 1, Type: model.LogTypeError, RequestId: "a-error", ClientApp: "hqbuddy-codex", Other: `{"client_app":"hqbuddy-codex"}`},
+				{UserId: 2, Username: "bob", CreatedAt: now - 5, Type: model.LogTypeConsume, Quota: 40, PromptTokens: 10, CompletionTokens: 5, RequestId: "b-codex", ClientApp: "hqbuddy-codex", Other: `{"client_app":"hqbuddy-codex"}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 2, Type: model.LogTypeError, RequestId: "indexed-priority", ClientApp: "indexed-priority", Other: `{"client_app":"legacy-source"}`},
+			}
+			for i, other := range []string{"", `{"admin_info":{"keep":true}}`} {
+				logs = append(logs, model.Log{UserId: 1, Username: "alice", CreatedAt: now - 3, Type: model.LogTypeConsume, RequestId: fmt.Sprintf("unattributed-%d", i), Quota: 100, Other: other})
+			}
+			for i := range logs {
+				require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)
+			}
+			query := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d", now-300, now+1)
+			for _, filter := range []struct {
+				source           string
+				own, all         int
+				ownStat, allStat model.Stat
+			}{
+				{"hqbuddy-codex", 2, 3, model.Stat{Quota: 30, Rpm: 1, Tpm: 10}, model.Stat{Quota: 70, Rpm: 2, Tpm: 25}},
+				{"hqbuddy-opencode", 1, 1, model.Stat{Quota: 30, Rpm: 1, Tpm: 12}, model.Stat{Quota: 30, Rpm: 1, Tpm: 12}},
+				{"hqbuddy-%", 3, 4, model.Stat{Quota: 60, Rpm: 2, Tpm: 22}, model.Stat{Quota: 100, Rpm: 3, Tpm: 37}},
+				{"HQBUDDY-%", 3, 4, model.Stat{Quota: 60, Rpm: 2, Tpm: 22}, model.Stat{Quota: 100, Rpm: 3, Tpm: 37}},
+				{"hqbuddy_codex", 0, 0, model.Stat{}, model.Stat{}},
+				{"HQBUDDY-CODEX", 0, 0, model.Stat{}, model.Stat{}},
+			} {
+				t.Run(filter.source, func(t *testing.T) {
+					filtered := query + "&type=2&client_app=" + url.QueryEscape(filter.source)
+					for _, scope := range []struct {
+						list, export, stat gin.HandlerFunc
+						count              int
+						want               model.Stat
+					}{
+						{GetUserLogs, ExportUserLogs, GetLogsSelfStat, filter.own, filter.ownStat},
+						{GetAllLogs, ExportAllLogs, GetLogsStat, filter.all, filter.allStat},
+					} {
+						listed := callLogHandler(t, scope.list, 1, common.RoleAdminUser, filtered+"&p=1&page_size=1", "alice")[0]
+						require.Equal(t, true, listed["success"])
+						data := listed["data"].(map[string]any)
+						assert.EqualValues(t, scope.count, data["total"])
+						if scope.count > 0 {
+							assert.Len(t, data["items"], 1)
+						}
+						exported := callLogHandler(t, scope.export, 1, common.RoleAdminUser, filtered, "alice")
+						require.Len(t, exported, scope.count+1)
+						assert.EqualValues(t, scope.count, exported[len(exported)-1]["data"].(map[string]any)["count"])
+						stat := callLogHandler(t, scope.stat, 1, common.RoleAdminUser, filtered, "alice")[0]
+						require.Equal(t, true, stat["success"])
+						assert.Equal(t, map[string]any{"quota": float64(scope.want.Quota), "rpm": float64(scope.want.Rpm), "tpm": float64(scope.want.Tpm)}, stat["data"])
+					}
+				})
+			}
+			for _, handler := range []gin.HandlerFunc{GetAllLogs, GetUserLogs} {
+				listed := callLogHandler(t, handler, 1, common.RoleAdminUser, query+"&type=5&client_app=hqbuddy-codex")[0]
+				require.Equal(t, true, listed["success"])
+				assert.EqualValues(t, 1, listed["data"].(map[string]any)["total"])
+			}
+			for _, source := range []struct {
+				name  string
+				count int
+			}{{"indexed-priority", 1}, {"legacy-source", 0}} {
+				listed := callLogHandler(t, GetUserLogs, 1, common.RoleCommonUser, query+"&type=5&client_app="+source.name)[0]
+				require.Equal(t, true, listed["success"])
+				assert.EqualValues(t, source.count, listed["data"].(map[string]any)["total"])
+			}
+
+			t.Run("upgrades released logs without assigning historical sources", func(t *testing.T) {
+				// v0.3.1-20261109100448 matches the pre-change Log schema. Removing
+				// only this new column/index reproduces its released logs table.
+				var previousIndexes map[string][]string
+				if tc.kind == "clickhouse" {
+					require.NoError(t, model.LOG_DB.Exec("ALTER TABLE logs DROP INDEX IF EXISTS idx_logs_client_app_created_at").Error)
+					require.NoError(t, model.LOG_DB.Exec("ALTER TABLE logs DROP COLUMN client_app").Error)
+				} else {
+					indexes, err := model.LOG_DB.Migrator().GetIndexes(&model.Log{})
+					require.NoError(t, err)
+					previousIndexes = make(map[string][]string)
+					for _, index := range indexes {
+						if index.Name() != "idx_logs_client_app_created_at" {
+							previousIndexes[index.Name()] = index.Columns()
+						}
+					}
+					require.NoError(t, model.LOG_DB.Migrator().DropIndex(&model.Log{}, "idx_logs_client_app_created_at"))
+					require.NoError(t, model.LOG_DB.Migrator().DropColumn(&model.Log{}, "ClientApp"))
+				}
+				require.False(t, model.LOG_DB.Migrator().HasColumn(&model.Log{}, "ClientApp"))
+				var before []model.Log
+				// Use a distinct query before the simulated restart so PostgreSQL's
+				// connection cache does not reuse the old SELECT * result schema.
+				require.NoError(t, model.LOG_DB.Select("logs.*").Order("request_id").Find(&before).Error)
+				for run := range 2 {
+					require.NoError(t, model.MigrateLogClientApp())
+					if tc.kind == "clickhouse" {
+						require.NoError(t, model.InitLogDB())
+					} else {
+						require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+					}
+					var after []model.Log
+					require.NoError(t, model.LOG_DB.Order("request_id").Find(&after).Error)
+					require.Len(t, after, len(before))
+					for i := range after {
+						assert.Empty(t, after[i].ClientApp, "run %d leaves historical request %s unattributed", run+1, after[i].RequestId)
+					}
+					assert.Equal(t, before, after, "run %d preserves every existing log field", run+1)
+					assertLogClientAppIndex(t, model.LOG_DB, tc.kind == "clickhouse")
+					if tc.kind != "clickhouse" {
+						indexes, err := model.LOG_DB.Migrator().GetIndexes(&model.Log{})
+						require.NoError(t, err)
+						currentIndexes := make(map[string][]string)
+						for _, index := range indexes {
+							if index.Name() != "idx_logs_client_app_created_at" {
+								currentIndexes[index.Name()] = index.Columns()
+							}
+						}
+						assert.Equal(t, previousIndexes, currentIndexes, "run %d preserves existing indexes", run+1)
+					}
+				}
+
+				previousConsume, previousExport := common.LogConsumeEnabled, common.DataExportEnabled
+				common.LogConsumeEnabled, common.DataExportEnabled = true, false
+				t.Cleanup(func() {
+					common.LogConsumeEnabled, common.DataExportEnabled = previousConsume, previousExport
+				})
+				ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				ctx.Request.Header.Set("X-Client-App", "hqbuddy-codex")
+				ctx.Set("username", "alice")
+				ctx.Set(common.RequestIdKey, "post-upgrade")
+				model.RecordConsumeLog(ctx, 1, model.RecordConsumeLogParams{ModelName: "upgrade-check", Quota: 23})
+				listed := callLogHandler(t, GetUserLogs, 1, common.RoleCommonUser, "type=2&client_app=hqbuddy-codex")[0]
+				require.Equal(t, true, listed["success"])
+				data := listed["data"].(map[string]any)
+				assert.EqualValues(t, 1, data["total"])
+				items := data["items"].([]any)
+				require.Len(t, items, 1)
+				assert.Equal(t, "post-upgrade", items[0].(map[string]any)["request_id"])
+				assert.Equal(t, "hqbuddy-codex", items[0].(map[string]any)["client_app"])
+			})
 		})
 	}
 }

@@ -55,6 +55,7 @@ export interface CommonFilters {
 export interface CommonLogFilters extends CommonFilters {
   model?: string
   token?: string
+  clientApp?: string
   group?: string
   username?: string
   requestId?: string
@@ -438,6 +439,7 @@ export interface GetLogsParams {
   type?: number
   username?: string
   token_name?: string
+  client_app?: string
   model_name?: string
   start_timestamp?: number
   end_timestamp?: number
@@ -464,6 +466,7 @@ export interface GetLogStatsParams {
   type?: number
   username?: string
   token_name?: string
+  client_app?: string
   model_name?: string
   start_timestamp?: number
   end_timestamp?: number

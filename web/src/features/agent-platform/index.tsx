@@ -2309,7 +2309,7 @@ export function AgentPlatformShell() {
                     <CardTitle>{t('Resource control plane')}</CardTitle>
                     <CardDescription>
                       {t(
-                        'Manage MCP, Skill, Knowledge, and Agent resources for AionUi opencode configuration delivery.'
+                        'Manage MCP, Skill, Knowledge, and Agent resources for Huaqing AI Assistant.'
                       )}
                     </CardDescription>
                   </div>

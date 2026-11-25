@@ -4099,7 +4099,7 @@
     "Manage enterprise departments and governance.": "Управление корпоративными отделами и управлением.",
     "Manage Keys": "Управление ключами",
     "Manage local models for:": "Управление локальными моделями для:",
-    "Manage MCP, Skill, Knowledge, and Agent resources for AionUi opencode configuration delivery.": "管理用于 AionUi opencode 配置下发的 MCP、技能、知识库和智能体资源。",
+    "Manage MCP, Skill, Knowledge, and Agent resources for Huaqing AI Assistant.": "Управляйте ресурсами MCP, навыками, базами знаний и агентами Huaqing AI Assistant.",
     "Manage mcpServers JSON definitions used by Agent package generation.": "管理用于生成智能体配置包的 mcpServers JSON 定义。",
     "Manage metadata, pricing, and channel connections. Each section saves separately.": "Управляйте метаданными, ценами и каналами. Каждый раздел сохраняется отдельно.",
     "Manage multi-key status and configuration for this channel": "Управление статусом и конфигурацией нескольких ключей для этого канала",

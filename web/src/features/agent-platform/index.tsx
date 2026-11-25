@@ -150,6 +150,7 @@ import {
   uploadAgentPlatformSkillPackage,
 } from './api'
 import { ClientModelFilterSettings } from './components/ClientModelFilterSettings'
+import { ClientNotificationSettings } from './components/ClientNotificationSettings'
 import { DepartmentGrantTreeOptions } from './components/department-grant-tree-options'
 import {
   GrantSubjectMultiSelect,
@@ -2314,7 +2315,12 @@ export function AgentPlatformShell() {
                     </CardDescription>
                   </div>
                 </div>
-                {isSuperAdmin && <ClientModelFilterSettings />}
+                {isSuperAdmin && (
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <ClientNotificationSettings />
+                    <ClientModelFilterSettings />
+                  </div>
+                )}
               </CardHeader>
               <CardContent className='pt-4'>
                 <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>

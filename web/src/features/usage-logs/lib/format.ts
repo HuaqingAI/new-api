@@ -450,6 +450,10 @@ export function formatDuration(
  * translatable instead of being frozen to whatever language was written to DB.
  */
 const AUDIT_TEMPLATES: Record<string, string> = {
+  'agentplatform.notification.create': 'Create client notification',
+  'agentplatform.notification.update': 'Update client notification',
+  'agentplatform.notification.status': 'Change client notification status',
+  'agentplatform.notification.delete': 'Delete client notification',
   'token.create': 'API token creation',
   'token.update': 'API token configuration update',
   'token.status_update': 'API token status update',

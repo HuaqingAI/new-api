@@ -11,6 +11,15 @@ func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 	agentPlatformRoute.GET("/assets/avatars/:file", controlleragentplatform.GetAgentAvatar)
 	agentPlatformRoute.GET("/model-filter", middleware.RootAuth(), controlleragentplatform.GetClientModelFilter)
 	agentPlatformRoute.PUT("/model-filter", middleware.RootAuth(), controlleragentplatform.UpdateClientModelFilter)
+	notifications := agentPlatformRoute.Group("/notifications", middleware.RootAuth())
+	{
+		notifications.GET("", controlleragentplatform.ListNotifications)
+		notifications.POST("", controlleragentplatform.CreateNotification)
+		notifications.GET("/:id", controlleragentplatform.GetNotification)
+		notifications.PUT("/:id", controlleragentplatform.UpdateNotification)
+		notifications.PATCH("/:id/status", controlleragentplatform.UpdateNotificationStatus)
+		notifications.DELETE("/:id", controlleragentplatform.DeleteNotification)
+	}
 
 	agentPlatformRoute.Use(middleware.AdminAuth())
 	{

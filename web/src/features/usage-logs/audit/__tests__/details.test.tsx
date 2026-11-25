@@ -114,6 +114,10 @@ it('uses the returned authentication method for personal access records', async 
 })
 
 it.each([
+  ['agentplatform.notification.create', '创建客户端消息'],
+  ['agentplatform.notification.update', '更新客户端消息'],
+  ['agentplatform.notification.status', '修改客户端消息状态'],
+  ['agentplatform.notification.delete', '删除客户端消息'],
   ['token.create', '创建 API 令牌「1」（ID: 11）'],
   ['token.update', '更新 API 令牌「1」（ID: 11）'],
   ['token.status_update', '更新 API 令牌「1」（ID: 11）'],

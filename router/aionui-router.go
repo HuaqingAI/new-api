@@ -10,6 +10,8 @@ import (
 func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 	aionUiRoute := apiRouter.Group("/aionui")
 	{
+		aionUiRoute.GET("/notifications", middleware.AionUiDesktopAuth(), controlleraionui.ListClientNotifications)
+		aionUiRoute.GET("/notifications/:id", middleware.AionUiDesktopAuth(), controlleraionui.GetClientNotification)
 		aionUiRoute.GET("/agent-configs", middleware.AionUiDesktopAuth(), controlleraionui.GetAgentConfigs)
 		aionUiRoute.GET("/pricing", middleware.AionUiDesktopAuth(), controller.GetAionUiPricing)
 		aionUiRoute.GET("/quota-summary", middleware.AionUiDesktopAuth(), controlleraionui.GetQuotaSummary)

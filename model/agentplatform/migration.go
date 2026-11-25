@@ -89,6 +89,14 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	notifications := db
+	if db.Dialector.Name() == "mysql" {
+		// A schema may use a legacy charset; announcements must preserve all Unicode text.
+		notifications = db.Set("gorm:table_options", "CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")
+	}
+	if err := notifications.AutoMigrate(&Notification{}); err != nil {
+		return err
+	}
 	if err := backfillAgentDefCategories(db); err != nil {
 		return err
 	}

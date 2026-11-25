@@ -134,6 +134,21 @@ describe('client model filter', () => {
         const header = trigger.closest('[data-slot="card-header"]')
         expect(header).toHaveTextContent('Resource control plane')
         expect(header).toHaveClass('flex-col', 'sm:flex-row')
+        const notifications = within(header as HTMLElement).getByRole(
+          'button',
+          {
+            name: 'Client notifications',
+          }
+        )
+        expect(
+          notifications.compareDocumentPosition(trigger) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
+        expect(notifications.parentElement).toHaveClass('flex-wrap')
+        expect(api.get).not.toHaveBeenCalledWith(
+          '/api/agent-platform/notifications',
+          expect.anything()
+        )
         expect(api.get).toHaveBeenCalledWith(endpoint)
       } else {
         expect(

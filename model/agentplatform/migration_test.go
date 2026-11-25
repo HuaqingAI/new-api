@@ -143,6 +143,54 @@ func TestMigrateClientPackageRolloutConfiguredDatabases(t *testing.T) {
 	}
 }
 
+func TestMigrateNotificationsMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(":memory:")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.New(postgres.Config{DSN: dsn, PreferSimpleProtocol: true})
+			}
+			db, err := gorm.Open(driver, &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, sqlDB.Close()) })
+			require.NoError(t, db.Migrator().DropTable(&Notification{}))
+			t.Cleanup(func() { assert.NoError(t, db.Migrator().DropTable(&Notification{})) })
+			for range 2 {
+				require.NoError(t, Migrate(db))
+			}
+			stored := Notification{NotificationId: "ntf_0123456789abcdef0123456789abcdef", Title: "Retained", Summary: "", Content: "Existing content", Version: 1, CreatedAt: 1, UpdatedAt: 1, CreatedBy: 1, UpdatedBy: 1}
+			require.NoError(t, db.Create(&stored).Error)
+			for range 2 {
+				require.NoError(t, Migrate(db))
+			}
+			var found Notification
+			require.NoError(t, db.First(&found, stored.Id).Error)
+			assert.Equal(t, stored, found)
+			assert.True(t, db.Migrator().HasIndex(&Notification{}, "uq_ap_notification_id"))
+			assert.True(t, db.Migrator().HasIndex(&Notification{}, "idx_ap_notification_feed"))
+			assert.True(t, db.Migrator().HasIndex(&Notification{}, "idx_ap_notification_updated"))
+			duplicate := stored
+			duplicate.Id = 0
+			assert.Error(t, db.Create(&duplicate).Error, "public notification IDs remain unique")
+		})
+	}
+}
+
 func testMigrateClientPackageRollout(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	require.NoError(t, db.Migrator().DropTable(&ClientPackageScope{}, &ClientPackage{}))

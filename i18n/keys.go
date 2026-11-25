@@ -13,6 +13,9 @@ const (
 	MsgTokenNotProvided       = "token.not_provided"
 	MsgTokenStatusUnavailable = "token.status_unavailable"
 
+	MsgClientNotificationNotFound     = "aionui.notification.not_found"
+	MsgClientNotificationsUnavailable = "aionui.notification.unavailable"
+
 	MsgAuthClientIPUnresolved     = "auth.client_ip_unresolved"
 	MsgAuthTokenIPNotAllowed      = "auth.token_ip_not_allowed"
 	MsgAuthTokenGroupForbidden    = "auth.token_group_forbidden"

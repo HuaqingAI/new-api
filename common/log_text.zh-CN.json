@@ -1,4 +1,6 @@
 {
+  "client notification query failed: %v": "查询客户端消息失败: %v",
+  "notification operation failed: %v": "消息通知操作失败: %v",
   "%d quota points": "%d 点额度",
   "%s after refresh: %s": "%s（刷新凭证后重试）: %s",
   "%s failed: %s": "%s 构建失败，%s",

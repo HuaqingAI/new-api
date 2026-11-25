@@ -42,6 +42,10 @@ func (w *auditResponseWriter) WriteString(s string) (int, error) {
 // 这些是未被 handler 手动埋点的写操作，由中间件兜底记录；前端依据 action 用 i18n 本地化展示。
 // 未命中的写操作回退为 action="generic"，前端展示 "METHOD route"。
 var auditRouteActions = map[string]string{
+	"POST /api/agent-platform/notifications":             "agentplatform.notification.create",
+	"PUT /api/agent-platform/notifications/:id":          "agentplatform.notification.update",
+	"PATCH /api/agent-platform/notifications/:id/status": "agentplatform.notification.status",
+	"DELETE /api/agent-platform/notifications/:id":       "agentplatform.notification.delete",
 	// 用户管理
 	"POST /api/user/topup/complete":                    "user.topup_complete",
 	"DELETE /api/user/:id/reset_passkey":               "user.reset_passkey",

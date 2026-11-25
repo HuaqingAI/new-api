@@ -381,6 +381,12 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// Local /api/agent-platform routes.
 	"GET /api/agent-platform/model-filter":                              accessTokenScopeRule("option:read"),
 	"PUT /api/agent-platform/model-filter":                              accessTokenScopeRule("option:write"),
+	"GET /api/agent-platform/notifications":                             accessTokenScopeRule("option:read"),
+	"POST /api/agent-platform/notifications":                            accessTokenScopeRule("option:write"),
+	"GET /api/agent-platform/notifications/:id":                         accessTokenScopeRule("option:read"),
+	"PUT /api/agent-platform/notifications/:id":                         accessTokenScopeRule("option:write"),
+	"PATCH /api/agent-platform/notifications/:id/status":                accessTokenScopeRule("option:write"),
+	"DELETE /api/agent-platform/notifications/:id":                      accessTokenScopeRule("option:write"),
 	"GET /api/agent-platform/resources":                                 accessTokenScopeRule("agent_platform:read"),
 	"POST /api/agent-platform/assets/avatars":                           accessTokenScopeRule("agent_platform:write"),
 	"POST /api/agent-platform/resources":                                accessTokenScopeRule("agent_platform:write"),

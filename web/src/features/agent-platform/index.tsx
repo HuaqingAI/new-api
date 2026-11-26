@@ -151,6 +151,8 @@ import {
 } from './api'
 import { ClientModelFilterSettings } from './components/ClientModelFilterSettings'
 import { ClientNotificationSettings } from './components/ClientNotificationSettings'
+import { ModelReasoningSettings } from './components/model-reasoning-settings'
+import { MODEL_REASONING_QUERY_KEY } from './model-reasoning-api'
 import { DepartmentGrantTreeOptions } from './components/department-grant-tree-options'
 import {
   GrantSubjectMultiSelect,
@@ -2228,6 +2230,9 @@ export function AgentPlatformShell() {
       void queryClient.invalidateQueries({
         queryKey: CLIENT_MODEL_FILTER_QUERY_KEY,
       })
+      void queryClient.invalidateQueries({
+        queryKey: MODEL_REASONING_QUERY_KEY,
+      })
     }
   }
 
@@ -2317,6 +2322,7 @@ export function AgentPlatformShell() {
                 </div>
                 {isSuperAdmin && (
                   <div className='flex flex-wrap items-center gap-2'>
+                    <ModelReasoningSettings />
                     <ClientNotificationSettings />
                     <ClientModelFilterSettings />
                   </div>

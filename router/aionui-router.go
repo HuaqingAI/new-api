@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/QuantumNous/new-api/controller"
+	controlleragentplatform "github.com/QuantumNous/new-api/controller/agentplatform"
 	controlleraionui "github.com/QuantumNous/new-api/controller/aionui"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-gonic/gin"
@@ -10,6 +11,7 @@ import (
 func RegisterAionUiRouter(apiRouter *gin.RouterGroup) {
 	aionUiRoute := apiRouter.Group("/aionui")
 	{
+		aionUiRoute.GET("/model-reasoning-policy", middleware.AionUiDesktopAuth(), controlleragentplatform.GetModelReasoningPolicy)
 		aionUiRoute.GET("/notifications", middleware.AionUiDesktopAuth(), controlleraionui.ListClientNotifications)
 		aionUiRoute.GET("/notifications/:id", middleware.AionUiDesktopAuth(), controlleraionui.GetClientNotification)
 		aionUiRoute.GET("/agent-configs", middleware.AionUiDesktopAuth(), controlleraionui.GetAgentConfigs)

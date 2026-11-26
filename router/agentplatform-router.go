@@ -9,6 +9,8 @@ import (
 func RegisterAgentPlatformRouter(apiRouter *gin.RouterGroup) {
 	agentPlatformRoute := apiRouter.Group("/agent-platform")
 	agentPlatformRoute.GET("/assets/avatars/:file", controlleragentplatform.GetAgentAvatar)
+	agentPlatformRoute.GET("/model-reasoning-policy", middleware.RootAuth(), controlleragentplatform.GetModelReasoningPolicy)
+	agentPlatformRoute.PUT("/model-reasoning-policy", middleware.RootAuth(), controlleragentplatform.UpdateModelReasoningPolicy)
 	agentPlatformRoute.GET("/model-filter", middleware.RootAuth(), controlleragentplatform.GetClientModelFilter)
 	agentPlatformRoute.PUT("/model-filter", middleware.RootAuth(), controlleragentplatform.UpdateClientModelFilter)
 	notifications := agentPlatformRoute.Group("/notifications", middleware.RootAuth())

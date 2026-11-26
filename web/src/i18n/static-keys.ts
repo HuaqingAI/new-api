@@ -19,6 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  'Invalid model reasoning settings',
+  'Model reasoning settings are too large',
+  'Select at least one reasoning effort',
+  'Add at most 1000 reasoning rules',
+  'Enter a model ID or select a model family',
+  'Select a supported model family',
+  'Each model or family can have only one rule',
+  'Model IDs must be at most 255 characters',
+  'Model IDs must not contain control characters or invalid Unicode',
   'Notification title is required',
   'Notification title must be at most 120 characters',
   'Notification summary must be at most 240 characters',

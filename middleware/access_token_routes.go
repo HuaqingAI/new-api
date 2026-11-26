@@ -379,6 +379,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/enterprise/dingtalk/sync/conflicts/:id/bind-candidate": accessTokenSessionRule,
 
 	// Local /api/agent-platform routes.
+	"GET /api/agent-platform/model-reasoning-policy":                    accessTokenScopeRule("option:read"),
+	"PUT /api/agent-platform/model-reasoning-policy":                    accessTokenScopeRule("option:write"),
 	"GET /api/agent-platform/model-filter":                              accessTokenScopeRule("option:read"),
 	"PUT /api/agent-platform/model-filter":                              accessTokenScopeRule("option:write"),
 	"GET /api/agent-platform/notifications":                             accessTokenScopeRule("option:read"),

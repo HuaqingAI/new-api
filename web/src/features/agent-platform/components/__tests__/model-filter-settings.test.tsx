@@ -140,6 +140,13 @@ describe('client model filter', () => {
             name: 'Client notifications',
           }
         )
+        const reasoning = within(header as HTMLElement).getByRole('button', {
+          name: 'Model reasoning settings',
+        })
+        expect(
+          reasoning.compareDocumentPosition(notifications) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
         expect(
           notifications.compareDocumentPosition(trigger) &
             Node.DOCUMENT_POSITION_FOLLOWING

@@ -34,6 +34,7 @@ func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 	common.OptionMap[setting.ClientModelFilterExcludedModelsKey] = "[]"
+	common.OptionMap[setting.ModelReasoningPolicyKey] = setting.DefaultModelReasoningPolicy
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -233,6 +234,10 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == setting.ModelReasoningPolicyKey {
+		_, _, err := setting.NormalizeModelReasoningPolicy(value)
+		return err
+	}
 	if key == setting.ClientModelFilterExcludedModelsKey {
 		_, _, err := setting.NormalizeClientModelFilter(value)
 		return err
@@ -280,7 +285,7 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
-	if key == setting.ClientModelFilterExcludedModelsKey {
+	if key == setting.ClientModelFilterExcludedModelsKey || key == setting.ModelReasoningPolicyKey {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
 	if IsRequestPolicyOption(key) {
@@ -319,6 +324,14 @@ func UpdateOption(key string, value string) error {
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
+	}
+	if value, ok := values[setting.ModelReasoningPolicyKey]; ok {
+		_, canonical, err := setting.NormalizeModelReasoningPolicy(value)
+		if err != nil {
+			return err
+		}
+		values = maps.Clone(values)
+		values[setting.ModelReasoningPolicyKey] = canonical
 	}
 	if value, ok := values[setting.ClientModelFilterExcludedModelsKey]; ok {
 		_, canonical, err := setting.NormalizeClientModelFilter(value)
@@ -387,6 +400,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == setting.ModelReasoningPolicyKey {
+		_, value, err = setting.NormalizeModelReasoningPolicy(value)
+		if err != nil {
+			return err
+		}
+	}
 	if key == setting.ClientModelFilterExcludedModelsKey {
 		_, value, err = setting.NormalizeClientModelFilter(value)
 		if err != nil {

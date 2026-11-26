@@ -80,6 +80,7 @@ var accessTokenExemptRoutes = []string{
 	"GET /api/aionui/desktop/login",
 	"POST /api/aionui/desktop/token",
 	"GET /api/aionui/agent-configs",
+	"GET /api/aionui/model-reasoning-policy",
 	"GET /api/aionui/notifications",
 	"GET /api/aionui/notifications/:id",
 	"GET /api/aionui/pricing",

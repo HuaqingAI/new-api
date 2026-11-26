@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/MoeForge/moego/regexp"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/gin-gonic/gin"
 )
@@ -254,6 +254,10 @@ const (
 	// ContextKeyRelayEndpoint retains the shared endpoint candidates when an
 	// ordinary channel wins, so task USD expressions cannot become relay prices.
 	ContextKeyRelayEndpoint = "task_plugin_relay_endpoint"
+	// ContextKeyRequestRefreshed is set once a request plugin changed the
+	// stored body of a task submission: the task adaptor then runs the
+	// plugin's decoder again on every attempt.
+	ContextKeyRequestRefreshed = "task_plugin_request_refreshed"
 )
 
 type PinnedPlugin struct {
@@ -463,6 +467,8 @@ var reservedRouteNamespaces = []string{
 	"/privacy-policy",
 	"/user-agreement",
 	"/about",
+	"/docs",
+	"/downloads",
 	"/pricing",
 	"/rankings",
 	"/user",
@@ -476,12 +482,20 @@ var reservedRouteNamespaces = []string{
 	"/channels",
 	"/chat",
 	"/dashboard",
+	"/agent-platform",
+	"/aionui-client-packages",
+	"/enterprise-alerts",
+	"/enterprise-dingtalk",
+	"/enterprise-organization",
+	"/enterprise-usage",
 	"/errors",
 	"/keys",
 	"/models",
 	"/playground",
 	"/profile",
 	"/redemption-codes",
+	"/request-processing",
+	"/security",
 	"/subscriptions",
 	"/system-info",
 	"/task-plugins",
@@ -1126,7 +1140,13 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 		plugin := effective[key]
 		generation.byKey[key] = plugin
 		generation.plugins = append(generation.plugins, plugin)
-		for _, model := range plugin.Meta.Models {
+		// The models of a plugin without a task part are its relay fallback
+		// list: ordinary models, not task models.
+		taskModels := plugin.Meta.Models
+		if !plugin.Meta.HasTaskPart() {
+			taskModels = nil
+		}
+		for _, model := range taskModels {
 			generation.modelPlugins[model] = append(generation.modelPlugins[model], plugin)
 			if _, exists := generation.byModel[model]; !exists {
 				generation.byModel[model] = plugin

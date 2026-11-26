@@ -1,0 +1,4 @@
+interface:
+  display_name: "new-api Release Deploy"
+  short_description: "Release and deploy new-api"
+  default_prompt: "Use $new-api-release-deploy to release and deploy new-api from dev."

@@ -7,12 +7,12 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -60,6 +60,16 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 
 	return sfRequest, nil
+}
+
+// OutboundImageCount reads the image count of an image request body:
+// SiliconFlow generates batch_size images.
+func (a *Adaptor) OutboundImageCount(body []byte) (*uint, error) {
+	var request struct {
+		BatchSize *uint `json:"batch_size"`
+	}
+	err := common.Unmarshal(body, &request)
+	return request.BatchSize, err
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {

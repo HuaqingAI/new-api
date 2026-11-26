@@ -1,16 +1,19 @@
 package helper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +39,10 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 		request, err = GetAndValidateResponsesRequest(c)
 	case types.RelayFormatOpenAIResponsesCompaction:
 		request, err = GetAndValidateResponsesCompactionRequest(c)
+	case types.RelayFormatOpenAIAlphaSearch:
+		request, err = GetAndValidateAlphaSearchRequest(c)
+	case types.RelayFormatDeepSeekTools:
+		request, err = GetAndValidateDeepSeekToolsRequest(c)
 
 	case types.RelayFormatOpenAIImage:
 		request, err = GetAndValidOpenAIImageRequest(c, relayMode)
@@ -55,7 +62,7 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 
 func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, error) {
 	audioRequest := &dto.AudioRequest{}
-	err := common.UnmarshalBodyReusable(c, audioRequest)
+	err := common.UnmarshalBodyReusableNoCopy(c, audioRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -77,9 +84,9 @@ func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, 
 
 func GetAndValidateRerankRequest(c *gin.Context) (*dto.RerankRequest, error) {
 	var rerankRequest *dto.RerankRequest
-	err := common.UnmarshalBodyReusable(c, &rerankRequest)
+	err := common.UnmarshalBodyReusableNoCopy(c, &rerankRequest)
 	if err != nil {
-		logger.LogError(c, fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c, common.LogText("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -94,9 +101,9 @@ func GetAndValidateRerankRequest(c *gin.Context) (*dto.RerankRequest, error) {
 
 func GetAndValidateEmbeddingRequest(c *gin.Context, relayMode int) (*dto.EmbeddingRequest, error) {
 	var embeddingRequest *dto.EmbeddingRequest
-	err := common.UnmarshalBodyReusable(c, &embeddingRequest)
+	err := common.UnmarshalBodyReusableNoCopy(c, &embeddingRequest)
 	if err != nil {
-		logger.LogError(c, fmt.Sprintf("getAndValidateTextRequest failed: %s", err.Error()))
+		logger.LogError(c, common.LogText("getAndValidateTextRequest failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
@@ -112,9 +119,24 @@ func GetAndValidateEmbeddingRequest(c *gin.Context, relayMode int) (*dto.Embeddi
 	return embeddingRequest, nil
 }
 
+// maxTokensLimit bounds user-supplied max token fields. These values feed
+// pre-consume quota math (preConsumedTokens * ratio); an unbounded value can
+// overflow the conversion and corrupt billing.
+const maxTokensLimit = math.MaxInt32 / 2
+
+// ExceedsMaxTokensLimit checks token limits before they reach billing arithmetic.
+func ExceedsMaxTokensLimit(values ...*uint) bool {
+	for _, v := range values {
+		if lo.FromPtrOr(v, uint(0)) > maxTokensLimit {
+			return true
+		}
+	}
+	return false
+}
+
 func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest, error) {
 	request := &dto.OpenAIResponsesRequest{}
-	err := common.UnmarshalBodyReusable(c, request)
+	err := common.UnmarshalBodyReusableNoCopy(c, request)
 	if err != nil {
 		return nil, err
 	}
@@ -124,12 +146,57 @@ func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest
 	if request.Input == nil {
 		return nil, errors.New("input is required")
 	}
+	if ExceedsMaxTokensLimit(request.MaxOutputTokens) {
+		return nil, errors.New("max_output_tokens is invalid")
+	}
+	return request, nil
+}
+
+func GetAndValidateAlphaSearchRequest(c *gin.Context) (*dto.AlphaSearchRequest, error) {
+	request := &dto.AlphaSearchRequest{}
+	if err := common.UnmarshalBodyReusableNoCopy(c, request); err != nil {
+		return nil, err
+	}
+	if request.Model == "" {
+		return nil, errors.New("model is required")
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil, err
+	}
+	rawBody, err := storage.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	request.RawBody = rawBody
+	return request, nil
+}
+
+// GetAndValidateDeepSeekToolsRequest keeps the raw body for forwarding. The
+// upstream validates query/url itself, and no field changes the per-call price.
+func GetAndValidateDeepSeekToolsRequest(c *gin.Context) (*dto.DeepSeekToolsRequest, error) {
+	request := &dto.DeepSeekToolsRequest{}
+	if err := common.UnmarshalBodyReusableNoCopy(c, request); err != nil {
+		return nil, err
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil, err
+	}
+	rawBody, err := storage.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if len(rawBody) == 0 {
+		return nil, errors.New("request body is empty")
+	}
+	request.RawBody = rawBody
 	return request, nil
 }
 
 func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIResponsesCompactionRequest, error) {
 	request := &dto.OpenAIResponsesCompactionRequest{}
-	if err := common.UnmarshalBodyReusable(c, request); err != nil {
+	if err := common.UnmarshalBodyReusableNoCopy(c, request); err != nil {
 		return nil, err
 	}
 	if request.Model == "" {
@@ -144,16 +211,34 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 	switch relayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
-			_, err := c.MultipartForm()
+			form, err := common.ParseMultipartFormReusable(c)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse image edit form request: %w", err)
 			}
-			formData := c.Request.PostForm
+			formData := url.Values(form.Value)
+			c.Request.MultipartForm = form
+			c.Request.PostForm = formData
 			imageRequest.Prompt = formData.Get("prompt")
 			imageRequest.Model = formData.Get("model")
-			imageRequest.N = common.GetPointer(uint(common.String2Int(formData.Get("n"))))
+			if nValue := strings.TrimSpace(formData.Get("n")); nValue != "" {
+				n, err := strconv.Atoi(nValue)
+				if err != nil || n < 0 || n > dto.MaxImageN {
+					return nil, fmt.Errorf("n must be an integer between 1 and %d", dto.MaxImageN)
+				}
+				imageRequest.N = common.GetPointer(uint(n))
+			}
 			imageRequest.Quality = formData.Get("quality")
 			imageRequest.Size = formData.Get("size")
+			if parameters := formData.Get("parameters"); parameters != "" {
+				imageRequest.Extra = map[string]json.RawMessage{"parameters": json.RawMessage(parameters)}
+			}
+			if streamValue := strings.TrimSpace(formData.Get("stream")); streamValue != "" {
+				stream, err := strconv.ParseBool(streamValue)
+				if err != nil {
+					return nil, fmt.Errorf("invalid stream value: %w", err)
+				}
+				imageRequest.Stream = common.GetPointer(stream)
+			}
 			if imageValue := formData.Get("image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}
@@ -176,13 +261,12 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		}
 		fallthrough
 	default:
-		err := common.UnmarshalBodyReusable(c, imageRequest)
+		err := common.UnmarshalBodyReusableNoCopy(c, imageRequest)
 		if err != nil {
 			return nil, err
 		}
 
 		if imageRequest.Model == "" {
-			//imageRequest.Model = "dall-e-3"
 			return nil, errors.New("model is required")
 		}
 
@@ -190,25 +274,14 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			return nil, errors.New("size an unexpected error occurred in the parameter, please use 'x' instead of the multiplication sign '×'")
 		}
 
-		// Not "256x256", "512x512", or "1024x1024"
-		if imageRequest.Model == "dall-e-2" || imageRequest.Model == "dall-e" {
-			if imageRequest.Size != "" && imageRequest.Size != "256x256" && imageRequest.Size != "512x512" && imageRequest.Size != "1024x1024" {
-				return nil, errors.New("size must be one of 256x256, 512x512, or 1024x1024 for dall-e-2 or dall-e")
-			}
-			if imageRequest.Size == "" {
-				imageRequest.Size = "1024x1024"
-			}
-		} else if imageRequest.Model == "dall-e-3" {
-			if imageRequest.Size != "" && imageRequest.Size != "1024x1024" && imageRequest.Size != "1024x1792" && imageRequest.Size != "1792x1024" {
-				return nil, errors.New("size must be one of 1024x1024, 1024x1792 or 1792x1024 for dall-e-3")
-			}
-			if imageRequest.Quality == "" {
-				imageRequest.Quality = "standard"
-			}
-			if imageRequest.Size == "" {
-				imageRequest.Size = "1024x1024"
-			}
-		} else if imageRequest.Model == "gpt-image-1" {
+		if imageRequest.N != nil && *imageRequest.N > dto.MaxImageN {
+			return nil, fmt.Errorf("n must be an integer between 1 and %d", dto.MaxImageN)
+		}
+
+		if err := imageRequest.NormalizeLegacyDalleImageRequest(); err != nil {
+			return nil, err
+		}
+		if imageRequest.Model == "gpt-image-1" {
 			if imageRequest.Quality == "" {
 				imageRequest.Quality = "auto"
 			}
@@ -223,12 +296,25 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		}
 	}
 
+	// Provider parameters can override the top-level count. Validate before
+	// pricing so malformed multipliers return a client error, not a pricing
+	// failure after reservation has started.
+	if raw, exists := imageRequest.Extra["parameters"]; exists {
+		parameters := &dto.ImageBillingParameters{}
+		if err := common.Unmarshal(raw, parameters); err != nil {
+			return nil, fmt.Errorf("invalid image parameters: %w", err)
+		}
+		imageRequest.BillingParameters = parameters
+	}
+	if _, err := imageRequest.ImageCount(false); err != nil {
+		return nil, err
+	}
 	return imageRequest, nil
 }
 
 func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest, err error) {
 	textRequest = &dto.ClaudeRequest{}
-	err = common.UnmarshalBodyReusable(c, textRequest)
+	err = common.UnmarshalBodyReusableNoCopy(c, textRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +323,9 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("field model is required")
+	}
+	if ExceedsMaxTokensLimit(textRequest.MaxTokens, textRequest.MaxTokensToSample) {
+		return nil, errors.New("max_tokens is invalid")
 	}
 
 	//if textRequest.Stream {
@@ -248,7 +337,7 @@ func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest
 
 func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenAIRequest, error) {
 	textRequest := &dto.GeneralOpenAIRequest{}
-	err := common.UnmarshalBodyReusable(c, textRequest)
+	err := common.UnmarshalBodyReusableNoCopy(c, textRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -260,8 +349,11 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 		textRequest.Model = c.Param("model")
 	}
 
-	if lo.FromPtrOr(textRequest.MaxTokens, uint(0)) > math.MaxInt32/2 {
+	if ExceedsMaxTokensLimit(textRequest.MaxTokens, textRequest.MaxCompletionTokens) {
 		return nil, errors.New("max_tokens is invalid")
+	}
+	if ExceedsMaxTokensLimit(textRequest.MinTokens) {
+		return nil, errors.New("min_tokens is invalid")
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
@@ -306,12 +398,15 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 
 func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error) {
 	request := &dto.GeminiChatRequest{}
-	err := common.UnmarshalBodyReusable(c, request)
+	err := common.UnmarshalBodyReusableNoCopy(c, request)
 	if err != nil {
 		return nil, err
 	}
 	if len(request.Contents) == 0 && len(request.Requests) == 0 {
 		return nil, errors.New("contents is required")
+	}
+	if ExceedsMaxTokensLimit(request.GenerationConfig.MaxOutputTokens) {
+		return nil, errors.New("maxOutputTokens is invalid")
 	}
 
 	//if c.Query("alt") == "sse" {
@@ -323,7 +418,7 @@ func GetAndValidateGeminiRequest(c *gin.Context) (*dto.GeminiChatRequest, error)
 
 func GetAndValidateGeminiEmbeddingRequest(c *gin.Context) (*dto.GeminiEmbeddingRequest, error) {
 	request := &dto.GeminiEmbeddingRequest{}
-	err := common.UnmarshalBodyReusable(c, request)
+	err := common.UnmarshalBodyReusableNoCopy(c, request)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +427,7 @@ func GetAndValidateGeminiEmbeddingRequest(c *gin.Context) (*dto.GeminiEmbeddingR
 
 func GetAndValidateGeminiBatchEmbeddingRequest(c *gin.Context) (*dto.GeminiBatchEmbeddingRequest, error) {
 	request := &dto.GeminiBatchEmbeddingRequest{}
-	err := common.UnmarshalBodyReusable(c, request)
+	err := common.UnmarshalBodyReusableNoCopy(c, request)
 	if err != nil {
 		return nil, err
 	}

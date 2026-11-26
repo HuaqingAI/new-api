@@ -4,22 +4,61 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/MoeForge/moego/ojson"
 )
 
 // BodyStorage 请求体存储接口
 type BodyStorage interface {
 	io.ReadSeeker
 	io.Closer
-	// Bytes 获取全部内容
+	// Bytes returns read-only contents. Store edits in a new BodyStorage;
+	// decoded strings and raw JSON may still refer to these bytes.
 	Bytes() ([]byte, error)
 	// Size 获取数据大小
 	Size() int64
 	// IsDisk 是否是磁盘存储
 	IsDisk() bool
+	// NewReader returns an independent reader positioned at the start of the
+	// stored payload. Each call returns a reader with its own cursor, so
+	// callers (e.g. http.Request.GetBody) can replay the body concurrently
+	// with, or after, other readers without sharing seek state. Closing the
+	// returned reader releases only that reader, never the storage itself;
+	// after the storage has been closed, NewReader returns ErrStorageClosed.
+	NewReader() (io.ReadCloser, error)
+}
+
+// ReplayableBody is an outbound request body that can report its byte size and
+// create independent readers for transport-level retries.
+type ReplayableBody interface {
+	io.Reader
+	Size() int64
+	NewReader() (io.ReadCloser, error)
+}
+
+// ReadBodyJSONFields returns owned copies of the requested values. For valid JSON,
+// simple member and array-index paths read disk storage through a bounded window.
+func ReadBodyJSONFields(storage BodyStorage, paths ...string) ([]ojson.Result, error) {
+	if storage.IsDisk() {
+		reader, err := storage.NewReader()
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		if readerAt, ok := reader.(io.ReaderAt); ok {
+			return ojson.GetManyReaderAt(readerAt, storage.Size(), paths...)
+		}
+	}
+	data, err := storage.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	return ojson.GetManyBytes(data, paths...), nil
 }
 
 // ErrStorageClosed 存储已关闭错误
@@ -77,7 +116,21 @@ func (m *memoryStorage) Bytes() ([]byte, error) {
 	if atomic.LoadInt32(&m.closed) == 1 {
 		return nil, ErrStorageClosed
 	}
-	return m.data, nil
+	// Without spare capacity an append by one reader cannot write where
+	// another reader's append landed.
+	return m.data[:len(m.data):len(m.data)], nil
+}
+
+func (m *memoryStorage) NewReader() (io.ReadCloser, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if atomic.LoadInt32(&m.closed) == 1 {
+		return nil, ErrStorageClosed
+	}
+	// A fresh bytes.Reader over the shared immutable backing array: an
+	// independent cursor at zero copy cost. NopCloser keeps Close a no-op, so
+	// the storage lifecycle stays owned by whoever holds the storage itself.
+	return io.NopCloser(bytes.NewReader(m.data)), nil
 }
 
 func (m *memoryStorage) Size() int64 {
@@ -229,6 +282,24 @@ func (d *diskStorage) Bytes() ([]byte, error) {
 	return data, nil
 }
 
+func (d *diskStorage) NewReader() (io.ReadCloser, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if atomic.LoadInt32(&d.closed) == 1 {
+		return nil, ErrStorageClosed
+	}
+	// A separate file descriptor over the same cache file: an independent
+	// cursor at zero copy cost. Closing the returned reader closes only that
+	// descriptor; the storage keeps owning the primary descriptor and the
+	// file's lifetime. Readers opened before Close stay usable even after the
+	// file is unlinked, as the descriptor keeps the inode alive.
+	file, err := os.Open(d.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open body cache file for replay: %w", err)
+	}
+	return file, nil
+}
+
 func (d *diskStorage) Size() int64 {
 	return d.size
 }
@@ -237,7 +308,8 @@ func (d *diskStorage) IsDisk() bool {
 	return true
 }
 
-// CreateBodyStorage 根据数据大小创建合适的存储
+// CreateBodyStorage stores data in memory or on disk according to cache settings.
+// It takes ownership of data; callers must keep its backing array immutable.
 func CreateBodyStorage(data []byte) (BodyStorage, error) {
 	size := int64(len(data))
 	threshold := GetDiskCacheThresholdBytes()
@@ -249,7 +321,7 @@ func CreateBodyStorage(data []byte) (BodyStorage, error) {
 		storage, err := newDiskStorage(data, GetDiskCachePath())
 		if err != nil {
 			// 如果磁盘存储失败，回退到内存存储
-			SysError(fmt.Sprintf("failed to create disk storage, falling back to memory: %v", err))
+			SysError(LogText("failed to create disk storage, falling back to memory: %v", err))
 			return newMemoryStorage(data), nil
 		}
 		return storage, nil
@@ -302,10 +374,69 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 	return storage, nil
 }
 
-// ReaderOnly wraps an io.Reader to hide io.Closer, preventing http.NewRequest
-// from type-asserting io.ReadCloser and closing the underlying BodyStorage.
-func ReaderOnly(r io.Reader) io.Reader {
-	return struct{ io.Reader }{r}
+// replayableBodyReader is the body of one outbound request. It reads through a
+// cursor of its own, opened on the first Read: the shared storage cursor would
+// let a transport still writing an earlier attempt, or any GetBodyStorage seek,
+// move the position of this one. EOF and Close release only that cursor.
+type replayableBodyReader struct {
+	storage BodyStorage
+	mu      sync.Mutex
+	cursor  io.ReadCloser
+	ended   bool
+	closed  bool
+}
+
+func (r *replayableBodyReader) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return 0, http.ErrBodyReadAfterClose
+	}
+	if r.ended {
+		return 0, io.EOF
+	}
+	if r.cursor == nil {
+		cursor, err := r.storage.NewReader()
+		if err != nil {
+			return 0, err
+		}
+		r.cursor = cursor
+	}
+	n, err := r.cursor.Read(p)
+	if err == io.EOF {
+		r.ended = true
+		_ = r.cursor.Close()
+		r.cursor = nil
+	}
+	return n, err
+}
+
+// Close releases this request's cursor. The storage stays open for GetBody
+// replays and is closed by its owner.
+func (r *replayableBodyReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.closed = true
+	if r.cursor == nil {
+		return nil
+	}
+	err := r.cursor.Close()
+	r.cursor = nil
+	return err
+}
+
+func (r *replayableBodyReader) Size() int64 {
+	return r.storage.Size()
+}
+
+func (r *replayableBodyReader) NewReader() (io.ReadCloser, error) {
+	return r.storage.NewReader()
+}
+
+// NewReplayableBodyReader returns a request body over storage with its own
+// cursor. Closing the body, as net/http does, never closes the storage.
+func NewReplayableBodyReader(storage BodyStorage) ReplayableBody {
+	return &replayableBodyReader{storage: storage}
 }
 
 // CleanupOldCacheFiles 清理旧的缓存文件（用于启动时清理残留）

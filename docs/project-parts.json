@@ -1,0 +1,312 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-05-26",
+  "project_name": "new-api",
+  "project_repo": "https://github.com/QuantumNous/new-api",
+  "project_owner": "QuantumNous",
+  "monorepo": true,
+  "parts_count": 4,
+  "parts": [
+    {
+      "id": "server",
+      "name": "Go 后端 (Server)",
+      "type": "backend",
+      "language": "Go",
+      "language_version": "1.25.1+",
+      "entry_point": "main.go",
+      "root_path": ".",
+      "key_directories": [
+        "controller/",
+        "service/",
+        "model/",
+        "relay/",
+        "router/",
+        "middleware/",
+        "setting/",
+        "common/",
+        "dto/",
+        "constant/",
+        "types/",
+        "i18n/",
+        "oauth/",
+        "pkg/"
+      ],
+      "frameworks": [
+        "gin@v1.9.1",
+        "gorm@v1.25.2",
+        "go-redis/redis/v8",
+        "go-webauthn/webauthn",
+        "golang-jwt/jwt/v5",
+        "expr-lang/expr",
+        "aws-sdk-go-v2/service/bedrockruntime",
+        "stripe/stripe-go/v81"
+      ],
+      "databases": [
+        {"name": "SQLite", "driver": "glebarez/sqlite"},
+        {"name": "MySQL", "min_version": "5.7.8"},
+        {"name": "PostgreSQL", "min_version": "9.6"}
+      ],
+      "cache": ["Redis (go-redis)", "samber/hot in-memory", "pkg/cachex.HybridCache"],
+      "build_command": "go build -ldflags \"-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'\" -o new-api",
+      "test_command": "go test ./...",
+      "default_port": 3000,
+      "embed_assets": [
+        "web/default/dist",
+        "web/classic/dist"
+      ],
+      "documentation": {
+        "architecture": "docs/architecture-server.md",
+        "api_contracts": "docs/api-contracts-server.md",
+        "data_models": "docs/data-models-server.md",
+        "development_guide": "docs/development-guide-server.md",
+        "source_tree": "docs/source-tree-analysis.md#2"
+      },
+      "depends_on": [],
+      "consumed_by": ["web-default", "web-classic", "electron"],
+      "external_integrations": {
+        "ai_providers_count": 40,
+        "ai_providers": [
+          "openai", "azure", "claude", "gemini", "aws_bedrock", "vertex",
+          "ali", "baidu", "baidu_v2", "tencent", "volcengine", "xunfei",
+          "zhipu", "zhipu_4v", "moonshot", "deepseek", "mistral", "cohere",
+          "replicate", "cloudflare", "xai", "xinference", "siliconflow",
+          "lingyiwanwu", "minimax", "mokaai", "ollama", "openrouter",
+          "palm", "perplexity", "coze", "dify", "submodel", "task",
+          "jina", "jimeng", "ai360", "codex", "kling"
+        ],
+        "payment_gateways": ["stripe", "creem", "waffo", "waffo_pancake", "epay"],
+        "oauth_providers": ["github", "discord", "linuxdo", "oidc", "wechat", "telegram", "custom"]
+      }
+    },
+    {
+      "id": "web-default",
+      "name": "默认前端 (Web Default)",
+      "type": "frontend",
+      "language": "TypeScript",
+      "language_version": "5.x",
+      "entry_point": "src/main.tsx",
+      "root_path": "web/default",
+      "key_directories": [
+        "src/routes/",
+        "src/features/",
+        "src/components/ui/",
+        "src/components/ai-elements/",
+        "src/components/layout/",
+        "src/components/data-table/",
+        "src/stores/",
+        "src/hooks/",
+        "src/lib/",
+        "src/i18n/",
+        "src/styles/"
+      ],
+      "frameworks": [
+        "react@19",
+        "@tanstack/react-router",
+        "@tanstack/react-query",
+        "@tanstack/react-table",
+        "@tanstack/react-virtual",
+        "@base-ui-components/react",
+        "tailwindcss",
+        "zustand",
+        "react-hook-form",
+        "zod",
+        "i18next",
+        "axios",
+        "marked",
+        "@visactor/vchart"
+      ],
+      "build_tool": "Rsbuild",
+      "package_manager": "Bun",
+      "build_command": "bun run build",
+      "dev_command": "bun run dev",
+      "dev_port": 5173,
+      "i18n_languages": ["zh", "en", "fr", "ru", "ja", "vi"],
+      "i18n_key_style": "english_source",
+      "documentation": {
+        "architecture": "docs/architecture-web-default.md",
+        "component_inventory": "docs/component-inventory-web-default.md",
+        "development_guide": "docs/development-guide-web-default.md"
+      },
+      "depends_on": ["server"],
+      "consumed_by": ["server (via go:embed)", "electron"],
+      "ui_library": "Base UI + shadcn-style + Tailwind"
+    },
+    {
+      "id": "web-classic",
+      "name": "经典前端 (Web Classic)",
+      "type": "frontend",
+      "language": "JavaScript",
+      "language_version": "ES2020+",
+      "entry_point": "src/main.jsx",
+      "root_path": "web/classic",
+      "key_directories": [
+        "src/pages/",
+        "src/components/",
+        "src/hooks/",
+        "src/helpers/",
+        "src/context/",
+        "src/services/",
+        "src/i18n/"
+      ],
+      "frameworks": [
+        "react@18.2",
+        "react-router-dom@6",
+        "@douyinfe/semi-ui@^2.69",
+        "@douyinfe/semi-icons",
+        "i18next",
+        "react-i18next@13",
+        "axios",
+        "marked",
+        "mermaid",
+        "katex",
+        "@visactor/vchart",
+        "react-toastify"
+      ],
+      "build_tool": "Vite 5.2",
+      "package_manager": "Bun / npm",
+      "build_command": "bun run build",
+      "dev_command": "bun run dev",
+      "dev_port": 5174,
+      "i18n_languages": ["zh", "en", "fr", "ru", "ja", "vi"],
+      "i18n_key_style": "chinese_source_legacy",
+      "documentation": {
+        "architecture": "docs/architecture-web-classic.md",
+        "component_inventory": "docs/component-inventory-web-classic.md",
+        "development_guide": "docs/development-guide-web-classic.md"
+      },
+      "depends_on": ["server"],
+      "consumed_by": ["server (via go:embed)", "electron"],
+      "ui_library": "Semi Design"
+    },
+    {
+      "id": "electron",
+      "name": "Electron 桌面外壳 (Desktop Shell)",
+      "type": "desktop",
+      "language": "JavaScript",
+      "language_version": "ES2020+",
+      "entry_point": "main.js",
+      "root_path": "electron",
+      "key_files": [
+        "main.js",
+        "preload.js",
+        "create-tray-icon.js",
+        "package.json",
+        "entitlements.mac.plist"
+      ],
+      "frameworks": [
+        "electron@39.8.5",
+        "electron-builder@^26.7.0"
+      ],
+      "build_tool": "electron-builder",
+      "package_manager": "npm",
+      "build_command_windows": "npm run build:win",
+      "build_command_macos": "npm run build:mac",
+      "build_command_linux": "npm run build:linux",
+      "dev_command": "npm start",
+      "platforms": [
+        {"os": "windows", "formats": ["nsis", "portable"]},
+        {"os": "macos", "formats": ["dmg", "zip"], "signed": false},
+        {"os": "linux", "formats": ["AppImage", "deb"]}
+      ],
+      "metadata": {
+        "name": "new-api-electron",
+        "productName": "New-API-App",
+        "appId": "com.newapi.desktop",
+        "author": "QuantumNous"
+      },
+      "spawned_binary": "bin/new-api(.exe)",
+      "spawned_port": 3000,
+      "data_dir_env_var": "SQLITE_PATH",
+      "preload_exposed_apis": [
+        "isElectron",
+        "version",
+        "platform",
+        "versions",
+        "dataDir"
+      ],
+      "documentation": {
+        "architecture": "docs/architecture-electron.md",
+        "component_inventory": "docs/component-inventory-electron.md",
+        "development_guide": "docs/development-guide-electron.md"
+      },
+      "depends_on": ["server", "web-default-or-classic (via Go embed)"],
+      "consumed_by": []
+    }
+  ],
+  "integration_points": [
+    {
+      "id": "frontend-to-backend-api",
+      "name": "前端 → 后端 HTTP API",
+      "from": ["web-default", "web-classic"],
+      "to": "server",
+      "protocol": "HTTP/1.1 + SSE + WebSocket(/v1/realtime)",
+      "auth": ["cookie session (HttpOnly, SameSite=Strict, 30d)", "Bearer sk-xxx"],
+      "doc_section": "docs/integration-architecture.md#2"
+    },
+    {
+      "id": "frontend-build-to-go-embed",
+      "name": "前端构建产物 → Go embed",
+      "from": ["web-default", "web-classic"],
+      "to": "server",
+      "mechanism": "go:embed web/{theme}/dist + ThemeAssets struct + NewThemeAwareFS",
+      "doc_section": "docs/integration-architecture.md#3"
+    },
+    {
+      "id": "electron-to-go-binary",
+      "name": "Electron → Go 二进制 + WebView",
+      "from": "electron",
+      "to": ["server", "web-default-or-classic"],
+      "mechanism": "spawn child process + loadURL http://127.0.0.1:3000",
+      "doc_section": "docs/integration-architecture.md#4"
+    },
+    {
+      "id": "backend-to-ai-providers",
+      "name": "后端 → 上游 AI Provider (40 个)",
+      "from": "server",
+      "to": "external_ai_providers",
+      "mechanism": "Adaptor interface + Distribute middleware + GetTaskAdaptorFunc injection",
+      "doc_section": "docs/integration-architecture.md#5"
+    },
+    {
+      "id": "backend-to-data-stores",
+      "name": "后端 → 数据库 / Redis / Pyroscope",
+      "from": "server",
+      "to": "external_data_stores",
+      "mechanism": "GORM v2 + go-redis + pyroscope-go agent",
+      "doc_section": "docs/integration-architecture.md#6"
+    },
+    {
+      "id": "payment-webhooks",
+      "name": "支付 Webhook (公网入站)",
+      "from": "external_payment_gateways",
+      "to": "server",
+      "endpoints": [
+        "POST /api/stripe/webhook",
+        "POST /api/creem/webhook",
+        "POST /api/waffo/webhook",
+        "POST /api/waffo-pancake/webhook/:env",
+        "POST/GET /api/subscription/epay/notify"
+      ],
+      "auth_strategy": "in-handler signature verification (no global auth middleware)",
+      "doc_section": "docs/integration-architecture.md#7"
+    }
+  ],
+  "key_conventions": [
+    {"rule": "Rule 1", "summary": "JSON 操作必须使用 common/json.go 包装"},
+    {"rule": "Rule 2", "summary": "跨 SQLite/MySQL≥5.7.8/PostgreSQL≥9.6 全兼容"},
+    {"rule": "Rule 3", "summary": "web/default 使用 Bun"},
+    {"rule": "Rule 4", "summary": "新 channel 检查 StreamOptions 支持"},
+    {"rule": "Rule 5", "summary": "new-api / QuantumNous 标识严禁修改"},
+    {"rule": "Rule 6", "summary": "转发请求 DTO 可选标量必须用指针 + omitempty"},
+    {"rule": "Rule 7", "summary": "计费表达式修改前必读 pkg/billingexpr/expr.md"}
+  ],
+  "ci_workflows": [
+    {"name": "docker-build.yml", "trigger": "tag (non-nightly) / manual", "purpose": "多架构 Docker 镜像 (amd64 + arm64)"},
+    {"name": "docker-image-alpha.yml", "trigger": "alpha tag", "purpose": "灰度镜像"},
+    {"name": "docker-image-nightly.yml", "trigger": "nightly tag", "purpose": "每夜镜像"},
+    {"name": "release.yml", "trigger": "tag (non-alpha) / manual", "purpose": "Linux/macOS/Windows 二进制发布"},
+    {"name": "electron-build.yml", "trigger": "release tag", "purpose": "Electron 安装包 (当前仅 Windows)"},
+    {"name": "pr-check.yml", "trigger": "PR open/reopen", "purpose": "anti-slop + PR 模板检查"},
+    {"name": "sync-to-gitee.yml", "trigger": "push", "purpose": "镜像同步至 Gitee"}
+  ]
+}

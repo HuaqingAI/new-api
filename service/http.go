@@ -19,15 +19,17 @@ func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	}
 	err := httpResponse.Body.Close()
 	if err != nil {
-		common.SysError("failed to close response body: " + err.Error())
+		common.SysError(common.LogText("failed to close response body: %s", err.Error()))
 	}
 }
 
 // ShouldCopyUpstreamHeader checks whether a given upstream response header
 // should be copied to the client response. It returns false for Content-Length
 // (managed separately) and X-Oneapi-Request-Id (to preserve the local instance
-// ID). When the upstream header is X-Oneapi-Request-Id, the value is captured
-// into the Gin context for later logging.
+// ID). Response request identifiers are captured into the Gin context for later
+// logging: X-Oneapi-Request-Id remains the upstream request ID, while
+// X-Client-Request-Id is stored separately as the client request ID returned by
+// an upstream gateway.
 func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 	if strings.EqualFold(k, "Content-Length") {
 		return false
@@ -38,7 +40,33 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 		}
 		return false
 	}
+	if strings.EqualFold(k, common.ClientRequestIdKey) {
+		if c != nil && len(v) > 0 {
+			setClientRequestID(c, v[0])
+		}
+		return true
+	}
 	return true
+}
+
+func CaptureResponseRequestIDs(c *gin.Context, header http.Header) {
+	if c == nil || header == nil {
+		return
+	}
+	if requestID := header.Get(common.RequestIdKey); requestID != "" {
+		c.Set(common.UpstreamRequestIdKey, requestID)
+	}
+	if requestID := strings.TrimSpace(header.Get(common.ClientRequestIdKey)); requestID != "" {
+		c.Set(common.ClientRequestIdKey, requestID)
+	}
+}
+
+func setClientRequestID(c *gin.Context, requestID string) {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return
+	}
+	c.Set(common.ClientRequestIdKey, requestID)
 }
 
 func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
@@ -73,7 +101,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 
 	_, err := io.Copy(c.Writer, body)
 	if err != nil {
-		logger.LogError(c, fmt.Sprintf("failed to copy response body: %s", err.Error()))
+		logger.LogError(c, common.LogText("failed to copy response body: %s", err.Error()))
 	}
 	c.Writer.Flush()
 }
